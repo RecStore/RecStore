@@ -4,8 +4,10 @@
 #include <string>
 #include "base/factory.h"
 #include "base_kv.h"
-#include "src/storage/hybrid/value.h"
+#include "src/storage/value/value.h"
 #include "storage/hybrid/index.h"
+#include "storage/hybrid/index_factory.h"
+
 class KVEngineHybrid : public BaseKV {
   static constexpr int kKVEngineValidFileSize = 123;
 
@@ -16,26 +18,33 @@ public:
              config.json_config_.at("shmcapacity").get<size_t>(),
              config.json_config_.at("path").get<std::string>() + "/ssdvalue",
              config.json_config_.at("ssdcapacity").get<size_t>(),
-             [&] {
-               BaseKVConfig ic;
-               ic.json_config_ = config.json_config_;
-               return ic;
-             }()) {}
+             config) {
+    // 创建 index
+    using IndexF = base::Factory<Index, const BaseKVConfig&>;
+    std::string index_type = config.json_config_.value("index_type", "ExtendibleHash");
+    index_.reset(IndexF::NewInstance(index_type, config));
+  }
 
   void Get(const uint64_t key, std::string& value, unsigned tid) override {
     std::shared_lock<std::shared_mutex> lock(lock_);
-    value = valm.RetrieveValue(key, tid);
-  }
-
-  void GetIndex(uint64_t key, uint64_t& pointer, unsigned int tid) {
-    valm.index->Get(key, pointer, tid);
+    Value_t raw = 0;
+    index_->Get(key, raw, tid);
+    if (!raw) {
+      value = {};
+      return;
+    }
+    value = valm.RetrieveValue(raw, tid);
   }
 
   void Put(const uint64_t key,
            const std::string_view& value,
            unsigned tid) override {
     std::unique_lock<std::shared_mutex> lock(lock_);
-    valm.WriteValue(key, value, 0);
+    Value_t old_raw        = 0;
+    index_->Get(key, old_raw, tid);
+    UnifiedPointer new_ptr = valm.WriteValue(value);
+    index_->Put(key, new_ptr.RawValue(), tid);
+    // TODO: valm.Free(UnifiedPointer::FromRaw(old_raw)) 等 free 实现后加
   }
 
   void BatchGet(base::ConstArray<uint64_t> keys,
@@ -45,31 +54,20 @@ public:
     values->clear();
     values->reserve(keys.Size());
 
-    // 清理上次调用的缓存，确保数据不会累积
     storage_.clear();
     storage_.reserve(keys.Size());
     for (int k = 0; k < keys.Size(); k++) {
-      // 1. 从 ValueManager 获取原始字符串
-      std::string temp_values = valm.RetrieveValue(keys[k], tid);
-
-      // 2. 将字符串的副本存入成员变量 storage_，以确保其生命周期足够长，
-      //    防止在函数返回后指针失效。
-      storage_.push_back(std::move(temp_values));
+      Value_t raw = 0;
+      index_->Get(keys[k], raw, tid);
+      std::string temp_value = raw ? valm.RetrieveValue(raw, tid) : std::string();
+      storage_.push_back(std::move(temp_value));
 
       const std::string& stored_value = storage_.back();
-
       if (stored_value.empty()) {
-        // 如果值为空，则返回一个空的 ConstArray
         values->push_back(base::ConstArray<float>(nullptr, 0));
       } else {
-        // 3. 执行核心的 reinterpret_cast 逻辑来满足测试需求
-        const char* char_ptr   = stored_value.data();
-        const float* float_ptr = reinterpret_cast<const float*>(char_ptr);
-
-        // 4. 计算出伪装后的 float 数组的大小
-        size_t float_size = stored_value.size() / sizeof(float);
-
-        // 5. 创建指向伪装数据的 ConstArray 并添加到结果中
+        const float* float_ptr = reinterpret_cast<const float*>(stored_value.data());
+        size_t float_size      = stored_value.size() / sizeof(float);
         values->push_back(base::ConstArray<float>(float_ptr, float_size));
       }
     }
@@ -77,16 +75,14 @@ public:
 
   ~KVEngineHybrid() {
     std::cout << "exit KVEngineHybrid" << std::endl;
-    for (int i = 0; i < storage_.size(); i++) {
-      storage_[i].clear();
-    }
+    storage_.clear();
   }
 
 private:
   ValueManager valm;
+  std::unique_ptr<Index> index_;
   mutable std::shared_mutex lock_;
   std::vector<std::string> storage_;
-  std::string dict_pool_name_;
 };
 
 FACTORY_REGISTER(BaseKV, KVEngineHybrid, KVEngineHybrid, const BaseKVConfig&);

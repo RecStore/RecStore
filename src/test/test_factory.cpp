@@ -17,7 +17,7 @@
 
 #include "base/json.h"
 #include "memory/shm_file.h"
-#include "storage/kv_engine/engine_extendible_hash.h"
+#include "storage/kv_engine/dram_index_ssd_value.h"
 
 #include "storage/kv_engine/engine_factory.h"
 #include "storage/kv_engine/engine_selector.h"

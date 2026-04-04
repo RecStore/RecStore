@@ -313,6 +313,7 @@ RETRY:
     Block** s = target->Split();
     if (s == nullptr) {
       // another thread is doing split
+      std::this_thread::yield();
       goto RETRY;
     }
 
@@ -439,7 +440,8 @@ RETRY:
     }
     goto RETRY;
   } else if (ret == -2) {
-    Insert(key, value);
+    std::this_thread::yield();
+    goto RETRY;
   } else {
     clflush((char*)&dir._[x]->_[ret], sizeof(Pair));
   }

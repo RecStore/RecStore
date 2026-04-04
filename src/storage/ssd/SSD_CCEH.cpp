@@ -1,4 +1,4 @@
-#include "CCEH.h"
+#include "SSD_CCEH.h"
 #include "hash.h"
 #include "util.h"
 #include <chrono>
@@ -260,19 +260,19 @@ PageID_t* Segment::Split(IOBackend* io_backend) {
   return split;
 }
 
-CCEH::CCEH(const BaseKVConfig& config) : Index(config) {
+SSDCCEH::SSDCCEH(const BaseKVConfig& config) : Index(config) {
   using IOF = base::Factory<IOBackend, const BaseKVConfig&>;
   if (!config.json_config_.contains("io_backend_type"))
-    LOG(FATAL) << "CCEH config missing 'io_backend_type'";
+    LOG(FATAL) << "SSDCCEH config missing 'io_backend_type'";
   std::string io_backend_type =
       config.json_config_.at("io_backend_type").get<std::string>();
   io_backend.reset(IOF::NewInstance(io_backend_type, config));
   io_backend->init();
-  initCCEH(2);
+  initSSDCCEH(2);
   crashed = false;
 }
 
-void CCEH::initCCEH(size_t initCap) {
+void SSDCCEH::initSSDCCEH(size_t initCap) {
   crashed            = true;
   dir_header_page_id = io_backend->AllocatePage();
   auto dir_header_ptr =
@@ -302,7 +302,7 @@ void CCEH::initCCEH(size_t initCap) {
   crashed = false;
 }
 
-std::shared_mutex& CCEH::get_segment_lock(PageID_t page_id) const {
+std::shared_mutex& SSDCCEH::get_segment_lock(PageID_t page_id) const {
   std::lock_guard<std::mutex> guard(segment_locks_mutex);
   auto it = segment_locks.find(page_id);
   if (it == segment_locks.end())
@@ -311,7 +311,7 @@ std::shared_mutex& CCEH::get_segment_lock(PageID_t page_id) const {
   return *it->second;
 }
 
-void CCEH::Put(coroutine<void>::push_type& sink,
+void SSDCCEH::Put(coroutine<void>::push_type& sink,
                int index,
                Key_t key,
                Value_t value,
@@ -578,7 +578,7 @@ void CCEH::Put(coroutine<void>::push_type& sink,
   }
 }
 
-void CCEH::Put(Key_t key, Value_t value, unsigned tid) {
+void SSDCCEH::Put(Key_t key, Value_t value, unsigned tid) {
   auto f_hash = hash_funcs[0](&key, sizeof(Key_t), f_seed);
   auto f_idx  = (f_hash % Segment::kNumGroups) * kNumPairPerCacheLine;
   ExponentialBackoff backoff;
@@ -809,9 +809,9 @@ void CCEH::Put(Key_t key, Value_t value, unsigned tid) {
   }
 }
 
-bool CCEH::Delete(Key_t& key) { return false; }
+bool SSDCCEH::Delete(Key_t& key) { return false; }
 
-void CCEH::Get(coroutine<void>::push_type& sink,
+void SSDCCEH::Get(coroutine<void>::push_type& sink,
                int index,
                Key_t key,
                Value_t& value,
@@ -880,7 +880,7 @@ void CCEH::Get(coroutine<void>::push_type& sink,
   }
 }
 
-void CCEH::Get(Key_t key, Value_t& value, unsigned tid) {
+void SSDCCEH::Get(Key_t key, Value_t& value, unsigned tid) {
   auto f_hash = hash_funcs[0](&key, sizeof(Key_t), f_seed);
   auto f_idx  = (f_hash % Segment::kNumGroups) * kNumPairPerCacheLine;
   ExponentialBackoff backoff;
@@ -943,7 +943,7 @@ void CCEH::Get(Key_t key, Value_t& value, unsigned tid) {
   }
 }
 
-void CCEH::BatchPut(
+void SSDCCEH::BatchPut(
     base::ConstArray<Key_t> keys, Value_t* pointers, unsigned tid) {
   size_t size = keys.Size();
   for (size_t i = 0; i < size; ++i) {
@@ -951,7 +951,7 @@ void CCEH::BatchPut(
   }
 }
 
-void CCEH::BatchGet(
+void SSDCCEH::BatchGet(
     base::ConstArray<Key_t> keys, Value_t* pointers, unsigned tid) {
   size_t size = keys.Size();
   for (size_t i = 0; i < size; ++i) {

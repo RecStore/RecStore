@@ -37,9 +37,11 @@ public:
   }
 
   // 构造磁盘页ID
-  static UnifiedPointer FromDiskPageId(uint64_t page_id) {
+  static UnifiedPointer FromDisk(uint64_t page_id , uint16_t page_count) {
     UnifiedPointer p;
-    p.set(Type::Disk, page_id);
+    assert((page_id & ~((1ULL << 48) - 1)) == 0 && "page_id exceeds 48 bits");
+    assert(page_count < (1ULL << 14) && "page_count exceeds 14 bits");
+    p.set(Type::Disk, page_id | ((uint64_t)page_count << 48));
     return p;
   }
 
@@ -63,7 +65,12 @@ public:
 
   uint64_t asDiskPageId() const {
     assert(type() == Type::Disk);
-    return value();
+    return value() & ((1ULL << 48) - 1);
+  }
+
+  uint16_t asDiskPageCount() const {
+    assert(type() == Type::Disk);
+    return (value() >> 48) & ((1ULL << 14) - 1);
   }
 
   uint64_t asPMemOffset() const {
@@ -79,7 +86,7 @@ public:
       oss << "Memory, Addr: 0x" << std::hex << value();
       break;
     case Type::Disk:
-      oss << "Disk, PageID: " << std::dec << value();
+      oss << "Disk, PageID: " << std::dec << asDiskPageId() << ", PageCount: " << asDiskPageCount();
       break;
     case Type::PMem:
       oss << "PMem, Offset: " << std::dec << value();

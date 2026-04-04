@@ -5,7 +5,7 @@
 #include <folly/GLog.h>
 #include <folly/Likely.h>
 
-const char* using_ssd = "0000:8d:00.0";
+const char* using_ssd = "0000:22:00.0";
 
 namespace ssdps {
 

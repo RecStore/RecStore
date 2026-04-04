@@ -99,7 +99,7 @@ inline EngineResolved ResolveEngine(BaseKVConfig cfg) {
     j["SSD_SIZE"]  = j.at("ssdcapacity");
     if (!j.contains("cache_policy"))
       j["cache_policy"] = "LRU";
-  } else if (val == "DRAM" || val == "SSD") {
+  } else if (val == "SSD") {
     if (idx == "DRAM")
       engine = "KVEngineExtendibleHash";
     else if (idx == "SSD")

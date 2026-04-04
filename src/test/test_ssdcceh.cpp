@@ -1,4 +1,4 @@
-#include "storage/ssd/CCEH.h"
+#include "storage/ssd/SSD_CCEH.h"
 #include "gtest/gtest.h"
 #include <thread>
 #include <vector>
@@ -10,7 +10,7 @@ BaseKVConfig config{
      {"queue_cnt", 512},
      {"file_path", "/tmp/test_cceh.db"}}};
 
-class CCEHTest : public ::testing::Test {
+class SSDCCEHTest : public ::testing::Test {
 protected:
   void SetUp() override {
     std::remove(config.json_config_.at("file_path").get<std::string>().c_str());
@@ -20,62 +20,62 @@ protected:
   }
 };
 
-TEST_F(CCEHTest, SimpleInsertAndGet) {
-  CCEH cceh(config);
+TEST_F(SSDCCEHTest, SimpleInsertAndGet) {
+  SSDCCEH ssd_cceh(config);
 
   Key_t key     = 100;
   Value_t value = 200;
-  cceh.Put(key, value, 0);
+  ssd_cceh.Put(key, value, 0);
 
   Value_t ret_val;
-  cceh.Get(key, ret_val, 0);
+  ssd_cceh.Get(key, ret_val, 0);
   EXPECT_EQ(ret_val, value);
 
   Key_t not_exist_key = 101;
-  cceh.Get(not_exist_key, ret_val, 0);
+  ssd_cceh.Get(not_exist_key, ret_val, 0);
   EXPECT_EQ(ret_val, NONE);
 }
 
-TEST_F(CCEHTest, SplitTest) {
-  CCEH cceh(config);
+TEST_F(SSDCCEHTest, SplitTest) {
+  SSDCCEH ssd_cceh(config);
 
   const int num_to_insert = 10000;
   std::vector<Key_t> keys;
   for (int i = 0; i < num_to_insert; ++i) {
     Key_t key = i;
     keys.push_back(key);
-    cceh.Put(key, key * 2, 0);
+    ssd_cceh.Put(key, key * 2, 0);
   }
 
   for (const auto& key : keys) {
     Value_t ret_val;
-    cceh.Get(key, ret_val, 0);
+    ssd_cceh.Get(key, ret_val, 0);
     EXPECT_EQ(ret_val, key * 2);
   }
 }
 
-TEST_F(CCEHTest, DirectoryExpansionTest) {
-  CCEH cceh(config);
+TEST_F(SSDCCEHTest, DirectoryExpansionTest) {
+  SSDCCEH ssd_cceh(config);
 
   const int num_to_insert = 100000;
   std::vector<Key_t> keys;
   for (int i = 0; i < num_to_insert; ++i) {
     Key_t key = i * 3;
     keys.push_back(key);
-    cceh.Put(key, key * 2, 0);
+    ssd_cceh.Put(key, key * 2, 0);
   }
 
   for (const auto& key : keys) {
     Value_t ret_val;
-    cceh.Get(key, ret_val, 0);
+    ssd_cceh.Get(key, ret_val, 0);
     if (ret_val != key * 2) {
       EXPECT_EQ(ret_val, key * 2) << "Failed for key: " << key;
     }
   }
 }
 
-TEST_F(CCEHTest, ConcurrentInsertTest) {
-  CCEH cceh(config);
+TEST_F(SSDCCEHTest, ConcurrentInsertTest) {
+  SSDCCEH ssd_cceh(config);
 
   const int kNumThreads       = 64;
   const int kInsertsPerThread = 1000;
@@ -84,7 +84,7 @@ TEST_F(CCEHTest, ConcurrentInsertTest) {
   auto inserter_func = [&](int thread_id) {
     for (int i = 0; i < kInsertsPerThread; ++i) {
       Key_t key = thread_id * kInsertsPerThread + i;
-      cceh.Put(key, key * 2, 0);
+      ssd_cceh.Put(key, key * 2, 0);
     }
   };
 
@@ -100,7 +100,7 @@ TEST_F(CCEHTest, ConcurrentInsertTest) {
   for (int i = 0; i < kNumThreads * kInsertsPerThread; ++i) {
     Key_t key = i;
     Value_t ret_val;
-    cceh.Get(key, ret_val, 0);
+    ssd_cceh.Get(key, ret_val, 0);
     EXPECT_EQ(ret_val, key * 2);
   }
 }

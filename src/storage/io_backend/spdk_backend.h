@@ -11,7 +11,7 @@
 #include "base/factory.h"
 #include "storage/kv_engine/base_kv.h"
 
-static const char* pcie_address = "0000:8d:00.0";
+static const char* pcie_address = "0000:22:00.0";
 
 class SpdkBackend : public IOBackend {
 private:
@@ -27,6 +27,7 @@ private:
   inline static bool env_initialized_ = false;
   struct ThreadQpair;
   inline static std::mutex thread_qpair_mutex_;
+  inline static std::mutex qpair_alloc_mutex_;
   inline static std::vector<ThreadQpair*> active_thread_qpairs_;
   spdk_env_opts opts;
   struct spdk_nvme_transport_id trid = {};
@@ -57,6 +58,8 @@ private:
 
     struct spdk_nvme_qpair* get(struct spdk_nvme_ctrlr* ctrlr, int queue_size) {
       if (!initialized) {
+        std::lock_guard<std::mutex> lock(qpair_alloc_mutex_);
+        if(!initialized){
         CHECK_NE(ctrlr, nullptr) << "No NVMe controller";
         struct spdk_nvme_io_qpair_opts opts;
         spdk_nvme_ctrlr_get_default_io_qpair_opts(ctrlr, &opts, sizeof(opts));
@@ -66,6 +69,7 @@ private:
         CHECK_NE(qpair, nullptr) << "Failed to allocate IO qpair";
         initialized = true;
         SpdkBackend::register_thread_qpair(this);
+        }
       }
       return qpair;
     }
@@ -174,7 +178,7 @@ public:
       opts.opts_size = sizeof(spdk_env_opts);
       spdk_env_opts_init(&opts);
       opts.hugepage_single_segments = 1;
-      opts.hugedir                  = "/dev/hugepages-2M";
+      opts.hugedir                  = "/dev/hugepages";
       trid                          = {};
       spdk_nvme_trid_populate_transport(&trid, SPDK_NVME_TRANSPORT_PCIE);
       snprintf(trid.subnqn, sizeof(trid.subnqn), "%s", SPDK_NVMF_DISCOVERY_NQN);

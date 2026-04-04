@@ -20,7 +20,7 @@
 #include "../../../src/storage/kv_engine/base_kv.h"
 #include "../../../src/base/factory.h"
 #include "../../../src/memory/shm_file.h"
-#include "../../../src/storage/kv_engine/engine_cceh.h"
+#include "../../../src/storage/kv_engine/ssd_index_ssd_value.h"
 
 using ycsbc::DB;
 

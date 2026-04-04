@@ -10,7 +10,7 @@
 #include "base/factory.h"
 #include "../hybrid/index.h"
 
-class CCEH;
+class SSDCCEH;
 struct Directory;
 struct Segment;
 
@@ -50,7 +50,6 @@ struct Segment {
   std::vector<std::pair<size_t, size_t>> find_path(size_t, size_t);
   void execute_path(std::vector<std::pair<size_t, size_t>>&, Key_t&, Value_t);
   void execute_path(std::vector<std::pair<size_t, size_t>>&, Pair);
-  size_t numElement(void);
 
   Pair bucket[kNumSlot];
   size_t local_depth;
@@ -98,9 +97,9 @@ struct DirectoryHeader {
   }
 };
 
-class CCEH : public Index {
+class SSDCCEH : public Index {
 public:
-  CCEH(const BaseKVConfig& config);
+  SSDCCEH(const BaseKVConfig& config);
 
   void Put(coroutine<void>::push_type& sink,
            int index,
@@ -126,7 +125,7 @@ public:
   std::unique_ptr<IOBackend> io_backend;
 
 private:
-  void initCCEH(size_t);
+  void initSSDCCEH(size_t);
   std::shared_mutex& get_segment_lock(PageID_t page_id) const;
 
   PageID_t dir_header_page_id;
@@ -134,8 +133,6 @@ private:
   mutable std::mutex segment_locks_mutex;
   mutable std::unordered_map<PageID_t, std::unique_ptr<std::shared_mutex>>
       segment_locks;
-
-  Value_t FindAnyway(const Key_t&);
 };
 
-FACTORY_REGISTER(Index, SSD, CCEH, const BaseKVConfig&);
+FACTORY_REGISTER(Index, SSD, SSDCCEH, const BaseKVConfig&);

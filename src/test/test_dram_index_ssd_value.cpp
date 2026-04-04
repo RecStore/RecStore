@@ -8,16 +8,16 @@
 #include <string>
 #include "base/json.h"
 #include "memory/shm_file.h"
-#include "storage/kv_engine/engine_extendible_hash.h"
+#include "storage/kv_engine/dram_index_ssd_value.h"
 #include "storage/kv_engine/engine_factory.h"
 #include "storage/kv_engine/engine_selector.h"
 
-class KVEngineExtendibleHashTest : public ::testing::Test {
+class DramIndexSSDValueTest : public ::testing::Test {
 protected:
   void SetUp() override {
     // 创建临时测试目录
     test_dir_ =
-        "/tmp/test_kv_engine_extendible_hash_" + std::to_string(getpid());
+        "/tmp/test_dram_index_ssd_value_" + std::to_string(getpid());
     std::filesystem::create_directories(test_dir_);
 
     // 配置使用DRAM而不是持久内存
@@ -33,7 +33,9 @@ protected:
         {"value_type", "SSD"},
         {"index_type", "DRAM"},
         {"initial_capacity", 16},
-        {"value_memory_management", "R2ShmMalloc"} // R2ShmMalloc
+        {"value_memory_management", "R2ShmMalloc"}, // R2ShmMalloc
+        {"io_backend_type", "IOURING"},
+        {"queue_cnt", 512}
     };
 
     auto r = base::ResolveEngine(config_);
@@ -85,7 +87,7 @@ protected:
 };
 
 // 基本的Put和Get测试
-TEST_F(KVEngineExtendibleHashTest, BasicPutAndGet) {
+TEST_F(DramIndexSSDValueTest, BasicPutAndGet) {
   uint64_t key      = 123;
   std::string value = CreateFixedLengthValue("test_value_123");
   std::string retrieved_value;
@@ -100,7 +102,7 @@ TEST_F(KVEngineExtendibleHashTest, BasicPutAndGet) {
 }
 
 // 测试不存在的键
-TEST_F(KVEngineExtendibleHashTest, GetNonExistentKey) {
+TEST_F(DramIndexSSDValueTest, GetNonExistentKey) {
   uint64_t key = 999;
   std::string retrieved_value;
 
@@ -110,7 +112,7 @@ TEST_F(KVEngineExtendibleHashTest, GetNonExistentKey) {
 }
 
 // 测试键值覆盖
-TEST_F(KVEngineExtendibleHashTest, KeyOverwrite) {
+TEST_F(DramIndexSSDValueTest, KeyOverwrite) {
   uint64_t key       = 100;
   std::string value1 = CreateFixedLengthValue("initial_value");
   std::string value2 = CreateFixedLengthValue("updated_value");
@@ -128,7 +130,7 @@ TEST_F(KVEngineExtendibleHashTest, KeyOverwrite) {
 }
 
 // 测试多个键值对
-TEST_F(KVEngineExtendibleHashTest, MultiplePutAndGet) {
+TEST_F(DramIndexSSDValueTest, MultiplePutAndGet) {
   const int num_pairs = 50;
   std::vector<std::pair<uint64_t, std::string>> test_data;
 
@@ -152,7 +154,7 @@ TEST_F(KVEngineExtendibleHashTest, MultiplePutAndGet) {
 }
 
 // 测试BatchGet功能
-TEST_F(KVEngineExtendibleHashTest, BatchGet) {
+TEST_F(DramIndexSSDValueTest, BatchGet) {
   const int num_keys = 1000;
   std::vector<uint64_t> keys;
   std::vector<std::string> expected_values;
@@ -194,7 +196,7 @@ TEST_F(KVEngineExtendibleHashTest, BatchGet) {
 }
 
 // 测试BatchGet中不存在的键
-TEST_F(KVEngineExtendibleHashTest, BatchGetNonExistentKeys) {
+TEST_F(DramIndexSSDValueTest, BatchGetNonExistentKeys) {
   std::vector<uint64_t> keys = {999, 1000, 1001};
   base::ConstArray<uint64_t> keys_array(keys.data(), keys.size());
 
@@ -209,7 +211,7 @@ TEST_F(KVEngineExtendibleHashTest, BatchGetNonExistentKeys) {
 }
 
 // 测试混合存在和不存在的键的BatchGet
-TEST_F(KVEngineExtendibleHashTest, BatchGetMixedKeys) {
+TEST_F(DramIndexSSDValueTest, BatchGetMixedKeys) {
   // 插入一些数据
   kv_engine_->Put(1, CreateFixedLengthValue("value_1"), 0);
   kv_engine_->Put(3, CreateFixedLengthValue("value_3"), 0);
@@ -233,8 +235,172 @@ TEST_F(KVEngineExtendibleHashTest, BatchGetMixedKeys) {
   EXPECT_EQ(batch_values[5].Size(), 0); // key 6 doesn't exist
 }
 
+// 测试BatchPut功能
+TEST_F(DramIndexSSDValueTest, BatchPut) {
+  const int num_keys       = 1000;
+  const int floats_per_key = 128 / sizeof(float); // 32 floats
+
+  std::vector<uint64_t> keys(num_keys);
+  std::vector<std::vector<float>> write_data(num_keys);
+  std::vector<base::ConstArray<float>> values_in(num_keys);
+
+  for (int i = 0; i < num_keys; i++) {
+    keys[i] = i + 20000;
+    write_data[i].resize(floats_per_key);
+    for (int j = 0; j < floats_per_key; j++)
+      write_data[i][j] = i * 100.0f + j;
+    values_in[i] =
+        base::ConstArray<float>(write_data[i].data(), floats_per_key);
+  }
+
+  base::ConstArray<uint64_t> keys_array(keys.data(), keys.size());
+  kv_engine_->BatchPut(keys_array, &values_in, 0);
+
+  std::vector<base::ConstArray<float>> batch_values;
+  kv_engine_->BatchGet(keys_array, &batch_values, 0);
+
+  ASSERT_EQ((int)batch_values.size(), num_keys);
+  for (int i = 0; i < num_keys; i++) {
+    ASSERT_EQ(batch_values[i].Size(), floats_per_key)
+        << "Key " << keys[i] << " dim mismatch";
+    for (int j = 0; j < floats_per_key; j++) {
+      EXPECT_FLOAT_EQ(batch_values[i].Data()[j], write_data[i][j])
+          << "Key " << keys[i] << " float[" << j << "] mismatch";
+    }
+  }
+}
+
+// 测试BatchPut覆盖写
+TEST_F(DramIndexSSDValueTest, BatchPutOverwrite) {
+  const int num_keys       = 100;
+  const int floats_per_key = 128 / sizeof(float);
+
+  std::vector<uint64_t> keys(num_keys);
+  for (int i = 0; i < num_keys; i++)
+    keys[i] = i + 21000;
+  base::ConstArray<uint64_t> keys_array(keys.data(), keys.size());
+
+  // 第一次写入
+  std::vector<std::vector<float>> write_data1(num_keys);
+  std::vector<base::ConstArray<float>> values_in1(num_keys);
+  for (int i = 0; i < num_keys; i++) {
+    write_data1[i].resize(floats_per_key);
+    for (int j = 0; j < floats_per_key; j++)
+      write_data1[i][j] = i * 1.0f + j;
+    values_in1[i] =
+        base::ConstArray<float>(write_data1[i].data(), floats_per_key);
+  }
+  kv_engine_->BatchPut(keys_array, &values_in1, 0);
+
+  // 第二次覆盖写入
+  std::vector<std::vector<float>> write_data2(num_keys);
+  std::vector<base::ConstArray<float>> values_in2(num_keys);
+  for (int i = 0; i < num_keys; i++) {
+    write_data2[i].resize(floats_per_key);
+    for (int j = 0; j < floats_per_key; j++)
+      write_data2[i][j] = i * 200.0f + j;
+    values_in2[i] =
+        base::ConstArray<float>(write_data2[i].data(), floats_per_key);
+  }
+  kv_engine_->BatchPut(keys_array, &values_in2, 0);
+
+  // 验证读回的是第二次写入的值
+  std::vector<base::ConstArray<float>> batch_values;
+  kv_engine_->BatchGet(keys_array, &batch_values, 0);
+
+  ASSERT_EQ((int)batch_values.size(), num_keys);
+  for (int i = 0; i < num_keys; i++) {
+    ASSERT_EQ(batch_values[i].Size(), floats_per_key);
+    for (int j = 0; j < floats_per_key; j++) {
+      EXPECT_FLOAT_EQ(batch_values[i].Data()[j], write_data2[i][j])
+          << "Key " << keys[i] << " float[" << j
+          << "] mismatch after overwrite";
+    }
+  }
+}
+
+// 测试不同 value size 下 Put/Get 的正确性
+// 覆盖场景：小于一页、恰好一页、跨两页、跨多页
+TEST_F(DramIndexSSDValueTest, VariableValueSize_PutGet) {
+  // PAGE_SIZE=4096，头4字节存长度，所以：
+  //   <= 1023 floats (4092B) → 1页
+  //   == 1024 floats (4096B) → 需要2页（4092+4）
+  //   == 2048 floats (8192B) → 2页
+  //   == 12800 floats (51200B) → 13页，对应 ml20m 场景
+  const std::vector<std::pair<int, std::string>> cases = {
+      {16, "small 64B"},
+      {32, "default 128B"},
+      {1023, "exactly fills one page"},
+      {1024, "just spills to two pages"},
+      {2048, "two full pages"},
+      {12800, "ml20m scenario 51200B"},
+  };
+
+  for (const auto& [num_floats, desc] : cases) {
+    uint64_t key = 90000 + num_floats;
+
+    std::vector<float> write_data(num_floats);
+    for (int j = 0; j < num_floats; j++)
+      write_data[j] = num_floats * 1.0f + j;
+
+    std::string value_in(reinterpret_cast<const char*>(write_data.data()),
+                         num_floats * sizeof(float));
+    kv_engine_->Put(key, value_in, 0);
+
+    std::string value_out;
+    kv_engine_->Get(key, value_out, 0);
+
+    ASSERT_EQ(value_out.size(), (size_t)(num_floats * sizeof(float)))
+        << "[" << desc << "] size mismatch";
+
+    const float* out_ptr = reinterpret_cast<const float*>(value_out.data());
+    for (int j = 0; j < num_floats; j++) {
+      EXPECT_FLOAT_EQ(out_ptr[j], write_data[j])
+          << "[" << desc << "] float[" << j << "] mismatch";
+    }
+  }
+}
+
+// 测试 BatchPut/BatchGet 在混合 value size 下的正确性
+// 同一个 batch 里每个 key 的 value 大小不同
+TEST_F(DramIndexSSDValueTest, VariableValueSize_BatchPutBatchGet) {
+  const std::vector<int> sizes_per_key = {
+      16, 32, 512, 1023, 1024, 1025, 2048, 4096, 12800};
+  const int num_keys = sizes_per_key.size();
+
+  std::vector<uint64_t> keys(num_keys);
+  std::vector<std::vector<float>> write_data(num_keys);
+  std::vector<base::ConstArray<float>> values_in(num_keys);
+
+  for (int i = 0; i < num_keys; i++) {
+    keys[i] = 80000 + i;
+    int nf   = sizes_per_key[i];
+    write_data[i].resize(nf);
+    for (int j = 0; j < nf; j++)
+      write_data[i][j] = i * 1000.0f + j;
+    values_in[i] = base::ConstArray<float>(write_data[i].data(), nf);
+  }
+
+  base::ConstArray<uint64_t> keys_array(keys.data(), num_keys);
+  kv_engine_->BatchPut(keys_array, &values_in, 0);
+
+  std::vector<base::ConstArray<float>> values_out;
+  kv_engine_->BatchGet(keys_array, &values_out, 0);
+
+  ASSERT_EQ((int)values_out.size(), num_keys);
+  for (int i = 0; i < num_keys; i++) {
+    int nf = sizes_per_key[i];
+    ASSERT_EQ(values_out[i].Size(), nf)
+        << "Key " << keys[i] << " (size=" << nf << ") dim mismatch";
+    for (int j = 0; j < nf; j++) {
+      EXPECT_FLOAT_EQ(values_out[i].Data()[j], write_data[i][j])
+          << "Key " << keys[i] << " float[" << j << "] mismatch";
+    }
+  }
+}
+
 // 测试边界值
-TEST_F(KVEngineExtendibleHashTest, BoundaryValues) {
+TEST_F(DramIndexSSDValueTest, BoundaryValues) {
   // 测试空字符串
   uint64_t key1           = 1;
   std::string empty_value = CreateFixedLengthValue("");
@@ -260,7 +426,7 @@ TEST_F(KVEngineExtendibleHashTest, BoundaryValues) {
 }
 
 // 测试特殊键值
-TEST_F(KVEngineExtendibleHashTest, SpecialKeys) {
+TEST_F(DramIndexSSDValueTest, SpecialKeys) {
   std::string test_value = CreateFixedLengthValue("test_value");
   std::string retrieved_value;
 
@@ -277,7 +443,7 @@ TEST_F(KVEngineExtendibleHashTest, SpecialKeys) {
 }
 
 // 随机数据测试
-TEST_F(KVEngineExtendibleHashTest, RandomData) {
+TEST_F(DramIndexSSDValueTest, RandomData) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<uint64_t> key_dist(1, 1000);
@@ -310,7 +476,7 @@ TEST_F(KVEngineExtendibleHashTest, RandomData) {
 }
 
 // 性能测试
-TEST_F(KVEngineExtendibleHashTest, PerformanceTest) {
+TEST_F(DramIndexSSDValueTest, PerformanceTest) {
   const int num_operations = 1000;
 
   auto start_time = std::chrono::high_resolution_clock::now();
@@ -356,7 +522,7 @@ TEST_F(KVEngineExtendibleHashTest, PerformanceTest) {
 }
 
 // 压力测试
-TEST_F(KVEngineExtendibleHashTest, StressTest) {
+TEST_F(DramIndexSSDValueTest, StressTest) {
   const int num_operations = 10000;
 
   // 大量插入操作
@@ -379,7 +545,7 @@ TEST_F(KVEngineExtendibleHashTest, StressTest) {
 }
 
 // 多线程并发Put测试
-TEST_F(KVEngineExtendibleHashTest, ConcurrentPutTest) {
+TEST_F(DramIndexSSDValueTest, ConcurrentPutTest) {
   const int num_threads           = 16;
   const int operations_per_thread = 1000;
   std::vector<std::thread> threads;
@@ -432,7 +598,7 @@ TEST_F(KVEngineExtendibleHashTest, ConcurrentPutTest) {
 }
 
 // 多线程并发Get测试
-TEST_F(KVEngineExtendibleHashTest, ConcurrentGetTest) {
+TEST_F(DramIndexSSDValueTest, ConcurrentGetTest) {
   const int num_data         = 200;
   const int num_threads      = 16;
   const int reads_per_thread = 1000;
@@ -496,7 +662,7 @@ TEST_F(KVEngineExtendibleHashTest, ConcurrentGetTest) {
 }
 
 // 多线程混合读写测试
-TEST_F(KVEngineExtendibleHashTest, ConcurrentReadWriteTest) {
+TEST_F(DramIndexSSDValueTest, ConcurrentReadWriteTest) {
   const int num_threads           = 16;
   const int operations_per_thread = 1000;
   std::vector<std::thread> threads;
@@ -555,7 +721,7 @@ TEST_F(KVEngineExtendibleHashTest, ConcurrentReadWriteTest) {
 }
 
 // 多线程BatchGet测试
-TEST_F(KVEngineExtendibleHashTest, ConcurrentBatchGetTest) {
+TEST_F(DramIndexSSDValueTest, ConcurrentBatchGetTest) {
   const int num_data    = 100;
   const int num_threads = 16;
   const int batch_size  = 10;
@@ -623,8 +789,75 @@ TEST_F(KVEngineExtendibleHashTest, ConcurrentBatchGetTest) {
   EXPECT_EQ(failed_batches.load(), 0);
 }
 
+// 多线程并发BatchPut测试
+TEST_F(DramIndexSSDValueTest, ConcurrentBatchPutTest) {
+  const int num_threads    = 16;
+  const int keys_per_thread = 512;
+  const int floats_per_key = 128 / sizeof(float);
+  std::vector<std::thread> threads;
+  std::atomic<int> failed_batches(0);
+  SimpleBarrier barrier(num_threads);
+
+  for (int t = 0; t < num_threads; t++) {
+    threads.emplace_back(
+        [this, t, keys_per_thread, floats_per_key, &barrier, &failed_batches]() {
+          barrier.wait();
+          std::vector<uint64_t> keys(keys_per_thread);
+          std::vector<std::vector<float>> write_data(keys_per_thread);
+          std::vector<base::ConstArray<float>> values_in(keys_per_thread);
+
+          for (int i = 0; i < keys_per_thread; i++) {
+            keys[i] = 30000 + t * keys_per_thread + i;
+            write_data[i].resize(floats_per_key);
+            for (int j = 0; j < floats_per_key; j++)
+              write_data[i][j] = t * 1000.0f + i * 10.0f + j;
+            values_in[i] =
+                base::ConstArray<float>(write_data[i].data(), floats_per_key);
+          }
+
+          try {
+            base::ConstArray<uint64_t> keys_array(keys.data(), keys.size());
+            kv_engine_->BatchPut(keys_array, &values_in, 0);
+          } catch (const std::exception&) {
+            failed_batches++;
+          }
+        });
+  }
+
+  for (auto& t : threads)
+    t.join();
+
+  EXPECT_EQ(failed_batches.load(), 0);
+
+  // 验证所有线程写入的数据都正确
+  for (int t = 0; t < num_threads; t++) {
+    std::vector<uint64_t> keys(keys_per_thread);
+    std::vector<std::vector<float>> expected(keys_per_thread);
+    for (int i = 0; i < keys_per_thread; i++) {
+      keys[i] = 30000 + t * keys_per_thread + i;
+      expected[i].resize(floats_per_key);
+      for (int j = 0; j < floats_per_key; j++)
+        expected[i][j] = t * 1000.0f + i * 10.0f + j;
+    }
+    base::ConstArray<uint64_t> keys_array(keys.data(), keys.size());
+    std::vector<base::ConstArray<float>> batch_values;
+    kv_engine_->BatchGet(keys_array, &batch_values, 0);
+
+    ASSERT_EQ((int)batch_values.size(), keys_per_thread);
+    for (int i = 0; i < keys_per_thread; i++) {
+      ASSERT_EQ(batch_values[i].Size(), floats_per_key)
+          << "Thread " << t << " key " << keys[i] << " dim mismatch";
+      for (int j = 0; j < floats_per_key; j++) {
+        EXPECT_FLOAT_EQ(batch_values[i].Data()[j], expected[i][j])
+            << "Thread " << t << " key " << keys[i] << " float[" << j
+            << "] mismatch";
+      }
+    }
+  }
+}
+
 // 数据一致性测试
-TEST_F(KVEngineExtendibleHashTest, DataConsistencyTest) {
+TEST_F(DramIndexSSDValueTest, DataConsistencyTest) {
   const int num_threads     = 16;
   const int num_keys        = 1000;
   const int updates_per_key = 10;

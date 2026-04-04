@@ -46,8 +46,8 @@ target_link_libraries(test_extendible_hash PUBLIC
 )
 add_test(NAME test_extendible_hash COMMAND test_extendible_hash)
 
-add_executable(test_engine_extendible_hash test_engine_extendible_hash.cpp)
-target_link_libraries(test_engine_extendible_hash PUBLIC
+add_executable(test_dram_index_ssd_value test_dram_index_ssd_value.cpp)
+target_link_libraries(test_dram_index_ssd_value PUBLIC
     dram_hash
     base
     base_memory
@@ -58,21 +58,21 @@ target_link_libraries(test_engine_extendible_hash PUBLIC
     pthread
     TBB::tbb
 )
-add_test(NAME test_engine_extendible_hash COMMAND test_engine_extendible_hash)
+add_test(NAME test_dram_index_ssd_value COMMAND test_dram_index_ssd_value)
 
-add_executable(test_cceh test_cceh.cpp)
-target_link_libraries(test_cceh PUBLIC
-    cceh
+add_executable(test_ssdcceh test_ssdcceh.cpp)
+target_link_libraries(test_ssdcceh PUBLIC
+    ssd_cceh
     base
     gtest
     gtest_main
     pthread
 )
-add_test(NAME test_cceh COMMAND test_cceh)
+add_test(NAME test_ssdcceh COMMAND test_ssdcceh)
 
-add_executable(test_engine_cceh test_engine_cceh.cpp)
-target_link_libraries(test_engine_cceh PUBLIC
-    cceh
+add_executable(test_ssd_index_ssd_value test_ssd_index_ssd_value.cpp)
+target_link_libraries(test_ssd_index_ssd_value PUBLIC
+    ssd_cceh
     base
     base_memory
     ps_common
@@ -81,7 +81,7 @@ target_link_libraries(test_engine_cceh PUBLIC
     gtest_main
     pthread
 )
-add_test(NAME test_engine_cceh COMMAND test_engine_cceh)
+add_test(NAME test_ssd_index_ssd_value COMMAND test_ssd_index_ssd_value)
 
 add_executable(test_factory test_factory.cpp)
 target_link_libraries(test_factory PUBLIC

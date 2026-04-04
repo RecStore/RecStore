@@ -51,6 +51,11 @@ public:
   void SetNextPageID(PageID_t page_id) {
     next_page_id.store(page_id, std::memory_order_relaxed);
   }
+  // Atomically reserve `count` contiguous pages; returns starting page ID.
+  // No I/O is performed. Safe for concurrent callers.
+  PageID_t AllocatePages(uint16_t count) {
+    return next_page_id.fetch_add(count, std::memory_order_relaxed);
+  }
 
   void ReadPage(coroutine<void>::push_type& sink,
                 uint64_t index,

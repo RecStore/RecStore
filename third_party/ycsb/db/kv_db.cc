@@ -35,7 +35,7 @@ extern "C" {
 #include <vector>
 
 // ==== RecStore / HybridKV headers ====
-#include "../../../src/storage/kv_engine/engine_hybridkv.h"
+#include "../../../src/storage/kv_engine/dram_index_hybrid_value.h"
 #include "../../../src/storage/kv_engine/base_kv.h"
 #include "../../../src/memory/shm_file.h"   // PMMmapRegisterCenter
 
