@@ -188,16 +188,21 @@ TEST_F(SSDIndexSSDValueTest, ConcurrentBatchGet) {
 
 // 多线程并发BatchPut测试
 TEST_F(SSDIndexSSDValueTest, ConcurrentBatchPut) {
-  const int num_threads    = 16;
+  const int num_threads     = 16;
   const int keys_per_thread = 512;
-  const int floats_per_key = 128 / sizeof(float);
+  const int floats_per_key  = 128 / sizeof(float);
   std::vector<std::thread> threads;
   std::atomic<int> failed_batches(0);
   SimpleBarrier barrier(num_threads);
 
   for (int t = 0; t < num_threads; t++) {
     threads.emplace_back(
-        [this, t, keys_per_thread, floats_per_key, &barrier, &failed_batches]() {
+        [this,
+         t,
+         keys_per_thread,
+         floats_per_key,
+         &barrier,
+         &failed_batches]() {
           barrier.wait();
           std::vector<uint64_t> keys(keys_per_thread);
           std::vector<std::vector<float>> write_data(keys_per_thread);
@@ -539,7 +544,7 @@ TEST_F(SSDIndexSSDValueTest, RandomData) {
   std::unordered_map<uint64_t, std::string> expected_data;
 
   for (int i = 0; i < num_operations; i++) {
-    uint64_t key = key_dist(gen) + 500000;
+    uint64_t key     = key_dist(gen) + 500000;
     int value_length = value_length_dist(gen);
     std::string base_value;
     for (int j = 0; j < value_length; j++)
@@ -603,8 +608,8 @@ TEST_F(SSDIndexSSDValueTest, StressTest) {
   const int num_operations = 10000;
 
   for (int i = 0; i < num_operations; i++) {
-    std::string base_value = "stress_test_value_" + std::to_string(i) + "_" +
-                             std::string(20, 'x');
+    std::string base_value =
+        "stress_test_value_" + std::to_string(i) + "_" + std::string(20, 'x');
     std::string value = CreateFixedLengthValue(base_value);
     kv_engine_->Put(i + 300000, value, 0);
   }
@@ -682,30 +687,31 @@ TEST_F(SSDIndexSSDValueTest, ConcurrentGetTest) {
   SimpleBarrier barrier(num_threads);
 
   for (int t = 0; t < num_threads; t++) {
-    threads.emplace_back([this,
-                          reads_per_thread,
-                          num_data,
-                          &barrier,
-                          &successful_reads,
-                          &failed_reads]() {
-      barrier.wait();
-      std::mt19937 gen(std::random_device{}());
-      std::uniform_int_distribution<int> dist(0, num_data - 1);
+    threads.emplace_back(
+        [this,
+         reads_per_thread,
+         num_data,
+         &barrier,
+         &successful_reads,
+         &failed_reads]() {
+          barrier.wait();
+          std::mt19937 gen(std::random_device{}());
+          std::uniform_int_distribution<int> dist(0, num_data - 1);
 
-      for (int i = 0; i < reads_per_thread; i++) {
-        uint64_t key = dist(gen) + 600000;
-        std::string retrieved_value;
-        try {
-          kv_engine_->Get(key, retrieved_value, 0);
-          if (!retrieved_value.empty())
-            successful_reads++;
-          else
-            failed_reads++;
-        } catch (const std::exception&) {
-          failed_reads++;
-        }
-      }
-    });
+          for (int i = 0; i < reads_per_thread; i++) {
+            uint64_t key = dist(gen) + 600000;
+            std::string retrieved_value;
+            try {
+              kv_engine_->Get(key, retrieved_value, 0);
+              if (!retrieved_value.empty())
+                successful_reads++;
+              else
+                failed_reads++;
+            } catch (const std::exception&) {
+              failed_reads++;
+            }
+          }
+        });
   }
 
   for (auto& thread : threads)

@@ -75,7 +75,6 @@ private:
 
 class ValueManager {
 public:
-
   ValueManager(const std::string& shm_file_path,
                size_t shm_capacity,
                const std::string& ssd_file_path,
@@ -86,33 +85,39 @@ public:
     json dram_cfg = config.json_config_;
     json ssd_cfg  = config.json_config_;
     if (config.json_config_.contains("dram_allocator_type"))
-      dram_cfg["allocator_type"] = config.json_config_.at("dram_allocator_type");
+      dram_cfg["allocator_type"] =
+          config.json_config_.at("dram_allocator_type");
     if (config.json_config_.contains("ssd_allocator_type"))
       ssd_cfg["allocator_type"] = config.json_config_.at("ssd_allocator_type");
     if (config.json_config_.contains("dram_value_memory_management"))
-      dram_cfg["value_memory_management"] = config.json_config_.at("dram_value_memory_management");
+      dram_cfg["value_memory_management"] =
+          config.json_config_.at("dram_value_memory_management");
     if (config.json_config_.contains("ssd_value_memory_management"))
-      ssd_cfg["value_memory_management"] = config.json_config_.at("ssd_value_memory_management");
+      ssd_cfg["value_memory_management"] =
+          config.json_config_.at("ssd_value_memory_management");
 
-    shm_manage = base::allocators::CreateAllocator(dram_cfg, shm_file_path, shm_capacity, "DRAM");
+    shm_manage = base::allocators::CreateAllocator(
+        dram_cfg, shm_file_path, shm_capacity, "DRAM");
 
-
-      uint64_t ssd_value_offset = 1; // io_uring: start at page 1 (page 0 unused)
-        if (config.json_config_.at("io_backend_type").get<std::string>() == "SPDK") {
-          ssd_value_offset = config.json_config_.value("spdk_value_offset", (uint64_t)1000000);
-        }
-        BaseKVConfig ssd_config                   = config;
-        ssd_config.json_config_["file_path"]      = ssd_file_path;
-        ssd_config.json_config_["page_id_offset"] = ssd_value_offset;
+    uint64_t ssd_value_offset = 1; // io_uring: start at page 1 (page 0 unused)
+    if (config.json_config_.at("io_backend_type").get<std::string>() ==
+        "SPDK") {
+      ssd_value_offset =
+          config.json_config_.value("spdk_value_offset", (uint64_t)1000000);
+    }
+    BaseKVConfig ssd_config                   = config;
+    ssd_config.json_config_["file_path"]      = ssd_file_path;
+    ssd_config.json_config_["page_id_offset"] = ssd_value_offset;
 
     using IOF = base::Factory<IOBackend, const BaseKVConfig&>;
-    value_io_backend.reset(IOF::NewInstance(ssd_config.json_config_.at("io_backend_type").get<std::string>(), ssd_config));
+    value_io_backend.reset(IOF::NewInstance(
+        ssd_config.json_config_.at("io_backend_type").get<std::string>(),
+        ssd_config));
     value_io_backend->init();
-    
+
     if (!shm_manage || !value_io_backend)
       throw std::runtime_error("failed to initialize hybrid value allocators");
-    
-   
+
     evictor_ = std::thread([this] { this->EvictAndPromoteLoop(); });
   }
 
@@ -127,7 +132,6 @@ public:
   }
 
   UnifiedPointer WriteValue(const std::string_view& value) {
-
     UnifiedPointer p_write = WriteMem(value);
     if (!p_write) {
       {
@@ -150,8 +154,7 @@ public:
     if (!p_write) {
       LOG(ERROR) << "Failed to allocate memory ";
       return UnifiedPointer();
-    }
-    else{
+    } else {
       return p_write;
     }
   }
@@ -160,7 +163,7 @@ public:
     switch (p.type()) {
     case UnifiedPointer::Type::Memory: {
       auto v = ReadFromMemRaw(p); // 不触 LRU
-      //TouchLRU(key);              // 业务访问才触碰
+      // TouchLRU(key);              // 业务访问才触碰
       return v;
     }
     case UnifiedPointer::Type::Disk: {
@@ -240,7 +243,7 @@ private:
 
   inline std::string ReadFromDiskNoHeat(const UnifiedPointer& p) const {
     PageID_t start_page_id = p.asDiskPageId();
-    uint16_t page_count = p.asDiskPageCount();
+    uint16_t page_count    = p.asDiskPageCount();
     std::string value;
     uint32_t actual_size = 0;
     uint32_t written     = 0;
@@ -284,7 +287,7 @@ private:
   }
 
   UnifiedPointer WriteMem(const std::string_view& value) {
-    if (value.size() > 0 && value.size() <= 7) { //足够小直接写进指针里
+    if (value.size() > 0 && value.size() <= 7) { // 足够小直接写进指针里
       uint64_t inline_val = 0;
       std::memcpy(&inline_val, value.data(), value.size());
       uint64_t final_val = (static_cast<uint64_t>(value.size()) << 54) |
@@ -356,7 +359,8 @@ private:
       // if (shm_used_bytes_.load(std::memory_order_relaxed) > LowWatermark()) {
       //   std::vector<Key_t> victim_keys = lru_.evictBatch(kEvictionBatchSize);
       //   for (const auto& victim_key : victim_keys) {
-      //     if (shm_used_bytes_.load(std::memory_order_relaxed) <= LowWatermark())
+      //     if (shm_used_bytes_.load(std::memory_order_relaxed) <=
+      //     LowWatermark())
       //       break;
 
       //     UnifiedPointer mem_ptr;
@@ -458,7 +462,8 @@ private:
 
       //   // 轻度衰减少量热点分（避免全表扫描）
       //   size_t dec = 0;
-      //   for (auto it = hot_.begin(); it != hot_.end() && dec < kDecayPerRound;
+      //   for (auto it = hot_.begin(); it != hot_.end() && dec <
+      //   kDecayPerRound;
       //        ++it, ++dec) {
       //     if (it->second > 0)
       //       it->second--;
@@ -494,8 +499,9 @@ public:
   SSDValueManager& operator=(const SSDValueManager&) = delete;
 
   UnifiedPointer Write(const std::string_view& value) {
-    uint32_t actual_size   = (uint32_t)value.size();
-    uint16_t pages_needed  = (uint16_t)((actual_size + 4 + PAGE_SIZE - 1) / PAGE_SIZE);
+    uint32_t actual_size = (uint32_t)value.size();
+    uint16_t pages_needed =
+        (uint16_t)((actual_size + 4 + PAGE_SIZE - 1) / PAGE_SIZE);
     PageID_t start_page_id = io_backend_->AllocatePages(pages_needed);
 
     char* buffer = io_backend_->AllocateBuffer(pages_needed);
@@ -541,8 +547,8 @@ public:
     (void)ptr;
   }
 
-  std::vector<UnifiedPointer> BatchWrite(
-      const std::vector<std::string_view>& values) {
+  std::vector<UnifiedPointer>
+  BatchWrite(const std::vector<std::string_view>& values) {
     int n = values.size();
     std::vector<UnifiedPointer> ptrs(n);
     std::vector<uint16_t> page_counts(n);
@@ -550,8 +556,9 @@ public:
 
     for (int i = 0; i < n; i++) {
       uint32_t actual_size = (uint32_t)values[i].size();
-      page_counts[i]       = (uint16_t)((actual_size + 4 + PAGE_SIZE - 1) / PAGE_SIZE);
-      start_page_ids[i]    = io_backend_->AllocatePages(page_counts[i]);
+      page_counts[i] =
+          (uint16_t)((actual_size + 4 + PAGE_SIZE - 1) / PAGE_SIZE);
+      start_page_ids[i] = io_backend_->AllocatePages(page_counts[i]);
     }
 
     std::vector<IOBackend::IOEntry> entries;
@@ -572,8 +579,7 @@ public:
     return ptrs;
   }
 
-  std::vector<std::string> BatchRead(
-      const std::vector<UnifiedPointer>& ptrs) {
+  std::vector<std::string> BatchRead(const std::vector<UnifiedPointer>& ptrs) {
     int n = ptrs.size();
     std::vector<IOBackend::IOEntry> entries;
     entries.reserve(n);

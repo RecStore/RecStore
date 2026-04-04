@@ -312,10 +312,10 @@ std::shared_mutex& SSDCCEH::get_segment_lock(PageID_t page_id) const {
 }
 
 void SSDCCEH::Put(coroutine<void>::push_type& sink,
-               int index,
-               Key_t key,
-               Value_t value,
-               unsigned tid) {
+                  int index,
+                  Key_t key,
+                  Value_t value,
+                  unsigned tid) {
   auto f_hash = hash_funcs[0](&key, sizeof(Key_t), f_seed);
   auto f_idx  = (f_hash % Segment::kNumGroups) * kNumPairPerCacheLine;
   ExponentialBackoff backoff;
@@ -812,10 +812,10 @@ void SSDCCEH::Put(Key_t key, Value_t value, unsigned tid) {
 bool SSDCCEH::Delete(Key_t& key) { return false; }
 
 void SSDCCEH::Get(coroutine<void>::push_type& sink,
-               int index,
-               Key_t key,
-               Value_t& value,
-               unsigned tid) {
+                  int index,
+                  Key_t key,
+                  Value_t& value,
+                  unsigned tid) {
   auto f_hash = hash_funcs[0](&key, sizeof(Key_t), f_seed);
   auto f_idx  = (f_hash % Segment::kNumGroups) * kNumPairPerCacheLine;
   ExponentialBackoff backoff;

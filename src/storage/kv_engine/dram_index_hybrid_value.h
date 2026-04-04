@@ -21,7 +21,8 @@ public:
              config) {
     // 创建 index
     using IndexF = base::Factory<Index, const BaseKVConfig&>;
-    std::string index_type = config.json_config_.value("index_type", "ExtendibleHash");
+    std::string index_type =
+        config.json_config_.value("index_type", "ExtendibleHash");
     index_.reset(IndexF::NewInstance(index_type, config));
   }
 
@@ -40,7 +41,7 @@ public:
            const std::string_view& value,
            unsigned tid) override {
     std::unique_lock<std::shared_mutex> lock(lock_);
-    Value_t old_raw        = 0;
+    Value_t old_raw = 0;
     index_->Get(key, old_raw, tid);
     UnifiedPointer new_ptr = valm.WriteValue(value);
     index_->Put(key, new_ptr.RawValue(), tid);
@@ -59,15 +60,17 @@ public:
     for (int k = 0; k < keys.Size(); k++) {
       Value_t raw = 0;
       index_->Get(keys[k], raw, tid);
-      std::string temp_value = raw ? valm.RetrieveValue(raw, tid) : std::string();
+      std::string temp_value =
+          raw ? valm.RetrieveValue(raw, tid) : std::string();
       storage_.push_back(std::move(temp_value));
 
       const std::string& stored_value = storage_.back();
       if (stored_value.empty()) {
         values->push_back(base::ConstArray<float>(nullptr, 0));
       } else {
-        const float* float_ptr = reinterpret_cast<const float*>(stored_value.data());
-        size_t float_size      = stored_value.size() / sizeof(float);
+        const float* float_ptr =
+            reinterpret_cast<const float*>(stored_value.data());
+        size_t float_size = stored_value.size() / sizeof(float);
         values->push_back(base::ConstArray<float>(float_ptr, float_size));
       }
     }

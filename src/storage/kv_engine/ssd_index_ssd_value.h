@@ -26,7 +26,7 @@ public:
     std::string io_backend_type =
         config.json_config_.at("io_backend_type").get<std::string>();
     LOG(INFO) << "--------------init KVEngineCCEH--------------------";
-    std::string index_path    = config.json_config_.at("path").get<std::string>();
+    std::string index_path = config.json_config_.at("path").get<std::string>();
     std::string index_db_path = index_path + "/cceh_index.db";
     std::string value_db_path = index_path + "/cceh_value.db";
 
@@ -44,7 +44,8 @@ public:
     index_config.json_config_["page_id_offset"] = index_offset;
     hash_table_ = std::make_unique<SSDCCEH>(index_config);
 
-    value_storage_ = std::make_unique<SSDValueManager>(config, value_db_path, value_offset);
+    value_storage_ =
+        std::make_unique<SSDValueManager>(config, value_db_path, value_offset);
 
     LOG(INFO) << "After init value and index io_backend";
   }
@@ -126,9 +127,8 @@ public:
     // 准备 string_view 列表交给 SSDValueManager 批量写
     std::vector<std::string_view> value_views(n);
     for (int i = 0; i < n; i++)
-      value_views[i] = std::string_view(
-          (const char*)(*values)[i].Data(),
-          (*values)[i].Size() * sizeof(float));
+      value_views[i] = std::string_view((const char*)(*values)[i].Data(),
+                                        (*values)[i].Size() * sizeof(float));
 
     std::vector<UnifiedPointer> ptrs = value_storage_->BatchWrite(value_views);
 
@@ -137,9 +137,7 @@ public:
       hash_table_->Put(keys[i], ptrs[i].RawValue(), tid);
   }
 
-  ~KVEngineCCEH() {
-    std::cout << "exit KVEngineCCEH" << std::endl;
-  }
+  ~KVEngineCCEH() { std::cout << "exit KVEngineCCEH" << std::endl; }
 
 private:
   std::string dict_pool_name_;

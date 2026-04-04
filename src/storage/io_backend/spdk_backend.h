@@ -59,16 +59,16 @@ private:
     struct spdk_nvme_qpair* get(struct spdk_nvme_ctrlr* ctrlr, int queue_size) {
       if (!initialized) {
         std::lock_guard<std::mutex> lock(qpair_alloc_mutex_);
-        if(!initialized){
-        CHECK_NE(ctrlr, nullptr) << "No NVMe controller";
-        struct spdk_nvme_io_qpair_opts opts;
-        spdk_nvme_ctrlr_get_default_io_qpair_opts(ctrlr, &opts, sizeof(opts));
-        opts.io_queue_size     = queue_size + 1; // 你想要的队列深度
-        opts.io_queue_requests = queue_size + 1; // 一般和队列深度一致
-        qpair = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, &opts, sizeof(opts));
-        CHECK_NE(qpair, nullptr) << "Failed to allocate IO qpair";
-        initialized = true;
-        SpdkBackend::register_thread_qpair(this);
+        if (!initialized) {
+          CHECK_NE(ctrlr, nullptr) << "No NVMe controller";
+          struct spdk_nvme_io_qpair_opts opts;
+          spdk_nvme_ctrlr_get_default_io_qpair_opts(ctrlr, &opts, sizeof(opts));
+          opts.io_queue_size = queue_size + 1;     // 你想要的队列深度
+          opts.io_queue_requests = queue_size + 1; // 一般和队列深度一致
+          qpair = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, &opts, sizeof(opts));
+          CHECK_NE(qpair, nullptr) << "Failed to allocate IO qpair";
+          initialized = true;
+          SpdkBackend::register_thread_qpair(this);
         }
       }
       return qpair;

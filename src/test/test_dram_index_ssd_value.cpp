@@ -16,8 +16,7 @@ class DramIndexSSDValueTest : public ::testing::Test {
 protected:
   void SetUp() override {
     // 创建临时测试目录
-    test_dir_ =
-        "/tmp/test_dram_index_ssd_value_" + std::to_string(getpid());
+    test_dir_ = "/tmp/test_dram_index_ssd_value_" + std::to_string(getpid());
     std::filesystem::create_directories(test_dir_);
 
     // 配置使用DRAM而不是持久内存
@@ -35,8 +34,7 @@ protected:
         {"initial_capacity", 16},
         {"value_memory_management", "R2ShmMalloc"}, // R2ShmMalloc
         {"io_backend_type", "IOURING"},
-        {"queue_cnt", 512}
-    };
+        {"queue_cnt", 512}};
 
     auto r = base::ResolveEngine(config_);
     kv_engine_.reset(base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
@@ -374,7 +372,7 @@ TEST_F(DramIndexSSDValueTest, VariableValueSize_BatchPutBatchGet) {
 
   for (int i = 0; i < num_keys; i++) {
     keys[i] = 80000 + i;
-    int nf   = sizes_per_key[i];
+    int nf  = sizes_per_key[i];
     write_data[i].resize(nf);
     for (int j = 0; j < nf; j++)
       write_data[i][j] = i * 1000.0f + j;
@@ -791,16 +789,21 @@ TEST_F(DramIndexSSDValueTest, ConcurrentBatchGetTest) {
 
 // 多线程并发BatchPut测试
 TEST_F(DramIndexSSDValueTest, ConcurrentBatchPutTest) {
-  const int num_threads    = 16;
+  const int num_threads     = 16;
   const int keys_per_thread = 512;
-  const int floats_per_key = 128 / sizeof(float);
+  const int floats_per_key  = 128 / sizeof(float);
   std::vector<std::thread> threads;
   std::atomic<int> failed_batches(0);
   SimpleBarrier barrier(num_threads);
 
   for (int t = 0; t < num_threads; t++) {
     threads.emplace_back(
-        [this, t, keys_per_thread, floats_per_key, &barrier, &failed_batches]() {
+        [this,
+         t,
+         keys_per_thread,
+         floats_per_key,
+         &barrier,
+         &failed_batches]() {
           barrier.wait();
           std::vector<uint64_t> keys(keys_per_thread);
           std::vector<std::vector<float>> write_data(keys_per_thread);

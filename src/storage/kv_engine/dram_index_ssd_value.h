@@ -19,7 +19,8 @@ class KVEngineExtendibleHash : public BaseKV {
 
 public:
   KVEngineExtendibleHash(const BaseKVConfig& config) : BaseKV(config) {
-    LOG(INFO) << "--------------init KVEngineExtendibleHash--------------------";
+    LOG(INFO)
+        << "--------------init KVEngineExtendibleHash--------------------";
 
     std::string io_backend_type =
         config.json_config_.at("io_backend_type").get<std::string>();
@@ -32,8 +33,9 @@ public:
           config.json_config_.value("spdk_value_offset", (uint64_t)1000000);
     }
 
-    hash_table_    = new ExtendibleHash(config);
-    value_storage_ = std::make_unique<SSDValueManager>(config, value_db_path, value_offset);
+    hash_table_ = new ExtendibleHash(config);
+    value_storage_ =
+        std::make_unique<SSDValueManager>(config, value_db_path, value_offset);
 
     LOG(INFO) << "After init KVEngineExtendibleHash";
   }
@@ -109,9 +111,9 @@ public:
     // Prepare a list of string_views for SSDValueManager batch write
     std::vector<std::string_view> value_views(n);
     for (int i = 0; i < n; i++) {
-      value_views[i] = std::string_view(
-          reinterpret_cast<const char*>((*values)[i].Data()),
-          (*values)[i].Size() * sizeof(float));
+      value_views[i] =
+          std::string_view(reinterpret_cast<const char*>((*values)[i].Data()),
+                           (*values)[i].Size() * sizeof(float));
     }
 
     std::vector<UnifiedPointer> ptrs = value_storage_->BatchWrite(value_views);
