@@ -42,6 +42,7 @@ libtorch/
 libreport.so
 .worktrees/
 docs/superpowers/
+.spec-workflow/
 .myskills
 build_coverage
 *.log.*
