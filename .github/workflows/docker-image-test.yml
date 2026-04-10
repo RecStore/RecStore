@@ -1,0 +1,270 @@
+name: Docker Image Test
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+  workflow_run:
+    workflows: ["Docker Publish"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Optional environment image tag (for example: latest, manual). If not specified, uses latest."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+
+jobs:
+  test-image:
+    name: Pull image and run tests
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_REPO: ghcr.io/${{ github.repository }}/recstore-devel
+      TEST_CONTAINER: recstore-image-test-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # workflow_run 触发时固定拉取默认分支最新代码，镜像仅提供构建环境。
+          ref: ${{ github.event_name == 'workflow_run' && format('refs/heads/{0}', github.event.repository.default_branch) || github.ref }}
+          # third_party 已在发布镜像阶段缓存并在测试容器中恢复，这里仅拉取主仓库代码。
+          submodules: false
+          fetch-depth: 0
+
+      - name: Resolve image reference
+        id: image
+        env:
+          INPUT_IMAGE_TAG: ${{ github.event.inputs.image_tag || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          REPO_LOWER="$(echo "${IMAGE_REPO}" | tr '[:upper:]' '[:lower:]')"
+
+          if [ "${EVENT_NAME}" = "workflow_run" ] && [ -n "${WORKFLOW_RUN_HEAD_SHA}" ]; then
+            PRIMARY_SHA_TAG="sha-$(echo "${WORKFLOW_RUN_HEAD_SHA}" | cut -c1-7)"
+          else
+            PRIMARY_SHA_TAG="sha-$(echo "${CURRENT_SHA}" | cut -c1-7)"
+          fi
+
+          echo "repo=${REPO_LOWER}" >> "${GITHUB_OUTPUT}"
+          echo "input_tag=${INPUT_IMAGE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "event_name=${EVENT_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "primary_sha_tag=${PRIMARY_SHA_TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull docker image
+        id: pull
+        run: |
+          set -euo pipefail
+          REPO="${{ steps.image.outputs.repo }}"
+          INPUT_TAG="${{ steps.image.outputs.input_tag }}"
+          PRIMARY_SHA_TAG="${{ steps.image.outputs.primary_sha_tag }}"
+          EVENT_NAME="${{ steps.image.outputs.event_name }}"
+
+          try_pull() {
+            local tag_to_try=$1
+            local img="${REPO}:${tag_to_try}"
+            echo "Trying image: ${img}"
+            if docker pull "${img}" 2>/dev/null; then
+              echo "pulled_image=${img}" >> "${GITHUB_OUTPUT}"
+              echo "✓ Successfully pulled image: ${img}"
+              return 0
+            fi
+            return 1
+          }
+
+          # 用户显式指定 tag 时优先尝试。
+          if [ -n "${INPUT_TAG}" ] && try_pull "${INPUT_TAG}"; then
+            exit 0
+          fi
+
+          # 自动流程优先与触发提交对应的 sha 标签。
+          if try_pull "${PRIMARY_SHA_TAG}"; then
+            exit 0
+          fi
+
+          if try_pull "latest"; then
+            exit 0
+          fi
+
+          # manual 仅用于 workflow_dispatch 手动触发兜底。
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ] && try_pull "manual"; then
+            exit 0
+          fi
+
+          # Try to find any available tag (as last resort)
+          echo "Commit-specific tags not found. Searching for any available images..."
+          available_tags=$(docker search "${REPO}" --format "table {{.Name}}\t{{.Stars}}" 2>/dev/null | grep "${REPO}" | head -1 || echo "")
+          if [ -n "${available_tags}" ]; then
+            echo "Note: Available images exist but none match your search criteria."
+            echo "Available: ${available_tags}"
+          fi
+
+          echo "" >&2
+          echo "Failed to find image at ${REPO}" >&2
+          echo "Please run Docker Publish workflow first to build the image." >&2
+          echo "Or manually trigger Docker Publish from Actions tab." >&2
+          exit 1
+
+      - name: Start test container
+        env:
+          TEST_IMAGE: ${{ steps.pull.outputs.pulled_image }}
+        run: |
+          set -euo pipefail
+          PULLED_IMAGE="${TEST_IMAGE}"
+
+          docker run -d --name "${TEST_CONTAINER}" --network host \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            "${PULLED_IMAGE}" \
+            bash -lc 'tail -f /dev/null'
+
+      - name: Restore initialized third_party cache
+        run: |
+          set -euo pipefail
+          docker exec "${TEST_CONTAINER}" bash -lc '
+            set -euo pipefail
+            CACHE_DIR="/opt/recstore-cache/third_party"
+            if [ ! -d "${CACHE_DIR}" ]; then
+              echo "No initialized third_party cache found in image. Continue without restore."
+              exit 0
+            fi
+
+            echo "Restoring initialized third_party from ${CACHE_DIR} ..."
+            rm -rf /workspace/third_party
+            cp -a "${CACHE_DIR}" /workspace/third_party
+            echo "Restore completed."
+          '
+
+      - name: Build project inside container
+        run: |
+          set -euo pipefail
+          docker exec "${TEST_CONTAINER}" bash -lc '
+            set -euo pipefail
+            export CI=true
+            export GITHUB_ACTIONS=true
+            export DEBIAN_FRONTEND=noninteractive
+            export GLOG_logtostderr=1
+            export GLOG_v=1
+
+            cd /workspace
+            echo "Current commit under test:"
+            git rev-parse HEAD || true
+            echo "Verifying bRPC test source version in container..."
+            grep -n "kBrpcTestPort0\|kDistBrpcPort0" src/ps/brpc/*_test.cpp || true
+            mkdir -p runner/logs
+            rm -rf build
+            mkdir -p build
+            cd build
+            cmake -DENABLE_CUDA=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
+            make -j4
+          '
+
+      - name: Run ctest (non-blocking)
+        run: |
+          set -euo pipefail
+          set +e
+          docker exec "${TEST_CONTAINER}" bash -lc '
+            set -o pipefail
+            cd /workspace/build
+            ctest --output-on-failure 2>&1 | tee /workspace/runner/logs/ctest.log
+            exit ${PIPESTATUS[0]}
+          '
+          CTEST_EXIT_CODE=$?
+          set -e
+          echo "ctest_exit_code=${CTEST_EXIT_CODE}" >> "${GITHUB_ENV}"
+          if [ "${CTEST_EXIT_CODE}" -ne 0 ]; then
+            echo "ctest failed with exit code ${CTEST_EXIT_CODE}, continue workflow by design."
+          fi
+
+      - name: Print ctest log summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "===== ctest log summary (last 200 lines) ====="
+          docker exec "${TEST_CONTAINER}" bash -lc '
+            if [ -f /workspace/runner/logs/ctest.log ]; then
+              tail -n 200 /workspace/runner/logs/ctest.log
+            else
+              echo "ctest log not found: /workspace/runner/logs/ctest.log"
+            fi
+          '
+          echo "===== end of ctest log summary ====="
+
+      - name: Run op tests inside container
+        run: |
+          set -euo pipefail
+          docker exec "${TEST_CONTAINER}" bash -lc '
+            set -euo pipefail
+
+            cleanup_ps_server() {
+              pids="$(pgrep -x ps_server || true)"
+              if [ -n "${pids}" ]; then
+                echo "Stopping ps_server PIDs: ${pids}"
+                kill ${pids} || true
+              fi
+            }
+            trap cleanup_ps_server EXIT
+
+            pids_after_ctest="$(pgrep -x ps_server || true)"
+            if [ -n "${pids_after_ctest}" ]; then
+              echo "Cleaning stale ps_server after ctest: ${pids_after_ctest}"
+              kill ${pids_after_ctest} || true
+              sleep 2
+            fi
+
+            cd /workspace
+
+            if [ -f build/lib/_recstore_ops.so ] && [ ! -f build/lib/lib_recstore_ops.so ]; then
+              cp -f build/lib/_recstore_ops.so build/lib/lib_recstore_ops.so
+            fi
+
+            if [ ! -f build/lib/lib_recstore_ops.so ]; then
+              echo "recstore ops shared library missing after build" >&2
+              ls -lah build/lib || true
+              find build -maxdepth 4 -name '*recstore*ops*.so*' -print || true
+              exit 1
+            fi
+
+            bash dockerfiles/init_dlrm.sh --mirror=0
+            bash ci/env/ci_fix_config.sh || true
+
+            python3 ci/pack/runner.py build bin/ps_server --ready-pattern "listening on" --timeout 180 --log runner/logs/docker-image-ps-server.log --keep-alive
+            bash ci/test/test_op.sh
+          '
+
+      - name: Collect test logs from container
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runner/logs build
+          docker cp "${TEST_CONTAINER}:/workspace/runner/logs" runner/ || true
+          docker cp "${TEST_CONTAINER}:/workspace/build/CMakeCache.txt" build/CMakeCache.txt || true
+          docker rm -f "${TEST_CONTAINER}" || true
+
+      - name: Upload docker image test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-test-logs
+          path: |
+            runner/logs/
+            init_env_*.log
+            build/CMakeCache.txt

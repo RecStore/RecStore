@@ -42,14 +42,6 @@ target_link_options(spdk_wrapper INTERFACE -lnuma -ldl  -L${PROJECT_SOURCE_DIR}/
 target_link_libraries(spdk_wrapper Folly::folly)
 target_link_libraries(spdk_wrapper protobuf::libprotobuf)
 
-add_library(cceh CCEH.cpp)
-target_link_options(cceh INTERFACE -Wl,--whole-archive -Wl,--no-as-needed)
-target_link_options(cceh INTERFACE ${SPDK_LIB} ${DPDK_LIB})
-target_link_options(cceh INTERFACE -Wl,--no-whole-archive)
-target_link_options(cceh INTERFACE -lnuma -ldl  -L${PROJECT_SOURCE_DIR}/third_party/spdk/isa-l/.libs -lisal -pthread -lrt -luuid -lcrypto -lm -laio)
-target_link_libraries(cceh base)
-
-
 add_executable(perf_spdk perf_spdk.cc)
 target_link_libraries(perf_spdk spdk_wrapper)
 

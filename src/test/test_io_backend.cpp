@@ -1,20 +1,73 @@
-#include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <cstring>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
+#include <sstream>
 #include <vector>
-
 #include <gtest/gtest.h>
-
 #include "base/factory.h"
 #include "storage/io_backend/io_backend.h"
-#include "storage/io_backend/io_backend_register.h"
 
 namespace {
+constexpr const char* kSpdkPcieAddress = "0000:c2:00.0";
+
+bool HasFreeHugepages() {
+  std::ifstream meminfo("/proc/meminfo");
+  if (!meminfo.is_open())
+    return false;
+
+  std::string line;
+  while (std::getline(meminfo, line)) {
+    if (line.rfind("HugePages_Free:", 0) != 0)
+      continue;
+    std::istringstream iss(line.substr(std::strlen("HugePages_Free:")));
+    int free_pages = 0;
+    if (iss >> free_pages)
+      return free_pages > 0;
+    return false;
+  }
+  return false;
+}
+
+bool HasConfiguredPcieDevice() {
+  const std::filesystem::path pci_path =
+      std::filesystem::path("/sys/bus/pci/devices") / kSpdkPcieAddress;
+  return std::filesystem::exists(pci_path);
+}
+
+bool CanUseSpdkBackend(std::string* reason) {
+  if (!HasConfiguredPcieDevice()) {
+    if (reason != nullptr)
+      *reason = "configured SPDK PCIe device is missing";
+    return false;
+  }
+  if (!HasFreeHugepages()) {
+    if (reason != nullptr)
+      *reason = "no free hugepages detected";
+    return false;
+  }
+  return true;
+}
+
+std::string ResolveBackendFromEnv() {
+  const char* raw_backend = std::getenv("RECSTORE_IO_BACKEND");
+  if (raw_backend == nullptr || std::string(raw_backend).empty())
+    return "IOURING";
+
+  std::string backend(raw_backend);
+  std::transform(
+      backend.begin(), backend.end(), backend.begin(), [](unsigned char c) {
+        return static_cast<char>(std::toupper(c));
+      });
+  if (backend != "IOURING" && backend != "SPDK")
+    return "IOURING";
+  return backend;
+}
+
 BaseKVConfig
 MakeConfig(const std::string& backend, const std::string& file_path) {
   BaseKVConfig config;
@@ -31,7 +84,21 @@ MakeConfig(const std::string& backend, const std::string& file_path) {
 class IOBackendTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    backend_ = "SPDK";
+    const char* raw_backend = std::getenv("RECSTORE_IO_BACKEND");
+    const bool backend_forced =
+        (raw_backend != nullptr && std::string(raw_backend).size() > 0);
+
+    backend_ = ResolveBackendFromEnv();
+    if (backend_ == "SPDK") {
+      std::string spdk_unavailable_reason;
+      if (!CanUseSpdkBackend(&spdk_unavailable_reason)) {
+        if (backend_forced) {
+          GTEST_SKIP() << "SPDK requested by RECSTORE_IO_BACKEND, but "
+                       << spdk_unavailable_reason;
+        }
+        backend_ = "IOURING";
+      }
+    }
 
     const auto ts =
         std::chrono::duration_cast<std::chrono::nanoseconds>(

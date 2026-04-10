@@ -26,6 +26,27 @@ else
 fi
 export MAKEFLAGS="${MAKE_OPTS}"
 
+reset_cmake_build_if_stale() {
+    local build_dir="$1"
+    local source_dir="$2"
+    local cache_file="${build_dir}/CMakeCache.txt"
+
+    if [ ! -f "${cache_file}" ]; then
+        return 0
+    fi
+
+    local cached_source
+    cached_source=$(grep '^CMAKE_HOME_DIRECTORY:INTERNAL=' "${cache_file}" | head -n 1 | cut -d '=' -f 2-)
+
+    if [ -n "${cached_source}" ] && [ "${cached_source}" != "${source_dir}" ]; then
+        echo "Detected stale CMake cache in ${build_dir}: ${cached_source} (expected ${source_dir}). Reconfiguring..."
+        rm -rf "${build_dir}/CMakeFiles" \
+            "${build_dir}/CMakeCache.txt" \
+            "${build_dir}/Makefile" \
+            "${build_dir}/cmake_install.cmake"
+    fi
+}
+
 TORCH_VERSION="2.7.1"
 CUDA_VERSION="cu118"
 LIBTORCH_VARIANT="${LIBTORCH_VARIANT:-${CUDA_VERSION}}"  # default to CUDA variant (e.g., cu118); set to cpu to force CPU libtorch
@@ -51,6 +72,10 @@ step_base() {
 
 step_liburing() {
     cd ${PROJECT_PATH}/third_party/liburing
+    if [ ! -x ./configure ]; then
+        echo "Missing third_party/liburing/configure. Please run: git submodule update --init --recursive" >&2
+        return 1
+    fi
     ./configure --cc=gcc --cxx=g++
     make ${MAKE_OPTS}
     make liburing.pc
@@ -175,6 +200,7 @@ step_arrow() {
 step_cpptrace() {
     cd ${PROJECT_PATH}/third_party/cpptrace
     git checkout v0.3.1
+    rm -rf build
     mkdir -p build && cd build
     cmake .. -DCMAKE_BUILD_TYPE=Release ${CMAKE_REQUIRE}
     make ${MAKE_OPTS}
@@ -262,8 +288,21 @@ step_ssh() {
 }
 
 step_set_coredump() {
+    if [ "${SKIP_COREDUMP:-0}" = "1" ]; then
+        echo "Skipping coredump setup because SKIP_COREDUMP=1"
+        return 0
+    fi
+
+    if [ "${CI:-}" = "1" ] || [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ] || [ -n "${GITLAB_CI:-}" ] || [ -n "${JENKINS_URL:-}" ] || [ -n "${BUILD_BUILDID:-}" ]; then
+        echo "Skipping coredump setup in CI environment"
+        return 0
+    fi
+
     cd ${PROJECT_PATH}/dockerfiles
-    source set_coredump.sh
+    if ! bash set_coredump.sh; then
+        echo "Warning: coredump setup failed; continuing without coredump configuration"
+        return 0
+    fi
 }
 
 # step_dgl() {
@@ -290,14 +329,25 @@ step_libibverbs() {
 step_brpc() {
 
     sudo apt install -y libleveldb-dev
+
     # protobuf
-    cd ${PROJECT_PATH}/third_party/grpc/third_party/protobuf
-    if [ ! -d "_build" ]; then
-        mkdir _build
+    local protobuf_src="${PROJECT_PATH}/third_party/grpc/third_party/protobuf"
+    local protobuf_build_dir="${protobuf_src}/_build"
+
+    if [ ! -d "${protobuf_src}" ]; then
+        echo "Missing ${protobuf_src}, trying to init submodule..."
+        git -C "${PROJECT_PATH}" submodule update --init --recursive third_party/grpc/third_party/protobuf || true
     fi
-    cd _build
+    if [ ! -d "${protobuf_src}" ]; then
+        echo "Missing protobuf source dir: ${protobuf_src}. Please run: git submodule update --init --recursive" >&2
+        return 1
+    fi
+
+    mkdir -p "${protobuf_build_dir}"
+    reset_cmake_build_if_stale "${protobuf_build_dir}" "${protobuf_src}"
+    cd "${protobuf_build_dir}"
     if [ ! -f "Makefile" ]; then
-        cmake .. -DCMAKE_BUILD_TYPE=Release \
+        cmake "${protobuf_src}" -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
             -DBUILD_SHARED_LIBS=ON \
             ${CMAKE_REQUIRE} \
@@ -307,13 +357,13 @@ step_brpc() {
     make ${MAKE_OPTS} install
     
     # brpc
-    cd ${PROJECT_PATH}/third_party/brpc
-    if [ ! -d "_build" ]; then
-        mkdir -p _build
-    fi
-    cd _build
+    local brpc_src="${PROJECT_PATH}/third_party/brpc"
+    local brpc_build_dir="${brpc_src}/_build"
+    mkdir -p "${brpc_build_dir}"
+    reset_cmake_build_if_stale "${brpc_build_dir}" "${brpc_src}"
+    cd "${brpc_build_dir}"
     if [ ! -f "Makefile" ]; then
-        cmake .. -DProtobuf_INCLUDE_DIR=${PROJECT_PATH}/third_party/protobuf-install/include \
+        cmake "${brpc_src}" -DProtobuf_INCLUDE_DIR=${PROJECT_PATH}/third_party/protobuf-install/include \
             -DProtobuf_LIBRARIES=${PROJECT_PATH}/third_party/protobuf-install/lib/libprotobuf.so   \
             -DProtobuf_PROTOC_EXECUTABLE=${PROJECT_PATH}/third_party/protobuf-install/bin/protoc \
             -DCMAKE_BUILD_TYPE=Release \

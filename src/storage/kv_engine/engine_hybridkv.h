@@ -5,7 +5,7 @@
 #include "base/factory.h"
 #include "base_kv.h"
 #include "src/storage/hybrid/value.h"
-#include "storage/hybrid/index.h"
+#include "storage/index/index.h"
 class KVEngineHybrid : public BaseKV {
   static constexpr int kKVEngineValidFileSize = 123;
 

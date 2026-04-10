@@ -2,6 +2,7 @@
 
 #include <future>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -80,6 +81,19 @@ public:
   int shard_count() const { return num_shards_; }
 
 private:
+  struct DistPrefetchShardState {
+    int shard_id     = -1;
+    int client_index = -1;
+    std::vector<size_t> original_indices;
+    std::vector<uint64_t> child_prefetch_ids;
+    std::vector<int> chunk_sizes;
+  };
+
+  struct DistPrefetchState {
+    size_t total_keys = 0;
+    std::vector<DistPrefetchShardState> shard_states;
+  };
+
   int GetShardId(uint64_t key) const;
 
   void InitializeClients();
@@ -121,6 +135,11 @@ private:
   // 分区缓冲区
   mutable std::vector<std::vector<uint64_t>> partitioned_key_buffer_;
   mutable std::vector<std::vector<size_t>> key_index_mapping_;
+
+  std::mutex prefetch_mu_;
+  std::unordered_map<uint64_t, std::shared_ptr<DistPrefetchState>>
+      prefetch_states_;
+  uint64_t next_prefetch_id_ = 1;
 };
 
 } // namespace recstore

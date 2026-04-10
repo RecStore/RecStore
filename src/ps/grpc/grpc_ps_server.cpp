@@ -23,6 +23,7 @@
 
 #ifdef ENABLE_PERF_REPORT
 #  include <chrono>
+#  include <cstdlib>
 
 #  include "base/report/report_client.h"
 #else
@@ -219,6 +220,13 @@ private:
 
       cache_ps_->Initialize(arg1, arg2);
     } else if (request->command() == PSCommand::LOAD_FAKE_DATA) {
+      if (request->arg1_size() != 1 ||
+          static_cast<size_t>(request->arg1(0).size()) != sizeof(int64_t)) {
+        LOG(ERROR) << "LOAD_FAKE_DATA: arg1 must be one " << sizeof(int64_t)
+                   << "-byte int64_t (requested reply payload size)";
+        return Status(grpc::StatusCode::INVALID_ARGUMENT,
+                      "LOAD_FAKE_DATA invalid arg1 size");
+      }
       int64_t payload_bytes = 0;
       std::memcpy(&payload_bytes, request->arg1(0).data(), sizeof(int64_t));
       if (payload_bytes < 0) {
@@ -236,10 +244,31 @@ private:
       std::string fake(static_cast<size_t>(payload_bytes), '\xab');
       reply->set_reply(std::move(fake));
     } else if (request->command() == PSCommand::DUMP_FAKE_DATA) {
-      if (request->arg1_size() != 1) {
-        LOG(ERROR) << "DUMP_FAKE_DATA: expected 1 arg1 entry";
+      if (request->arg1_size() != 1 ||
+          static_cast<size_t>(request->arg1(0).size()) != sizeof(int64_t)) {
+        LOG(ERROR) << "DUMP_FAKE_DATA: arg1 must be one " << sizeof(int64_t)
+                   << "-byte int64_t (payload bytes n)";
         return Status(grpc::StatusCode::INVALID_ARGUMENT,
-                      "DUMP_FAKE_DATA requires exactly 1 arg1 entry");
+                      "DUMP_FAKE_DATA invalid arg1 size");
+      }
+      int64_t n = 0;
+      std::memcpy(&n, request->arg1(0).data(), sizeof(int64_t));
+      if (n <= 0) {
+        LOG(ERROR) << "DUMP_FAKE_DATA: n must be positive";
+        return Status(grpc::StatusCode::INVALID_ARGUMENT,
+                      "DUMP_FAKE_DATA n must be positive");
+      }
+      if (n % static_cast<int64_t>(sizeof(float)) != 0) {
+        LOG(ERROR) << "DUMP_FAKE_DATA: n must be a multiple of "
+                   << sizeof(float);
+        return Status(grpc::StatusCode::INVALID_ARGUMENT,
+                      "DUMP_FAKE_DATA n must be multiple of sizeof(float)");
+      }
+      constexpr int64_t kMaxDumpBytes = 64 * 1024 * 1024;
+      if (n > kMaxDumpBytes) {
+        LOG(ERROR) << "DUMP_FAKE_DATA: n exceeds cap " << kMaxDumpBytes;
+        return Status(
+            grpc::StatusCode::INVALID_ARGUMENT, "DUMP_FAKE_DATA n exceeds cap");
       }
       // Receive fake data payload (used for write bandwidth benchmarking)
       reply->set_reply("ok");
@@ -296,16 +325,34 @@ private:
                          const UpdateParameterRequest* request,
                          UpdateParameterResponse* reply) override {
 #ifdef ENABLE_PERF_REPORT
-    auto start_time = std::chrono::high_resolution_clock::now();
+    auto start_time   = std::chrono::high_resolution_clock::now();
+    uint64_t trace_id = 0;
+    const auto trace_it =
+        context->client_metadata().find("x-recstore-trace-id");
+    if (trace_it != context->client_metadata().end()) {
+      std::string trace_id_str(
+          trace_it->second.data(), trace_it->second.length());
+      trace_id = static_cast<uint64_t>(
+          std::strtoull(trace_id_str.c_str(), nullptr, 10));
+    }
+#endif
+    bool success = false;
+    int size     = 0;
+    std::string table_name;
+#ifdef ENABLE_PERF_REPORT
+    auto before_cache_update_time = std::chrono::high_resolution_clock::now();
 #endif
     try {
-      const std::string& table_name = request->table_name();
+      table_name = request->table_name();
       const ParameterCompressReader* reader =
           reinterpret_cast<const ParameterCompressReader*>(
               request->gradients().data());
-      int size = reader->item_size();
+      size = reader->item_size();
 
-      bool success = cache_ps_->UpdateParameter(table_name, reader, 0);
+#ifdef ENABLE_PERF_REPORT
+      before_cache_update_time = std::chrono::high_resolution_clock::now();
+#endif
+      success = cache_ps_->UpdateParameter(table_name, reader, 0);
 
       FB_LOG_EVERY_MS(INFO, 2000)
           << "UpdateParameter: table=" << table_name << ", keys=" << size;
@@ -332,6 +379,31 @@ private:
            op_latency_key.c_str(),
            "recserver_us",
            static_cast<double>(duration));
+
+    auto backend_update_duration =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            end_time - before_cache_update_time)
+            .count();
+    const uint64_t effective_trace_id =
+        trace_id == 0 ? static_cast<uint64_t>(start_us_for_key) : trace_id;
+    std::string update_stage_id =
+        "grpc_server::EmbUpdate|" + std::to_string(effective_trace_id);
+    report("embupdate_stages",
+           update_stage_id.c_str(),
+           "server_total_us",
+           static_cast<double>(duration));
+    report("embupdate_stages",
+           update_stage_id.c_str(),
+           "server_backend_update_us",
+           static_cast<double>(backend_update_duration));
+    report("embupdate_stages",
+           update_stage_id.c_str(),
+           "server_request_size",
+           static_cast<double>(size));
+    report("embupdate_stages",
+           update_stage_id.c_str(),
+           "server_success",
+           success ? 1.0 : 0.0);
 #endif
 
     return Status::OK;

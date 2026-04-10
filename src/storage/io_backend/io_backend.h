@@ -11,7 +11,7 @@
 #include <glog/logging.h>
 #include <sys/user.h>
 #include <vector>
-#include "../hybrid/index.h"
+#include "../index/index.h"
 
 using boost::coroutines2::coroutine;
 extern thread_local int pending;
@@ -90,6 +90,7 @@ public:
   virtual char* AllocateBuffer(uint64_t page_count) = 0;
   virtual void FreeBuffer(char* buf)                = 0;
 
+  virtual void submit()         = 0;
   virtual void PollCompletion() = 0;
 
   struct IOEntry {

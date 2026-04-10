@@ -3,9 +3,10 @@ if(ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
 else()
 	message(STATUS "Skipping storage/gpu_cache because CUDA is disabled or nvcc not found")
 endif()
-add_subdirectory(dram)
+add_subdirectory(cache)
+add_subdirectory(io_backend)
+add_subdirectory(index)
 add_subdirectory(nvm)
-add_subdirectory(ssd)
 add_subdirectory(hybrid)
 
 # 保持最后

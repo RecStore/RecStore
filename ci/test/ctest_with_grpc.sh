@@ -17,9 +17,10 @@ if [[ -f "${CONFIG_JSON_PATH}" ]]; then
         jq '.cache_ps.base_kv_config.capacity = 65536' "${CONFIG_JSON_PATH}" > "${TMP_JSON}" && mv "${TMP_JSON}" "${CONFIG_JSON_PATH}"
         echo "Updated capacity in recstore_config.json using jq."
     else
+        export RECSTORE_REPO_ROOT="${REPO_ROOT}"
         python3 - <<'PY'
 import json, sys, os
-root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+root = os.environ.get('RECSTORE_REPO_ROOT', os.getcwd())
 path = os.path.join(root, 'recstore_config.json')
 with open(path, 'r', encoding='utf-8') as f:
     data = json.load(f)
@@ -37,9 +38,10 @@ else
     echo "recstore_config.json not found at ${CONFIG_JSON_PATH}; skipping capacity update."
 fi
 
+export RECSTORE_REPO_ROOT="${REPO_ROOT}"
 KV_PATH="$(python3 - <<'PY'
 import json, os
-root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+root = os.environ.get('RECSTORE_REPO_ROOT', os.getcwd())
 path = os.path.join(root, 'recstore_config.json')
 try:
     with open(path, 'r', encoding='utf-8') as f:

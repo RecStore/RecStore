@@ -1,18 +1,30 @@
-#include "storage/ssd/CCEH.h"
+#include "storage/index/ssd_cceh/CCEH.h"
 #include "gtest/gtest.h"
+#include <filesystem>
 #include <thread>
 #include <vector>
+
+namespace {
+std::string GetDirectIOTestFilePath() {
+  const std::filesystem::path dir =
+      std::filesystem::current_path() / "test_cceh_data";
+  return (dir / "test_cceh.db").string();
+}
+} // namespace
 
 BaseKVConfig config{
     0,
     {{"io_backend_type", "IOURING"},
      {"page_id_offset", 0},
      {"queue_cnt", 512},
-     {"file_path", "/tmp/test_cceh.db"}}};
+     {"file_path", GetDirectIOTestFilePath()}}};
 
 class CCEHTest : public ::testing::Test {
 protected:
   void SetUp() override {
+    const std::filesystem::path file_path =
+        config.json_config_.at("file_path").get<std::string>();
+    std::filesystem::create_directories(file_path.parent_path());
     std::remove(config.json_config_.at("file_path").get<std::string>().c_str());
   }
   void TearDown() override {

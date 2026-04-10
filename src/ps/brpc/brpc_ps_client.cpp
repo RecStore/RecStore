@@ -561,6 +561,10 @@ static void OnPrefetchDone(BrpcPrefetchBatch* batch) {
   batch->completed_count_++;
 }
 
+static void OnPrewriteDone(BrpcPrewriteBatch* batch) {
+  batch->completed_count_++;
+}
+
 uint64_t
 BRPCParameterClient::PrefetchParameter(const base::ConstArray<uint64_t>& keys) {
   uint64_t prefetch_id = next_prefetch_id_++;
@@ -781,6 +785,11 @@ bool BRPCParameterClient::LoadFakeData(int64_t data) {
     LOG(ERROR) << "bRPC LoadFakeData failed: " << cntl.ErrorText();
     return false;
   }
+  if (response.reply().size() != static_cast<size_t>(data)) {
+    LOG(ERROR) << "bRPC LoadFakeData reply size mismatch: expected " << data
+               << ", got " << response.reply().size();
+    return false;
+  }
   return true;
 }
 
@@ -796,6 +805,10 @@ bool BRPCParameterClient::DumpFakeData(int64_t n) {
 
   if (cntl.Failed()) {
     LOG(ERROR) << "bRPC DumpFakeData failed: " << cntl.ErrorText();
+    return false;
+  }
+  if (response.reply() != "ok") {
+    LOG(ERROR) << "bRPC DumpFakeData unexpected reply: " << response.reply();
     return false;
   }
   return true;
@@ -918,7 +931,8 @@ int BRPCParameterClient::UpdateParameter(
     const base::ConstArray<uint64_t>& keys,
     const std::vector<std::vector<float>>* grads) {
 #ifdef ENABLE_PERF_REPORT
-  auto start_time = std::chrono::high_resolution_clock::now();
+  auto start_time         = std::chrono::high_resolution_clock::now();
+  const uint64_t trace_id = recstore::g_trace_id;
 #endif
   if (grads == nullptr) {
     LOG(ERROR) << "UpdateParameter grads pointer is null";
@@ -938,6 +952,9 @@ int BRPCParameterClient::UpdateParameter(
     pack.emb_data = grads->at(i).data();
     compressor.AddItem(pack, nullptr);
   }
+#ifdef ENABLE_PERF_REPORT
+  auto serialize_done_time = std::chrono::high_resolution_clock::now();
+#endif
   if (keys.Size() == 0) {
     LOG(WARNING) << "UpdateParameter no gradients to send";
     return 0;
@@ -948,6 +965,13 @@ int BRPCParameterClient::UpdateParameter(
   request.set_table_name(table_name);
 
   brpc::Controller cntl;
+#ifdef ENABLE_PERF_REPORT
+  if (trace_id != 0) {
+    cntl.http_request().SetHeader(
+        "x-recstore-trace-id", std::to_string(trace_id));
+  }
+  auto rpc_start_time = std::chrono::high_resolution_clock::now();
+#endif
   compressor.AppendToIOBuf(&cntl.request_attachment());
   recstoreps_brpc::ParameterService_Stub stub(channel_.get());
   stub.UpdateParameter(&cntl, &request, &response, nullptr);
@@ -962,10 +986,44 @@ int BRPCParameterClient::UpdateParameter(
       std::chrono::duration_cast<std::chrono::microseconds>(
           end_time - start_time)
           .count();
+  auto serialize_duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          serialize_done_time - start_time)
+          .count();
+  auto rpc_duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          end_time - rpc_start_time)
+          .count();
   report("ps_client_latency",
          "UpdateParameter",
          "latency_us",
          static_cast<double>(duration));
+
+  const uint64_t effective_trace_id =
+      trace_id == 0
+          ? static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    start_time.time_since_epoch())
+                    .count())
+          : trace_id;
+  std::string stage_id =
+      "brpc_client::EmbUpdate|" + std::to_string(effective_trace_id);
+  report("embupdate_stages",
+         stage_id.c_str(),
+         "client_serialize_us",
+         static_cast<double>(serialize_duration));
+  report("embupdate_stages",
+         stage_id.c_str(),
+         "client_rpc_us",
+         static_cast<double>(rpc_duration));
+  report("embupdate_stages",
+         stage_id.c_str(),
+         "client_total_us",
+         static_cast<double>(duration));
+  report("embupdate_stages",
+         stage_id.c_str(),
+         "client_request_size",
+         static_cast<double>(keys.Size()));
 #endif
 
   return response.success() ? 0 : -1;
@@ -978,7 +1036,8 @@ int BRPCParameterClient::UpdateParameterFlat(
     int64_t num_rows,
     int64_t embedding_dim) {
 #ifdef ENABLE_PERF_REPORT
-  auto start_time = std::chrono::high_resolution_clock::now();
+  auto start_time         = std::chrono::high_resolution_clock::now();
+  const uint64_t trace_id = recstore::g_trace_id;
 #endif
   if (keys.Size() == 0) {
     return 0;
@@ -989,12 +1048,22 @@ int BRPCParameterClient::UpdateParameterFlat(
           keys, grads, num_rows, embedding_dim, &compressor) != 0) {
     return -1;
   }
+#ifdef ENABLE_PERF_REPORT
+  auto serialize_done_time = std::chrono::high_resolution_clock::now();
+#endif
 
   UpdateParameterRequest request;
   UpdateParameterResponse response;
   request.set_table_name(table_name);
 
   brpc::Controller cntl;
+#ifdef ENABLE_PERF_REPORT
+  if (trace_id != 0) {
+    cntl.http_request().SetHeader(
+        "x-recstore-trace-id", std::to_string(trace_id));
+  }
+  auto rpc_start_time = std::chrono::high_resolution_clock::now();
+#endif
   compressor.AppendToIOBuf(&cntl.request_attachment());
   recstoreps_brpc::ParameterService_Stub stub(channel_.get());
   stub.UpdateParameter(&cntl, &request, &response, nullptr);
@@ -1009,10 +1078,48 @@ int BRPCParameterClient::UpdateParameterFlat(
       std::chrono::duration_cast<std::chrono::microseconds>(
           end_time - start_time)
           .count();
+  auto serialize_duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          serialize_done_time - start_time)
+          .count();
+  auto rpc_duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          end_time - rpc_start_time)
+          .count();
   report("ps_client_latency",
          "UpdateParameterFlat",
          "latency_us",
          static_cast<double>(duration));
+
+  const uint64_t effective_trace_id =
+      trace_id == 0
+          ? static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    start_time.time_since_epoch())
+                    .count())
+          : trace_id;
+  std::string stage_id =
+      "brpc_client::EmbUpdate|" + std::to_string(effective_trace_id);
+  report("embupdate_stages",
+         stage_id.c_str(),
+         "client_serialize_us",
+         static_cast<double>(serialize_duration));
+  report("embupdate_stages",
+         stage_id.c_str(),
+         "client_rpc_us",
+         static_cast<double>(rpc_duration));
+  report("embupdate_stages",
+         stage_id.c_str(),
+         "client_total_us",
+         static_cast<double>(duration));
+  report("embupdate_stages",
+         stage_id.c_str(),
+         "client_request_size",
+         static_cast<double>(num_rows));
+  report("embupdate_stages",
+         stage_id.c_str(),
+         "client_embedding_dim",
+         static_cast<double>(embedding_dim));
 #endif
 
   return response.success() ? 0 : -1;
@@ -1055,17 +1162,103 @@ int BRPCParameterClient::InitEmbeddingTable(
 
 uint64_t BRPCParameterClient::EmbWriteAsync(const base::RecTensor& keys,
                                             const base::RecTensor& values) {
-  LOG(ERROR) << "EmbWriteAsync not implemented!";
-  return 0;
+  if (keys.dtype() != base::DataType::UINT64 || keys.dim() != 1) {
+    LOG(ERROR) << "EmbWriteAsync expects keys as 1D UINT64 tensor, got dtype="
+               << base::DataTypeToString(keys.dtype())
+               << ", dim=" << keys.dim();
+    return 0;
+  }
+  if (values.dtype() != base::DataType::FLOAT32 || values.dim() != 2) {
+    LOG(ERROR)
+        << "EmbWriteAsync expects values as 2D FLOAT32 tensor, got dtype="
+        << base::DataTypeToString(values.dtype()) << ", dim=" << values.dim();
+    return 0;
+  }
+  if (values.shape(0) != keys.shape(0)) {
+    LOG(ERROR) << "EmbWriteAsync row mismatch: keys=" << keys.shape(0)
+               << ", values=" << values.shape(0);
+    return 0;
+  }
+  if (values.shape(1) <= 0) {
+    LOG(ERROR) << "EmbWriteAsync invalid embedding dim: " << values.shape(1);
+    return 0;
+  }
+
+  const uint64_t* key_data = keys.data_as<uint64_t>();
+  const float* value_data  = values.data_as<float>();
+  int64_t key_count        = keys.shape(0);
+  int64_t emb_dim          = values.shape(1);
+  if (key_count == 0) {
+    return 0;
+  }
+
+  uint64_t prewrite_id = next_prewrite_id_++;
+  int request_num =
+      (static_cast<int>(key_count) + MAX_PARAMETER_BATCH_BRPC - 1) /
+      MAX_PARAMETER_BATCH_BRPC;
+
+  auto it = prewrite_batches_.emplace(prewrite_id, request_num).first;
+  struct BrpcPrewriteBatch* pb = &it->second;
+
+  recstoreps_brpc::ParameterService_Stub stub(channel_.get());
+  for (int start = 0, index = 0; start < key_count;
+       start += MAX_PARAMETER_BATCH_BRPC, ++index) {
+    int key_size =
+        std::min(static_cast<int>(key_count - start), MAX_PARAMETER_BATCH_BRPC);
+    pb->key_sizes_[index]   = key_size;
+    pb->controllers_[index] = std::make_unique<brpc::Controller>();
+
+    ParameterCompressor compressor;
+    for (int i = 0; i < key_size; ++i) {
+      int64_t row = start + i;
+      ParameterPack parameter_pack;
+      parameter_pack.key      = key_data[row];
+      parameter_pack.dim      = emb_dim;
+      parameter_pack.emb_data = value_data + row * emb_dim;
+      compressor.AddItem(parameter_pack, nullptr);
+    }
+
+    compressor.AppendToIOBuf(&pb->controllers_[index]->request_attachment());
+    google::protobuf::Closure* done = brpc::NewCallback(OnPrewriteDone, pb);
+    stub.PutParameter(
+        pb->controllers_[index].get(),
+        &pb->requests_[index],
+        &pb->responses_[index],
+        done);
+  }
+
+  return prewrite_id;
 }
 
 bool BRPCParameterClient::IsWriteDone(uint64_t write_id) {
-  LOG(ERROR) << "IsWriteDone not implemented!";
-  return true;
+  auto it = prewrite_batches_.find(write_id);
+  if (it == prewrite_batches_.end()) {
+    LOG(ERROR) << "Invalid prewrite_id: " << write_id;
+    return false;
+  }
+  auto& pb = it->second;
+  return pb.completed_count_ == pb.batch_size_;
 }
 
 void BRPCParameterClient::WaitForWrite(uint64_t write_id) {
-  LOG(ERROR) << "WaitForWrite not implemented!";
+  auto it = prewrite_batches_.find(write_id);
+  if (it == prewrite_batches_.end()) {
+    LOG(ERROR) << "Invalid prewrite_id: " << write_id;
+    return;
+  }
+  auto& pb = it->second;
+  for (int i = 0; i < pb.batch_size_; ++i) {
+    if (!pb.controllers_[i]) {
+      continue;
+    }
+    brpc::Join(pb.controllers_[i]->call_id());
+    if (pb.controllers_[i]->Failed()) {
+      LOG(ERROR) << "Async PutParameter failed: "
+                 << pb.controllers_[i]->ErrorText();
+    }
+  }
+  pb.completed_count_ = pb.batch_size_;
+  prewrite_batches_.erase(it);
 }
 
 // 注册 BRPCParameterClient 到工厂

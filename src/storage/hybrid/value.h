@@ -2,8 +2,10 @@
 
 #include "../../memory/allocators/allocator_factory.h"
 #include "../../memory/memory_factory.h"
+#include "base/factory.h"
 #include "pointer.h"
-#include "index.h"
+#include "../index/index.h"
+#include "storage/cache/cache_factory.h"
 #include "storage/kv_engine/base_kv.h"
 #include <string>
 #include <string_view>
@@ -14,12 +16,8 @@
 #include <thread>
 #include <mutex>
 #include <shared_mutex>
-#include <list>
 #include <condition_variable>
-#include <chrono>
 #include <cstring>
-#include <algorithm>
-#include <unordered_map>
 #include <tbb/concurrent_hash_map.h>
 #include <array>
 #include <functional>
@@ -28,49 +26,6 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/uio.h>
-
-template <typename Key>
-class SimpleLRUCache {
-public:
-  explicit SimpleLRUCache(size_t capacity) : capacity_(capacity) {}
-
-  void insert(const Key& key) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto it = map_.find(key);
-    if (it != map_.end()) {
-      order_.splice(order_.begin(), order_, it->second);
-    } else {
-      if (order_.size() >= capacity_) {
-        Key lru_key = order_.back();
-        order_.pop_back();
-        map_.erase(lru_key);
-      }
-      order_.push_front(key);
-      map_[key] = order_.begin();
-    }
-  }
-
-  std::vector<Key> evictBatch(size_t batch_size) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    std::vector<Key> evicted_keys;
-    if (batch_size > 0) {
-      evicted_keys.reserve(batch_size);
-      for (size_t i = 0; i < batch_size && !order_.empty(); ++i) {
-        Key lru_key = order_.back();
-        order_.pop_back();
-        map_.erase(lru_key);
-        evicted_keys.push_back(lru_key);
-      }
-    }
-    return evicted_keys;
-  }
-
-private:
-  std::mutex mutex_;
-  size_t capacity_;
-  std::list<Key> order_;
-  std::unordered_map<Key, typename std::list<Key>::iterator> map_;
-};
 
 class ValueManager {
 public:
@@ -81,7 +36,9 @@ public:
                const std::string& ssd_file_path,
                size_t ssd_capacity,
                const BaseKVConfig& index_config)
-      : lru_(std::max<size_t>(4096, shm_capacity / 256)),
+      : cache_policy_(storage::cache::CreateCachePolicy<Key_t>(
+            index_config.json_config_.value("cache_policy", "LRU"),
+            std::max<size_t>(4096, shm_capacity / 256))),
         shm_capacity_bytes_(shm_capacity) {
     json dram_cfg = index_config.json_config_;
     json ssd_cfg  = index_config.json_config_;
@@ -147,7 +104,7 @@ public:
             // 等长原地写内存
             uint8_t* bytes = static_cast<uint8_t*>(oldp.asMemoryPointer());
             std::memcpy(bytes + 2, value.data(), old_len);
-            TouchLRU(key);
+            TouchCache(key);
             return;
           }
         } else if (oldp.type() == UnifiedPointer::Type::Disk) {
@@ -207,7 +164,7 @@ public:
     switch (p.type()) {
     case UnifiedPointer::Type::Memory: {
       auto v = ReadFromMemRaw(p); // 不触 LRU
-      TouchLRU(key);              // 业务访问才触碰
+      TouchCache(key);            // 业务访问才触碰
       return v;
     }
     case UnifiedPointer::Type::Disk: {
@@ -248,7 +205,7 @@ private:
   std::unique_ptr<base::MallocApi> ssd_manage;
   int fd_ssd = -1;
 
-  SimpleLRUCache<Key_t> lru_;
+  std::unique_ptr<CachePolicy<Key_t>> cache_policy_;
   tbb::concurrent_hash_map<Key_t, uint8_t> hot_;
 
   // 更保守的热点阈值，减少短期偶发访问的提升
@@ -273,7 +230,7 @@ private:
     return (size_t)(shm_capacity_bytes_ * kLowWatermarkRatio);
   }
 
-  inline void TouchLRU(Key_t key) { lru_.insert(key); }
+  inline void TouchCache(Key_t key) { cache_policy_->OnAccess(key); }
 
   inline uint16_t PeekLenMem(const UnifiedPointer& p) const {
     const uint8_t* bytes = static_cast<const uint8_t*>(p.asMemoryPointer());
@@ -335,7 +292,7 @@ private:
       std::memcpy(ptr + 2, value.data(), data_len);
     shm_used_bytes_.fetch_add((size_t)total_size, std::memory_order_relaxed);
     // 只有真正写入内存的数据，才进入内存 LRU
-    lru_.insert(key);
+    cache_policy_->OnInsert(key);
     return UnifiedPointer::FromMemory(ptr);
   }
 
@@ -390,7 +347,8 @@ private:
 
       // 1) 先逐出到低水位以下，避免在高水位阶段还去做提升
       if (shm_used_bytes_.load(std::memory_order_relaxed) > LowWatermark()) {
-        std::vector<Key_t> victim_keys = lru_.evictBatch(kEvictionBatchSize);
+        std::vector<Key_t> victim_keys =
+            cache_policy_->Evict(kEvictionBatchSize);
         for (const auto& victim_key : victim_keys) {
           if (shm_used_bytes_.load(std::memory_order_relaxed) <= LowWatermark())
             break;
@@ -410,7 +368,7 @@ private:
           std::string value      = ReadFromMemRaw(mem_ptr);
           UnifiedPointer ssd_ptr = WriteDisk(value);
           if (!ssd_ptr) {
-            TouchLRU(victim_key);
+            TouchCache(victim_key);
             continue;
           }
 

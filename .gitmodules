@@ -16,10 +16,6 @@
 [submodule "third_party/json"]
 	path = third_party/json
 	url = https://github.com/nlohmann/json
-[submodule "third_party/atomic_queue"]
-	path = third_party/atomic_queue
-	url = https://github.com/max0x7ba/atomic_queue.git
-
 [submodule "src/framework_adapters/torch/kg/dgl"]
 	path = src/framework_adapters/torch/kg/dgl
 	url = https://github.com/dmlc/dgl.git
@@ -49,3 +45,6 @@
 [submodule "third_party/cityhash"]
 	path = third_party/cityhash
 	url = https://github.com/google/cityhash.git
+[submodule "third_party/gpudirect-nvme"]
+	path = third_party/gpudirect-nvme
+	url = https://github.com/ZaidQureshi/bam

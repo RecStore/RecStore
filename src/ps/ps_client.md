@@ -134,6 +134,47 @@ bool DumpFakeData(int64_t n);
 
 client 本地生成 n 字节数据通过 gRPC 发送，server 接收后直接丢弃，不访问真实存储。
 
+### grpc_ps_bench
+
+网络吞吐基准工具，源文件 `grpc/grpc_ps_bench.cpp`。
+
+**编译**
+
+```bash
+cmake --build . --target grpc_ps_bench
+```
+
+**运行**
+
+```bash
+./grpc_ps_bench [--host 127.0.0.1] [--port 15000] [--warmup 10] [--iters 100]
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--host` | `127.0.0.1` | PS server 地址 |
+| `--port` | `15000` | PS server 端口 |
+| `--warmup` | `10` | 每个 size 预热轮数（不计时） |
+| `--iters` | `100` | 每个 size 正式测量轮数 |
+
+依次测试 4 KB / 64 KB / 512 KB / 4 MB 四个 payload，分别跑 `LoadFakeData` 和 `DumpFakeData`，输出每个组合的 avg / p50 / p99 延迟（us）和吞吐（MB/s）。
+
+**输出示例**
+
+```
+PS Network Benchmark  server=127.0.0.1:15000  warmup=10  iters=100
+
+LoadFakeData  (download: server -> client)
+  [load]      4 KB  avg=    312.5 us  p50=    308.1 us  p99=    421.3 us  tput=    12.4 MB/s
+  [load]     64 KB  avg=    540.2 us  p50=    535.0 us  p99=    620.8 us  tput=   114.6 MB/s
+  [load]    512 KB  avg=   2103.7 us  p50=   2088.4 us  p99=   2340.1 us  tput=   235.8 MB/s
+  [load]   4096 KB  avg=  15821.0 us  p50=  15700.3 us  p99=  17002.5 us  tput=   250.1 MB/s
+
+DumpFakeData  (upload: client -> server)
+  [dump]      4 KB  avg=    289.2 us  p50=    285.0 us  p99=    390.7 us  tput=    13.4 MB/s
+  ...
+```
+
 ---
 
 ## DistributedGRPCParameterClient

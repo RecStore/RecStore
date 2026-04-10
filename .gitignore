@@ -43,3 +43,14 @@ libreport.so
 .worktrees/
 docs/superpowers/
 .spec-workflow/
+.myskills
+build_coverage
+*.log.*
+init_env_*.log
+.cache/
+*.cpu
+rpc_data/profiling/
+docs/experiments/
+ps_server*.log
+*.WARNING
+*.ERROR

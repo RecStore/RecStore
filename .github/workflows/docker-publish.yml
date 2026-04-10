@@ -1,0 +1,159 @@
+name: Docker Publish
+
+on:
+  push:
+    paths:
+      - 'dockerfiles/Dockerfile.recstore'
+      - 'dockerfiles/init_env_inside_docker.sh'
+      - '.gitmodules'
+      - 'third_party/**'
+      - '.github/workflows/docker-publish.yml'
+  workflow_dispatch:
+    inputs:
+      run_init:
+        description: "Run dockerfiles/init_env_inside_docker.sh before pushing image"
+        required: false
+        default: true
+        type: boolean
+      init_args:
+        description: "Environment variables prefix for init script (manual trigger only)"
+        required: false
+        default: "CI_THROTTLE_MAKE=1 LIBTORCH_VARIANT=cpu SKIP_SPDK=1 SKIP_HUGECTR=1 SKIP_LIBIBVERBS=1"
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    env:
+      LOCAL_IMAGE: recstore-local:${{ github.sha }}
+      FINAL_IMAGE: recstore-final:${{ github.sha }}
+      DEFAULT_INIT_ARGS: CI_THROTTLE_MAKE=1 LIBTORCH_VARIANT=cpu SKIP_SPDK=1 SKIP_HUGECTR=1 SKIP_LIBIBVERBS=1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Sync and update submodules
+        run: |
+          set -euo pipefail
+          git submodule sync --recursive
+          git submodule update --init --recursive --jobs 4 --depth 1
+
+      - name: Preflight publish checks
+        id: preflight
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN}" ]; then
+            echo "GITHUB_TOKEN is empty; cannot publish to GHCR" >&2
+            exit 1
+          fi
+
+          IMAGE_REPO="ghcr.io/${GITHUB_REPOSITORY,,}/recstore-devel"
+          if ! echo "${IMAGE_REPO}" | grep -Eq '^[a-z0-9._/-]+$'; then
+            echo "Computed image repository is invalid: ${IMAGE_REPO}" >&2
+            exit 1
+          fi
+
+          echo "image_repo=${IMAGE_REPO}" >> "${GITHUB_OUTPUT}"
+          echo "Preflight summary:"
+          echo "  - Actor: ${GITHUB_ACTOR}"
+          echo "  - Repository: ${GITHUB_REPOSITORY}"
+          echo "  - Event: ${GITHUB_EVENT_NAME}"
+          echo "  - Image repo: ${IMAGE_REPO}"
+
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "  - Manual run: true"
+          fi
+
+          echo "::notice::If publish fails with permission denied, verify repository Actions permission is set to Read and write permissions."
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image locally
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: dockerfiles/Dockerfile.recstore
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: ${{ env.LOCAL_IMAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Initialize image inside container
+        if: github.event_name != 'workflow_dispatch' || inputs.run_init
+        env:
+          INIT_ARGS_INPUT: ${{ inputs.init_args }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${INIT_ARGS_INPUT:-}" ]; then
+            INIT_ARGS="${INIT_ARGS_INPUT}"
+          else
+            INIT_ARGS="${DEFAULT_INIT_ARGS}"
+          fi
+
+          INIT_CONTAINER="recstore-init-${GITHUB_RUN_ID}"
+          docker create --name "${INIT_CONTAINER}" "${LOCAL_IMAGE}" bash -lc 'sleep infinity'
+          docker cp "${GITHUB_WORKSPACE}/." "${INIT_CONTAINER}:/workspace"
+          docker start "${INIT_CONTAINER}"
+          docker exec "${INIT_CONTAINER}" bash -lc "set -euo pipefail; cd /workspace; export DEBIAN_FRONTEND=noninteractive; ${INIT_ARGS} bash dockerfiles/init_env_inside_docker.sh"
+          docker exec "${INIT_CONTAINER}" bash -lc '
+            set -euo pipefail
+            mkdir -p /opt/recstore-cache
+            rm -rf /opt/recstore-cache/third_party
+            cp -a /workspace/third_party /opt/recstore-cache/third_party
+            if [ -f /workspace/.gitmodules ]; then
+              cp -a /workspace/.gitmodules /opt/recstore-cache/.gitmodules
+            fi
+            echo "Cached initialized third_party at /opt/recstore-cache/third_party"
+          '
+          docker exec "${INIT_CONTAINER}" bash -lc 'rm -rf /tmp/env_setup_markers'
+          docker commit "${INIT_CONTAINER}" "${FINAL_IMAGE}"
+          docker rm -f "${INIT_CONTAINER}" || true
+
+      - name: Use non-initialized image as final
+        if: github.event_name == 'workflow_dispatch' && !inputs.run_init
+        run: |
+          set -euo pipefail
+          docker tag "${LOCAL_IMAGE}" "${FINAL_IMAGE}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.preflight.outputs.image_repo }}
+          tags: |
+            type=ref,event=tag
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref_name == github.event.repository.default_branch }}
+            type=raw,value=manual,enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Push final image tags
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            if [ -n "${tag}" ]; then
+              docker tag "${FINAL_IMAGE}" "${tag}"
+              docker push "${tag}"
+            fi
+          done << 'EOF'
+          ${{ steps.meta.outputs.tags }}
+          EOF

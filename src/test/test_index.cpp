@@ -1,4 +1,4 @@
-#include "storage/dram/extendible_hash.h"
+#include "storage/index/dram_cceh/extendible_hash.h"
 #include <gtest/gtest.h>
 #include <vector>
 
