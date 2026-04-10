@@ -1,5 +1,0 @@
-#ssd_pci="0000:5e:00.0"
-ssd_pci="0000:b1:00.0"
-PROJECT_DIR="/data/project/HugeCTR/third_party/gpudirect-nvme"
-#GDR_PROJECT_DIR="/data/project/HugeCTR/third_party/gdrcopy"
-GDR_PROJECT_DIR="/data/project/HugeCTR/HugeCTR/src/inference/gpu_memory/gdrcopy"

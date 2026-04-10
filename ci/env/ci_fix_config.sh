@@ -11,15 +11,17 @@ if [[ -f "${CONFIG_JSON_PATH}" ]]; then
             | .cache_ps.max_batch_keys_size = 128
             | .cache_ps.num_threads = 4
             | .distributed_client.max_keys_per_request = 32
+            | .cache_ps.base_kv_config.path = "/tmp/recstore_data"
             | .cache_ps.base_kv_config.index_type = "DRAM"
             | .cache_ps.base_kv_config.value_type = "SSD"
             | .cache_ps.base_kv_config.type = "DRAM"
             | .cache_ps.base_kv_config.queue_size = 1024' "${CONFIG_JSON_PATH}" > "${TMP_JSON}" && mv "${TMP_JSON}" "${CONFIG_JSON_PATH}"
         echo "Updated config fields in recstore_config.json using jq."
     else
+        export RECSTORE_REPO_ROOT="${REPO_ROOT}"
         python3 - <<'PY'
 import json, sys, os
-root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+root = os.environ.get('RECSTORE_REPO_ROOT', os.getcwd())
 path = os.path.join(root, 'recstore_config.json')
 with open(path, 'r', encoding='utf-8') as f:
     data = json.load(f)
@@ -28,6 +30,7 @@ try:
     data['cache_ps']['max_batch_keys_size'] = 128
     data['cache_ps']['num_threads'] = 4
     data['distributed_client']['max_keys_per_request'] = 32
+    data['cache_ps']['base_kv_config']['path'] = '/tmp/recstore_data'
     data['cache_ps']['base_kv_config']['index_type'] = "DRAM"
     data['cache_ps']['base_kv_config']['value_type'] = "SSD"
     data['cache_ps']['base_kv_config']['type'] = "DRAM"
@@ -43,3 +46,5 @@ PY
 else
     echo "recstore_config.json not found at ${CONFIG_JSON_PATH}; skipping capacity update."
 fi
+
+mkdir -p /tmp/recstore_data || true

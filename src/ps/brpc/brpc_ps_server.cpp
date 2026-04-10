@@ -5,6 +5,7 @@
 #include <gflags/gflags.h>
 
 #include <chrono>
+#include <cerrno>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -27,6 +28,7 @@
 
 #ifdef ENABLE_PERF_REPORT
 #  include <chrono>
+#  include <cstdlib>
 #  include "base/report/report_client.h"
 #endif
 
@@ -53,6 +55,15 @@ DEFINE_int32(brpc_server_num_threads,
 namespace recstore {
 
 namespace {
+
+void AppendShardSuffixIfPresent(
+    nlohmann::json& config_node, const char* key, int shard_id) {
+  if (!config_node.contains(key) || !config_node[key].is_string()) {
+    return;
+  }
+  config_node[key] =
+      config_node[key].get<std::string>() + "_" + std::to_string(shard_id);
+}
 
 bool ExtractPayloadBytes(
     const brpc::Controller* cntl,
@@ -295,6 +306,7 @@ void BRPCParameterServiceImpl::Command(
     CommandResponse* response,
     google::protobuf::Closure* done) {
   brpc::ClosureGuard done_guard(done);
+  brpc::Controller* cntl = static_cast<brpc::Controller*>(controller);
 
   if (request->command() == recstoreps_brpc::PSCommand::CLEAR_PS) {
     LOG(WARNING) << "[PS Command] Clear All";
@@ -322,17 +334,24 @@ void BRPCParameterServiceImpl::Command(
         static_cast<size_t>(request->arg1(0).size()) != sizeof(int64_t)) {
       LOG(ERROR) << "LOAD_FAKE_DATA: arg1 must be one " << sizeof(int64_t)
                  << "-byte int64_t (requested reply payload size)";
+      cntl->SetFailed(EINVAL, "LOAD_FAKE_DATA invalid arg1 size");
+      return;
     }
     int64_t payload_bytes = 0;
     std::memcpy(&payload_bytes, request->arg1(0).data(), sizeof(int64_t));
     if (payload_bytes < 0) {
       LOG(ERROR) << "LOAD_FAKE_DATA: payload_bytes must be non-negative, got "
                  << payload_bytes;
+      cntl->SetFailed(
+          EINVAL, "LOAD_FAKE_DATA payload_bytes must be non-negative");
+      return;
     }
     constexpr int64_t kMaxReplyPayload = 16 * 1024 * 1024;
     if (payload_bytes > kMaxReplyPayload) {
       LOG(ERROR) << "LOAD_FAKE_DATA: payload_bytes " << payload_bytes
                  << " exceeds cap " << kMaxReplyPayload;
+      cntl->SetFailed(EINVAL, "LOAD_FAKE_DATA payload too large");
+      return;
     }
     std::string fake(static_cast<size_t>(payload_bytes), '\xab');
     response->set_reply(std::move(fake));
@@ -341,18 +360,27 @@ void BRPCParameterServiceImpl::Command(
         static_cast<size_t>(request->arg1(0).size()) != sizeof(int64_t)) {
       LOG(ERROR) << "DUMP_FAKE_DATA: arg1 must be one " << sizeof(int64_t)
                  << "-byte int64_t (payload bytes n)";
+      cntl->SetFailed(EINVAL, "DUMP_FAKE_DATA invalid arg1 size");
+      return;
     }
     int64_t n = 0;
     std::memcpy(&n, request->arg1(0).data(), sizeof(int64_t));
     if (n <= 0) {
       LOG(ERROR) << "DUMP_FAKE_DATA: n must be positive";
+      cntl->SetFailed(EINVAL, "DUMP_FAKE_DATA n must be positive");
+      return;
     }
     if (n % static_cast<int64_t>(sizeof(float)) != 0) {
       LOG(ERROR) << "DUMP_FAKE_DATA: n must be a multiple of " << sizeof(float);
+      cntl->SetFailed(
+          EINVAL, "DUMP_FAKE_DATA n must be multiple of sizeof(float)");
+      return;
     }
     constexpr int64_t kMaxDumpBytes = 64 * 1024 * 1024;
     if (n > kMaxDumpBytes) {
       LOG(ERROR) << "DUMP_FAKE_DATA: n exceeds cap " << kMaxDumpBytes;
+      cntl->SetFailed(EINVAL, "DUMP_FAKE_DATA n exceeds cap");
+      return;
     }
     response->set_reply("ok");
   } else {
@@ -438,7 +466,19 @@ void BRPCParameterServiceImpl::UpdateParameter(
   brpc::Controller* cntl = static_cast<brpc::Controller*>(controller);
 
 #ifdef ENABLE_PERF_REPORT
-  auto start_time = std::chrono::high_resolution_clock::now();
+  auto start_time   = std::chrono::high_resolution_clock::now();
+  uint64_t trace_id = 0;
+  const std::string* header_trace =
+      cntl->http_request().GetHeader("x-recstore-trace-id");
+  if (header_trace != nullptr && !header_trace->empty()) {
+    trace_id = static_cast<uint64_t>(
+        std::strtoull(header_trace->c_str(), nullptr, 10));
+  }
+#endif
+  bool success = false;
+  int size     = 0;
+#ifdef ENABLE_PERF_REPORT
+  auto before_cache_update_time = std::chrono::high_resolution_clock::now();
 #endif
 
   try {
@@ -461,9 +501,12 @@ void BRPCParameterServiceImpl::UpdateParameter(
     if (!reader->Valid(payload_size)) {
       throw std::runtime_error("UpdateParameter invalid gradients payload");
     }
-    int size = reader->item_size();
+    size = reader->item_size();
 
-    bool success = cache_ps_->UpdateParameter(table_name, reader, 0);
+#ifdef ENABLE_PERF_REPORT
+    before_cache_update_time = std::chrono::high_resolution_clock::now();
+#endif
+    success = cache_ps_->UpdateParameter(table_name, reader, 0);
 
     FB_LOG_EVERY_MS(INFO, 2000)
         << "UpdateParameter: table=" << table_name << ", keys=" << size;
@@ -495,6 +538,31 @@ void BRPCParameterServiceImpl::UpdateParameter(
          op_latency_key.c_str(),
          "recserver_us",
          static_cast<double>(duration));
+
+  auto backend_update_duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          end_time - before_cache_update_time)
+          .count();
+  const uint64_t effective_trace_id =
+      trace_id == 0 ? static_cast<uint64_t>(start_us_for_key) : trace_id;
+  std::string update_stage_id =
+      "brpc_server::EmbUpdate|" + std::to_string(effective_trace_id);
+  report("embupdate_stages",
+         update_stage_id.c_str(),
+         "server_total_us",
+         static_cast<double>(duration));
+  report("embupdate_stages",
+         update_stage_id.c_str(),
+         "server_backend_update_us",
+         static_cast<double>(backend_update_duration));
+  report("embupdate_stages",
+         update_stage_id.c_str(),
+         "server_request_size",
+         static_cast<double>(size));
+  report("embupdate_stages",
+         update_stage_id.c_str(),
+         "server_success",
+         success ? 1.0 : 0.0);
 #endif
 }
 
@@ -595,7 +663,18 @@ public:
           int shard        = server_config["shard"];
 
           std::string server_address = host + ":" + std::to_string(port);
-          auto cache_ps = std::make_unique<CachePS>(config_["cache_ps"]);
+
+          nlohmann::json shard_config = config_["cache_ps"];
+          if (shard_config.contains("base_kv_config") &&
+              shard_config["base_kv_config"].is_object()) {
+            auto& base_kv_config = shard_config["base_kv_config"];
+            AppendShardSuffixIfPresent(base_kv_config, "path", shard);
+            AppendShardSuffixIfPresent(base_kv_config, "file_path", shard);
+            LOG(INFO) << "bRPC shard " << shard
+                      << " using base_kv_config: " << base_kv_config.dump();
+          }
+
+          auto cache_ps = std::make_unique<CachePS>(shard_config);
           auto service =
               std::make_unique<BRPCParameterServiceImpl>(cache_ps.get());
 

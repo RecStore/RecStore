@@ -14,21 +14,76 @@ cmake .. \
     -DUSE_PERF_REPORT=ON
 ```
 
-运行时确保 `recstore_config.json` 中 `report_API` 指向可写入 ClickHouse 的 report 服务，然后启动训练/服务端即可自动上报，可以在配置 Grafana 的端口进行查看看板。
+=== "本地分析"
 
-??? info "启用 Grafana 和相关上报命令"
+    该模式无需依赖 ClickHouse/Grafana，可直接在模型训练时采集 `embupdate_stages` 真实链路数据，分析 update 在 OP 层、gRPC 客户端、gRPC 服务端各阶段耗时。
 
-    ```bash title="启动 ClickHouse"
-    systemctl is-active --quiet clickhouse-server || sudo systemctl start clickhouse-server; echo "✅ ClickHouse is running."
+    ```bash title="开启本地结构化事件落盘（JSONL）"
+    export RECSTORE_REPORT_MODE=local
+    export RECSTORE_REPORT_LOCAL_SINK=both
+    export RECSTORE_REPORT_JSONL_PATH=/tmp/recstore_report_events.jsonl
     ```
 
-    ```bash title="启动 Grafana"
-    systemctl is-active --quiet grafana-server || sudo systemctl start grafana-server; echo "✅ Grafana is running (http://localhost:3000)."
+    启动参数服务器与模型训练（例如 DLRM）后，使用分析脚本：
+
+    ```bash title="分析模型层真实 update 数据"
+    python3 src/test/scripts/analyze_embupdate_stages.py \
+      --input /tmp/recstore_report_events.jsonl \
+      --group-by-prefix \
+      --export-csv /tmp/embupdate_real.csv \
+      --top 30
     ```
 
-    ```bash title="启动 Report Service（端口需要和  recstore_config.json 对齐）"
-    pkill -f "uvicorn report_service:app" 2>/dev/null; nohup uvicorn report_service:app --host 127.0.0.1 --port 8080 > report_service.log 2>&1 & echo "✅ Report Service is running (http://127.0.0.1:8080)."
-    ```
+    脚本会输出：
+    - 各阶段统计（mean / p50 / p95 / p99 / max）
+    - 近似网络开销：`client_rpc_us - server_total_us`
+    - 慢请求 TopN（按同一 trace 聚合）
+    - 可直接二次分析的 CSV（如 `/tmp/embupdate_real.csv`）
+
+    ??? tip "DLRM 同源 mock demo"
+
+        目录：`model_zoo/rs_demo`
+
+        用途：
+        - 复用 DLRM 相同数据入口：`model_zoo/torchrec_dlrm/processed_day_0_data`
+        - 复用 DLRM 相同稀疏组织：26 特征 -> KJT
+        - 复用 DLRM 相同 fused id 规则：`(table_idx << fuse_k) + id`
+        - 产出 `op_client / brpc_client / brpc_server` 三段 `embupdate_stages`
+
+        最小运行：
+
+        ```bash
+        python3 model_zoo/rs_demo/run_mock_stress.py \
+          --steps 60 \
+          --batch-size 4096 \
+          --num-embeddings 200000 \
+          --embedding-dim 128 \
+          --jsonl /tmp/rs_demo_events.jsonl \
+          --csv /tmp/rs_demo_embupdate.csv
+        ```
+
+        必看输出：
+        - JSONL：`/tmp/rs_demo_events.jsonl`
+        - CSV：`/tmp/rs_demo_embupdate.csv`
+        - 服务端日志：`/tmp/rs_demo_ps_server.log`
+
+=== "Grafana 在线看板（ClickHouse）"
+
+    运行时确保 `recstore_config.json` 中 `report_API` 指向可写入 ClickHouse 的 report 服务，然后启动训练/服务端即可自动上报，可在 Grafana 端口查看看板。
+
+    ??? info "启用 Grafana 和相关上报命令"
+
+        ```bash title="启动 ClickHouse"
+        systemctl is-active --quiet clickhouse-server || sudo systemctl start clickhouse-server; echo "✅ ClickHouse is running."
+        ```
+
+        ```bash title="启动 Grafana"
+        systemctl is-active --quiet grafana-server || sudo systemctl start grafana-server; echo "✅ Grafana is running (http://localhost:3000)."
+        ```
+
+        ```bash title="启动 Report Service（端口需要和 recstore_config.json 对齐）"
+        pkill -f "uvicorn report_service:app" 2>/dev/null; nohup uvicorn report_service:app --host 127.0.0.1 --port 8080 > report_service.log 2>&1 & echo "✅ Report Service is running (http://127.0.0.1:8080)."
+        ```
 
 ### bRPC 内置 CPU Profiler
 

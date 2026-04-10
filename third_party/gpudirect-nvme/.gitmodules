@@ -1,3 +1,0 @@
-[submodule "include/freestanding"]
-	path = include/freestanding
-	url = https://github.com/ogiroux/freestanding

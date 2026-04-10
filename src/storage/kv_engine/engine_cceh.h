@@ -10,7 +10,7 @@
 #include <string>
 
 #include "../nvm/pet_kv/shm_common.h"
-#include "../ssd/CCEH.h"
+#include "../index/ssd_cceh/CCEH.h"
 #include "base/factory.h"
 #include "base_kv.h"
 #include "../io_backend/io_backend.h"

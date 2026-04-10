@@ -250,6 +250,11 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/src)
 
 set(YCSB_SRC_DIR ${CMAKE_SOURCE_DIR}/third_party/ycsb)
 set(YCSB_BIN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ycsb-build)
+option(RECSTORE_ENABLE_HDRHISTOGRAM_PROGRAMS "Build HdrHistogram programs/tests under third_party/ycsb" OFF)
+if(NOT RECSTORE_ENABLE_HDRHISTOGRAM_PROGRAMS)
+  # Keep hdr_histogram library build, but skip third-party tests/examples registration in CTest.
+  set(HDR_HISTOGRAM_BUILD_PROGRAMS OFF CACHE BOOL "Build tests and examples" FORCE)
+endif()
 if (EXISTS "${YCSB_SRC_DIR}/CMakeLists.txt")
   add_subdirectory(${YCSB_SRC_DIR})
 endif()

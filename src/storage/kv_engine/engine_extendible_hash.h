@@ -7,8 +7,8 @@
 #include <string>
 #include <shared_mutex>
 
-#include "../dram/extendible_hash.h"
-#include "storage/hybrid/index.h"
+#include "../index/dram_cceh/extendible_hash.h"
+#include "storage/index/index.h"
 #include "storage/nvm/pet_kv/shm_common.h"
 #include "base/factory.h"
 #include "base_kv.h"
@@ -130,12 +130,35 @@ public:
     hash_table_->Put(hash_key, shmkv_data.data_value, tid);
   }
 
+  void BatchPut(base::ConstArray<uint64_t> keys,
+                std::vector<base::ConstArray<float>>* values,
+                unsigned tid) override {
+    if (values == nullptr) {
+      LOG(FATAL) << "BatchPut values is nullptr";
+    }
+    if (keys.Size() != static_cast<int>(values->size())) {
+      LOG(FATAL) << "BatchPut size mismatch, keys: " << keys.Size()
+                 << " values: " << values->size();
+    }
+
+#pragma omp parallel for num_threads(8) if (keys.Size() > 1024)
+    for (int i = 0; i < keys.Size(); ++i) {
+      const uint64_t key                  = keys[i];
+      const base::ConstArray<float>& item = (*values)[i];
+      const char* data_ptr                = (const char*)item.Data();
+      const size_t data_size              = item.Size() * sizeof(float);
+
+      if (data_ptr == nullptr || data_size == 0) {
+        Put(key, std::string_view(), tid);
+      } else {
+        Put(key, std::string_view(data_ptr, data_size), tid);
+      }
+    }
+  }
+
   void BatchGet(base::ConstArray<uint64_t> keys,
                 std::vector<base::ConstArray<float>>* values,
                 unsigned tid) override {
-#ifdef ENABLE_PERF_REPORT
-    auto start_time = std::chrono::high_resolution_clock::now();
-#endif
     values->resize(keys.Size());
 #pragma omp parallel for num_threads(8) if (keys.Size() > 1024)
     for (int i = 0; i < (int)keys.Size(); ++i) {

@@ -70,6 +70,26 @@
 
     以及其他相关错误，大部分情况都是因为没有运行 `init_env_inside_docker.sh` 中的安装部分。
 
+??? failure "/usr/bin/install: cannot stat 'doc/jemalloc.html': No such file or directory"
+
+    **make 编译时出错：**
+
+    ```text
+    /usr/bin/install: cannot stat 'doc/jemalloc.html': No such file or directory
+    make[3]: *** [Makefile:518: install_doc_html] Error 1
+    make[3]: *** Waiting for unfinished jobs....
+    /usr/bin/install: cannot stat 'doc/jemalloc.3': No such file or directory
+    make[3]: *** [Makefile:525: install_doc_man] Error 1
+    ```
+
+    在 `third_party/jemalloc` 运行：
+
+    ```bash
+    make && make install_bin install_include install_lib
+    ```
+
+    可以参考：[install: cannot stat ‘doc/jemalloc.html’: No such file or directory #231](https://github.com/jemalloc/jemalloc/issues/231)
+
 ??? failure "error: there are no arguments to ‘malloc_usable_size’ that depend on a template parameter, so a declaration of ‘malloc_usable_size’ must be available [-fpermissive]"
     **运行 `init_env_inside_docker.sh` 时出错：**
 
@@ -90,7 +110,13 @@
 ## Runtime Errors
 
 ??? failure "E20260117 01:49:19.761556 970021 engine_extendible_hash.h:88] shm malloc failed (OOM?), key: 93068 size: 512"
-    配置文件中 `cache_ps.base_kv_config.capacity` 设置过小，导致无法分配足够的共享内存，可以尝试调大该值。
+    通常是 `cache_ps.base_kv_config` 的容量预算过小导致。优先检查并调大以下字段之一：
+
+    - `ENTRY_CAPACITY`
+    - `DRAM_SIZE`
+    - `SSD_SIZE`
+
+    如果仍在使用旧配置字段，则对应为 `capacity`、`shmcapacity`、`ssdcapacity`。
 
 
 ??? failure "Fail to listen 127.0.0.1:xxxxx/xxxxx"

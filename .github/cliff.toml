@@ -66,6 +66,11 @@ Notes:
 - These packages intentionally exclude host-provided runtime libraries such as glibc and the system loader.
 - Recommended target environments are Ubuntu 20.04/22.04 or similar Linux distributions with a compatible userspace.
 - Install runtime prerequisites with `bash ci/env/init_host_prereqs.sh` before use.
+
+Docker Image:
+
+- GHCR package: https://github.com/RecStore/RecStore/pkgs/container/recstore-devel
+- Pull latest prebuilt image: `docker pull ghcr.io/recstore/recstore/recstore-devel:latest`
 """
 
 [git]
@@ -76,6 +81,7 @@ protect_breaking_commits = false
 commit_parsers = [
     { message = ".*\\[skip changelog\\].*", skip = true },
     { body = ".*\\[skip changelog\\].*", skip = true },
+    { message = "^bot", group = "<!-- 12 -->🤖 Bot" },
     { message = "^feat", group = "<!-- 0 -->✨ Features" },
     { message = "^fix", group = "<!-- 1 -->🐛 Bug Fixes" },
     { message = "^docs", group = "<!-- 4 -->📚 Documentation" },

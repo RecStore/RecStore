@@ -370,9 +370,22 @@ void KVClientOp::EmbUpdate(const std::string& table_name,
   }
 
 #  ifdef ENABLE_PERF_REPORT
-  auto start_time = std::chrono::high_resolution_clock::now();
+  auto start_time         = std::chrono::high_resolution_clock::now();
+  const uint64_t trace_id = static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          start_time.time_since_epoch())
+          .count());
+  struct TraceGuard {
+    explicit TraceGuard(uint64_t new_trace_id)
+        : previous_trace_id_(recstore::g_trace_id) {
+      recstore::g_trace_id = new_trace_id;
+    }
+    ~TraceGuard() { recstore::g_trace_id = previous_trace_id_; }
+    uint64_t previous_trace_id_;
+  } trace_guard(trace_id);
 #  endif
 
+  int64_t validate_done_us = 0;
   validate_keys(keys);
   validate_embeddings(grads, "Grads");
 
@@ -388,6 +401,14 @@ void KVClientOp::EmbUpdate(const std::string& table_name,
     throw std::invalid_argument(
         "Invalid grad dimension D: " + std::to_string(D));
   }
+
+#  ifdef ENABLE_PERF_REPORT
+  auto validate_done_time = std::chrono::high_resolution_clock::now();
+  validate_done_us =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          validate_done_time - start_time)
+          .count();
+#  endif
 
   const uint64_t* keys_data = keys.data_as<uint64_t>();
   base::ConstArray<uint64_t> keys_array(keys_data, L);
@@ -415,6 +436,25 @@ void KVClientOp::EmbUpdate(const std::string& table_name,
          op_latency_key.c_str(),
          "recstore_us",
          static_cast<double>(duration));
+
+  std::string update_stage_id =
+      "op_client::EmbUpdate|" + std::to_string(trace_id);
+  report("embupdate_stages",
+         update_stage_id.c_str(),
+         "op_total_us",
+         static_cast<double>(duration));
+  report("embupdate_stages",
+         update_stage_id.c_str(),
+         "op_validate_us",
+         static_cast<double>(validate_done_us));
+  report("embupdate_stages",
+         update_stage_id.c_str(),
+         "request_size",
+         static_cast<double>(L));
+  report("embupdate_stages",
+         update_stage_id.c_str(),
+         "embedding_dim",
+         static_cast<double>(D));
 #  endif
 }
 

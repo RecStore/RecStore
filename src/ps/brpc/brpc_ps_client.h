@@ -52,6 +52,37 @@ struct BrpcPrefetchBatch {
   std::atomic<int> completed_count_;
 };
 
+struct BrpcPrewriteBatch {
+  BrpcPrewriteBatch(int request_num) {
+    batch_size_ = request_num;
+    key_sizes_.resize(request_num);
+    requests_.resize(request_num);
+    responses_.resize(request_num);
+    controllers_.resize(request_num);
+    completed_count_ = 0;
+  }
+
+  BrpcPrewriteBatch(BrpcPrewriteBatch&& other) noexcept
+      : key_sizes_(std::move(other.key_sizes_)),
+        requests_(std::move(other.requests_)),
+        responses_(std::move(other.responses_)),
+        controllers_(std::move(other.controllers_)),
+        batch_size_(other.batch_size_),
+        completed_count_(other.completed_count_.load()) {
+    other.batch_size_ = 0;
+  }
+
+  BrpcPrewriteBatch(const BrpcPrewriteBatch&)            = delete;
+  BrpcPrewriteBatch& operator=(const BrpcPrewriteBatch&) = delete;
+
+  std::vector<int> key_sizes_;
+  std::vector<recstoreps_brpc::PutParameterRequest> requests_;
+  std::vector<recstoreps_brpc::PutParameterResponse> responses_;
+  std::vector<std::unique_ptr<brpc::Controller>> controllers_;
+  int batch_size_;
+  std::atomic<int> completed_count_;
+};
+
 class BRPCParameterClient : public recstore::BasePSClient {
 public:
   // 新的构造函数，接收 json 配置参数
@@ -137,5 +168,7 @@ protected:
 
 private:
   std::unordered_map<uint64_t, struct BrpcPrefetchBatch> prefetch_batches_;
+  std::unordered_map<uint64_t, struct BrpcPrewriteBatch> prewrite_batches_;
   uint64_t next_prefetch_id_ = 1;
+  uint64_t next_prewrite_id_ = 1;
 };

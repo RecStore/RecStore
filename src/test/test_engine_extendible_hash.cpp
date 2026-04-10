@@ -151,6 +151,44 @@ TEST_F(KVEngineExtendibleHashTest, MultiplePutAndGet) {
   }
 }
 
+// 测试BatchPut功能
+TEST_F(KVEngineExtendibleHashTest, BatchPutThenBatchGet) {
+  const int num_keys = 128;
+  std::vector<uint64_t> keys;
+  keys.reserve(num_keys);
+
+  std::vector<std::vector<float>> source_values(num_keys);
+  std::vector<base::ConstArray<float>> batch_put_values;
+  batch_put_values.reserve(num_keys);
+
+  for (int i = 0; i < num_keys; ++i) {
+    keys.push_back(i + 10000);
+    source_values[i].resize(32); // 32 * sizeof(float) == 128 bytes
+    for (int j = 0; j < 32; ++j) {
+      source_values[i][j] = static_cast<float>(i * 100 + j);
+    }
+    batch_put_values.emplace_back(
+        source_values[i].data(), static_cast<int>(source_values[i].size()));
+  }
+
+  base::ConstArray<uint64_t> keys_array(keys.data(), keys.size());
+  kv_engine_->BatchPut(keys_array, &batch_put_values, 0);
+
+  std::vector<base::ConstArray<float>> batch_get_values;
+  kv_engine_->BatchGet(keys_array, &batch_get_values, 0);
+
+  ASSERT_EQ(batch_get_values.size(), num_keys);
+  for (int i = 0; i < num_keys; ++i) {
+    ASSERT_EQ(batch_get_values[i].Size(),
+              static_cast<int>(source_values[i].size()))
+        << "Failed for key " << keys[i];
+    for (int j = 0; j < batch_get_values[i].Size(); ++j) {
+      EXPECT_FLOAT_EQ(batch_get_values[i][j], source_values[i][j])
+          << "Failed for key " << keys[i] << ", index " << j;
+    }
+  }
+}
+
 // 测试BatchGet功能
 TEST_F(KVEngineExtendibleHashTest, BatchGet) {
   const int num_keys = 1000;

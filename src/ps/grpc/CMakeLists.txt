@@ -26,9 +26,12 @@ endif()
 # gRPC PS Client Test
 add_executable(grpc_ps_client_test
     grpc_ps_client_test.cpp
+    ${PROJECT_SOURCE_DIR}/src/test/server_mgr/ps_server_launcher.cpp
 )
 target_link_libraries(grpc_ps_client_test PUBLIC
     grpc_ps_client
+    pthread
+    stdc++fs
 )
 add_test(NAME grpc_ps_client_test COMMAND $<TARGET_FILE:grpc_ps_client_test>)
 set_tests_properties(grpc_ps_client_test PROPERTIES LABELS "ps_integration")
@@ -79,12 +82,24 @@ endif()
 # Distributed gRPC PS Client Test
 add_executable(dist_grpc_ps_client_test
     dist_grpc_ps_client_test.cpp
+    ${PROJECT_SOURCE_DIR}/src/test/server_mgr/ps_server_launcher.cpp
 )
 target_link_libraries(dist_grpc_ps_client_test PUBLIC
     dist_grpc_ps_client
+    pthread
+    stdc++fs
 )
 add_test(NAME dist_grpc_ps_client_test COMMAND $<TARGET_FILE:dist_grpc_ps_client_test>)
 set_tests_properties(dist_grpc_ps_client_test PROPERTIES LABELS "ps_integration")
+
+# gRPC PS Network Benchmark
+add_executable(grpc_ps_bench
+    grpc_ps_bench.cpp
+)
+target_link_libraries(grpc_ps_bench PUBLIC
+    grpc_ps_client
+    gflags
+)
 
 # gRPC PS Client Python Binding
 add_library(grpc_ps_client_python MODULE

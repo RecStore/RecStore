@@ -100,9 +100,12 @@ if(brpc_FOUND)
     # bRPC PS Client Test
     add_executable(brpc_ps_client_test
         brpc_ps_client_test.cpp
+        ${PROJECT_SOURCE_DIR}/src/test/server_mgr/ps_server_launcher.cpp
     )
     target_link_libraries(brpc_ps_client_test PUBLIC
         brpc_ps_client
+        pthread
+        stdc++fs
     )
     add_test(NAME brpc_ps_client_test COMMAND $<TARGET_FILE:brpc_ps_client_test>)
     set_tests_properties(brpc_ps_client_test PROPERTIES LABELS "ps_integration")
@@ -168,9 +171,12 @@ if(brpc_FOUND)
     # Distributed bRPC PS Client Test
     add_executable(dist_brpc_ps_client_test
         dist_brpc_ps_client_test.cpp
+        ${PROJECT_SOURCE_DIR}/src/test/server_mgr/ps_server_launcher.cpp
     )
     target_link_libraries(dist_brpc_ps_client_test PUBLIC
         dist_brpc_ps_client
+        pthread
+        stdc++fs
     )
     add_test(NAME dist_brpc_ps_client_test COMMAND $<TARGET_FILE:dist_brpc_ps_client_test>)
     set_tests_properties(dist_brpc_ps_client_test PROPERTIES LABELS "ps_integration")

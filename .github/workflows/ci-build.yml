@@ -1,24 +1,7 @@
 name: CPU CI
 
 on:
-  push:
-    paths:
-      - 'src/**'
-      - 'model_zoo/**'
-      - 'ci/**'
-      - 'dockerfiles/**'
-      - 'third_party/**'
-      - '.github/workflows/ci-build.yml'
-      - '.github/workflows/ci-test.yml'
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'model_zoo/**'
-      - 'ci/**'
-      - 'dockerfiles/**'
-      - 'third_party/**'
-      - '.github/workflows/ci-build.yml'
-      - '.github/workflows/ci-test.yml'
+  workflow_dispatch:
 
 permissions:
   actions: read

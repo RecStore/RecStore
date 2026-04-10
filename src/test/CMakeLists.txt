@@ -1,6 +1,7 @@
 find_package(folly REQUIRED)
 
 add_subdirectory(small_tests)
+add_subdirectory(server_mgr)
 
 # add_executable(test_f14_slab
 #     test_f14_slab.cpp 
@@ -37,7 +38,7 @@ target_link_libraries(corotine PUBLIC
 
 add_executable(test_extendible_hash test_extendible_hash.cpp)
 target_link_libraries(test_extendible_hash PUBLIC
-    dram_hash 
+    extendible_hash 
     base 
     gtest 
     gtest_main 
@@ -48,7 +49,7 @@ add_test(NAME test_extendible_hash COMMAND test_extendible_hash)
 
 add_executable(test_engine_extendible_hash test_engine_extendible_hash.cpp)
 target_link_libraries(test_engine_extendible_hash PUBLIC
-    dram_hash
+    extendible_hash
     base
     base_memory
     ps_common
@@ -95,7 +96,7 @@ add_test(NAME test_io_backend COMMAND test_io_backend)
 
 add_executable(test_factory test_factory.cpp)
 target_link_libraries(test_factory PUBLIC
-    dram_hash
+    extendible_hash
     base
     base_memory
     ps_common
@@ -109,13 +110,22 @@ add_test(NAME test_factory COMMAND test_factory)
 
 add_executable(test_index test_index.cpp)
 target_link_libraries(test_index PUBLIC
-    dram_hash 
+    extendible_hash 
     base 
     gtest 
     gtest_main 
     pthread
 )
 add_test(NAME test_index COMMAND test_index)
+
+add_executable(test_storage_cache_lru test_storage_cache_lru.cpp)
+target_link_libraries(test_storage_cache_lru PUBLIC
+    gtest
+    gtest_main
+    pthread
+    storage_cache_lru
+)
+add_test(NAME test_storage_cache_lru COMMAND test_storage_cache_lru)
 
 # report 单元测试
 if(CMAKE_BUILD_TYPE MATCHES "Debug" AND USE_PERF_REPORT)
