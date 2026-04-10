@@ -12,7 +12,9 @@ DECLARE_int32(max_kv_num_per_request);
 
 AllShardsParameterClientWrapper::AllShardsParameterClientWrapper(
     const std::vector<BaseParameterClient*>& clients, int num_shards)
-    : BaseParameterClient("", 0, 0), clients_(clients), num_shards_(num_shards) {
+    : BaseParameterClient("", 0, 0),
+      clients_(clients),
+      num_shards_(num_shards) {
   CHECK_EQ(static_cast<int>(clients_.size()), num_shards_);
 }
 
@@ -22,7 +24,8 @@ int AllShardsParameterClientWrapper::PartitionKey(uint64_t key) const {
 }
 
 std::vector<AllShardsParameterClientWrapper::ShardChunk>
-AllShardsParameterClientWrapper::BuildChunks(base::ConstArray<uint64_t> keys) const {
+AllShardsParameterClientWrapper::BuildChunks(
+    base::ConstArray<uint64_t> keys) const {
   std::vector<std::vector<uint64_t>> shard_keys(num_shards_);
   std::vector<std::vector<std::size_t>> shard_positions(num_shards_);
 
@@ -43,9 +46,8 @@ AllShardsParameterClientWrapper::BuildChunks(base::ConstArray<uint64_t> keys) co
       chunk.shard = shard;
       chunk.keys.assign(
           shard_keys[shard].begin() + offset, shard_keys[shard].begin() + end);
-      chunk.positions.assign(
-          shard_positions[shard].begin() + offset,
-          shard_positions[shard].begin() + end);
+      chunk.positions.assign(shard_positions[shard].begin() + offset,
+                             shard_positions[shard].begin() + end);
       chunks.push_back(std::move(chunk));
     }
   }
@@ -93,7 +95,10 @@ int AllShardsParameterClientWrapper::GetParameter(
 }
 
 int AllShardsParameterClientWrapper::GetParameter(
-    base::ConstArray<uint64_t> keys, float* values, bool isAsync, int async_req_id) {
+    base::ConstArray<uint64_t> keys,
+    float* values,
+    bool isAsync,
+    int async_req_id) {
   BatchRequest batch;
   batch.user_buffer = values;
 
@@ -115,7 +120,7 @@ int AllShardsParameterClientWrapper::GetParameter(
   }
 
   const std::uint64_t batch_id = batch_rpc_id_acc_++;
-  batches_[batch_id] = std::move(batch);
+  batches_[batch_id]           = std::move(batch);
   if (!isAsync) {
     WaitRPCFinish(static_cast<int>(batch_id));
   }

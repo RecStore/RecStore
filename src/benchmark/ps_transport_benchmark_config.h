@@ -8,18 +8,19 @@
 #include "base/json.h"
 
 inline std::string NormalizeBenchmarkTransport(std::string transport) {
-  std::transform(transport.begin(), transport.end(), transport.begin(), [](unsigned char c) {
-    return static_cast<char>(std::toupper(c));
-  });
+  std::transform(
+      transport.begin(),
+      transport.end(),
+      transport.begin(),
+      [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
   if (transport == "RDMA" || transport == "GRPC" || transport == "BRPC") {
     return transport;
   }
   throw std::invalid_argument("Unsupported transport: " + transport);
 }
 
-inline nlohmann::json BuildRpcBenchmarkConfig(const std::string& transport,
-                                             const std::string& host,
-                                             int port) {
+inline nlohmann::json BuildRpcBenchmarkConfig(
+    const std::string& transport, const std::string& host, int port) {
   return {
       {"cache_ps", {{"ps_type", NormalizeBenchmarkTransport(transport)}}},
       {"client", {{"host", host}, {"port", port}, {"shard", 0}}},

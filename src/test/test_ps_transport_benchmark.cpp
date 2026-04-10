@@ -18,7 +18,8 @@ TEST(PSTransportBenchmarkConfigTest, BuildsRpcConfig) {
   EXPECT_EQ(config["client"]["port"], 25000);
 }
 
-TEST(PSTransportBenchmarkConfigTest, RequiresManagedReceiveBufferOnlyForSingleShardRdma) {
+TEST(PSTransportBenchmarkConfigTest,
+     RequiresManagedReceiveBufferOnlyForSingleShardRdma) {
   EXPECT_TRUE(BenchmarkRequiresManagedReceiveBuffer("rdma", 1));
   EXPECT_FALSE(BenchmarkRequiresManagedReceiveBuffer("rdma", 2));
   EXPECT_FALSE(BenchmarkRequiresManagedReceiveBuffer("grpc", 1));

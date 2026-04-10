@@ -14,9 +14,10 @@
 namespace recstore {
 
 inline std::string NormalizePSType(std::string ps_type) {
-  std::transform(ps_type.begin(), ps_type.end(), ps_type.begin(), [](unsigned char c) {
-    return static_cast<char>(std::toupper(c));
-  });
+  std::transform(
+      ps_type.begin(), ps_type.end(), ps_type.begin(), [](unsigned char c) {
+        return static_cast<char>(std::toupper(c));
+      });
   return ps_type;
 }
 
@@ -47,8 +48,8 @@ inline json ResolveFrameworkClientConfig(const json& config) {
 }
 
 inline BasePSClient* CreateFrameworkPSClient(const json& config) {
-  const std::string ps_type = ResolveFrameworkPSType(config);
-  const json client_config = ResolveFrameworkClientConfig(config);
+  const std::string ps_type  = ResolveFrameworkPSType(config);
+  const json client_config   = ResolveFrameworkClientConfig(config);
   const std::string type_key = (ps_type == "BRPC") ? "brpc" : "grpc";
 
   BasePSClient* client =

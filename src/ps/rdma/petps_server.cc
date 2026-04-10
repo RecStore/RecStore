@@ -134,8 +134,8 @@ private:
       status = petps::RpcStatus::kInvalidPayload;
     } else if (decoded.embedding_dim * sizeof(float) != FLAGS_value_size) {
       LOG(ERROR) << "RpcPsPut value size mismatch, embedding_dim="
-                 << decoded.embedding_dim << " FLAGS_value_size="
-                 << FLAGS_value_size;
+                 << decoded.embedding_dim
+                 << " FLAGS_value_size=" << FLAGS_value_size;
       status = petps::RpcStatus::kValueSizeMismatch;
     } else {
       for (std::size_t i = 0; i < decoded.keys.size(); ++i) {
@@ -148,14 +148,10 @@ private:
     }
 
     const std::int32_t code = static_cast<std::int32_t>(status);
-    auto* ack_buf = dsm_->get_rdma_buffer();
+    auto* ack_buf           = dsm_->get_rdma_buffer();
     std::memcpy(ack_buf, &code, sizeof(code));
     dsm_->write(
-        ack_buf,
-        recv->receive_gaddr,
-        sizeof(code),
-        true,
-        petps::WR_ID_PUT);
+        ack_buf, recv->receive_gaddr, sizeof(code), true, petps::WR_ID_PUT);
   }
 
   void RpcPsGet(RawMessage* recv, int thread_id) {
@@ -221,8 +217,7 @@ private:
     std::memset(buf, 0, response_bytes);
 
     for (int i = 0; i < batch_get_kv_count; i++) {
-      float* slot =
-          reinterpret_cast<float*>(buf + i * FLAGS_value_size);
+      float* slot = reinterpret_cast<float*>(buf + i * FLAGS_value_size);
       if (parameter_packs[i].dim == 0) {
         std::fill(slot, slot + embedding_dim, 0.0f);
         continue;
@@ -231,8 +226,8 @@ private:
       std::memcpy(slot, parameter_packs[i].emb_data, FLAGS_value_size);
     }
 
-    auto* status_word =
-        reinterpret_cast<std::int32_t*>(buf + batch_get_kv_count * FLAGS_value_size);
+    auto* status_word = reinterpret_cast<std::int32_t*>(
+        buf + batch_get_kv_count * FLAGS_value_size);
     *status_word = static_cast<std::int32_t>(petps::RpcStatus::kOk);
 
     epoch_manager_->UnProtect();

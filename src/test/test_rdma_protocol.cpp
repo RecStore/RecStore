@@ -8,7 +8,7 @@
 namespace petps {
 
 TEST(RdmaProtocolTest, EncodesAndDecodesFixedWidthPutPayload) {
-  std::vector<uint64_t> keys = {11, 12};
+  std::vector<uint64_t> keys             = {11, 12};
   std::vector<std::vector<float>> values = {
       {1.0f, 2.0f, 3.0f, 4.0f},
       {5.0f, 6.0f, 7.0f, 8.0f},

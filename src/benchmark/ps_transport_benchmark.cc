@@ -21,9 +21,7 @@ DECLARE_int32(value_size);
 
 namespace {
 
-std::vector<uint64_t> MakeKeys() {
-  return {1001, 1002, 1003, 1004};
-}
+std::vector<uint64_t> MakeKeys() { return {1001, 1002, 1003, 1004}; }
 
 std::vector<std::vector<float>> MakeValues(const std::vector<uint64_t>& keys) {
   const int dim = FLAGS_value_size / sizeof(float);
@@ -42,9 +40,9 @@ int main(int argc, char** argv) {
   folly::Init(&argc, &argv);
 
   const std::string transport = NormalizeBenchmarkTransport(FLAGS_transport);
-  const auto keys = MakeKeys();
-  const auto values = MakeValues(keys);
-  const auto key_array = base::ConstArray<uint64_t>(keys);
+  const auto keys             = MakeKeys();
+  const auto values           = MakeValues(keys);
+  const auto key_array        = base::ConstArray<uint64_t>(keys);
 
   if (transport == "RDMA") {
     if (FLAGS_num_shards == 1) {
@@ -63,7 +61,8 @@ int main(int argc, char** argv) {
       }
       auto end = std::chrono::steady_clock::now();
       std::cout << "transport=RDMA elapsed_us="
-                << std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+                << std::chrono::duration_cast<std::chrono::microseconds>(
+                       end - start)
                        .count()
                 << std::endl;
       return 0;
@@ -92,7 +91,8 @@ int main(int argc, char** argv) {
     }
     auto end = std::chrono::steady_clock::now();
     std::cout << "transport=RDMA elapsed_us="
-              << std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+              << std::chrono::duration_cast<std::chrono::microseconds>(
+                     end - start)
                      .count()
               << std::endl;
     return 0;
@@ -118,7 +118,8 @@ int main(int argc, char** argv) {
   }
   auto end = std::chrono::steady_clock::now();
   std::cout << "transport=" << transport << " elapsed_us="
-            << std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+            << std::chrono::duration_cast<std::chrono::microseconds>(
+                   end - start)
                    .count()
             << std::endl;
   return 0;

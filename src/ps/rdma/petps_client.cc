@@ -120,7 +120,7 @@ int PetPSClient::GetParameter(base::ConstArray<uint64_t> keys,
   std::int32_t* poll = reinterpret_cast<std::int32_t*>(
       reinterpret_cast<char*>(values) + keys.Size() * FLAGS_value_size);
   rpcId2PollMap_[rpcIDAcc_] = poll;
-  *poll = static_cast<std::int32_t>(RpcStatus::kPending);
+  *poll                     = static_cast<std::int32_t>(RpcStatus::kPending);
 
 #ifdef RPC_DEBUG
   for (auto each : keys) {
@@ -183,19 +183,17 @@ int PetPSClient::PutParameter(const std::vector<uint64_t>& keys,
   }
 
   std::string payload = EncodePutPayload(keys, values);
-  auto* ack = reinterpret_cast<std::int32_t*>(GetReceiveBuffer(sizeof(std::int32_t)));
+  auto* ack =
+      reinterpret_cast<std::int32_t*>(GetReceiveBuffer(sizeof(std::int32_t)));
   *ack = static_cast<std::int32_t>(RpcStatus::kPending);
 
   thread_local auto m = RawMessage::get_new_msg();
-  m->type = RpcType::PUT;
-  m->receive_gaddr = dsm_->gaddr(ack);
+  m->type             = RpcType::PUT;
+  m->receive_gaddr    = dsm_->gaddr(ack);
 
   rpcId2PollMap_[rpcIDAcc_] = ack;
   dsm_->rpc_call(
-      m,
-      shard_,
-      SelectServerThreadID(),
-      Slice(payload.data(), payload.size()));
+      m, shard_, SelectServerThreadID(), Slice(payload.data(), payload.size()));
 
   WaitRPCFinish(rpcIDAcc_);
   const std::int32_t status = *ack;
@@ -212,9 +210,9 @@ int PetPSClient::FakePutParameter(base::ConstArray<uint64_t> keys,
   m->receive_gaddr    = gaddr;
 
   // LOG(INFO) << "send PS Put";
-  std::int32_t* poll = reinterpret_cast<std::int32_t*>(values);
+  std::int32_t* poll        = reinterpret_cast<std::int32_t*>(values);
   rpcId2PollMap_[rpcIDAcc_] = poll;
-  *poll = static_cast<std::int32_t>(RpcStatus::kPending);
+  *poll                     = static_cast<std::int32_t>(RpcStatus::kPending);
 
 #ifdef RPC_DEBUG
   for (auto each : keys) {

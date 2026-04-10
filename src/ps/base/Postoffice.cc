@@ -113,7 +113,7 @@ void XPostoffice::ConnectMemcached() {
   auto [addr, port] = ResolveMemcachedEndpoint();
   std::cout << "use memcached in " << addr << ":" << port << std::endl;
 
-  memc_   = memcached_create(NULL);
+  memc_ = memcached_create(NULL);
   servers =
       memcached_server_list_append(servers, addr.c_str(), std::stoi(port), &rc);
   rc = memcached_server_push(memc_, servers);

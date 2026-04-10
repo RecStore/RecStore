@@ -25,14 +25,14 @@ struct DecodedPutPayload {
   std::vector<float> values;
 };
 
-inline std::size_t FixedSlotResponseBytes(std::size_t key_count,
-                                          std::size_t value_size_bytes) {
+inline std::size_t
+FixedSlotResponseBytes(std::size_t key_count, std::size_t value_size_bytes) {
   return key_count * value_size_bytes + sizeof(std::int32_t);
 }
 
-inline std::string EncodePutPayload(
-    const std::vector<std::uint64_t>& keys,
-    const std::vector<std::vector<float>>& values) {
+inline std::string
+EncodePutPayload(const std::vector<std::uint64_t>& keys,
+                 const std::vector<std::vector<float>>& values) {
   if (keys.empty()) {
     return {};
   }
@@ -48,8 +48,7 @@ inline std::string EncodePutPayload(
 
   std::string payload;
   payload.resize(
-      sizeof(PutPayloadHeader) +
-      keys.size() * sizeof(std::uint64_t) +
+      sizeof(PutPayloadHeader) + keys.size() * sizeof(std::uint64_t) +
       keys.size() * embedding_dim * sizeof(float));
 
   char* cursor = payload.data();
@@ -67,9 +66,8 @@ inline std::string EncodePutPayload(
   return payload;
 }
 
-inline bool DecodePutPayload(std::string_view payload,
-                             DecodedPutPayload* decoded,
-                             std::string* error) {
+inline bool DecodePutPayload(
+    std::string_view payload, DecodedPutPayload* decoded, std::string* error) {
   if (payload.size() < sizeof(PutPayloadHeader)) {
     if (error != nullptr) {
       *error = "payload smaller than header";
@@ -94,8 +92,7 @@ inline bool DecodePutPayload(std::string_view payload,
   }
 
   const std::size_t expected_bytes =
-      sizeof(PutPayloadHeader) +
-      header.key_count * sizeof(std::uint64_t) +
+      sizeof(PutPayloadHeader) + header.key_count * sizeof(std::uint64_t) +
       static_cast<std::size_t>(header.key_count) * header.embedding_dim *
           sizeof(float);
 
@@ -116,9 +113,7 @@ inline bool DecodePutPayload(std::string_view payload,
       decoded->keys.data(), cursor, header.key_count * sizeof(std::uint64_t));
   cursor += header.key_count * sizeof(std::uint64_t);
   std::memcpy(
-      decoded->values.data(),
-      cursor,
-      decoded->values.size() * sizeof(float));
+      decoded->values.data(), cursor, decoded->values.size() * sizeof(float));
 
   return true;
 }

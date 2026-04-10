@@ -33,16 +33,16 @@ public:
 
 private:
   struct PendingShardRpc {
-    int shard = 0;
+    int shard  = 0;
     int rpc_id = -1;
     std::vector<std::size_t> original_positions;
-    void* recv_buffer = nullptr;
+    void* recv_buffer     = nullptr;
     std::size_t key_count = 0;
   };
 
   struct BatchRequest {
     float* user_buffer = nullptr;
-    bool assembled = false;
+    bool assembled     = false;
     std::vector<PendingShardRpc> shard_rpcs;
   };
 

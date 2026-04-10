@@ -86,7 +86,8 @@ private:
 std::vector<uint64_t> SelectKeysForShard(int shard, int count, int num_shards) {
   std::vector<uint64_t> keys;
   for (uint64_t key = 1; static_cast<int>(keys.size()) < count; ++key) {
-    if (static_cast<int>(GetHash(key) % static_cast<uint64_t>(num_shards)) == shard) {
+    if (static_cast<int>(GetHash(key) % static_cast<uint64_t>(num_shards)) ==
+        shard) {
       keys.push_back(key);
     }
   }
@@ -94,7 +95,7 @@ std::vector<uint64_t> SelectKeysForShard(int shard, int count, int num_shards) {
 }
 
 TEST(AllShardsClientTest, SplitsLargeRequestsWithoutDroppingKeys) {
-  FLAGS_value_size = 16;
+  FLAGS_value_size             = 16;
   FLAGS_max_kv_num_per_request = 2;
 
   FakeShardClient shard0(0);
@@ -118,8 +119,8 @@ TEST(AllShardsClientTest, SplitsLargeRequestsWithoutDroppingKeys) {
   wrapper.InitThread();
 
   std::vector<float> output(keys.size() * 4 + 1, 0.0f);
-  int rpc_id =
-      wrapper.GetParameter(base::ConstArray<uint64_t>(keys), output.data(), false, 0);
+  int rpc_id = wrapper.GetParameter(
+      base::ConstArray<uint64_t>(keys), output.data(), false, 0);
   wrapper.WaitRPCFinish(rpc_id);
 
   EXPECT_EQ(shard0.request_sizes(), std::vector<int>({2, 2, 1}));
@@ -133,7 +134,7 @@ TEST(AllShardsClientTest, SplitsLargeRequestsWithoutDroppingKeys) {
 }
 
 TEST(AllShardsClientTest, RoutesPutByShard) {
-  FLAGS_value_size = 16;
+  FLAGS_value_size             = 16;
   FLAGS_max_kv_num_per_request = 4;
 
   FakeShardClient shard0(0);
@@ -141,8 +142,8 @@ TEST(AllShardsClientTest, RoutesPutByShard) {
   std::vector<BaseParameterClient*> clients = {&shard0, &shard1};
   AllShardsParameterClientWrapper wrapper(clients, 2);
 
-  auto shard0_keys = SelectKeysForShard(0, 2, 2);
-  auto shard1_keys = SelectKeysForShard(1, 2, 2);
+  auto shard0_keys           = SelectKeysForShard(0, 2, 2);
+  auto shard1_keys           = SelectKeysForShard(1, 2, 2);
   std::vector<uint64_t> keys = {
       shard1_keys[0],
       shard0_keys[0],

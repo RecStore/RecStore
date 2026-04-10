@@ -15,8 +15,8 @@ DECLARE_int32(value_size);
 
 namespace {
 
-std::vector<std::vector<float>> MakeValues(const std::vector<std::uint64_t>& keys,
-                                           int embedding_dim) {
+std::vector<std::vector<float>>
+MakeValues(const std::vector<std::uint64_t>& keys, int embedding_dim) {
   std::vector<std::vector<float>> values;
   values.reserve(keys.size());
   for (auto key : keys) {
@@ -53,14 +53,15 @@ petps::PetPSClient& SingleShardClient() {
 
 TEST(PetPSIntegrationTest, PutGetRoundTripSingleShard) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);
-  auto& client = SingleShardClient();
+  auto& client            = SingleShardClient();
 
   std::vector<std::uint64_t> keys = {101, 102, 103};
-  auto values = MakeValues(keys, embedding_dim);
+  auto values                     = MakeValues(keys, embedding_dim);
 
   ASSERT_EQ(client.PutParameter(keys, values), 0);
 
-  void* recv_buffer = client.GetReceiveBuffer(client.ResponseBufferBytes(keys.size()));
+  void* recv_buffer =
+      client.GetReceiveBuffer(client.ResponseBufferBytes(keys.size()));
   int rpc_id = client.GetParameter(
       base::ConstArray<std::uint64_t>(keys),
       static_cast<float*>(recv_buffer),
@@ -73,10 +74,11 @@ TEST(PetPSIntegrationTest, PutGetRoundTripSingleShard) {
 
 TEST(PetPSIntegrationTest, MissingKeysReturnZeroSlots) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);
-  auto& client = SingleShardClient();
+  auto& client            = SingleShardClient();
 
   std::vector<std::uint64_t> keys = {999001, 999002};
-  void* recv_buffer = client.GetReceiveBuffer(client.ResponseBufferBytes(keys.size()));
+  void* recv_buffer =
+      client.GetReceiveBuffer(client.ResponseBufferBytes(keys.size()));
   int rpc_id = client.GetParameter(
       base::ConstArray<std::uint64_t>(keys),
       static_cast<float*>(recv_buffer),
@@ -103,7 +105,7 @@ TEST(PetPSIntegrationTest, PutGetRoundTripMultiShard) {
   AllShardsParameterClientWrapper wrapper(clients, 2);
 
   std::vector<std::uint64_t> keys = {1, 2, 3, 4, 5, 6};
-  auto values = MakeValues(keys, embedding_dim);
+  auto values                     = MakeValues(keys, embedding_dim);
   ASSERT_EQ(wrapper.PutParameter(keys, values), 0);
 
   std::vector<float> output(keys.size() * embedding_dim + 1, 0.0f);
