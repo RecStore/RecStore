@@ -53,8 +53,8 @@
       </tr>
       <tr>
         <th scope="row">Branches:</th>
-        <td class="coverage-low">2.7%</td>
-        <td class="coverage-low">24 / 0 / 890</td>
+        <td class="coverage-low">2.8%</td>
+        <td class="coverage-low">24 / 0 / 860</td>
       </tr>
     </table>
   </div>
@@ -1670,7 +1670,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
-        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">FB_LOG_EVERY_MS</span><span class="p">(</span><span class="n">INFO</span><span class="p">,</span><span class="w"> </span><span class="mi">1000</span><span class="p">)</span></td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">RECSTORE_LOG_EVERY_MS</span><span class="p">(</span><span class="n">INFO</span><span class="p">,</span><span class="w"> </span><span class="mi">1000</span><span class="p">)</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l196" href="#l196">196</a></td>
@@ -4127,7 +4127,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
-        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">FB_LOG_EVERY_MS</span><span class="p">(</span><span class="n">INFO</span><span class="p">,</span><span class="w"> </span><span class="mi">2000</span><span class="p">)</span></td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">RECSTORE_LOG_EVERY_MS</span><span class="p">(</span><span class="n">INFO</span><span class="p">,</span><span class="w"> </span><span class="mi">2000</span><span class="p">)</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l547" href="#l547">547</a></td>
@@ -4652,7 +4652,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
-        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">FB_LOG_EVERY_MS</span><span class="p">(</span><span class="n">INFO</span><span class="p">,</span><span class="w"> </span><span class="mi">2000</span><span class="p">)</span></td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">RECSTORE_LOG_EVERY_MS</span><span class="p">(</span><span class="n">INFO</span><span class="p">,</span><span class="w"> </span><span class="mi">2000</span><span class="p">)</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l622" href="#l622">622</a></td>
@@ -4981,14 +4981,14 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">    </span><span class="c1">// 检查是否配置了多分片</span></td>
+        <td class="src "><span class="w">    </span><span class="c1">// Check whether multi-shard mode is configured</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l669" href="#l669">669</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
-        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">num_shards</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="c1">// 默认单分片</span></td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">num_shards</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="c1">// default: single shard</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l670" href="#l670">670</a></td>
@@ -5058,7 +5058,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="c1">// 多服务器启动逻辑</span></td>
+        <td class="src "><span class="w">      </span><span class="c1">// Multi-server startup</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l680" href="#l680">680</a></td>
@@ -5100,7 +5100,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
-        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="n">LOG</span><span class="p">(</span><span class="n">FATAL</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;配置了 num_shards &gt; 1 但缺少 servers 配置&quot;</span><span class="p">;</span></td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="n">LOG</span><span class="p">(</span><span class="n">FATAL</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;num_shards &gt; 1 but cache_ps.servers is missing&quot;</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l686" href="#l686">686</a></td>
@@ -5611,7 +5611,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="c1">// 等待所有服务器线程</span></td>
+        <td class="src "><span class="w">      </span><span class="c1">// Wait for all server threads</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l759" href="#l759">759</a></td>
@@ -5646,14 +5646,14 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="c1">// 单服务器启动逻辑</span></td>
+        <td class="src "><span class="w">      </span><span class="c1">// Single-server startup</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l764" href="#l764">764</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
-        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;启动单参数服务器 (bRPC)&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span></td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;Starting single parameter server (bRPC)&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l765" href="#l765">765</a></td>
@@ -6145,7 +6145,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.6">GCOVR (Version 8.6)</a>
-          at 2026-05-02 12:33:56
+          at 2026-05-03 01:39:28
         </footer>
       </div>
     </div>

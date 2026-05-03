@@ -260,7 +260,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="cm"> * @brief 分布式 bRPC 参数服务器客户端</span></td>
+        <td class="src "><span class="cm"> * @brief Distributed bRPC parameter-server client</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l23" href="#l23">23</a></td>
@@ -274,14 +274,14 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="cm"> * 支持多对多的连接模式，通过 hash 函数将 key 路由到对应的服务器。</span></td>
+        <td class="src "><span class="cm"> * Many-to-many connections; routes keys to shards via a hash function.</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l25" href="#l25">25</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="cm"> * 配置通过 JSON 文件指定服务器列表和 hash 分区方法。</span></td>
+        <td class="src "><span class="cm"> * Server list and hash method come from JSON config.</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l26" href="#l26">26</a></td>
@@ -337,7 +337,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="c1">// 实现 BasePSClient 的纯虚函数</span></td>
+        <td class="src "><span class="w">  </span><span class="c1">// BasePSClient pure virtual implementations</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l34" href="#l34">34</a></td>
@@ -505,7 +505,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="c1">// Prefetch 接口实现</span></td>
+        <td class="src "><span class="w">  </span><span class="c1">// Prefetch API (stubbed for distributed client)</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l58" href="#l58">58</a></td>
@@ -582,7 +582,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="c1">// 扩展接口</span></td>
+        <td class="src "><span class="w">  </span><span class="c1">// Extended API</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l69" href="#l69">69</a></td>
@@ -904,7 +904,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="c1">// 配置信息</span></td>
+        <td class="src "><span class="w">  </span><span class="c1">// Config</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l115" href="#l115">115</a></td>
@@ -939,7 +939,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="c1">// 服务器配置</span></td>
+        <td class="src "><span class="w">  </span><span class="c1">// Per-server entries</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l120" href="#l120">120</a></td>
@@ -995,7 +995,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="c1">// bRPC 客户端实例</span></td>
+        <td class="src "><span class="w">  </span><span class="c1">// bRPC clients (one per server entry)</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l128" href="#l128">128</a></td>
@@ -1016,7 +1016,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="c1">// 分片到客户端的映射</span></td>
+        <td class="src "><span class="w">  </span><span class="c1">// Logical shard id -&gt; index in clients_</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l131" href="#l131">131</a></td>
@@ -1037,7 +1037,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="c1">// 分区缓冲区</span></td>
+        <td class="src "><span class="w">  </span><span class="c1">// Partition buffers (reused)</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l134" href="#l134">134</a></td>
@@ -1123,7 +1123,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.6">GCOVR (Version 8.6)</a>
-          at 2026-05-02 12:33:56
+          at 2026-05-03 01:39:28
         </footer>
       </div>
     </div>
