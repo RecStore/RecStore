@@ -21,10 +21,6 @@
          <lastmod>2026-05-03</lastmod>
     </url>
     <url>
-         <loc>https://RecStore.github.io/RecStore/ycsb/</loc>
-         <lastmod>2026-05-03</lastmod>
-    </url>
-    <url>
          <loc>https://RecStore.github.io/RecStore/agent/performance_comparison_capability/</loc>
          <lastmod>2026-05-03</lastmod>
     </url>
@@ -66,6 +62,10 @@
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/dev/testing/</loc>
+         <lastmod>2026-05-03</lastmod>
+    </url>
+    <url>
+         <loc>https://RecStore.github.io/RecStore/dev/ycsb/</loc>
          <lastmod>2026-05-03</lastmod>
     </url>
     <url>

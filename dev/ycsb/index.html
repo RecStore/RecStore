@@ -12,27 +12,31 @@
         <meta name="author" content="RecStore Team">
       
       
-        <link rel="canonical" href="https://RecStore.github.io/RecStore/ycsb/">
+        <link rel="canonical" href="https://RecStore.github.io/RecStore/dev/ycsb/">
       
       
+        <link rel="prev" href="../performance/">
+      
+      
+        <link rel="next" href="../zero_config_run/">
       
       
         
       
       
-      <link rel="icon" href="../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>YCSB 运行说明 - RecStore Documentation</title>
+        <title>存储端性能 - RecStore Documentation</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -51,7 +55,7 @@
       
     
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -90,7 +94,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="页眉">
-    <a href=".." title="RecStore Documentation" class="md-header__button md-logo" aria-label="RecStore Documentation" data-md-component="logo">
+    <a href="../.." title="RecStore Documentation" class="md-header__button md-logo" aria-label="RecStore Documentation" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -110,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              YCSB 运行说明
+              存储端性能
             
           </span>
         </div>
@@ -225,7 +229,7 @@
     
     
       <li class="md-tabs__item">
-        <a href=".." class="md-tabs__link">
+        <a href="../.." class="md-tabs__link">
           
   
   
@@ -245,7 +249,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../config/" class="md-tabs__link">
+        <a href="../../config/" class="md-tabs__link">
           
   
   
@@ -265,7 +269,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../architecture/overview/" class="md-tabs__link">
+        <a href="../../architecture/overview/" class="md-tabs__link">
           
   
   
@@ -281,11 +285,22 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../dev/performance/" class="md-tabs__link">
+      
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../performance/" class="md-tabs__link">
           
   
   
@@ -293,6 +308,9 @@
 
         </a>
       </li>
+    
+  
+
     
   
 
@@ -319,7 +337,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="RecStore Documentation" class="md-nav__button md-logo" aria-label="RecStore Documentation" data-md-component="logo">
+    <a href="../.." title="RecStore Documentation" class="md-nav__button md-logo" aria-label="RecStore Documentation" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -401,7 +419,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -481,7 +499,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../quickstart/" class="md-nav__link">
+      <a href="../../quickstart/" class="md-nav__link">
         
   
   
@@ -509,7 +527,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../quickrun/" class="md-nav__link">
+      <a href="../../quickrun/" class="md-nav__link">
         
   
   
@@ -537,7 +555,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../faq/" class="md-nav__link">
+      <a href="../../faq/" class="md-nav__link">
         
   
   
@@ -632,7 +650,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../config/" class="md-nav__link">
+      <a href="../../config/" class="md-nav__link">
         
   
   
@@ -719,7 +737,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/overview/" class="md-nav__link">
+      <a href="../../architecture/overview/" class="md-nav__link">
         
   
   
@@ -799,7 +817,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../calc/" class="md-nav__link">
+      <a href="../../calc/" class="md-nav__link">
         
   
   
@@ -827,7 +845,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../calc/op_interface/" class="md-nav__link">
+      <a href="../../calc/op_interface/" class="md-nav__link">
         
   
   
@@ -855,7 +873,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../calc/kvclient/" class="md-nav__link">
+      <a href="../../calc/kvclient/" class="md-nav__link">
         
   
   
@@ -883,7 +901,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../calc/pytorch_binding/" class="md-nav__link">
+      <a href="../../calc/pytorch_binding/" class="md-nav__link">
         
   
   
@@ -911,7 +929,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../calc/embedding_modules/" class="md-nav__link">
+      <a href="../../calc/embedding_modules/" class="md-nav__link">
         
   
   
@@ -939,7 +957,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../calc/optimizer/" class="md-nav__link">
+      <a href="../../calc/optimizer/" class="md-nav__link">
         
   
   
@@ -1027,7 +1045,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../parameter_server/" class="md-nav__link">
+      <a href="../../parameter_server/" class="md-nav__link">
         
   
   
@@ -1055,7 +1073,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../parameter_server/base/" class="md-nav__link">
+      <a href="../../parameter_server/base/" class="md-nav__link">
         
   
   
@@ -1083,7 +1101,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../parameter_server/grpc/" class="md-nav__link">
+      <a href="../../parameter_server/grpc/" class="md-nav__link">
         
   
   
@@ -1111,7 +1129,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../parameter_server/brpc/" class="md-nav__link">
+      <a href="../../parameter_server/brpc/" class="md-nav__link">
         
   
   
@@ -1139,7 +1157,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../parameter_server/proto/" class="md-nav__link">
+      <a href="../../parameter_server/proto/" class="md-nav__link">
         
   
   
@@ -1167,7 +1185,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../parameter_server/rdma/" class="md-nav__link">
+      <a href="../../parameter_server/rdma/" class="md-nav__link">
         
   
   
@@ -1255,7 +1273,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../storage/" class="md-nav__link">
+      <a href="../../storage/" class="md-nav__link">
         
   
   
@@ -1283,7 +1301,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../storage/cacheps/" class="md-nav__link">
+      <a href="../../storage/cacheps/" class="md-nav__link">
         
   
   
@@ -1311,7 +1329,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../storage/basekv/" class="md-nav__link">
+      <a href="../../storage/basekv/" class="md-nav__link">
         
   
   
@@ -1339,7 +1357,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../storage/kv_engines/" class="md-nav__link">
+      <a href="../../storage/kv_engines/" class="md-nav__link">
         
   
   
@@ -1367,7 +1385,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../storage/memory/" class="md-nav__link">
+      <a href="../../storage/memory/" class="md-nav__link">
         
   
   
@@ -1407,26 +1425,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
             
   
   
@@ -1444,7 +1467,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1459,17 +1482,74 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../dev/performance/" class="md-nav__link">
+  
+    
+    
+    
+    
+      
+      
         
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_1" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_1" id="__nav_4_1_label" tabindex="">
+            
   
   
   <span class="md-ellipsis">
     
   
     性能分析
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_1_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    性能分析
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    端到端性能
   
 
     
@@ -1487,10 +1567,148 @@
                 
   
   
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    存储端性能
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    存储端性能
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        支持的对比
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        构建
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        横向对比
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        外部存储
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        结果
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
   
   
     <li class="md-nav__item">
-      <a href="../dev/zero_config_run/" class="md-nav__link">
+      <a href="../zero_config_run/" class="md-nav__link">
         
   
   
@@ -1524,17 +1742,20 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_3" >
         
           
-          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="">
             
   
   
@@ -1570,7 +1791,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../dev/feature/add_operator/" class="md-nav__link">
+      <a href="../feature/add_operator/" class="md-nav__link">
         
   
   
@@ -1598,7 +1819,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../dev/distributed/" class="md-nav__link">
+      <a href="../distributed/" class="md-nav__link">
         
   
   
@@ -1640,17 +1861,20 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
         
           
-          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="">
             
   
   
@@ -1686,7 +1910,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../dev/testing/" class="md-nav__link">
+      <a href="../testing/" class="md-nav__link">
         
   
   
@@ -1714,7 +1938,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../dev/tests/tools/" class="md-nav__link">
+      <a href="../tests/tools/" class="md-nav__link">
         
   
   
@@ -1742,7 +1966,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../dev/tests/client_test/" class="md-nav__link">
+      <a href="../tests/client_test/" class="md-nav__link">
         
   
   
@@ -1770,7 +1994,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../dev/tests/ebc_precision/" class="md-nav__link">
+      <a href="../tests/ebc_precision/" class="md-nav__link">
         
   
   
@@ -1798,7 +2022,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../dev/tests/dist_emb_test/" class="md-nav__link">
+      <a href="../tests/dist_emb_test/" class="md-nav__link">
         
   
   
@@ -1826,7 +2050,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../dev/tests/coverage/" class="md-nav__link">
+      <a href="../tests/coverage/" class="md-nav__link">
         
   
   
@@ -1892,7 +2116,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        前置条件
+        支持的对比
       
     </span>
   </a>
@@ -1900,10 +2124,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#smoke" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        快速 smoke
+        构建
       
     </span>
   </a>
@@ -1911,10 +2135,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#recstore-kv" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        RecStore KV 后端
+        横向对比
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        外部存储
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        结果
       
     </span>
   </a>
@@ -1938,7 +2184,7 @@
 
 
   
-    <a href="https://github.com/RecStore/RecStore/edit/main/docs/ycsb.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/RecStore/RecStore/edit/main/docs/dev/ycsb.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1946,43 +2192,240 @@
   
 
 
-<h1 id="ycsb">YCSB 运行说明<a class="headerlink" href="#ycsb" title="Permanent link">&para;</a></h1>
-<p>YCSB 用于给 RecStore 的 KV 后端和 YCSB 自带的基准流程做本地负载验证。当前仓库里的入口在 <code>third_party/ycsb/core/ycsbc.cc</code>，顶层 CMake 会注册两个目标：</p>
+<h1 id="ycsb">YCSB 存储对比<a class="headerlink" href="#ycsb" title="Permanent link">&para;</a></h1>
+<p>目前可以进行 RecStore 内部存储横向对比（<code>kvdb</code> 和 <code>cceh</code>）；以及 RecStore 与其他 KV 存储对比（<code>rocksdb</code>、<code>leveldb</code>、<code>lmdb</code>、<code>sqlite</code>、<code>wiredtiger</code>、...）。</p>
+<h2 id="_1">支持的对比<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>外部存储要在 CMake 配置时手动启用，并且本地要有对应开发库：</p>
 <ul>
-<li><code>ycsb_basic</code>：只使用 YCSB 自带的 <code>basic</code> DB，适合快速确认 YCSB 解析 workload、执行 load/run 和打印指标。</li>
-<li><code>ycsb</code>：链接 RecStore KV 后端，支持 <code>-db kvdb</code> 和 <code>-db cceh</code>，用于实际后端压测。</li>
+<li><code>kvdb</code>、<code>cceh</code>：RecStore 内部存储引擎，默认启用。</li>
+<li><code>basic</code>：YCSB 自带内存 DB，只用于 smoke 测试，默认启用。</li>
+<li><code>rocksdb</code>、<code>leveldb</code>、<code>lmdb</code>、<code>sqlite</code>、<code>wiredtiger</code>：需要 <code>-DBIND_XXX=ON</code>（使用大写，如 <code>-DBIND_ROCKSDB=ON</code>），并且本地要有对应开发库。</li>
 </ul>
-<h2 id="_1">前置条件<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<p>先在仓库根目录完成 CMake 配置，并确保 <code>build/</code> 已存在：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>cmake<span class="w"> </span>-S<span class="w"> </span>.<span class="w"> </span>-B<span class="w"> </span>build
+<p><code>ycsb</code> 二进制从 <code>third_party/ycsb/core/ycsbc.cc</code> 进入。DB 名称由各绑定文件里的 <code>DBFactory::RegisterDB(...)</code> 注册。</p>
+<details class="note">
+<summary>外部存储安装</summary>
+<table>
+<thead>
+<tr>
+<th>engine</th>
+<th>开发库包名</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rocksdb</code></td>
+<td><code>librocksdb-dev</code></td>
+</tr>
+<tr>
+<td><code>leveldb</code></td>
+<td><code>libleveldb-dev</code></td>
+</tr>
+<tr>
+<td><code>lmdb</code></td>
+<td><code>liblmdb-dev</code></td>
+</tr>
+<tr>
+<td><code>sqlite</code></td>
+<td><code>libsqlite3-dev</code></td>
+</tr>
+<tr>
+<td><code>wiredtiger</code></td>
+<td><code>libwiredtiger-dev</code></td>
+</tr>
+</tbody>
+</table>
+<p>Ubuntu / Debian 上可以直接用：</p>
+<div class="highlight"><table class="highlighttable"><tr><th colspan="2" class="filename"><span class="filename">通过 apt 安装全部依赖</span></th></tr><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1">1</a></span>
+<span class="normal"><a href="#__codelineno-0-2">2</a></span>
+<span class="normal"><a href="#__codelineno-0-3">3</a></span>
+<span class="normal"><a href="#__codelineno-0-4">4</a></span>
+<span class="normal"><a href="#__codelineno-0-5">5</a></span>
+<span class="normal"><a href="#__codelineno-0-6">6</a></span>
+<span class="normal"><a href="#__codelineno-0-7">7</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1"></a>sudo<span class="w"> </span>apt-get<span class="w"> </span>update
+<a id="__codelineno-0-2" name="__codelineno-0-2"></a>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3"></a><span class="hll"><span class="w">  </span>librocksdb-dev<span class="w"> </span><span class="se">\</span>
+</span><a id="__codelineno-0-4" name="__codelineno-0-4"></a><span class="hll"><span class="w">  </span>libleveldb-dev<span class="w"> </span><span class="se">\</span>
+</span><a id="__codelineno-0-5" name="__codelineno-0-5"></a><span class="hll"><span class="w">  </span>liblmdb-dev<span class="w"> </span><span class="se">\</span>
+</span><a id="__codelineno-0-6" name="__codelineno-0-6"></a><span class="hll"><span class="w">  </span>libsqlite3-dev<span class="w"> </span><span class="se">\</span>
+</span><a id="__codelineno-0-7" name="__codelineno-0-7"></a><span class="hll"><span class="w">  </span>libwiredtiger-dev
+</span></code></pre></div></td></tr></table></div>
+</details>
+<h2 id="_2">构建<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>只运行 RecStore 存储引擎：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>cmake<span class="w"> </span>-S<span class="w"> </span>.<span class="w"> </span>-B<span class="w"> </span>build
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"> </span>--target<span class="w"> </span>ycsb<span class="w"> </span>-j
 </code></pre></div>
-<h2 id="smoke">快速 smoke<a class="headerlink" href="#smoke" title="Permanent link">&para;</a></h2>
-<p>这个命令不依赖 RecStore 后端，适合先确认 YCSB 本身可构建可运行：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"> </span>--target<span class="w"> </span>ycsb_basic<span class="w"> </span>-j
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>./build/bin/ycsb_basic<span class="w"> </span>-load<span class="w"> </span>-run<span class="w"> </span>-db<span class="w"> </span>basic<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/workloads/workloada<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">recordcount</span><span class="o">=</span><span class="m">10</span><span class="w"> </span>-p<span class="w"> </span><span class="nv">operationcount</span><span class="o">=</span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">measurementtype</span><span class="o">=</span>basic<span class="w"> </span>-p<span class="w"> </span>basic.silent<span class="o">=</span><span class="nb">true</span>
+<p>对比 RocksDB / LevelDB / LMDB：</p>
+<div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-2-1">1</a></span>
+<span class="normal"><a href="#__codelineno-2-2">2</a></span>
+<span class="normal"><a href="#__codelineno-2-3">3</a></span>
+<span class="normal"><a href="#__codelineno-2-4">4</a></span>
+<span class="normal"><a href="#__codelineno-2-5">5</a></span>
+<span class="normal"><a href="#__codelineno-2-6">6</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1"></a>cmake<span class="w"> </span>-S<span class="w"> </span>.<span class="w"> </span>-B<span class="w"> </span>build<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2"></a><span class="hll"><span class="w">  </span>-DBIND_ROCKSDB<span class="o">=</span>ON<span class="w"> </span><span class="se">\</span>
+</span><a id="__codelineno-2-3" name="__codelineno-2-3"></a><span class="hll"><span class="w">  </span>-DBIND_LEVELDB<span class="o">=</span>ON<span class="w"> </span><span class="se">\</span>
+</span><a id="__codelineno-2-4" name="__codelineno-2-4"></a><span class="hll"><span class="w">  </span>-DBIND_LMDB<span class="o">=</span>ON<span class="w"> </span><span class="se">\</span>
+</span><a id="__codelineno-2-5" name="__codelineno-2-5"></a><span class="hll"><span class="w">  </span>-DBIND_SQLITE<span class="o">=</span>ON
+</span><a id="__codelineno-2-6" name="__codelineno-2-6"></a>cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"> </span>--target<span class="w"> </span>ycsb<span class="w"> </span>-j
+</code></pre></div></td></tr></table></div>
+<p>如果缺少某个库，CMake 会在 <code>find_library(... REQUIRED)</code> 处失败。先装库，或者先从 <code>--engines</code> 里去掉对应 engine。</p>
+<h2 id="_3">横向对比<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>脚本：<code>tools/benchmarks/run_ycsb_compare.py</code></p>
+<p>默认只跑 <code>kvdb</code> 和 <code>cceh</code>，workload 用 <code>workloada</code>：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--build<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span>workloadb<span class="w"> </span>workloadc<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span>--record-count<span class="w"> </span><span class="m">100000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span>--operation-count<span class="w"> </span><span class="m">100000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span>--threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">  </span>--repeat<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">  </span>--output-dir<span class="w"> </span>/tmp/recstore_ycsb_compare
 </code></pre></div>
-<h2 id="recstore-kv">RecStore KV 后端<a class="headerlink" href="#recstore-kv" title="Permanent link">&para;</a></h2>
-<p>构建 RecStore 绑定目标：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"> </span>--target<span class="w"> </span>ycsb<span class="w"> </span>-j
+<p>每个 engine、workload、repeat 都有独立数据目录。默认会删除同名旧目录，避免复用上次 load 的数据。需要保留数据时加 <code>--keep-data</code>。</p>
+<h2 id="_4">外部存储<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>配好环境后执行：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span>rocksdb<span class="w"> </span>leveldb<span class="w"> </span>lmdb<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span>workloadb<span class="w"> </span>workloadc<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span>--record-count<span class="w"> </span><span class="m">100000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span>--operation-count<span class="w"> </span><span class="m">100000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span>--threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span>--repeat<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">  </span>--output-dir<span class="w"> </span>/tmp/ycsb_storage_compare
 </code></pre></div>
-<p>运行 HybridKV 绑定：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>./build/bin/ycsb<span class="w"> </span>-load<span class="w"> </span>-run<span class="w"> </span>-db<span class="w"> </span>kvdb<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/workloads/workloada<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/db/kv_db.properties<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">recordcount</span><span class="o">=</span><span class="m">1000</span><span class="w"> </span>-p<span class="w"> </span><span class="nv">operationcount</span><span class="o">=</span><span class="m">1000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">measurementtype</span><span class="o">=</span>basic
+<p>脚本会自动给这些绑定传入独立路径：</p>
+<ul>
+<li><code>kvdb</code>: <code>hybridkv.path=&lt;run data dir&gt;</code></li>
+<li><code>cceh</code>: <code>cceh.path=&lt;run data dir&gt;</code></li>
+<li><code>rocksdb</code>: <code>rocksdb.dbname=&lt;run data dir&gt;</code></li>
+<li><code>leveldb</code>: <code>leveldb.dbname=&lt;run data dir&gt;</code></li>
+<li><code>lmdb</code>: <code>lmdb.dbpath=&lt;run data dir&gt;</code></li>
+<li><code>sqlite</code>: <code>sqlite.dbpath=&lt;run data dir&gt;</code></li>
+<li><code>wiredtiger</code>: <code>wiredtiger.home=&lt;run data dir&gt;</code></li>
+</ul>
+<details class="example">
+<summary>调参</summary>
+<p>全局 YCSB 参数用 <code>--extra-prop</code>：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>--extra-prop<span class="w"> </span><span class="nv">fieldcount</span><span class="o">=</span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span>--extra-prop<span class="w"> </span><span class="nv">fieldlength</span><span class="o">=</span><span class="m">128</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span>--extra-prop<span class="w"> </span><span class="nv">requestdistribution</span><span class="o">=</span>zipfian
 </code></pre></div>
-<p>运行 CCEH 绑定：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>./build/bin/ycsb<span class="w"> </span>-load<span class="w"> </span>-run<span class="w"> </span>-db<span class="w"> </span>cceh<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/workloads/workloada<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/db/cceh.properties<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">recordcount</span><span class="o">=</span><span class="m">1000</span><span class="w"> </span>-p<span class="w"> </span><span class="nv">operationcount</span><span class="o">=</span><span class="m">1000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">measurementtype</span><span class="o">=</span>basic
+<p>只给某个 engine 的参数用 <code>--engine-prop</code>：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--engine-prop<span class="w"> </span>kvdb:hybridkv.synthetic_bytes<span class="o">=</span><span class="m">1024</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span>--engine-prop<span class="w"> </span>kvdb:hybridkv.read_return<span class="o">=</span>none<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span>--engine-prop<span class="w"> </span>cceh:cceh.value_size<span class="o">=</span><span class="m">1024</span>
 </code></pre></div>
-<p><code>ycsb</code> 目标依赖当前仓库的 RecStore 存储目标。如果存储目标自身编译失败，需要先修复对应范围内的编译错误，再运行后端压测。</p>
+<p><code>kvdb</code> 默认用 <code>hybridkv.mode=perf</code> 和 <code>hybridkv.read_return=none</code>，适合先看存储路径吞吐。如果要检查字段反序列化成本，可以改成：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>--engine-prop<span class="w"> </span>kvdb:hybridkv.mode<span class="o">=</span>compat<span class="w"> </span>--engine-prop<span class="w"> </span>kvdb:hybridkv.read_return<span class="o">=</span>parse
+</code></pre></div>
+</details>
+<details class="example">
+<summary>单 engine 运行</summary>
+<p>脚本最终也是调用 <code>./build/bin/ycsb</code>。需要手工调试时可以直接跑：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>./build/bin/ycsb<span class="w"> </span>-load<span class="w"> </span>-run<span class="w"> </span>-db<span class="w"> </span>kvdb<span class="w"> </span>-threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/workloads/workloada<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/db/kv_db.properties<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span>-p<span class="w"> </span>hybridkv.path<span class="o">=</span>/tmp/ycsb-kvdb<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">recordcount</span><span class="o">=</span><span class="m">10000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">operationcount</span><span class="o">=</span><span class="m">10000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">measurementtype</span><span class="o">=</span>basic
+</code></pre></div>
+<p><code>cceh</code>：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>./build/bin/ycsb<span class="w"> </span>-load<span class="w"> </span>-run<span class="w"> </span>-db<span class="w"> </span>cceh<span class="w"> </span>-threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/workloads/workloada<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/db/cceh.properties<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span>-p<span class="w"> </span>cceh.path<span class="o">=</span>/tmp/ycsb-cceh<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">recordcount</span><span class="o">=</span><span class="m">10000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">operationcount</span><span class="o">=</span><span class="m">10000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">measurementtype</span><span class="o">=</span>basic
+</code></pre></div>
+</details>
+<h2 id="_5">结果<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p>脚本会输出一个汇总 <code>summary.csv</code>：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nv">OUT</span><span class="o">=</span>/tmp/recstore_ycsb_compare
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>column<span class="w"> </span>-s,<span class="w"> </span>-t<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$OUT</span><span class="s2">/summary.csv&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>less<span class="w"> </span>-S
+</code></pre></div>
+<details class="example">
+<summary>输出示例</summary>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>workload,engine,db,repeat,record_count,operation_count,threads,phase,exit_code,load_runtime_sec,load_operations,load_throughput_ops_sec,run_runtime_sec,run_operations,run_throughput_ops_sec,data_path,log_path,error_tail
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>workloada,rocksdb,rocksdb,0,100000,100000,16,load-run,0,1.41976,100000,70434.5,0.311262,100000,321273.0,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_rocksdb_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_rocksdb_r0.log,
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>workloada,leveldb,leveldb,0,100000,100000,16,load-run,0,0.752207,100000,132942.0,0.567562,100000,176192.0,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_leveldb_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_leveldb_r0.log,
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>workloada,lmdb,lmdb,0,100000,100000,16,load-run,0,2.40212,100000,41629.9,1.44824,100000,69049.2,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_lmdb_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_lmdb_r0.log,
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>workloada,sqlite,sqlite,0,100000,100000,16,load-run,0,7.40299,100000,13508.1,2.63494,100000,37951.6,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_sqlite_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_sqlite_r0.log,
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>workloada,wiredtiger,wiredtiger,0,100000,100000,16,load-run,0,1.72329,100000,58028.4,0.580689,100000,172209.0,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_wiredtiger_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_wiredtiger_r0.log,
+</code></pre></div>
+</details>
+<p><code>summary.csv</code> 里的主要字段：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>workload</code></td>
+<td>使用的 workload 文件名，例如 <code>workloada</code>。</td>
+</tr>
+<tr>
+<td><code>engine</code></td>
+<td>脚本里的 engine 名称，例如 <code>kvdb</code>、<code>cceh</code>、<code>rocksdb</code>。</td>
+</tr>
+<tr>
+<td><code>repeat</code></td>
+<td>第几次重复运行，从 0 开始。</td>
+</tr>
+<tr>
+<td><code>record_count</code></td>
+<td>load 阶段写入的记录数。</td>
+</tr>
+<tr>
+<td><code>operation_count</code></td>
+<td>run 阶段执行的操作数。</td>
+</tr>
+<tr>
+<td><code>threads</code></td>
+<td>YCSB 客户端线程数。</td>
+</tr>
+<tr>
+<td><code>load_runtime_sec</code></td>
+<td>load 阶段耗时，单位秒。</td>
+</tr>
+<tr>
+<td><code>load_throughput_ops_sec</code></td>
+<td>load 阶段吞吐，单位 ops/s。</td>
+</tr>
+<tr>
+<td><code>run_runtime_sec</code></td>
+<td>run 阶段耗时，单位秒。</td>
+</tr>
+<tr>
+<td><code>run_throughput_ops_sec</code></td>
+<td>run 阶段吞吐，单位 ops/s。</td>
+</tr>
+<tr>
+<td><code>exit_code</code></td>
+<td>YCSB 进程退出码，0 表示命令正常结束。</td>
+</tr>
+<tr>
+<td><code>data_path</code></td>
+<td>本次运行使用的数据目录。</td>
+</tr>
+<tr>
+<td><code>log_path</code></td>
+<td>本次运行的完整 stdout/stderr 日志。</td>
+</tr>
+</tbody>
+</table>
+<p>如果某个 engine 失败，<code>exit_code</code> 非 0，完整 stdout/stderr 在对应 <code>log_path</code>。</p>
 
 
 
@@ -2054,10 +2497,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.tracking", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.tracking", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>
