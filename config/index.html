@@ -770,10 +770,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#hybrid" class="md-nav__link">
+  <a href="#kv" class="md-nav__link">
     <span class="md-ellipsis">
       
-        通用必填字段（非 HYBRID 模式）
+        推荐本地 KV 配置字段
       
     </span>
   </a>
@@ -781,10 +781,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#hybrid_1" class="md-nav__link">
+  <a href="#kv_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        HYBRID 模式必填字段
+        兼容旧版本地 KV 配置字段
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kv-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        外部 KV engine 配置字段
       
     </span>
   </a>
@@ -2290,10 +2301,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#hybrid" class="md-nav__link">
+  <a href="#kv" class="md-nav__link">
     <span class="md-ellipsis">
       
-        通用必填字段（非 HYBRID 模式）
+        推荐本地 KV 配置字段
       
     </span>
   </a>
@@ -2301,10 +2312,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#hybrid_1" class="md-nav__link">
+  <a href="#kv_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        HYBRID 模式必填字段
+        兼容旧版本地 KV 配置字段
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kv-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        外部 KV engine 配置字段
       
     </span>
   </a>
@@ -2447,9 +2469,10 @@
 
 <h1 id="recstore">RecStore 配置文档<a class="headerlink" href="#recstore" title="Permanent link">&para;</a></h1>
 <h2 id="_1">配置文件结构<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<p>RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含以下顶层配置块：<code>cache_ps</code>、<code>distributed_client</code>、<code>client</code>、<code>report_API</code>，以及按需启用的 <code>hugectr</code>、<code>hierkv</code>。</p>
+<p>RecStore 默认从仓库根目录的 <code>recstore_config.json</code> 读取配置。常用顶层字段有 <code>cache_ps</code>、<code>distributed_client</code>、<code>client</code>、<code>report_API</code>；HugeCTR 路径还会读取 <code>hugectr</code>，当 <code>hugectr.backend = "hierkv"</code> 时再读取 <code>hierkv</code>。</p>
+<p>配置文件可以带 <code>$schema</code>，当前默认文件指向 <code>./ci/schema/recstore_config.schema.json</code>，方便编辑器做基础校验。运行时仍以 C++/Python 代码里的检查为准。</p>
 <h2 id="1-cache_ps">1. cache_ps 配置<a class="headerlink" href="#1-cache_ps" title="Permanent link">&para;</a></h2>
-<p><code>cache_ps</code> 配置用于参数服务器（Parameter Server）端，定义服务器的运行参数和底层存储引擎。</p>
+<p><code>cache_ps</code> 是参数服务器端的配置，包含 RPC 类型、分片监听地址，以及每个分片背后的 KV 存储配置。</p>
 <h3 id="11">1.1 服务器基础配置<a class="headerlink" href="#11" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2489,11 +2512,17 @@
 <td><code>servers</code></td>
 <td>array</td>
 <td>是</td>
-<td>服务器节点配置数组</td>
+<td>服务器节点列表</td>
 </tr>
 </tbody>
 </table>
-<p>作用位置：通信协议选择见 <a href="../src/framework/op.cc">src/framework/op.cc</a>、<a href="../src/grpc_ps/grpc_ps_server.cpp">src/grpc_ps/grpc_ps_server.cpp</a>。同时也可通过统一入口可执行程序 <a href="../src/grpc_ps/ps_server.cpp">src/grpc_ps/ps_server.cpp</a> 按 <code>ps_type</code> 自动选择 GRPC 或 bRPC；批量限制与线程数在 <a href="../src/grpc_ps/grpc_ps_client.h">src/grpc_ps/grpc_ps_client.h</a> 及 <a href="../src/storage/kv_engine/base_kv.h">src/storage/kv_engine/base_kv.h</a> 中生效；分片与 servers 列表用于分布式路由。</p>
+<p>相关代码：</p>
+<ul>
+<li><a href="../src/framework/op.cc">src/framework/op.cc</a>、<a href="../src/ps/grpc/grpc_ps_server.cpp">src/ps/grpc/grpc_ps_server.cpp</a> 和 <a href="../src/ps/brpc/brpc_ps_server.cpp">src/ps/brpc/brpc_ps_server.cpp</a> 会按 <code>ps_type</code> 走不同 RPC 路径</li>
+<li><a href="../src/ps/ps_server.cpp">src/ps/ps_server.cpp</a> 是统一的 <code>ps_server</code> 入口</li>
+<li><a href="../src/ps/grpc/grpc_ps_client.h">src/ps/grpc/grpc_ps_client.h</a> 和 <a href="../src/storage/kv_engine/base_kv.h">src/storage/kv_engine/base_kv.h</a> 使用批量大小等限制</li>
+<li>多分片时，<code>servers</code> 里的 <code>shard</code> 字段参与路由，不要把它当成数组下标</li>
+</ul>
 <h3 id="12-servers">1.2 servers 数组配置<a class="headerlink" href="#12-servers" title="Permanent link">&para;</a></h3>
 <p>每个服务器节点包含以下字段：</p>
 <table>
@@ -2528,11 +2557,11 @@
 </table>
 <details class="tip" open="open">
 <summary>多机环境</summary>
-<p>默认配置中 <code>host</code> 为 <code>127.0.0.1</code>，仅允许本地访问。在多机场景下，必须修改为 <code>0.0.0.0</code> 或本机对外的局域网 IP (LAN IP)，以允许远程客户端连接。</p>
+<p>默认 <code>host</code> 是 <code>127.0.0.1</code>，只能本机连接。多机运行时，把它改成 <code>0.0.0.0</code> 或本机对外的局域网 IP；客户端侧也要使用能从训练节点访问到的地址。</p>
 </details>
 <h3 id="13-base_kv_config">1.3 base_kv_config 配置<a class="headerlink" href="#13-base_kv_config" title="Permanent link">&para;</a></h3>
-<p><code>base_kv_config</code> 定义底层键值存储引擎的配置，由 <a href="../src/storage/kv_engine/engine_selector.h">src/storage/kv_engine/engine_selector.h</a> 的 <code>ResolveEngine</code> 函数根据 <code>index_type</code> 和 <code>value_type</code> 自动推导引擎类型。</p>
-<h4 id="hybrid">通用必填字段（非 HYBRID 模式）<a class="headerlink" href="#hybrid" title="Permanent link">&para;</a></h4>
+<p><code>base_kv_config</code> 交给 <a href="../src/storage/kv_engine/engine_selector.h">src/storage/kv_engine/engine_selector.h</a> 里的 <code>ResolveEngine</code> 解析。新配置优先使用嵌套的 <code>index</code> / <code>value</code> 写法；需要接入 FasterKV 或 HPS 时，再显式写 <code>engine_type</code>。</p>
+<h4 id="kv">推荐本地 KV 配置字段<a class="headerlink" href="#kv" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
 <tr>
@@ -2550,33 +2579,39 @@
 <td>存储路径，建议每个实例使用独立目录</td>
 </tr>
 <tr>
-<td><code>index_type</code></td>
-<td>string</td>
-<td>是</td>
-<td>索引存储类型：<code>"DRAM"</code> 或 <code>"SSD"</code></td>
-</tr>
-<tr>
-<td><code>value_type</code></td>
-<td>string</td>
-<td>是</td>
-<td>值存储类型：<code>"DRAM"</code>、<code>"SSD"</code> 或 <code>"HYBRID"</code></td>
-</tr>
-<tr>
 <td><code>capacity</code></td>
 <td>integer</td>
 <td>是</td>
 <td>预估存储条目数</td>
 </tr>
 <tr>
-<td><code>value_size</code></td>
-<td>integer</td>
+<td><code>index.type</code></td>
+<td>string</td>
 <td>是</td>
+<td><code>DRAM_EXTENDIBLE_HASH</code>、<code>DRAM_UNORDERED_MAP</code>、<code>DRAM_PET_HASH</code>、<code>SSD</code> 或 <code>SSD_EXTENDIBLE_HASH</code></td>
+</tr>
+<tr>
+<td><code>value.type</code></td>
+<td>string</td>
+<td>是</td>
+<td><code>DRAM_VALUE_STORE</code>、<code>SSD_VALUE_STORE</code> 或 <code>TIERED_VALUE_STORE</code></td>
+</tr>
+<tr>
+<td><code>value.default_value_size_hint</code></td>
+<td>integer</td>
+<td>建议</td>
 <td>单条值的字节数</td>
 </tr>
 </tbody>
 </table>
-<p>作用位置：字段最终进入 <code>BaseKVConfig.json_config_</code>，在 <a href="../src/storage/kv_engine/engine_selector.h">src/storage/kv_engine/engine_selector.h</a> 中推导引擎类型，并在 <a href="../src/storage/kv_engine/base_kv.h">src/storage/kv_engine/base_kv.h</a> 及对应引擎实现中用于容量预分配与值大小约束。</p>
-<h4 id="hybrid_1">HYBRID 模式必填字段<a class="headerlink" href="#hybrid_1" title="Permanent link">&para;</a></h4>
+<p>本地 value store 的 allocator 要和类型匹配：</p>
+<ul>
+<li><code>DRAM_VALUE_STORE</code> 需要 <code>value.dram_allocator</code></li>
+<li><code>SSD_VALUE_STORE</code> 需要 <code>value.ssd_allocator</code></li>
+<li><code>TIERED_VALUE_STORE</code> 同时需要 <code>value.dram_allocator</code> 和 <code>value.ssd_allocator</code></li>
+</ul>
+<h4 id="kv_1">兼容旧版本地 KV 配置字段<a class="headerlink" href="#kv_1" title="Permanent link">&para;</a></h4>
+<p>旧配置里的 <code>index_type</code> / <code>value_type</code> 还在兼容，主要服务已有 DRAM+SSD 配置、本地 CI 和历史实验。<code>ResolveEngine</code> 会先把它们归一到当前的 <code>index</code> / <code>value</code> 结构，再创建本地 <code>KVEngine</code>。如果配置里显式写了外部 <code>engine_type</code>，这条兼容路径不会抢走外部 engine。</p>
 <table>
 <thead>
 <tr>
@@ -2588,23 +2623,110 @@
 </thead>
 <tbody>
 <tr>
+<td><code>path</code></td>
+<td>string</td>
+<td>是</td>
+<td>存储路径</td>
+</tr>
+<tr>
+<td><code>index_type</code></td>
+<td>string</td>
+<td>是</td>
+<td><code>DRAM</code> 或 <code>SSD</code></td>
+</tr>
+<tr>
+<td><code>value_type</code></td>
+<td>string</td>
+<td>是</td>
+<td><code>DRAM</code>、<code>SSD</code> 或 <code>HYBRID</code></td>
+</tr>
+<tr>
+<td><code>capacity</code></td>
+<td>integer</td>
+<td>DRAM/SSD 需要</td>
+<td>预估存储条目数</td>
+</tr>
+<tr>
+<td><code>value_size</code></td>
+<td>integer</td>
+<td>DRAM/SSD 需要</td>
+<td>固定 value 字节数</td>
+</tr>
+<tr>
 <td><code>shmcapacity</code></td>
 <td>integer</td>
-<td>是</td>
-<td>DRAM/共享内存侧的字节数容量</td>
+<td>HYBRID 需要</td>
+<td>DRAM 层字节数</td>
 </tr>
 <tr>
 <td><code>ssdcapacity</code></td>
 <td>integer</td>
-<td>是</td>
-<td>SSD 侧的字节数容量</td>
+<td>HYBRID 需要</td>
+<td>SSD 层字节数</td>
+</tr>
+<tr>
+<td><code>value_memory_management</code></td>
+<td>string</td>
+<td>否</td>
+<td><code>PersistLoopShmMalloc</code> 或 <code>R2ShmMalloc</code></td>
 </tr>
 </tbody>
 </table>
-<details class="note" open="open">
-<summary>注意</summary>
-<p>HYBRID 模式不需要 <code>capacity</code> 和 <code>value_size</code>。</p>
-</details>
+<h4 id="kv-engine">外部 KV engine 配置字段<a class="headerlink" href="#kv-engine" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+<th>必填</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>engine_type</code></td>
+<td>string</td>
+<td>是</td>
+<td><code>KVEngineFasterKV</code>、<code>KVEngineHPSHashMap</code> 或 <code>KVEngineHPSRocksDB</code></td>
+</tr>
+<tr>
+<td><code>path</code></td>
+<td>string</td>
+<td>是</td>
+<td>存储路径或工作目录</td>
+</tr>
+<tr>
+<td><code>capacity</code></td>
+<td>integer</td>
+<td>是</td>
+<td>预估存储条目数</td>
+</tr>
+<tr>
+<td><code>value_size</code></td>
+<td>integer</td>
+<td>是</td>
+<td>固定 value 字节数；也可用 <code>value.default_value_size_hint</code></td>
+</tr>
+<tr>
+<td><code>max_batch_size</code></td>
+<td>integer</td>
+<td>否</td>
+<td>HPS/FasterKV 批处理上限</td>
+</tr>
+<tr>
+<td><code>table_name</code></td>
+<td>string</td>
+<td>否</td>
+<td>HPS table name，默认 <code>default</code></td>
+</tr>
+<tr>
+<td><code>rocksdb_path</code></td>
+<td>string</td>
+<td>否</td>
+<td>HPS RocksDB 数据目录，默认 <code>${path}/hps_rocksdb</code></td>
+</tr>
+</tbody>
+</table>
 <h4 id="_2">可选字段<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
@@ -2624,18 +2746,12 @@
 </tr>
 </tbody>
 </table>
-<p>作用位置：内存管理器选择在 <a href="../src/storage/hybrid/value.h">src/storage/hybrid/value.h</a> 生效，决定底层分配策略。</p>
+<p>内存管理器选择在 <a href="../src/storage/hybrid/value.h">src/storage/hybrid/value.h</a> 生效。做本地 benchmark bring-up 时要留意：当前 <code>rs_demo</code> 路径下，<code>R2ShmMalloc</code> 可能触发 <code>ps_server</code> 不稳定；只想先拿到可运行 baseline 时，可以临时使用 <code>PersistLoopShmMalloc</code>，但报告里要写清楚。</p>
 <h4 id="_3">引擎类型自动推导规则<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h4>
-<p><code>base::ResolveEngine</code> 根据 <code>index_type</code> 和 <code>value_type</code> 组合自动推导引擎类型：</p>
-<ul>
-<li><code>value_type = "HYBRID"</code> → <code>KVEngineHybrid</code></li>
-<li><code>value_type = "DRAM"</code> 或 <code>"SSD"</code>：</li>
-<li><code>index_type = "DRAM"</code> → <code>KVEngineExtendibleHash</code></li>
-<li><code>index_type = "SSD"</code> → <code>KVEngineCCEH</code></li>
-</ul>
+<p><code>base::ResolveEngine</code> 默认走本地 <code>KVEngine</code>，再根据 <code>index.type</code> 和 <code>value.type</code> 选择具体 index/value store。写了 <code>engine_type</code> 时，会按对应的 <code>BaseKV</code> factory key 创建外部 engine。旧的 <code>index_type</code> / <code>value_type</code> 不是废弃字段，仍用于兼容历史 DRAM+SSD 配置；新文件建议写嵌套结构。</p>
 <p>引擎推导实现位置：<a href="../src/storage/kv_engine/engine_selector.h">src/storage/kv_engine/engine_selector.h</a></p>
 <h2 id="2-distributed_client">2. distributed_client 配置<a class="headerlink" href="#2-distributed_client" title="Permanent link">&para;</a></h2>
-<p><code>distributed_client</code> 配置用于分布式客户端，实现多分片参数服务器的访问。</p>
+<p><code>distributed_client</code> 是分布式客户端的路由配置。多分片读写时，客户端按这里的 <code>hash_method</code> 把 key 分到 shard，再按 <code>servers</code> 里的显式 <code>shard</code> id 找到目标节点。</p>
 <table>
 <thead>
 <tr>
@@ -2672,9 +2788,14 @@
 </tr>
 </tbody>
 </table>
-<p>作用位置：分片数与哈希方法在 <a href="../src/grpc_ps/dist_brpc_ps_client.cpp">src/grpc_ps/dist_brpc_ps_client.cpp</a> 与 <a href="../src/grpc_ps/dist_grpc_ps_client.cpp">src/grpc_ps/dist_grpc_ps_client.cpp</a> 的 <code>GetShardId</code>、<code>PartitionKeys</code> 中决定路由；<code>max_keys_per_request</code> 限制单分片请求大小；<code>servers</code> 列表在 <code>InitializeClients</code> 中生成各分片客户端。</p>
+<p>相关代码在 <a href="../src/ps/brpc/dist_brpc_ps_client.cpp">src/ps/brpc/dist_brpc_ps_client.cpp</a> 和 <a href="../src/ps/grpc/dist_grpc_ps_client.cpp">src/ps/grpc/dist_grpc_ps_client.cpp</a>。<code>GetShardId</code>、<code>PartitionKeys</code> 决定 key 到 shard 的映射，<code>InitializeClients</code> 根据 <code>servers</code> 建立每个 shard 的客户端。</p>
+<p>注意两点：</p>
+<ul>
+<li>分布式客户端以 <code>distributed_client.servers</code> 为准，不要默认复用 <code>cache_ps.servers</code></li>
+<li><code>shard</code> 是配置里的显式 id，不等于 <code>servers</code> 数组排序后的下标</li>
+</ul>
 <h2 id="3-client">3. client 配置<a class="headerlink" href="#3-client" title="Permanent link">&para;</a></h2>
-<p><code>client</code> 配置用于单节点客户端，直接连接单个参数服务器。</p>
+<p><code>client</code> 是单节点客户端配置，用来直接连一个参数服务器实例。</p>
 <table>
 <thead>
 <tr>
@@ -2705,13 +2826,13 @@
 </tr>
 </tbody>
 </table>
-<p>作用位置：单节点客户端在 <a href="../src/grpc_ps/grpc_ps_client.cpp">src/grpc_ps/grpc_ps_client.cpp</a> 读取以上字段创建 gRPC 通道并标识分片，在 <a href="../src/grpc_ps/grpc_ps_client.h">src/grpc_ps/grpc_ps_client.h</a> 中保存元数据。</p>
+<p>单节点客户端会在 <a href="../src/ps/grpc/grpc_ps_client.cpp">src/ps/grpc/grpc_ps_client.cpp</a> 读取这些字段，创建 gRPC 通道，并把分片元数据保存在 <a href="../src/ps/grpc/grpc_ps_client.h">src/ps/grpc/grpc_ps_client.h</a>。</p>
 <details class="tip" open="open">
 <summary>动态覆盖</summary>
-<p>在实际运行时（尤其是在多机训练场景下），可以通过 KVClient 动态覆盖配置文件的 <code>host</code> 与 <code>port</code> 设置 <code>client.set_ps_config(host, port)</code>，这允许在不修改 <code>recstore_config.json</code> 的情况下灵活调整连接目标。你可以在 <a href="../calc/kvclient/">KVClient Python 客户端</a> 中找到详细信息。</p>
+<p>多机训练时，Python 侧可以通过 <code>client.set_ps_config(host, port)</code> 覆盖配置文件里的 <code>host</code> 和 <code>port</code>。这样不用为每个训练节点改一份 <code>recstore_config.json</code>。接口说明见 <a href="../calc/kvclient/">KVClient Python 客户端</a>。</p>
 </details>
 <h2 id="4-report_api">4. report_API 配置<a class="headerlink" href="#4-report_api" title="Permanent link">&para;</a></h2>
-<p><code>report_API</code> 是顶层配置项，用于指定性能 report 的 HTTP 上报入口。</p>
+<p><code>report_API</code> 配置性能事件的 HTTP 上报地址。</p>
 <table>
 <thead>
 <tr>
@@ -2732,9 +2853,9 @@
 </tr>
 </tbody>
 </table>
-<p>作用位置：<code>report_API</code> 由 <a href="../src/base/report/report_client.cpp">src/base/report/report_client.cpp</a> 读取；当该字段缺失时会回退到默认地址 <code>http://127.0.0.1:8081/report</code>。</p>
+<p><a href="../src/base/report/report_client.cpp">src/base/report/report_client.cpp</a> 读取这个字段。缺失时默认使用 <code>http://127.0.0.1:8081/report</code>。</p>
 <h2 id="5-hugectr">5. hugectr 配置<a class="headerlink" href="#5-hugectr" title="Permanent link">&para;</a></h2>
-<p><code>hugectr</code> 顶层配置用于 HugeCTR 入口的运行时后端选择。它不会修改 <code>CommonOp</code> 语义，而是只影响 <a href="../src/framework/hugectr/op_hugectr.cc">src/framework/hugectr/op_hugectr.cc</a> 内部的 backend 分发。</p>
+<p><code>hugectr</code> 只影响 HugeCTR 入口的运行时 backend 选择，不改变 <code>CommonOp</code> 的语义。分发逻辑在 <a href="../src/framework/hugectr/op_hugectr.cc">src/framework/hugectr/op_hugectr.cc</a>。</p>
 <table>
 <thead>
 <tr>
@@ -2755,13 +2876,13 @@
 </tr>
 </tbody>
 </table>
-<p>当前行为：</p>
+<p>当前两个取值：</p>
 <ul>
-<li><code>recstore</code>：沿用现有 host staging + RecStore OP 路径</li>
+<li><code>recstore</code>：使用现有 host staging + RecStore OP 路径</li>
 <li><code>hierkv</code>：切到 HugeCTR 专用 HierKV backend 适配层</li>
 </ul>
 <h2 id="6-hierkv">6. hierkv 配置<a class="headerlink" href="#6-hierkv" title="Permanent link">&para;</a></h2>
-<p><code>hierkv</code> 顶层配置仅在 <code>hugectr.backend = "hierkv"</code> 时使用，用于初始化 HugeCTR 专用 HierarchicalKV backend。</p>
+<p><code>hierkv</code> 只在 <code>hugectr.backend = "hierkv"</code> 时读取，用来初始化 HugeCTR 专用的 HierarchicalKV backend。</p>
 <table>
 <thead>
 <tr>
@@ -2806,8 +2927,8 @@
 </table>
 <p>注意：</p>
 <ul>
-<li>这组配置当前只进入 HugeCTR 侧适配层，不会回流到 <code>CommonOp</code></li>
-<li>如果选择 <code>hierkv</code> 但缺少上述必填字段，HugeCTR 入口会直接抛出配置错误</li>
+<li>这组字段只进入 HugeCTR 侧适配层，不回流到 <code>CommonOp</code></li>
+<li>选择 <code>hierkv</code> 但缺少必填字段时，HugeCTR 入口会直接报配置错误</li>
 </ul>
 <h2 id="_4">配置示例<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <details class="example" open="open">
@@ -2833,118 +2954,153 @@
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">        </span><span class="nt">&quot;base_kv_config&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">            </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/tmp/recstore_data&quot;</span><span class="p">,</span>
 <a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">            </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">40000000</span><span class="p">,</span>
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">            </span><span class="nt">&quot;value_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">            </span><span class="nt">&quot;value_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">            </span><span class="nt">&quot;index_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">            </span><span class="nt">&quot;value_memory_management&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PersistLoopShmMalloc&quot;</span>
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">        </span><span class="p">}</span>
-<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">    </span><span class="p">},</span>
-<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">    </span><span class="nt">&quot;distributed_client&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">        </span><span class="nt">&quot;num_shards&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
-<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">        </span><span class="nt">&quot;hash_method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;city_hash&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">        </span><span class="nt">&quot;max_keys_per_request&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">500</span><span class="p">,</span>
-<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">        </span><span class="nt">&quot;servers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="w">            </span><span class="p">{</span>
-<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="w">                </span><span class="nt">&quot;host&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="w">                </span><span class="nt">&quot;port&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">15000</span><span class="p">,</span>
-<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="w">                </span><span class="nt">&quot;shard&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
-<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="w">            </span><span class="p">},</span>
-<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="w">            </span><span class="p">{</span>
-<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="w">                </span><span class="nt">&quot;host&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="w">                </span><span class="nt">&quot;port&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">15001</span><span class="p">,</span>
-<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="w">                </span><span class="nt">&quot;shard&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
-<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="w">            </span><span class="p">}</span>
-<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a><span class="w">        </span><span class="p">]</span>
-<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a><span class="w">    </span><span class="p">},</span>
-<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a><span class="w">    </span><span class="nt">&quot;client&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a><span class="w">        </span><span class="nt">&quot;host&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a><span class="w">        </span><span class="nt">&quot;port&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">15000</span><span class="p">,</span>
-<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a><span class="w">        </span><span class="nt">&quot;shard&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
-<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a><span class="w">    </span><span class="p">},</span>
-<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a><span class="w">    </span><span class="nt">&quot;report_API&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://127.0.0.1:8081/report&quot;</span>
-<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a><span class="p">}</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">            </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">                </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_EXTENDIBLE_HASH&quot;</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">            </span><span class="p">},</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">            </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">                </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_VALUE_STORE&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">                </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">                </span><span class="nt">&quot;dram_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">                    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PERSIST_LOOP_SLAB&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">                    </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">20480000000</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">                </span><span class="p">}</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">            </span><span class="p">}</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="w">    </span><span class="nt">&quot;distributed_client&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="w">        </span><span class="nt">&quot;num_shards&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="w">        </span><span class="nt">&quot;hash_method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;city_hash&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="w">        </span><span class="nt">&quot;max_keys_per_request&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">500</span><span class="p">,</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="w">        </span><span class="nt">&quot;servers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="w">            </span><span class="p">{</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="w">                </span><span class="nt">&quot;host&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="w">                </span><span class="nt">&quot;port&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">15000</span><span class="p">,</span>
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a><span class="w">                </span><span class="nt">&quot;shard&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a><span class="w">            </span><span class="p">},</span>
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a><span class="w">            </span><span class="p">{</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a><span class="w">                </span><span class="nt">&quot;host&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a><span class="w">                </span><span class="nt">&quot;port&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">15001</span><span class="p">,</span>
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a><span class="w">                </span><span class="nt">&quot;shard&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a><span class="w">            </span><span class="p">}</span>
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a><span class="w">        </span><span class="p">]</span>
+<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a><span class="w">    </span><span class="nt">&quot;client&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a><span class="w">        </span><span class="nt">&quot;host&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a><span class="w">        </span><span class="nt">&quot;port&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">15000</span><span class="p">,</span>
+<a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a><span class="w">        </span><span class="nt">&quot;shard&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a><span class="w">    </span><span class="nt">&quot;report_API&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://127.0.0.1:8081/report&quot;</span>
+<a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <details class="example">
-<summary>DRAM 索引 + SSD 值配置</summary>
+<summary>FasterKV 外部 KV 配置</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="nt">&quot;cache_ps&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">        </span><span class="nt">&quot;base_kv_config&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">            </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">            </span><span class="nt">&quot;index_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">            </span><span class="nt">&quot;value_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">            </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2000000</span><span class="p">,</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">            </span><span class="nt">&quot;value_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">            </span><span class="nt">&quot;value_memory_management&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PersistLoopShmMalloc&quot;</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">        </span><span class="p">}</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="p">}</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">            </span><span class="nt">&quot;engine_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;KVEngineFasterKV&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">            </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/fasterkv&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">            </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2000000</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">            </span><span class="nt">&quot;value_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">            </span><span class="nt">&quot;max_batch_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">65536</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="p">}</span>
 </code></pre></div>
-<p>推导引擎类型：<code>KVEngineExtendibleHash</code></p>
 </details>
 <details class="example">
-<summary>SSD 索引 + SSD 值配置</summary>
+<summary>HPS HashMap 外部 KV 配置</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="nt">&quot;cache_ps&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">        </span><span class="nt">&quot;base_kv_config&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">            </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">            </span><span class="nt">&quot;index_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">            </span><span class="nt">&quot;value_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">            </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2000000</span><span class="p">,</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">            </span><span class="nt">&quot;value_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">            </span><span class="nt">&quot;value_memory_management&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PersistLoopShmMalloc&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">            </span><span class="nt">&quot;queue_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">        </span><span class="p">}</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="p">}</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">            </span><span class="nt">&quot;engine_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;KVEngineHPSHashMap&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">            </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/hps_hash_map&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">            </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2000000</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">            </span><span class="nt">&quot;value_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">            </span><span class="nt">&quot;max_batch_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">65536</span><span class="p">,</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">            </span><span class="nt">&quot;table_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;default&quot;</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="p">}</span>
 </code></pre></div>
-<p>推导引擎类型：<code>KVEngineCCEH</code></p>
 </details>
 <details class="example">
-<summary>HYBRID 混合模式配置</summary>
+<summary>HPS RocksDB 外部 KV 配置</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="nt">&quot;cache_ps&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">        </span><span class="nt">&quot;base_kv_config&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">            </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">            </span><span class="nt">&quot;index_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">            </span><span class="nt">&quot;value_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;HYBRID&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">            </span><span class="nt">&quot;shmcapacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10737418240</span><span class="p">,</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">            </span><span class="nt">&quot;ssdcapacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">107374182400</span><span class="p">,</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">            </span><span class="nt">&quot;value_memory_management&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PersistLoopShmMalloc&quot;</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">        </span><span class="p">}</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="p">}</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">            </span><span class="nt">&quot;engine_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;KVEngineHPSRocksDB&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">            </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/hps&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">            </span><span class="nt">&quot;rocksdb_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/hps/rocksdb&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">            </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2000000</span><span class="p">,</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">            </span><span class="nt">&quot;value_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">            </span><span class="nt">&quot;max_batch_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">65536</span><span class="p">,</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">            </span><span class="nt">&quot;table_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;default&quot;</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="p">}</span>
 </code></pre></div>
-<p>推导引擎类型：<code>KVEngineHybrid</code></p>
 </details>
 <details class="example">
-<summary>在 CI 中的配置</summary>
-<p>Github Actions 服务器环境限制 CPU 使用，同时无显卡支持，在 ci 配置脚本中使用：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>jq<span class="w"> </span><span class="s1">&#39;.cache_ps.base_kv_config.capacity = 512</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="s1">    | .cache_ps.max_batch_keys_size = 128</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="s1">    | .cache_ps.num_threads = 4</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="s1">    | .distributed_client.max_keys_per_request = 32</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="s1">    | .cache_ps.base_kv_config.index_type = &quot;DRAM&quot;</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="s1">    | .cache_ps.base_kv_config.value_type = &quot;SSD&quot;</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="s1">    | .cache_ps.base_kv_config.type = &quot;DRAM&quot;</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="s1">    | .cache_ps.base_kv_config.queue_size = 1024&#39;</span>
+<summary>本地 Tiered Value Store 配置</summary>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="nt">&quot;cache_ps&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">        </span><span class="nt">&quot;base_kv_config&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">            </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">            </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2000000</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">            </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">                </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_EXTENDIBLE_HASH&quot;</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">            </span><span class="p">},</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">            </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">                </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;TIERED_VALUE_STORE&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">                </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">                </span><span class="nt">&quot;dram_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">                    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PERSIST_LOOP_SLAB&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">                    </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10737418240</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">                </span><span class="p">},</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">                </span><span class="nt">&quot;ssd_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">                    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_BUDDY&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">                    </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">107374182400</span><span class="p">,</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">                    </span><span class="nt">&quot;io&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">                        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IOURING&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">                        </span><span class="nt">&quot;file_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore/value.db&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">                        </span><span class="nt">&quot;queue_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">                    </span><span class="p">}</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">                </span><span class="p">}</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">            </span><span class="p">}</span>
+<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="p">}</span>
 </code></pre></div>
-<p>来配置DRAM 索引 + SSD 值配置。</p>
+</details>
+<details class="example">
+<summary>CI 中的轻量配置</summary>
+<p>GitHub Actions 的 CPU 资源有限，也没有 GPU。CI 脚本会把配置压到更小规模，例如：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>jq<span class="w"> </span><span class="s1">&#39;.cache_ps.base_kv_config.capacity = 512</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="s1">    | .cache_ps.max_batch_keys_size = 128</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="s1">    | .cache_ps.num_threads = 4</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="s1">    | .distributed_client.max_keys_per_request = 32</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="s1">    | .cache_ps.base_kv_config.index_type = &quot;DRAM&quot;</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="s1">    | .cache_ps.base_kv_config.value_type = &quot;SSD&quot;</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="s1">    | .cache_ps.base_kv_config.type = &quot;DRAM&quot;</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="s1">    | .cache_ps.base_kv_config.queue_size = 1024&#39;</span>
+</code></pre></div>
+<p>这组覆盖会使用 DRAM 索引 + SSD value，并降低容量和批量大小，避免 CI 资源被默认配置吃满。</p>
 </details>
 <h2 id="_5">配置文件使用<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
-<p>配置文件通常保存为 <code>recstore_config.json</code>，可通过以下方式读取：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">std</span><span class="o">::</span><span class="n">ifstream</span><span class="w"> </span><span class="n">config_file</span><span class="p">(</span><span class="s">&quot;recstore_config.json&quot;</span><span class="p">);</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">nlohmann</span><span class="o">::</span><span class="n">json</span><span class="w"> </span><span class="n">config</span><span class="p">;</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">config_file</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">config</span><span class="p">;</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1">// 服务器端使用</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="k">auto</span><span class="w"> </span><span class="n">cache_ps</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">CachePS</span><span class="o">&gt;</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s">&quot;cache_ps&quot;</span><span class="p">]);</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="c1">// 分布式客户端使用</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="k">auto</span><span class="w"> </span><span class="n">dist_client</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">DistributedBRPCParameterClient</span><span class="o">&gt;</span><span class="p">(</span><span class="n">config</span><span class="p">);</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="c1">// 单节点客户端使用</span>
-<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="k">auto</span><span class="w"> </span><span class="n">client</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">GRPCParameterClient</span><span class="o">&gt;</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s">&quot;client&quot;</span><span class="p">]);</span>
+<p>配置文件通常保存为 <code>recstore_config.json</code>。常见读取方式如下：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">std</span><span class="o">::</span><span class="n">ifstream</span><span class="w"> </span><span class="n">config_file</span><span class="p">(</span><span class="s">&quot;recstore_config.json&quot;</span><span class="p">);</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">nlohmann</span><span class="o">::</span><span class="n">json</span><span class="w"> </span><span class="n">config</span><span class="p">;</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">config_file</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">config</span><span class="p">;</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1">// 服务器端使用</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="k">auto</span><span class="w"> </span><span class="n">cache_ps</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">CachePS</span><span class="o">&gt;</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s">&quot;cache_ps&quot;</span><span class="p">]);</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="c1">// 分布式客户端使用</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="k">auto</span><span class="w"> </span><span class="n">dist_client</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">DistributedBRPCParameterClient</span><span class="o">&gt;</span><span class="p">(</span><span class="n">config</span><span class="p">);</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="c1">// 单节点客户端使用</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="k">auto</span><span class="w"> </span><span class="n">client</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">GRPCParameterClient</span><span class="o">&gt;</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s">&quot;client&quot;</span><span class="p">]);</span>
 </code></pre></div>
 
 
