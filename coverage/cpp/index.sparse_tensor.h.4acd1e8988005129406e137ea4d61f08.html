@@ -316,59 +316,66 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="nf">ApplySgdUpdateFlat</span><span class="p">(</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">int64_t</span><span class="w"> </span><span class="nf">EmbeddingDim</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l31" href="#l31">31</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="nf">ApplySgdUpdateFlat</span><span class="p">(</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l32" href="#l32">32</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="kt">float</span><span class="o">*</span><span class="w"> </span><span class="n">grads</span><span class="p">,</span></td>
+        <td class="src "><span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l33" href="#l33">33</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">num_rows</span><span class="p">,</span></td>
+        <td class="src "><span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="kt">float</span><span class="o">*</span><span class="w"> </span><span class="n">grads</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l34" href="#l34">34</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">embedding_dim</span><span class="p">,</span></td>
+        <td class="src "><span class="w">      </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">num_rows</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l35" href="#l35">35</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="kt">float</span><span class="w"> </span><span class="n">learning_rate</span><span class="p">,</span></td>
+        <td class="src "><span class="w">      </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">embedding_dim</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l36" href="#l36">36</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
+        <td class="src "><span class="w">      </span><span class="kt">float</span><span class="w"> </span><span class="n">learning_rate</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l37" href="#l37">37</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="p">};</span></td>
+        <td class="src "><span class="w">      </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l38" href="#l38">38</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="p">};</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l39" href="#l39">39</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
@@ -381,7 +388,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.6">GCOVR (Version 8.6)</a>
-          at 2026-05-09 16:37:56
+          at 2026-05-12 11:59:04
         </footer>
       </div>
     </div>
