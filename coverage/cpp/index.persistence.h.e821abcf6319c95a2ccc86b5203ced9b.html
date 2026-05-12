@@ -82,21 +82,21 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l17">base::FENCE::sfence() (src/storage/nvm/pet_kv/persistence.h:17)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="60098">called 60098 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="60100">called 60100 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l20">base::clflushopt(void*) (src/storage/nvm/pet_kv/persistence.h:20)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="10090950">called 10090950 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="10090952">called 10090952 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l37">base::clflushopt_range(void*, unsigned long) (src/storage/nvm/pet_kv/persistence.h:37)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="60098">called 60098 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="60100">called 60100 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
@@ -245,7 +245,7 @@
         <td class="lineno"><a id="l17" href="#l17">17</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">60098</td>
+        <td class="linecount coveredLine show_coveredLine">60100</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">sfence</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">&quot;sfence&quot;</span><span class="w"> </span><span class="o">:::</span><span class="w"> </span><span class="s">&quot;memory&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
@@ -266,14 +266,14 @@
         <td class="lineno"><a id="l20" href="#l20">20</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">10090950</td>
+        <td class="linecount coveredLine show_coveredLine">10090952</td>
         <td class="src  coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">clflushopt</span><span class="p">(</span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">addr</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l21" href="#l21">21</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">10090950</td>
+        <td class="linecount coveredLine show_coveredLine">10090952</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
@@ -385,21 +385,21 @@
         <td class="lineno"><a id="l37" href="#l37">37</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">60098</td>
+        <td class="linecount coveredLine show_coveredLine">60100</td>
         <td class="src  coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">clflushopt_range</span><span class="p">(</span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">des</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">size</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l38" href="#l38">38</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">60098</td>
+        <td class="linecount coveredLine show_coveredLine">60100</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">addr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">reinterpret_cast</span><span class="o">&lt;</span><span class="kt">char</span><span class="o">*&gt;</span><span class="p">(</span><span class="n">des</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l39" href="#l39">39</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">60098</td>
+        <td class="linecount coveredLine show_coveredLine">60100</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="n">size</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="n">size</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">((</span><span class="n">uint64</span><span class="p">)(</span><span class="n">addr</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">(</span><span class="n">kCACHELINE_SIZE</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">));</span></td>
       </tr>
       <tr class="source-line">
@@ -408,19 +408,19 @@
           <details class="linebranchDetails">
             <summary class="linebranchSummary">2/2</summary>
             <div class="linebranchContents">
-              <div class="takenBranch">&check; Branch 0 taken 10090950 times.</div>
-              <div class="takenBranch">&check; Branch 1 taken 60098 times.</div>
+              <div class="takenBranch">&check; Branch 0 taken 10090952 times.</div>
+              <div class="takenBranch">&check; Branch 1 taken 60100 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount coveredLine show_coveredLine">10151048</td>
+        <td class="linecount coveredLine show_coveredLine">10151052</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">size</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">kCACHELINE_SIZE</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l41" href="#l41">41</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">10090950</td>
+        <td class="linecount coveredLine show_coveredLine">10090952</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">    </span><span class="n">clflushopt</span><span class="p">(</span><span class="n">addr</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">i</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
@@ -434,14 +434,14 @@
         <td class="lineno"><a id="l43" href="#l43">43</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">60098</td>
+        <td class="linecount coveredLine show_coveredLine">60100</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="n">FENCE</span><span class="o">::</span><span class="n">sfence</span><span class="p">();</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l44" href="#l44">44</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">60098</td>
+        <td class="linecount coveredLine show_coveredLine">60100</td>
         <td class="src  coveredLine show_coveredLine"><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
@@ -465,7 +465,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.6">GCOVR (Version 8.6)</a>
-          at 2026-05-12 12:01:08
+          at 2026-05-12 13:19:53
         </footer>
       </div>
     </div>
