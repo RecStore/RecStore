@@ -18,7 +18,7 @@
         <link rel="prev" href="../architecture/overview/">
       
       
-        <link rel="next" href="op_interface/">
+        <link rel="next" href="interfaces/">
       
       
         
@@ -888,7 +888,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        概述
+        入口文件
       
     </span>
   </a>
@@ -899,30 +899,30 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        架构分层
+        数据路径
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="数据路径">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        前向读取
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        数据流
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="数据流">
-      <ul class="md-nav__list">
         
           <li class="md-nav__item">
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        前向传播
+        梯度更新
       
     </span>
   </a>
@@ -933,76 +933,26 @@
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        反向传播与梯度更新
+        预取
       
     </span>
   </a>
   
 </li>
         
-          <li class="md-nav__item">
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
-        异步预取流程
+        相关页面
       
     </span>
   </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        模块说明
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        配置示例
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="配置示例">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        初始化嵌入表
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#embeddingbag" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        创建 EmbeddingBag
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -1022,14 +972,14 @@
   
   
     <li class="md-nav__item">
-      <a href="op_interface/" class="md-nav__link">
+      <a href="interfaces/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    CommonOp 接口
+    接口边界
   
 
     
@@ -1050,98 +1000,14 @@
   
   
     <li class="md-nav__item">
-      <a href="kvclient/" class="md-nav__link">
+      <a href="embedding_optimizer/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    KVClient 客户端
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="pytorch_binding/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PyTorch C++ 扩展
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="embedding_modules/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    EmbeddingBag 模块
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="optimizer/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    优化器与梯度更新
+    Embedding 与 Optimizer
   
 
     
@@ -1484,34 +1350,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../storage/cacheps/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CachePS 层
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../storage/basekv/" class="md-nav__link">
         
   
@@ -1519,7 +1357,7 @@
   <span class="md-ellipsis">
     
   
-    BaseKV 抽象
+    BaseKV 与配置
   
 
     
@@ -1547,35 +1385,7 @@
   <span class="md-ellipsis">
     
   
-    KV 引擎实现
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../storage/memory/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    内存管理
+    Composite KV 开发
   
 
     
@@ -2181,7 +1991,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        概述
+        入口文件
       
     </span>
   </a>
@@ -2192,30 +2002,30 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        架构分层
+        数据路径
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="数据路径">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        前向读取
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        数据流
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="数据流">
-      <ul class="md-nav__list">
         
           <li class="md-nav__item">
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        前向传播
+        梯度更新
       
     </span>
   </a>
@@ -2226,76 +2036,26 @@
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        反向传播与梯度更新
+        预取
       
     </span>
   </a>
   
 </li>
         
-          <li class="md-nav__item">
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
-        异步预取流程
+        相关页面
       
     </span>
   </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        模块说明
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        配置示例
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="配置示例">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        初始化嵌入表
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#embeddingbag" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        创建 EmbeddingBag
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -2325,280 +2085,174 @@
 
 
 <h1 id="recstore">RecStore 计算层<a class="headerlink" href="#recstore" title="Permanent link">&para;</a></h1>
-<h2 id="_1">概述<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<p>计算层负责模型训练和推理中的嵌入向量查询与梯度更新，从参数服务器向上，通过 OP 层提供统一的 C++ 接口，再到 PyTorch Python 绑定，最后接入推荐系统模型代码。</p>
-<h2 id="_2">架构分层<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>计算层把模型里的 sparse id 读写转换成参数服务器请求。</p>
+<pre class="mermaid"><code>graph TD
+    Embedding[Embedding module] --&gt; Client[RecStoreClient]
+    Client --&gt; TorchOps[torch.ops.recstore_ops]
+    TorchOps --&gt; KVOp[KVClientOp]
+    KVOp --&gt; PSClient[BasePSClient]
+    PSClient --&gt; Service[ParameterService]</code></pre>
+<h2 id="_1">入口文件<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>层级</th>
-<th>模块</th>
-<th>文件路径</th>
-<th>说明</th>
+<th>层</th>
+<th>文件</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>7</td>
-<td>推荐模型</td>
-<td><code>用户代码</code></td>
-<td>DLRM, Wide&amp;Deep 等</td>
+<td>TorchRec 风格模块</td>
+<td><code>src/python/pytorch/torchrec_kv/EmbeddingBag.py</code></td>
 </tr>
 <tr>
-<td>6</td>
-<td>Embedding 模块</td>
-<td><code>src/python/pytorch/torchrec/EmbeddingBag.py</code></td>
-<td>EmbeddingBag / DistEmbedding</td>
+<td>单表模块</td>
+<td><code>src/python/pytorch/recstore/DistEmb.py</code></td>
 </tr>
 <tr>
-<td>5</td>
-<td>KV 客户端</td>
+<td>Python client</td>
 <td><code>src/python/pytorch/recstore/KVClient.py</code></td>
-<td>RecStoreClient 单例</td>
 </tr>
 <tr>
-<td>4</td>
-<td>PyTorch 扩展</td>
+<td>PyTorch op</td>
 <td><code>src/framework/pytorch/op_torch.cc</code></td>
-<td>torch.ops.recstore_ops</td>
 </tr>
 <tr>
-<td>3</td>
-<td>C++ 接口</td>
-<td><code>src/framework/op.h</code></td>
-<td>CommonOp / KVClientOp</td>
+<td>C++ facade</td>
+<td><code>src/framework/op.h</code>、<code>src/framework/op.cc</code></td>
 </tr>
 <tr>
-<td>2</td>
-<td>PS 客户端</td>
-<td><code>src/ps/client/</code></td>
-<td>BasePSClient</td>
-</tr>
-<tr>
-<td>1</td>
-<td>PS 服务</td>
-<td><code>src/ps/server/</code></td>
-<td>gRPC/bRPC 通信</td>
-</tr>
-<tr>
-<td>0</td>
-<td>存储层</td>
-<td><code>src/storage/</code></td>
-<td>BaseKV / 引擎 / 内存管理</td>
-</tr>
-</tbody>
-</table>
-<h2 id="_3">数据流<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<h3 id="_4">前向传播<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>步骤</th>
-<th>组件</th>
-<th>文件路径</th>
-<th>代码/操作</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>推荐模型</td>
-<td>用户代码</td>
-<td><code>features = get_batch()</code></td>
-</tr>
-<tr>
-<td>2</td>
-<td>EmbeddingBag</td>
-<td><code>src/python/pytorch/torchrec/EmbeddingBag.py</code></td>
-<td><code>output = emb_module(features)</code></td>
-</tr>
-<tr>
-<td>3</td>
-<td>KVClient</td>
-<td><code>src/python/pytorch/recstore/KVClient.py</code></td>
-<td><code>client.pull(name, ids)</code></td>
-</tr>
-<tr>
-<td>4</td>
-<td>PyTorch 扩展</td>
-<td><code>src/framework/pytorch/op_torch.cc</code></td>
-<td><code>torch.ops.recstore_ops.emb_read()</code></td>
-</tr>
-<tr>
-<td>5</td>
-<td>CommonOp</td>
-<td><code>src/framework/op.h</code></td>
-<td><code>op-&gt;EmbRead(rec_keys, rec_values)</code></td>
-</tr>
-<tr>
-<td>6</td>
-<td>BasePSClient</td>
-<td><code>src/ps/client/</code></td>
-<td>与 PS 通信获取向量</td>
-</tr>
-<tr>
-<td>7</td>
-<td>EmbeddingBag</td>
-<td><code>src/python/pytorch/torchrec/EmbeddingBag.py</code></td>
-<td><code>F.embedding_bag(..., mode="sum")</code></td>
-</tr>
-<tr>
-<td>8</td>
-<td>返回</td>
-<td>PyTorch</td>
-<td><code>[batch_size, num_features, emb_dim]</code></td>
-</tr>
-</tbody>
-</table>
-<h3 id="_5">反向传播与梯度更新<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>步骤</th>
-<th>组件</th>
-<th>文件路径</th>
-<th>代码/操作</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>用户代码</td>
-<td>-</td>
-<td><code>loss.backward()</code></td>
-</tr>
-<tr>
-<td>2</td>
-<td>EmbeddingBag</td>
-<td><code>src/python/pytorch/torchrec/EmbeddingBag.py</code></td>
-<td>触发 _RecStoreEBCFunction.backward</td>
-</tr>
-<tr>
-<td>3</td>
-<td>梯度收集</td>
-<td>同上</td>
-<td>将 (ID, grad) 追踪到 <code>_trace</code></td>
-</tr>
-<tr>
-<td>4</td>
-<td>优化器</td>
+<td>Python sparse optimizer</td>
 <td><code>src/python/pytorch/recstore/optimizer.py</code></td>
-<td><code>optimizer.step([emb_module])</code></td>
 </tr>
 <tr>
-<td>5</td>
-<td>梯度应用</td>
-<td>KVClient</td>
-<td><code>client.update(table_name, ids, grads)</code></td>
-</tr>
-<tr>
-<td>6</td>
-<td>C++ 接口</td>
-<td><code>src/framework/op.h</code></td>
-<td><code>op-&gt;EmbUpdate(keys, grads)</code></td>
-</tr>
-<tr>
-<td>7</td>
-<td>PS 客户端</td>
-<td><code>src/ps/client/</code></td>
-<td>Get → Update → Put</td>
-</tr>
-<tr>
-<td>8</td>
-<td>参数更新完成</td>
-<td>-</td>
-<td>PS 中的嵌入向量更新</td>
+<td>后端 optimizer</td>
+<td><code>src/optimizer/optimizer.cpp</code></td>
 </tr>
 </tbody>
 </table>
-<h3 id="_6">异步预取流程<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<h2 id="_2">数据路径<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h3 id="_3">前向读取<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
-<th>步骤</th>
-<th>组件</th>
-<th>文件路径</th>
-<th>代码/操作</th>
+<th>顺序</th>
+<th>操作</th>
+<th>文件</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>1</td>
-<td>模型</td>
-<td>用户代码</td>
-<td><code>prefetch_id = client.prefetch(ids)</code></td>
+<td>模型传入 sparse feature ids。</td>
+<td>用户模型</td>
 </tr>
 <tr>
 <td>2</td>
-<td>KVClient</td>
-<td><code>src/python/pytorch/recstore/KVClient.py</code></td>
-<td>返回唯一 prefetch_id</td>
+<td>Embedding 模块按表名取 ids，必要时生成 fused id。</td>
+<td><code>torchrec_kv/EmbeddingBag.py</code></td>
 </tr>
 <tr>
 <td>3</td>
-<td>后台读取</td>
-<td><code>src/framework/pytorch/op_torch.cc</code></td>
-<td><code>op-&gt;EmbPrefetch()</code> 异步执行</td>
+<td><code>RecStoreClient.pull</code> 或 <code>local_lookup_flat</code> 调 PyTorch op。</td>
+<td><code>recstore/KVClient.py</code></td>
 </tr>
 <tr>
 <td>4</td>
-<td>计算重叠</td>
-<td>用户代码</td>
-<td>执行其他计算，不阻塞</td>
+<td><code>KVClientOp::EmbRead</code> 从 PS 拉取 embedding。</td>
+<td><code>src/framework/op.cc</code></td>
 </tr>
 <tr>
 <td>5</td>
-<td>等待完成</td>
-<td>KVClient</td>
-<td><code>result = client.wait_for_prefetch(prefetch_id)</code></td>
-</tr>
-<tr>
-<td>6</td>
-<td>获取结果</td>
-<td>C++ 侧</td>
-<td><code>op-&gt;GetPretchResult()</code></td>
-</tr>
-<tr>
-<td>7</td>
-<td>返回</td>
-<td>PyTorch</td>
-<td><code>[N, embedding_dim]</code> 张量</td>
+<td>Python 侧执行 <code>embedding_bag</code> pooling。</td>
+<td><code>torchrec_kv/EmbeddingBag.py</code></td>
 </tr>
 </tbody>
 </table>
-<h2 id="_7">模块说明<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
-<p>详细文档：</p>
-<ul>
-<li><a href="op_interface/">op_interface.md</a> - CommonOp 接口定义</li>
-<li><a href="kvclient/">kvlient.md</a> - KVClient Python 客户端</li>
-<li><a href="pytorch_binding/">pytorch_binding.md</a> - PyTorch C++ 扩展</li>
-<li><a href="embedding_modules/">embedding_modules.md</a> - EmbeddingBag / DistEmbedding</li>
-<li><a href="optimizer/">optimizer.md</a> - 优化器与梯度更新</li>
-</ul>
-<h2 id="_8">配置示例<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
-<h3 id="_9">初始化嵌入表<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">kv_client</span> <span class="o">=</span> <span class="n">RecStoreClient</span><span class="p">(</span><span class="n">library_path</span><span class="o">=</span><span class="s2">&quot;/path/to/lib_recstore_ops.so&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># 初始化嵌入表</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">kv_client</span><span class="o">.</span><span class="n">init_data</span><span class="p">(</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;user_embedding&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="mi">1000000</span><span class="p">,</span> <span class="mi">128</span><span class="p">),</span>  <span class="c1"># num_embeddings, embedding_dim</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">init_func</span><span class="o">=</span><span class="k">lambda</span> <span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.01</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
-</code></pre></div>
-<h3 id="embeddingbag">创建 EmbeddingBag<a class="headerlink" href="#embeddingbag" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">emb_configs</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="c1"># ...</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="p">]</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">emb_bag</span> <span class="o">=</span> <span class="n">RecStoreEmbeddingBagCollection</span><span class="p">(</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">embedding_bag_configs</span><span class="o">=</span><span class="n">emb_configs</span><span class="p">,</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">lr</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">enable_fusion</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">fusion_k</span><span class="o">=</span><span class="mi">30</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">)</span>
-</code></pre></div>
+<h3 id="_4">梯度更新<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>顺序</th>
+<th>操作</th>
+<th>文件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>autograd backward 把 <code>(table, ids, grads)</code> 写入模块 <code>_trace</code>。</td>
+<td><code>torchrec_kv/EmbeddingBag.py</code>、<code>recstore/DistEmb.py</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>SparseOptimizer.step()</code> 消费 <code>_trace</code>。</td>
+<td><code>recstore/optimizer.py</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>Python client 调 <code>emb_update_table</code> 或 local update。</td>
+<td><code>recstore/KVClient.py</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td>PS 后端读取当前 embedding，执行 optimizer 更新，写回存储层。</td>
+<td><code>src/optimizer/optimizer.cpp</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">预取<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>顺序</th>
+<th>操作</th>
+<th>文件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>issue_fused_prefetch(features)</code> 去重 fused ids。</td>
+<td><code>torchrec_kv/EmbeddingBag.py</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>RecStoreClient.prefetch(ids)</code> 返回 handle。</td>
+<td><code>recstore/KVClient.py</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>forward 等待 handle，取回结果。</td>
+<td><code>torchrec_kv/EmbeddingBag.py</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td>inverse index 恢复原始顺序。</td>
+<td><code>torchrec_kv/EmbeddingBag.py</code></td>
+</tr>
+</tbody>
+</table>
+<p>Python 侧只收集和发送 sparse gradients。参数更新逻辑在后端。</p>
+<h2 id="_6">相关页面<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>任务</th>
+<th>文档</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>查 C++ / Python / <code>torch.ops</code> 接口</td>
+<td><a href="interfaces/">interfaces.md</a></td>
+</tr>
+<tr>
+<td>接模型、改 EmbeddingBag、改 optimizer</td>
+<td><a href="embedding_optimizer/">embedding_optimizer.md</a></td>
+</tr>
+</tbody>
+</table>
 
 
 

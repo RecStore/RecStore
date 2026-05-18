@@ -12,13 +12,13 @@
         <meta name="author" content="RecStore Team">
       
       
-        <link rel="canonical" href="https://RecStore.github.io/RecStore/storage/memory/">
+        <link rel="canonical" href="https://RecStore.github.io/RecStore/calc/embedding_optimizer/">
       
       
-        <link rel="prev" href="../kv_engines/">
+        <link rel="prev" href="../interfaces/">
       
       
-        <link rel="next" href="../../dev/performance/">
+        <link rel="next" href="../../parameter_server/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>内存管理 - RecStore Documentation</title>
+        <title>Embedding 与 Optimizer - RecStore Documentation</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#_1" class="md-skip">
+        <a href="#embedding-optimizer" class="md-skip">
           跳转至
         </a>
       
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              内存管理
+              Embedding 与 Optimizer
             
           </span>
         </div>
@@ -765,6 +765,8 @@
                 
   
   
+    
+  
   
   
     
@@ -780,11 +782,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" checked>
         
           
           <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="">
@@ -805,7 +807,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -823,7 +825,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../calc/" class="md-nav__link">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -851,14 +853,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../calc/op_interface/" class="md-nav__link">
+      <a href="../interfaces/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    CommonOp 接口
+    接口边界
   
 
     
@@ -876,17 +878,44 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../calc/kvclient/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Embedding 与 Optimizer
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
   <span class="md-ellipsis">
     
   
-    KVClient 客户端
+    Embedding 与 Optimizer
   
 
     
@@ -895,90 +924,137 @@
   
 
       </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../calc/pytorch_binding/" class="md-nav__link">
+      
         
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
   
   
-  <span class="md-ellipsis">
+  
     
   
-    PyTorch C++ 扩展
   
-
-    
-  </span>
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#embedding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Embedding 模块
+      
+    </span>
+  </a>
   
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../calc/embedding_modules/" class="md-nav__link">
+    <nav class="md-nav" aria-label="Embedding 模块">
+      <ul class="md-nav__list">
         
+          <li class="md-nav__item">
+  <a href="#recstoreembeddingbagcollection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RecStoreEmbeddingBagCollection
+      
+    </span>
+  </a>
   
-  
-  <span class="md-ellipsis">
-    
-  
-    EmbeddingBag 模块
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../calc/optimizer/" class="md-nav__link">
+</li>
         
+          <li class="md-nav__item">
+  <a href="#distembedding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DistEmbedding
+      
+    </span>
+  </a>
   
+</li>
+        
+      </ul>
+    </nav>
   
-  <span class="md-ellipsis">
-    
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fused-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fused id
+      
+    </span>
+  </a>
   
-    优化器与梯度更新
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        预取
+      
+    </span>
+  </a>
   
-
-    
-  </span>
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optimizer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        梯度和 optimizer
+      
+    </span>
+  </a>
   
+    <nav class="md-nav" aria-label="梯度和 optimizer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ebc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EBC 更新
+      
+    </span>
+  </a>
   
-
-      </a>
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#distembedding_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DistEmbedding 更新
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        修改检查
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1227,8 +1303,6 @@
                 
   
   
-    
-  
   
   
     
@@ -1244,11 +1318,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
         
           
           <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="">
@@ -1269,7 +1343,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1287,7 +1361,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../" class="md-nav__link">
+      <a href="../../storage/" class="md-nav__link">
         
   
   
@@ -1315,14 +1389,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../cacheps/" class="md-nav__link">
+      <a href="../../storage/basekv/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    CachePS 层
+    BaseKV 与配置
   
 
     
@@ -1343,14 +1417,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../basekv/" class="md-nav__link">
+      <a href="../../storage/kv_engines/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    BaseKV 抽象
+    Composite KV 开发
   
 
     
@@ -1359,231 +1433,6 @@
   
 
       </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../kv_engines/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    KV 引擎实现
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-    
-  
-  
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    内存管理
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    内存管理
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="目录">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      目录
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        概述
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        核心接口
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="核心接口">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#mallocapi" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        MallocApi
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        内存管理器实现
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="内存管理器实现">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#persistsimplemalloc" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PersistSimpleMalloc
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#persistloopshmmalloc" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PersistLoopShmMalloc
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        工厂注册
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        使用流程
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        线程安全
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        持久化
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2178,121 +2027,110 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#embedding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Embedding 模块
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Embedding 模块">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#recstoreembeddingbagcollection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RecStoreEmbeddingBagCollection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#distembedding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DistEmbedding
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fused-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fused id
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        预取
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optimizer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        梯度和 optimizer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="梯度和 optimizer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ebc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EBC 更新
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#distembedding_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DistEmbedding 更新
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        概述
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        核心接口
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="核心接口">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#mallocapi" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        MallocApi
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        内存管理器实现
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="内存管理器实现">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#persistsimplemalloc" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PersistSimpleMalloc
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#persistloopshmmalloc" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PersistLoopShmMalloc
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        工厂注册
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        使用流程
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        线程安全
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        持久化
+        修改检查
       
     </span>
   </a>
@@ -2316,7 +2154,7 @@
 
 
   
-    <a href="https://github.com/RecStore/RecStore/edit/main/docs/storage/memory.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/RecStore/RecStore/edit/main/docs/calc/embedding_optimizer.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2324,300 +2162,128 @@
   
 
 
-<h1 id="_1">内存管理层<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<h2 id="_2">概述<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>内存管理层位于 <code>src/memory/</code>，为 KV 引擎提供持久化内存分配和管理功能。核心接口是 <code>MallocApi</code>。</p>
-<h2 id="_3">核心接口<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<h3 id="mallocapi">MallocApi<a class="headerlink" href="#mallocapi" title="Permanent link">&para;</a></h3>
-<p>所有内存管理器的抽象基类：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">MallocApi</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="nf">New</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">memory_size</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="nf">Free</span><span class="p">(</span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">memory_data</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">};</span>
+<h1 id="embedding-optimizer">Embedding 与 Optimizer<a class="headerlink" href="#embedding-optimizer" title="Permanent link">&para;</a></h1>
+<p>计算层的主入口是 <code>RecStoreEmbeddingBagCollection</code>。<code>DistEmbedding</code> 是单表封装，适合简单实验和兼容旧训练代码；它的更新路径和 EBC 不一样。</p>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>文件</th>
+<th>使用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RecStoreEmbeddingBagCollection</code></td>
+<td><code>src/python/pytorch/torchrec_kv/EmbeddingBag.py</code></td>
+<td>TorchRec 风格多表、多特征模型。当前模型接入优先看它。</td>
+</tr>
+<tr>
+<td><code>DistEmbedding</code></td>
+<td><code>src/python/pytorch/recstore/DistEmb.py</code></td>
+<td>单个 embedding table。通过 <code>DistTensor</code> 读写，optimizer 在 Python 侧做 SGD 写回。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="embedding">Embedding 模块<a class="headerlink" href="#embedding" title="Permanent link">&para;</a></h2>
+<h3 id="recstoreembeddingbagcollection">RecStoreEmbeddingBagCollection<a class="headerlink" href="#recstoreembeddingbagcollection" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">module</span> <span class="o">=</span> <span class="n">RecStoreEmbeddingBagCollection</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">embedding_bag_configs</span><span class="o">=</span><span class="n">configs</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">lr</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">enable_fusion</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">fusion_k</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span>
 </code></pre></div>
+<p>输入是 <code>KeyedJaggedTensor</code>。模块按 feature 找到 table，读取 ids 对应的 embedding，再用 <code>torch.nn.functional.embedding_bag</code> 做 sum pooling。</p>
+<h3 id="distembedding">DistEmbedding<a class="headerlink" href="#distembedding" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">emb</span> <span class="o">=</span> <span class="n">DistEmbedding</span><span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">num_embeddings</span><span class="o">=</span><span class="mi">100000</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">embedding_dim</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;user_embedding&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">init_func</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">lr</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="p">)</span>
+</code></pre></div>
+<p><code>forward(ids)</code> 通过 <code>DistTensor.__getitem__</code> 调 <code>client.pull</code>。backward 会对重复 id 做 <code>torch.unique + index_add_</code>，把聚合后的 <code>(ids, grads)</code> 写入 <code>_trace</code>。</p>
+<h2 id="fused-id">fused id<a class="headerlink" href="#fused-id" title="Permanent link">&para;</a></h2>
+<p>开启 fusion 后，表前缀写进高位：<code>fused_id = raw_id + (table_idx &lt;&lt; fusion_k)</code>。</p>
+<p>改 <code>fusion_k</code> 时要确认 raw id 不会覆盖表前缀。</p>
+<h2 id="_1">预取<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">handle</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">issue_fused_prefetch</span><span class="p">(</span><span class="n">features</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">module</span><span class="o">.</span><span class="n">set_fused_prefetch_handle</span><span class="p">(</span><span class="n">handle</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">out</span> <span class="o">=</span> <span class="n">module</span><span class="p">(</span><span class="n">features</span><span class="p">)</span>
+</code></pre></div>
+<p><code>issue_fused_prefetch</code> 去重 fused ids 并返回 handle。forward 看到 <code>_fused_prefetch_handle</code> 后等待结果，再按 inverse index 恢复原始顺序。没有 handle 时走同步读取。</p>
+<h2 id="optimizer">梯度和 optimizer<a class="headerlink" href="#optimizer" title="Permanent link">&para;</a></h2>
+<p>Python 侧 optimizer 先消费模块 <code>_trace</code>。EBC 和 <code>DistEmbedding</code> 后续更新位置不同。</p>
 <table>
 <thead>
 <tr>
-<th>方法</th>
-<th>参数</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>New</td>
-<td>memory_size</td>
-<td>分配指定字节数的内存</td>
-</tr>
-<tr>
-<td>Free</td>
-<td>memory_data</td>
-<td>释放已分配的内存</td>
-</tr>
-</tbody>
-</table>
-<h2 id="_4">内存管理器实现<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<h3 id="persistsimplemalloc">PersistSimpleMalloc<a class="headerlink" href="#persistsimplemalloc" title="Permanent link">&para;</a></h3>
-<p>最简单的持久化内存分配器，基于 slab 机制。</p>
-<p><strong>特点</strong></p>
-<ul>
-<li>预分配固定大小的 slab</li>
-<li>使用位图管理空闲块</li>
-<li>线程安全 (通过 base::Lock)</li>
-</ul>
-<p><strong>成员变量</strong></p>
-<table>
-<thead>
-<tr>
-<th>成员</th>
-<th>类型</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>shm_file_</td>
-<td>ShmFile</td>
-<td>共享内存文件映射</td>
-</tr>
-<tr>
-<td>nr_chunks_</td>
-<td>int64</td>
-<td>总 chunk 数量</td>
-</tr>
-<tr>
-<td>chunks_</td>
-<td>vector<Chunk*></td>
-<td>所有 chunk 列表</td>
-</tr>
-<tr>
-<td>free_chunks_</td>
-<td>deque<Chunk*></td>
-<td>空闲 chunk 队列</td>
-</tr>
-<tr>
-<td>size_to_chunks_</td>
-<td>unordered_map</td>
-<td>size 到 chunk 队列的映射</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Chunk 结构</strong></p>
-<p>每个 chunk 对应一个固定大小的 slab：</p>
-<table>
-<thead>
-<tr>
-<th>字段</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>offset</td>
-<td>在共享内存中的偏移</td>
-</tr>
-<tr>
-<td>size</td>
-<td>分配单元大小</td>
-</tr>
-<tr>
-<td>capacity</td>
-<td>可分配的单元数量</td>
-</tr>
-<tr>
-<td>bits</td>
-<td>位图，标记已使用单元</td>
-</tr>
-</tbody>
-</table>
-<h3 id="persistloopshmmalloc">PersistLoopShmMalloc<a class="headerlink" href="#persistloopshmmalloc" title="Permanent link">&para;</a></h3>
-<p>基于循环首次适应算法的持久化内存分配器。</p>
-<p><strong>特点</strong></p>
-<ul>
-<li>循环查找空闲块，具有 LRU 特性</li>
-<li>支持快速分配路径 (FastMalloc)</li>
-<li>使用位图 + 块大小数组管理</li>
-<li>支持恢复机制</li>
-</ul>
-<p><strong>成员变量</strong></p>
-<table>
-<thead>
-<tr>
-<th>成员</th>
-<th>类型</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>shm_file_</td>
-<td>ShmFile</td>
-<td>共享内存文件</td>
-</tr>
-<tr>
-<td>data_</td>
-<td>char*</td>
-<td>数据区起始指针</td>
-</tr>
-<tr>
-<td>used_bits_</td>
-<td>uint64*</td>
-<td>使用标记位图</td>
-</tr>
-<tr>
-<td>block_num_</td>
-<td>int64</td>
-<td>总块数 (每块 8 字节)</td>
-</tr>
-<tr>
-<td>last_malloc_block_</td>
-<td>int64</td>
-<td>上次分配位置</td>
-</tr>
-<tr>
-<td>total_used_</td>
-<td>int64</td>
-<td>已使用块数</td>
-</tr>
-<tr>
-<td>healthy_used_</td>
-<td>int64</td>
-<td>健康阈值</td>
-</tr>
-</tbody>
-</table>
-<p><strong>分配策略</strong></p>
-<ol>
-<li><strong>FastMalloc</strong> - 针对常见大小 (&lt; max_fast_list_type)</li>
-<li>维护空闲链表 <code>fast_malloc_[size]</code></li>
-<li>O(1) 分配和释放</li>
-<li>
-<p>可通过 <code>DisableFastMalloc()</code> 关闭</p>
-</li>
-<li>
-<p><strong>LoopMalloc</strong> - 循环首次适应</p>
-</li>
-<li>从 <code>last_malloc_block_</code> 开始查找</li>
-<li>找到足够大的空闲块即分配</li>
-<li>具有 LRU 特性，自动淘汰冷数据</li>
-</ol>
-<p><strong>块管理</strong></p>
-<table>
-<thead>
-<tr>
+<th>顺序</th>
 <th>操作</th>
-<th>说明</th>
+<th>文件</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>BlockNum(size)</td>
-<td>计算需要多少个 8 字节块</td>
+<td>1</td>
+<td>forward 读取 embedding。</td>
+<td><code>torchrec_kv/EmbeddingBag.py</code>、<code>recstore/DistEmb.py</code></td>
 </tr>
 <tr>
-<td>BlockIndex(offset)</td>
-<td>将偏移转换为块索引</td>
+<td>2</td>
+<td>backward 写入 <code>module._trace</code>。</td>
+<td>同上</td>
 </tr>
 <tr>
-<td>Used(index)</td>
-<td>检查块是否已使用</td>
+<td>3</td>
+<td><code>SparseOptimizer.step()</code> 读取并聚合 trace。</td>
+<td><code>recstore/optimizer.py</code></td>
 </tr>
 <tr>
-<td>UseBlock(index)</td>
-<td>标记块为已使用</td>
+<td>4</td>
+<td>EBC 调 <code>RecStoreClient.update_async(table, ids, grads)</code>；<code>DistEmbedding</code> 读当前权重并在 Python 侧计算新值。</td>
+<td><code>recstore/optimizer.py</code></td>
 </tr>
 <tr>
-<td>FreeBlock(index)</td>
-<td>标记块为空闲</td>
+<td>5</td>
+<td>EBC 进入 <code>KVClientOp::EmbUpdate</code> 和 PS optimizer；<code>DistEmbedding</code> 写回 <code>DistTensor</code>。</td>
+<td><code>src/framework/op.cc</code>、<code>src/optimizer/optimizer.cpp</code>、<code>recstore/DistTensor.py</code></td>
 </tr>
 </tbody>
 </table>
-<p><strong>方法</strong></p>
 <table>
 <thead>
 <tr>
-<th>方法</th>
-<th>说明</th>
+<th>模块</th>
+<th>trace item</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>New(size)</td>
-<td>分配 size 字节内存</td>
+<td><code>RecStoreEmbeddingBagCollection</code></td>
+<td><code>(table_name, ids, grads)</code></td>
 </tr>
 <tr>
-<td>Free(data)</td>
-<td>释放内存</td>
-</tr>
-<tr>
-<td>total_used()</td>
-<td>返回已使用块数</td>
-</tr>
-<tr>
-<td>total_malloc()</td>
-<td>返回分配次数</td>
-</tr>
-<tr>
-<td>Healthy()</td>
-<td>检查是否健康 (未超阈值)</td>
-</tr>
-<tr>
-<td>GetMallocOffset(data)</td>
-<td>将指针转换为偏移</td>
-</tr>
-<tr>
-<td>GetMallocSize(data)</td>
-<td>获取分配的大小</td>
+<td><code>DistEmbedding</code></td>
+<td><code>(ids, grads)</code></td>
 </tr>
 </tbody>
 </table>
-<p><strong>配置</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">PersistLoopShmMalloc</span><span class="p">(</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">filename</span><span class="p">,</span><span class="w">   </span><span class="c1">// 共享内存文件路径</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="n">int64</span><span class="w"> </span><span class="n">memory_size</span><span class="p">,</span><span class="w">              </span><span class="c1">// 总内存大小</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">medium</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;DRAM&quot;</span><span class="w">     </span><span class="c1">// 介质类型</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">);</span>
-</code></pre></div>
-<h2 id="_5">工厂注册<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
-<p>使用 <code>#include "memory/memory_factory.h"</code> 注册所有内存管理器：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">FACTORY_REGISTER</span><span class="p">(</span><span class="n">MallocApi</span><span class="p">,</span><span class="w"> </span><span class="n">PersistSimpleMalloc</span><span class="p">,</span><span class="w"> </span><span class="p">...);</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">FACTORY_REGISTER</span><span class="p">(</span><span class="n">MallocApi</span><span class="p">,</span><span class="w"> </span><span class="n">PersistLoopShmMalloc</span><span class="p">,</span><span class="w"> </span><span class="p">...);</span>
-</code></pre></div>
-<details class="example">
-<summary>配置示例</summary>
-<p>在 BaseKVConfig 中指定内存管理器：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">&quot;value_memory_management&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PersistLoopShmMalloc&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nt">&quot;value_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">}</span>
-</code></pre></div>
-<p>默认使用 <code>PersistLoopShmMalloc</code>。</p>
+<p><code>SparseOptimizer.step()</code> 处理后会清理 trace。跳过这一步会让下一轮 batch 混入旧梯度。</p>
+<h3 id="ebc">EBC 更新<a class="headerlink" href="#ebc" title="Permanent link">&para;</a></h3>
+<p><code>SparseSGD</code> 聚合 <code>_trace</code> 后调用 <code>kv_client.update_async(name, ids, grads)</code>。学习率和优化器公式由后端处理。local_shm / HierKV 快路径会走 <code>local_update_flat</code>。</p>
+<h3 id="distembedding_1">DistEmbedding 更新<a class="headerlink" href="#distembedding_1" title="Permanent link">&para;</a></h3>
+<p><code>SparseSGD</code> 会合并重复 id，读取 <code>mod.weight[unique_ids]</code>，在 Python 侧执行 <code>current - lr * grad</code>，再写回 <code>DistTensor</code>。这条路径没有使用后端 optimizer 状态。</p>
+<details class="note">
+<summary>后端 optimizer</summary>
+<p>后端实现位于 <code>src/optimizer/optimizer.cpp</code>。SGD 无额外状态；AdaGrad 和 RowWiseAdaGrad 的累积状态都在后端维护。EBC 的远端更新应保持这个边界。</p>
 </details>
-<h2 id="_6">使用流程<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
-<ol>
-<li>KV 引擎从配置读取 <code>value_memory_management</code></li>
-<li>通过工厂创建 MallocApi 实例：
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">MallocApi</span><span class="o">&gt;</span><span class="w"> </span><span class="n">malloc_api</span><span class="p">(</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="n">base</span><span class="o">::</span><span class="n">Factory</span><span class="o">&lt;</span><span class="n">MallocApi</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="p">,</span><span class="w"> </span><span class="n">int64</span><span class="o">&gt;::</span><span class="n">NewInstance</span><span class="p">(</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="n">memory_type</span><span class="p">,</span><span class="w"> </span><span class="n">shm_path</span><span class="p">,</span><span class="w"> </span><span class="n">memory_size</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="p">)</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="p">);</span>
-</code></pre></div></li>
-<li>调用 <code>New()</code> 分配内存，存储值数据</li>
-<li>调用 <code>Free()</code> 释放不再使用的内存</li>
-</ol>
-<h2 id="_7">线程安全<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
-<p>两种内存管理器均使用 <code>base::Lock</code> 保护内部数据结构：
-- PersistSimpleMalloc: 全局锁
-- PersistLoopShmMalloc: 全局锁 + FastMalloc 按大小分锁</p>
-<p>KV 引擎通过 <code>tid</code> 参数实现线程局部内存管理，进一步降低锁竞争。</p>
-<h2 id="_8">持久化<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
-<p>内存管理器通过 <code>ShmFile</code> 实现持久化：
-- 将内存映射到文件
-- 使用 <code>clflushopt_range()</code> 刷新缓存
-- 支持恢复机制 (<code>AddMallocs4Recovery</code>)</p>
+<h2 id="_2">修改检查<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>改 trace 结构：同步更新 <code>SparseOptimizer</code> 和相关单测。</p>
+<p>改后端 optimizer：补跑 EBC / PS 更新路径测试，确认 read-modify-write 顺序。</p>
+<p>改 <code>DistEmbedding</code>：检查 <code>DistTensor.__getitem__</code> / <code>__setitem__</code> 和 Python 侧 SGD 聚合。</p>
+<p>改本地快路径：检查 <code>local_update_flat</code> 和 RPC fallback。</p>
 
 
 

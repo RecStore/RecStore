@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://RecStore.github.io/RecStore/storage/basekv/">
       
       
-        <link rel="prev" href="../cacheps/">
+        <link rel="prev" href="../">
       
       
         <link rel="next" href="../kv_engines/">
@@ -29,7 +29,7 @@
     
     
       
-        <title>BaseKV 抽象 - RecStore Documentation</title>
+        <title>BaseKV 与配置 - RecStore Documentation</title>
       
     
     
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              BaseKV 抽象
+              BaseKV 与配置
             
           </span>
         </div>
@@ -851,14 +851,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../calc/op_interface/" class="md-nav__link">
+      <a href="../../calc/interfaces/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    CommonOp 接口
+    接口边界
   
 
     
@@ -879,98 +879,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../calc/kvclient/" class="md-nav__link">
+      <a href="../../calc/embedding_optimizer/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    KVClient 客户端
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../calc/pytorch_binding/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PyTorch C++ 扩展
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../calc/embedding_modules/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    EmbeddingBag 模块
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../calc/optimizer/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    优化器与梯度更新
+    Embedding 与 Optimizer
   
 
     
@@ -1312,34 +1228,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../cacheps/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CachePS 层
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -1359,7 +1247,7 @@
   <span class="md-ellipsis">
     
   
-    BaseKV 抽象
+    BaseKV 与配置
   
 
     
@@ -1377,7 +1265,7 @@
   <span class="md-ellipsis">
     
   
-    BaseKV 抽象
+    BaseKV 与配置
   
 
     
@@ -1406,7 +1294,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        概述
+        接口语义
       
     </span>
   </a>
@@ -1417,7 +1305,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        核心接口
+        配置入口
       
     </span>
   </a>
@@ -1428,7 +1316,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        方法说明
+        必填字段
       
     </span>
   </a>
@@ -1439,79 +1327,7 @@
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        配置结构
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="配置结构">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#basekvconfig" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        BaseKVConfig
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        配置字段
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        引擎选择机制
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        工厂创建
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        线程安全
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        依赖
+        外部引擎
       
     </span>
   </a>
@@ -1541,35 +1357,7 @@
   <span class="md-ellipsis">
     
   
-    KV 引擎实现
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../memory/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    内存管理
+    Composite KV 开发
   
 
     
@@ -2175,7 +1963,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        概述
+        接口语义
       
     </span>
   </a>
@@ -2186,7 +1974,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        核心接口
+        配置入口
       
     </span>
   </a>
@@ -2197,7 +1985,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        方法说明
+        必填字段
       
     </span>
   </a>
@@ -2208,79 +1996,7 @@
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        配置结构
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="配置结构">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#basekvconfig" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        BaseKVConfig
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        配置字段
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        引擎选择机制
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        工厂创建
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        线程安全
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        依赖
+        外部引擎
       
     </span>
   </a>
@@ -2312,208 +2028,120 @@
   
 
 
-<h1 id="basekv">BaseKV 抽象层<a class="headerlink" href="#basekv" title="Permanent link">&para;</a></h1>
-<h2 id="_1">概述<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<p>BaseKV 是所有 KV 引擎的抽象基类，定义了统一的存储接口。位于 <code>storage/kv_engine/base_kv.h</code>。</p>
-<h2 id="_2">核心接口<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h1 id="basekv">BaseKV 与配置<a class="headerlink" href="#basekv" title="Permanent link">&para;</a></h1>
+<p><code>BaseKV</code> 是参数服务器看到的 KV 接口。内置组合式存储挂在这个接口下，上层代码不需要知道索引和值的存放位置。</p>
+<h2 id="_1">接口语义<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">BaseKV</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">Get</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">Put</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">string_view</span><span class="o">&amp;</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">BatchGet</span><span class="p">(</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">                        </span><span class="n">vector</span><span class="o">&lt;</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;*</span><span class="w"> </span><span class="n">values</span><span class="p">,</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">                        </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">BatchPut</span><span class="p">(</span><span class="n">coroutine</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;::</span><span class="n">push_type</span><span class="o">&amp;</span><span class="w"> </span><span class="n">sink</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">                        </span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">                        </span><span class="n">vector</span><span class="o">&lt;</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;*</span><span class="w"> </span><span class="n">values</span><span class="p">,</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w"> </span><span class="k">public</span><span class="o">:</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">Get</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">Put</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string_view</span><span class="o">&amp;</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">BatchGet</span><span class="p">(</span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">                        </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;*</span><span class="w"> </span><span class="n">values</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">                        </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">BatchPut</span><span class="p">(</span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">                        </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;*</span><span class="w"> </span><span class="n">values</span><span class="p">,</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">                        </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">};</span>
 </code></pre></div>
-<h2 id="_3">方法说明<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>方法</th>
-<th>参数</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Get</td>
-<td>key, value, tid</td>
-<td>读取单个键值对</td>
-</tr>
-<tr>
-<td>Put</td>
-<td>key, value_view, tid</td>
-<td>写入单个键值对</td>
-</tr>
-<tr>
-<td>BatchGet</td>
-<td>keys, values, tid</td>
-<td>批量读取</td>
-</tr>
-<tr>
-<td>BatchPut</td>
-<td>sink, keys, values, tid</td>
-<td>批量写入（协程）</td>
-</tr>
-</tbody>
-</table>
-<p>参数说明：
-- <code>tid</code> - 线程 ID，用于线程安全的内存管理
-- <code>sink</code> - 协程 push_type，支持大批量数据的分批处理
-- <code>ConstArray</code> - 只读数组视图，避免数据拷贝
-- <code>MutableArray</code> - 可写数组视图</p>
-<h2 id="_4">配置结构<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<h3 id="basekvconfig">BaseKVConfig<a class="headerlink" href="#basekvconfig" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">BaseKVConfig</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">num_threads_</span><span class="p">;</span><span class="w">        </span><span class="c1">// 线程数</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="n">json</span><span class="w"> </span><span class="n">json_config_</span><span class="p">;</span><span class="w">       </span><span class="c1">// JSON 配置</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">};</span>
+<p><code>Get</code> 未命中时清空 <code>value</code>。<code>BatchGet</code> 的返回值是 <code>ConstArray&lt;float&gt;</code> 视图：DRAM value 可能直接指向底层内存，SSD value 先读到线程局部 buffer。调用方不能把这些视图跨调用长期保存。</p>
+<p><code>tid</code> 保留在接口里，但 <code>KVEngineComposite</code> 主要依赖 key stripe lock 和组件内部同步。新增实现不能假设 <code>tid</code> 全局唯一。</p>
+<h2 id="_2">配置入口<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>服务端配置通常写在 <code>cache_ps.base_kv_config</code>：</p>
+<details class="example">
+<summary>服务端配置示例</summary>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;cache_ps&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nt">&quot;num_threads&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">32</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">&quot;base_kv_config&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">      </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">      </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_EXTENDIBLE_HASH&quot;</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">      </span><span class="p">},</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">      </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_VALUE_STORE&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">        </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">        </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/dev/shm/recstore_data/value&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">        </span><span class="nt">&quot;dram_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">          </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PERSIST_LOOP_SLAB&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">          </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512000000</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">      </span><span class="p">}</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="p">}</span>
 </code></pre></div>
-<h3 id="_5">配置字段<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
-<p><strong>必填字段（非 HYBRID）</strong></p>
+</details>
+<p><code>CachePS</code> 把 <code>num_threads</code> 写入 <code>BaseKVConfig::num_threads_</code>，把 <code>base_kv_config</code> 写入 <code>BaseKVConfig::json_config_</code>，调用：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">resolved</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ResolveEngine</span><span class="p">(</span><span class="n">kv_config</span><span class="p">);</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">auto</span><span class="o">*</span><span class="w"> </span><span class="n">kv</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">Factory</span><span class="o">&lt;</span><span class="n">BaseKV</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">BaseKVConfig</span><span class="o">&amp;&gt;::</span><span class="n">NewInstance</span><span class="p">(</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="n">resolved</span><span class="p">.</span><span class="n">engine</span><span class="p">,</span><span class="w"> </span><span class="n">resolved</span><span class="p">.</span><span class="n">cfg</span><span class="p">);</span>
+</code></pre></div>
+<p>嵌套配置解析为 <code>KVEngineComposite</code>。旧的顶层字段会被拒绝，包括 <code>path</code>、<code>index_type</code>、<code>value_type</code>、<code>value_size</code>、<code>io_backend_type</code>、<code>file_path</code>。</p>
+<h2 id="_3">必填字段<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
 <th>字段</th>
-<th>类型</th>
 <th>说明</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>path</td>
-<td>string</td>
-<td>工作目录</td>
+<td><code>capacity</code></td>
+<td>索引容量或容量估计。<code>DRAM_PET_HASH</code> 会直接用它分配 hash 表。</td>
 </tr>
 <tr>
-<td>index_type</td>
-<td>string</td>
-<td>"DRAM" 或 "SSD"</td>
+<td><code>index.type</code></td>
+<td>索引实现名。合法值见 <a href="../kv_engines/">kv_engines.md</a>。</td>
 </tr>
 <tr>
-<td>value_type</td>
-<td>string</td>
-<td>"DRAM" 或 "SSD"</td>
+<td><code>value.type</code></td>
+<td>value store 实现名。合法值见 <a href="../kv_engines/">kv_engines.md</a>。</td>
 </tr>
 <tr>
-<td>capacity</td>
-<td>uint64_t</td>
-<td>预估条目数</td>
-</tr>
-<tr>
-<td>value_size</td>
-<td>int</td>
-<td>每个值的字节数</td>
+<td><code>value.default_value_size_hint</code></td>
+<td><code>BulkLoad</code> 所需的固定 value 字节数。<code>Put</code> / <code>BatchPut</code> 可写变长值。</td>
 </tr>
 </tbody>
 </table>
-<p><strong>必填字段（HYBRID）</strong></p>
+<p>路径规则由 <code>ResolveEngine</code> 检查：</p>
 <table>
 <thead>
 <tr>
-<th>字段</th>
-<th>类型</th>
-<th>说明</th>
+<th>配置</th>
+<th>路径要求</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>path</td>
-<td>string</td>
-<td>工作目录</td>
+<td><code>DRAM_VALUE_STORE</code></td>
+<td><code>ResolveEngine</code> 允许 <code>value.path</code> 为空或以 <code>/dev/shm</code> 开头；<code>DramValueStore</code> 构造函数目前需要非空路径，示例使用 <code>/dev/shm/...</code>。</td>
 </tr>
 <tr>
-<td>index_type</td>
-<td>string</td>
-<td>"DRAM" 或 "SSD"</td>
+<td><code>SSD_VALUE_STORE</code></td>
+<td><code>value.path</code> 必填且非空。</td>
 </tr>
 <tr>
-<td>value_type</td>
-<td>string</td>
-<td>"HYBRID"</td>
+<td><code>TIERED_VALUE_STORE</code></td>
+<td>不允许 <code>value.path</code>；DRAM 路径写在 <code>value.dram_allocator.path</code>，SSD 路径写在 <code>value.ssd_allocator.path</code>。</td>
 </tr>
 <tr>
-<td>shmcapacity</td>
-<td>uint64_t</td>
-<td>DRAM 字节数</td>
-</tr>
-<tr>
-<td>ssdcapacity</td>
-<td>uint64_t</td>
-<td>SSD 字节数</td>
+<td>SSD index</td>
+<td><code>index.path</code> 必填且非空。</td>
 </tr>
 </tbody>
 </table>
-<p><strong>可选字段</strong></p>
-<table>
-<thead>
-<tr>
-<th>字段</th>
-<th>默认值</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>value_memory_management</td>
-<td>"PersistLoopShmMalloc"</td>
-<td>内存管理器类型</td>
-</tr>
-</tbody>
-</table>
-<h2 id="_6">引擎选择机制<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
-<p>通过 <code>base::ResolveEngine(config)</code> 根据配置自动选择引擎：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ResolveEngine</span><span class="p">(</span><span class="n">kv_config</span><span class="p">);</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1">// r.engine - 引擎类型字符串</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1">// r.cfg - 补全后的配置</span>
+<h2 id="_4">外部引擎<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p><code>external_engine_type</code> 只用于显式选择外部 KV 适配层：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">&quot;external_engine_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;KVEngineHPSRocksDB&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/rocksdb&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">&quot;value_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">}</span>
 </code></pre></div>
-<p>引擎选择规则：</p>
-<table>
-<thead>
-<tr>
-<th>index_type</th>
-<th>value_type</th>
-<th>选择的引擎</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>DRAM</td>
-<td>SSD</td>
-<td>KVEngineExtendibleHash</td>
-</tr>
-<tr>
-<td>SSD</td>
-<td>SSD</td>
-<td>KVEngineCCEH</td>
-</tr>
-<tr>
-<td>DRAM/SSD</td>
-<td>HYBRID</td>
-<td>KVEngineHybrid</td>
-</tr>
-</tbody>
-</table>
-<h2 id="_7">工厂创建<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
-<p>使用工厂模式创建引擎实例：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">BaseKV</span><span class="o">&gt;</span><span class="w"> </span><span class="n">kv</span><span class="p">(</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="n">base</span><span class="o">::</span><span class="n">Factory</span><span class="o">&lt;</span><span class="n">BaseKV</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">BaseKVConfig</span><span class="o">&amp;&gt;::</span><span class="n">NewInstance</span><span class="p">(</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="n">engine_type</span><span class="p">,</span><span class="w"> </span><span class="n">config</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="p">)</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">);</span>
-</code></pre></div>
-<h2 id="_8">线程安全<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
-<p>BaseKV 通过 <code>tid</code> 参数实现线程安全：
-- 每个线程有独立的 tid
-- 内存管理器根据 tid 使用独立的数据结构
-- 避免锁竞争，提高并发性能</p>
-<h2 id="_9">依赖<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>
-<p>使用 BaseKV 前需要：
-1. <code>#include "storage/kv_engine/engine_factory.h"</code> - 注册所有引擎
-2. <code>#include "memory/memory_factory.h"</code> - 注册所有内存管理器</p>
+<p>允许的显式外部引擎是 <code>KVEngineFasterKV</code>、<code>KVEngineHPSHashMap</code>、<code>KVEngineHPSRocksDB</code>。它们不走 <code>KVEngineComposite</code> 的 <code>index/value</code> 组合规则。</p>
+<p>旧字段 <code>engine_type</code> 仍作为兼容别名被接受，但新配置应使用 <code>external_engine_type</code>。如果两个字段同时出现，值必须一致。</p>
 
 
 

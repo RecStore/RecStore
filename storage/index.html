@@ -18,7 +18,7 @@
         <link rel="prev" href="../parameter_server/rdma/">
       
       
-        <link rel="next" href="cacheps/">
+        <link rel="next" href="basekv/">
       
       
         
@@ -851,14 +851,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../calc/op_interface/" class="md-nav__link">
+      <a href="../calc/interfaces/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    CommonOp 接口
+    接口边界
   
 
     
@@ -879,98 +879,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../calc/kvclient/" class="md-nav__link">
+      <a href="../calc/embedding_optimizer/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    KVClient 客户端
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../calc/pytorch_binding/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PyTorch C++ 扩展
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../calc/embedding_modules/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    EmbeddingBag 模块
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../calc/optimizer/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    优化器与梯度更新
+    Embedding 与 Optimizer
   
 
     
@@ -1350,7 +1266,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        概述
+        代码入口
       
     </span>
   </a>
@@ -1361,7 +1277,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        架构分层
+        运行时分层
       
     </span>
   </a>
@@ -1372,7 +1288,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        模块说明
+        读写路径
       
     </span>
   </a>
@@ -1383,46 +1299,7 @@
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        数据流
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="数据流">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        写入流程
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        读取流程
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        引擎选择
+        开发入口
       
     </span>
   </a>
@@ -1445,34 +1322,6 @@
   
   
     <li class="md-nav__item">
-      <a href="cacheps/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CachePS 层
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="basekv/" class="md-nav__link">
         
   
@@ -1480,7 +1329,7 @@
   <span class="md-ellipsis">
     
   
-    BaseKV 抽象
+    BaseKV 与配置
   
 
     
@@ -1508,35 +1357,7 @@
   <span class="md-ellipsis">
     
   
-    KV 引擎实现
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="memory/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    内存管理
+    Composite KV 开发
   
 
     
@@ -2142,7 +1963,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        概述
+        代码入口
       
     </span>
   </a>
@@ -2153,7 +1974,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        架构分层
+        运行时分层
       
     </span>
   </a>
@@ -2164,7 +1985,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        模块说明
+        读写路径
       
     </span>
   </a>
@@ -2175,46 +1996,7 @@
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        数据流
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="数据流">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        写入流程
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        读取流程
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        引擎选择
+        开发入口
       
     </span>
   </a>
@@ -2247,158 +2029,90 @@
 
 
 <h1 id="recstore">RecStore 存储层<a class="headerlink" href="#recstore" title="Permanent link">&para;</a></h1>
-<h2 id="_1">概述<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<p>存储层负责参数和嵌入向量的持久化存储与检索，从参数服务器的 CachePS 层向下，经过 BaseKV 抽象层，到具体的 KV 引擎实现，最终对接到内存管理器。</p>
-<h2 id="_2">架构分层<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>存储层通过本地 KV 实现参数服务器中的请求：<code>uint64_t key -&gt; embedding bytes</code>。</p>
+<p>主要由 <code>KVEngineComposite</code> 实现：索引仅记录 key 到 value handle 的映射，value store 保存实际字节；当 value 存储在 SSD 上时，<code>IOBackend</code> 负责页级读写。</p>
+<h2 id="_1">代码入口<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>目的</th>
+<th>文件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>上层创建 KV</td>
+<td><code>src/ps/base/cache_ps_impl.h</code></td>
+</tr>
+<tr>
+<td>KV 抽象接口</td>
+<td><code>src/storage/kv_engine/base_kv.h</code></td>
+</tr>
+<tr>
+<td>配置解析</td>
+<td><code>src/storage/kv_engine/engine_selector.h</code></td>
+</tr>
+<tr>
+<td>composite KV</td>
+<td><code>src/storage/kv_engine/engine_composite.h</code></td>
+</tr>
+<tr>
+<td>索引接口</td>
+<td><code>src/storage/index/index.h</code></td>
+</tr>
+<tr>
+<td>value store 接口</td>
+<td><code>src/storage/value_store/value_store.h</code></td>
+</tr>
+<tr>
+<td>SSD IO 接口</td>
+<td><code>src/storage/io_backend/io_backend.h</code></td>
+</tr>
+</tbody>
+</table>
+<p>配置说明见 <a href="basekv/">basekv.md</a>，组合和扩展点见 <a href="kv_engines/">kv_engines.md</a>。</p>
+<h2 id="_2">运行时分层<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>graph TD
-    Client[PSClient] -- "GetParameter/UpdateParameter/..." --&gt; Server[ParameterService&lt;br&gt;src/ps/grpc/grpc_ps_server.cpp]
-    Server --&gt; CachePS[CachePS&lt;br&gt;ps/base/cache_ps_impl.h]
-    CachePS --&gt; BaseKV[BaseKV&lt;br&gt;storage/kv_engine/base_kv.h]
-
-    BaseKV --&gt; EngineGroup
-
-    subgraph EngineGroup[KV Engine 实现]
-        direction TB
-        KVEngineExtendibleHash
-        KVEngineCCEH
-        KVEngineHybrid
-        KVEnginePetKV
-    end
-
-    EngineGroup --&gt; MemMgr
-
-    subgraph MemMgr[内存管理]
-        direction TB
-        PLSM[PersistLoopShmMalloc]
-        R2SM[R2ShmMalloc]
-        PSM[PersistSimpleMalloc]
-    end</code></pre>
-<h2 id="_3">模块说明<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<p>详细文档：</p>
-<ul>
-<li><a href="cacheps/">cacheps.md</a> - CachePS 层</li>
-<li><a href="basekv/">basekv.md</a> - BaseKV 抽象接口</li>
-<li><a href="kv_engines/">kv_engines.md</a> - KV 引擎实现</li>
-<li><a href="memory/">memory.md</a> - 内存管理层</li>
-</ul>
-<h2 id="_4">数据流<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<h3 id="_5">写入流程<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>步骤</th>
-<th>操作</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>GRPCPSClient.PutParameter(keys, values)</td>
-<td>前端/训练端批量提交键和值</td>
-</tr>
-<tr>
-<td>2</td>
-<td>CachePS.PutParameter(reader, tid)</td>
-<td>解压参数、准备批量写入请求</td>
-</tr>
-<tr>
-<td>3</td>
-<td>BaseKV.BatchPut(keys, values, tid)</td>
-<td>统一封装 KV 接口，分发到具体引擎</td>
-</tr>
-<tr>
-<td>4</td>
-<td>KVEngine.Put(key, value_view, tid)</td>
-<td>按引擎策略写入 (内存/SSD/混合/NVM)</td>
-</tr>
-<tr>
-<td>5</td>
-<td>MallocApi.New(size) → 分配内存地址</td>
-<td>内存管理器分配持久化地址，返回指针/偏移</td>
-</tr>
-<tr>
-<td>6</td>
-<td>写入数据到分配的内存</td>
-<td>值落盘/落 PMEM，完成一次写入</td>
-</tr>
-</tbody>
-</table>
-<h3 id="_6">读取流程<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>步骤</th>
-<th>操作</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>GRPCPSClient.GetParameter(keys)</td>
-<td>前端/训练端批量读取键</td>
-</tr>
-<tr>
-<td>2</td>
-<td>CachePS.GetParameter(keys, output)</td>
-<td>组织批量读取请求，准备输出缓冲</td>
-</tr>
-<tr>
-<td>3</td>
-<td>BaseKV.BatchGet(keys, values, tid)</td>
-<td>统一调度到 KV 引擎</td>
-</tr>
-<tr>
-<td>4</td>
-<td>KVEngine.Get(key, value, tid)</td>
-<td>根据索引定位值位置，读取原始字节串</td>
-</tr>
-<tr>
-<td>5</td>
-<td>从索引查找值的内存地址</td>
-<td>解析指针/偏移，触发内存或存储读取</td>
-</tr>
-<tr>
-<td>6</td>
-<td>读取数据到输出缓冲区</td>
-<td>转换为 ParameterPack，返回给上层</td>
-</tr>
-</tbody>
-</table>
-<h2 id="_7">引擎选择<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
-<p>根据 (index_type, value_type) 组合自动选择引擎：</p>
-<table>
-<thead>
-<tr>
-<th>index_type</th>
-<th>value_type</th>
-<th>引擎</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>DRAM</td>
-<td>SSD</td>
-<td>KVEngineExtendibleHash</td>
-</tr>
-<tr>
-<td>SSD</td>
-<td>SSD</td>
-<td>KVEngineCCEH</td>
-</tr>
-<tr>
-<td>DRAM/SSD</td>
-<td>HYBRID</td>
-<td>KVEngineHybrid</td>
-</tr>
-<tr>
-<td>DRAM</td>
-<td>DRAM</td>
-<td>KVEngineMap</td>
-</tr>
-</tbody>
-</table>
+    Client[PSClient] --&gt; Server[ParameterService]
+    Server --&gt; CachePS[CachePS]
+    CachePS --&gt; BaseKV[BaseKV]
+    BaseKV --&gt; Composite[KVEngineComposite]
+    Composite --&gt; Index[Index]
+    Composite --&gt; ValueStore[ValueStore]
+    ValueStore --&gt; Allocator[DRAM/SSD allocator]
+    ValueStore --&gt; IOBackend[IOBackend]</code></pre>
+<p><code>CachePS</code> 从 <code>cache_ps.base_kv_config</code> 构造 <code>BaseKVConfig</code>，调用 <code>base::ResolveEngine</code>，用工厂创建 <code>BaseKV</code>。嵌套配置解析成 <code>KVEngineComposite</code>。外部引擎可用 <code>external_engine_type</code> 显式选择，见 <a href="basekv/">basekv.md</a>。</p>
+<h2 id="_3">读写路径<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>写入：</p>
+<ol>
+<li><code>CachePS::PutSingleParameter</code> 或 <code>PutDenseParameterBatch</code> 收到 key 和 float 数据。</li>
+<li>上层调用 <code>BaseKV::Put</code> 或 <code>BaseKV::BatchPut</code>。</li>
+<li><code>KVEngineComposite</code> 查 <code>Index</code>，判断 key 是否已有 handle。</li>
+<li>旧 slot 容量足够时原地覆盖；否则在 <code>ValueStore</code> 重新分配、写入，更新 <code>Index</code>。</li>
+<li>旧 handle 在索引更新后释放。</li>
+</ol>
+<p>读取：</p>
+<ol>
+<li>上层调用 <code>BaseKV::Get</code> 或 <code>BaseKV::BatchGet</code>。</li>
+<li><code>KVEngineComposite</code> 从 <code>Index</code> 找到 value handle。</li>
+<li><code>ValueStore::DirectPtr</code> 可用时直接返回内存视图；SSD 或 tiered 的 SSD 部分调用 <code>Read</code> / <code>BatchRead</code>。</li>
+<li>未命中的 key 返回空值。</li>
+</ol>
+<p><code>KVEngineComposite</code> 用 4096 个 key stripe lock 保护读写。批量写入按 key 去重；同一批次存在重复 key 时退回逐条写入，避免覆盖顺序不清。</p>
+<h2 id="_4">开发入口<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">新增 Index</label><label for="__tabbed_1_2">新增 ValueStore</label><label for="__tabbed_1_3">新增 IOBackend</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>实现 <code>Index</code>，注册到 <code>Factory&lt;Index, const BaseKVConfig&amp;&gt;</code>，把新 <code>index.type</code> 加入 <code>ResolveEngine</code> 的合法集合。</p>
+</div>
+<div class="tabbed-block">
+<p>实现 <code>ValueStore</code>，注册工厂，在 <code>ResolveEngine</code> 中写清楚必填字段和非法组合。索引语义应留在 <code>Index</code>。</p>
+</div>
+<div class="tabbed-block">
+<p>实现 <code>IOBackend</code>，注册工厂，确认 <code>AllocateBuffer</code> 返回页对齐缓冲。value store 和 SSD index 将嵌套配置转换成 <code>file_path</code>、<code>queue_cnt</code>、<code>page_id_offset</code> 后创建后端。</p>
+</div>
+</div>
+</div>
 
 
 

@@ -12,13 +12,13 @@
         <meta name="author" content="RecStore Team">
       
       
-        <link rel="canonical" href="https://RecStore.github.io/RecStore/calc/op_interface/">
+        <link rel="canonical" href="https://RecStore.github.io/RecStore/calc/interfaces/">
       
       
         <link rel="prev" href="../">
       
       
-        <link rel="next" href="../kvclient/">
+        <link rel="next" href="../embedding_optimizer/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>CommonOp 接口 - RecStore Documentation</title>
+        <title>接口边界 - RecStore Documentation</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#commonop" class="md-skip">
+        <a href="#_1" class="md-skip">
           跳转至
         </a>
       
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              CommonOp 接口
+              接口边界
             
           </span>
         </div>
@@ -869,7 +869,7 @@
   <span class="md-ellipsis">
     
   
-    CommonOp 接口
+    接口边界
   
 
     
@@ -887,7 +887,7 @@
   <span class="md-ellipsis">
     
   
-    CommonOp 接口
+    接口边界
   
 
     
@@ -913,10 +913,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#_1" class="md-nav__link">
+  <a href="#python-client" class="md-nav__link">
     <span class="md-ellipsis">
       
-        概述
+        Python client
       
     </span>
   </a>
@@ -924,104 +924,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#pytorch-op" class="md-nav__link">
     <span class="md-ellipsis">
       
-        核心接口
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="核心接口">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        初始化
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        同步读写
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        异步预取
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        异步写入
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        梯度更新
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        存在性检查与删除
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        持久化
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#kvclientop" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        KVClientOp 实现
+        PyTorch op
       
     </span>
   </a>
@@ -1029,60 +935,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_10" class="md-nav__link">
+  <a href="#commonop-kvclientop" class="md-nav__link">
     <span class="md-ellipsis">
       
-        数据类型
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="数据类型">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#rectensor" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        RecTensor
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#initstrategy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        InitStrategy
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#embeddingtableconfig" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        EmbeddingTableConfig
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_11" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        线程安全
+        CommonOp / KVClientOp
       
     </span>
   </a>
@@ -1105,98 +961,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../kvclient/" class="md-nav__link">
+      <a href="../embedding_optimizer/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    KVClient 客户端
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../pytorch_binding/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PyTorch C++ 扩展
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../embedding_modules/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    EmbeddingBag 模块
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../optimizer/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    优化器与梯度更新
+    Embedding 与 Optimizer
   
 
     
@@ -1539,34 +1311,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../storage/cacheps/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CachePS 层
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../storage/basekv/" class="md-nav__link">
         
   
@@ -1574,7 +1318,7 @@
   <span class="md-ellipsis">
     
   
-    BaseKV 抽象
+    BaseKV 与配置
   
 
     
@@ -1602,35 +1346,7 @@
   <span class="md-ellipsis">
     
   
-    KV 引擎实现
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../storage/memory/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    内存管理
+    Composite KV 开发
   
 
     
@@ -2233,10 +1949,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#_1" class="md-nav__link">
+  <a href="#python-client" class="md-nav__link">
     <span class="md-ellipsis">
       
-        概述
+        Python client
       
     </span>
   </a>
@@ -2244,104 +1960,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#pytorch-op" class="md-nav__link">
     <span class="md-ellipsis">
       
-        核心接口
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="核心接口">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        初始化
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        同步读写
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        异步预取
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        异步写入
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        梯度更新
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        存在性检查与删除
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        持久化
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#kvclientop" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        KVClientOp 实现
+        PyTorch op
       
     </span>
   </a>
@@ -2349,60 +1971,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_10" class="md-nav__link">
+  <a href="#commonop-kvclientop" class="md-nav__link">
     <span class="md-ellipsis">
       
-        数据类型
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="数据类型">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#rectensor" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        RecTensor
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#initstrategy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        InitStrategy
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#embeddingtableconfig" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        EmbeddingTableConfig
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_11" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        线程安全
+        CommonOp / KVClientOp
       
     </span>
   </a>
@@ -2426,7 +1998,7 @@
 
 
   
-    <a href="https://github.com/RecStore/RecStore/edit/main/docs/calc/op_interface.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/RecStore/RecStore/edit/main/docs/calc/interfaces.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2434,411 +2006,151 @@
   
 
 
-<h1 id="commonop">CommonOp 接口<a class="headerlink" href="#commonop" title="Permanent link">&para;</a></h1>
-<h2 id="_1">概述<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<p><code>CommonOp</code> 是 C++ 侧的统一接口，定义了所有嵌入操作的规范。位于 <code>src/framework/op.h</code>。</p>
-<h2 id="_2">核心接口<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<h3 id="_3">初始化<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">EmbInit</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">init_values</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">EmbInit</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">InitStrategy</span><span class="o">&amp;</span><span class="w"> </span><span class="n">strategy</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="nf">InitEmbeddingTable</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span><span class="w"> </span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">                                </span><span class="k">const</span><span class="w"> </span><span class="n">EmbeddingTableConfig</span><span class="o">&amp;</span><span class="w"> </span><span class="n">config</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">SetPSConfig</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">host</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">port</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<h1 id="_1">计算层接口<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>这一页记录计算层的边界接口：Python client、PyTorch op、C++ facade。模型代码通常只用 <code>RecStoreClient</code> 或 embedding 模块，不直接碰 <code>KVClientOp</code>。</p>
+<h2 id="python-client">Python client<a class="headerlink" href="#python-client" title="Permanent link">&para;</a></h2>
+<p>文件：<code>src/python/pytorch/recstore/KVClient.py</code></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">recstore.KVClient</span><span class="w"> </span><span class="kn">import</span> <span class="n">RecStoreClient</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">client</span> <span class="o">=</span> <span class="n">RecStoreClient</span><span class="p">(</span><span class="n">library_path</span><span class="o">=</span><span class="s2">&quot;/path/to/lib_recstore_ops.so&quot;</span><span class="p">)</span>
 </code></pre></div>
+<p><code>RecStoreClient</code> 按 role 缓存实例。未传 <code>library_path</code> 时，代码按构建目录约定查找 <code>lib_recstore_ops.so</code>。</p>
 <table>
 <thead>
 <tr>
-<th>方法</th>
-<th>说明</th>
+<th>API</th>
+<th>作用</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>EmbInit(keys, values)</td>
-<td>用提供的值初始化嵌入</td>
+<td><code>init_data(name, shape, dtype, init_func=None)</code></td>
+<td>初始化后端表，记录本地元数据，写入初始值。</td>
 </tr>
 <tr>
-<td>EmbInit(keys, strategy)</td>
-<td>根据策略 (Normal/Uniform/Xavier/Zero) 初始化</td>
+<td><code>pull(name, ids)</code></td>
+<td>读取 <code>[N, D]</code> embedding。</td>
 </tr>
 <tr>
-<td>InitEmbeddingTable</td>
-<td>创建新的嵌入表</td>
+<td><code>push(name, ids, data)</code></td>
+<td>写入 <code>[N, D]</code> embedding。</td>
 </tr>
 <tr>
-<td>SetPSConfig</td>
-<td>动态设置 PS 连接配置 (Host/Port)</td>
+<td><code>prefetch(ids)</code> / <code>wait_for_prefetch(handle)</code></td>
+<td>异步预取。</td>
+</tr>
+<tr>
+<td><code>update(name, ids, grads)</code></td>
+<td>发送 sparse gradients。</td>
+</tr>
+<tr>
+<td><code>set_ps_config(host, port)</code></td>
+<td>重建底层 PS client。</td>
+</tr>
+<tr>
+<td><code>set_ps_backend(backend)</code></td>
+<td>切换 RPC、本地共享内存或 HierKV 路径。</td>
 </tr>
 </tbody>
 </table>
-<p><strong>InitStrategy 支持</strong></p>
+<details class="warning">
+<summary>delete_data 的边界</summary>
+<p><code>delete_data</code> 只清理 Python 本地元数据，不删除后端数据。不要把它当成存储清理接口。</p>
+</details>
+<h2 id="pytorch-op">PyTorch op<a class="headerlink" href="#pytorch-op" title="Permanent link">&para;</a></h2>
+<p>文件：<code>src/framework/pytorch/op_torch.cc</code></p>
 <table>
 <thead>
 <tr>
-<th>类型</th>
+<th>op</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>emb_read(keys, embedding_dim)</code></td>
+<td>同步读取，返回 <code>[N, D]</code>。</td>
+</tr>
+<tr>
+<td><code>emb_write(keys, values)</code></td>
+<td>同步写入。</td>
+</tr>
+<tr>
+<td><code>emb_update_table(table, keys, grads)</code></td>
+<td>带表名更新。</td>
+</tr>
+<tr>
+<td><code>init_embedding_table(name, num_embeddings, embedding_dim)</code></td>
+<td>创建后端表。</td>
+</tr>
+<tr>
+<td><code>emb_prefetch(keys)</code> / <code>emb_wait_result(handle, embedding_dim)</code></td>
+<td>预取。</td>
+</tr>
+<tr>
+<td><code>set_ps_config(host, port)</code> / <code>set_ps_backend(backend)</code></td>
+<td>连接与后端选择。</td>
+</tr>
+<tr>
+<td><code>local_lookup_flat(keys, embedding_dim)</code></td>
+<td>本地快路径读取。</td>
+</tr>
+<tr>
+<td><code>local_update_flat(table, keys, grads)</code></td>
+<td>本地快路径更新。</td>
+</tr>
+</tbody>
+</table>
+<p>张量要求：</p>
+<table>
+<thead>
+<tr>
 <th>参数</th>
+<th>要求</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Normal</td>
-<td>mean, std</td>
+<td><code>keys</code></td>
+<td>int64，1D，contiguous。</td>
 </tr>
 <tr>
-<td>Uniform</td>
-<td>lower, upper</td>
+<td><code>values</code></td>
+<td>float32，2D，contiguous，行数等于 <code>keys.numel()</code>。</td>
 </tr>
 <tr>
-<td>Xavier</td>
-<td>自动计算</td>
+<td><code>grads</code></td>
+<td>float32，2D，contiguous。</td>
 </tr>
 <tr>
-<td>Zero</td>
-<td>全零</td>
+<td><code>embedding_dim</code></td>
+<td>大于 0。</td>
 </tr>
 </tbody>
 </table>
-<h3 id="_4">同步读写<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">EmbRead</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">EmbWrite</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<p>CUDA tensor 会复制到 CPU 后调用 <code>CommonOp</code>。读取结果按输入设备返回。</p>
+<h2 id="commonop-kvclientop">CommonOp / KVClientOp<a class="headerlink" href="#commonop-kvclientop" title="Permanent link">&para;</a></h2>
+<p>文件：<code>src/framework/op.h</code>、<code>src/framework/op.cc</code></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">CommonOp</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w"> </span><span class="k">public</span><span class="o">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">EmbRead</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">EmbWrite</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">EmbUpdate</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">                         </span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">                         </span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">grads</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="nf">InitEmbeddingTable</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">                                  </span><span class="k">const</span><span class="w"> </span><span class="n">EmbeddingTableConfig</span><span class="o">&amp;</span><span class="w"> </span><span class="n">config</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">};</span>
 </code></pre></div>
-<table>
-<thead>
-<tr>
-<th>方法</th>
-<th>说明</th>
-<th>使用场景</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>EmbRead</td>
-<td>批量读取嵌入向量</td>
-<td>前向传播</td>
-</tr>
-<tr>
-<td>EmbWrite</td>
-<td>批量写入嵌入向量</td>
-<td>初始化、检查点加载</td>
-</tr>
-</tbody>
-</table>
-<p><strong>参数</strong></p>
-<table>
-<thead>
-<tr>
-<th>参数</th>
-<th>类型</th>
-<th>形状</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>keys</td>
-<td>uint64 张量</td>
-<td>[N]</td>
-<td>嵌入 ID</td>
-</tr>
-<tr>
-<td>values</td>
-<td>float32 张量</td>
-<td>[N, D]</td>
-<td>嵌入向量</td>
-</tr>
-</tbody>
-</table>
-<h3 id="_5">异步预取<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">uint64_t</span><span class="w"> </span><span class="nf">EmbPrefetch</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="nf">IsPrefetchDone</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">WaitForPrefetch</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">GetPretchResult</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">,</span><span class="w"> </span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">                             </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;*</span><span class="w"> </span><span class="n">values</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-</code></pre></div>
-<table>
-<thead>
-<tr>
-<th>方法</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>EmbPrefetch</td>
-<td>异步读取，返回唯一 ID</td>
-</tr>
-<tr>
-<td>IsPrefetchDone</td>
-<td>检查预取是否完成</td>
-</tr>
-<tr>
-<td>WaitForPrefetch</td>
-<td>阻塞等待预取完成</td>
-</tr>
-<tr>
-<td>GetPretchResult</td>
-<td>获取预取结果</td>
-</tr>
-</tbody>
-</table>
-<p><strong>工作流程</strong></p>
-<table>
-<thead>
-<tr>
-<th>步骤</th>
-<th>代码/操作</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><code>pid = EmbPrefetch(keys, dummy_values)</code></td>
-<td>发起异步预取</td>
-</tr>
-<tr>
-<td>2</td>
-<td>后台执行</td>
-<td>不阻塞当前线程</td>
-</tr>
-<tr>
-<td>3</td>
-<td><code>while not IsPrefetchDone(pid): continue</code></td>
-<td>轮询检查状态</td>
-</tr>
-<tr>
-<td>4</td>
-<td><code>WaitForPrefetch(pid)</code></td>
-<td>阻塞等待完成</td>
-</tr>
-<tr>
-<td>5</td>
-<td><code>GetPretchResult(pid, &amp;results)</code></td>
-<td>获取预取结果</td>
-</tr>
-<tr>
-<td>6</td>
-<td>返回 <code>vector&lt;vector&lt;float&gt;&gt;</code></td>
-<td>返回向量数据</td>
-</tr>
-</tbody>
-</table>
-<h3 id="_6">异步写入<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">uint64_t</span><span class="w"> </span><span class="nf">EmbWriteAsync</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">                               </span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="nf">IsWriteDone</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">write_id</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">WaitForWrite</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">write_id</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-</code></pre></div>
-<table>
-<thead>
-<tr>
-<th>方法</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>EmbWriteAsync</td>
-<td>异步写入，返回写入 ID <strong>(未实现)</strong></td>
-</tr>
-<tr>
-<td>IsWriteDone</td>
-<td>检查写入是否完成 <strong>(未实现)</strong></td>
-</tr>
-<tr>
-<td>WaitForWrite</td>
-<td>阻塞等待写入完成 <strong>(未实现)</strong></td>
-</tr>
-</tbody>
-</table>
-<h3 id="_7">梯度更新<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">EmbUpdate</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">grads</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">EmbUpdate</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span><span class="w"> </span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">                       </span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">                       </span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">grads</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-</code></pre></div>
-<table>
-<thead>
-<tr>
-<th>方法</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>EmbUpdate(keys, grads)</td>
-<td>对所有表的指定 ID 更新梯度</td>
-</tr>
-<tr>
-<td>EmbUpdate(table_name, keys, grads)</td>
-<td>对特定表的指定 ID 更新梯度</td>
-</tr>
-</tbody>
-</table>
-<p><strong>梯度更新流程</strong></p>
-<table>
-<thead>
-<tr>
-<th>步骤</th>
-<th>代码位置</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><code>src/framework/op.h:CommonOp</code></td>
-<td>调用 EmbUpdate 将 (ID, grad) 送往 PS</td>
-</tr>
-<tr>
-<td>2</td>
-<td><code>src/ps/client/</code></td>
-<td>PS 客户端与服务器通信</td>
-</tr>
-<tr>
-<td>3</td>
-<td><code>src/ps/server/</code></td>
-<td>PS 内部执行 SGD: emb -= lr * grad</td>
-</tr>
-<tr>
-<td>4</td>
-<td><code>src/storage/</code></td>
-<td>更新后的嵌入向量存入存储层</td>
-</tr>
-<tr>
-<td>5</td>
-<td>后续读取</td>
-<td>自动返回最新的嵌入向量</td>
-</tr>
-</tbody>
-</table>
-<h3 id="_8">存在性检查与删除<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="nf">EmbExists</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">EmbDelete</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-</code></pre></div>
-<table>
-<thead>
-<tr>
-<th>方法</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>EmbExists</td>
-<td>检查 ID 是否存在</td>
-</tr>
-<tr>
-<td>EmbDelete</td>
-<td>删除指定 ID 的嵌入</td>
-</tr>
-</tbody>
-</table>
-<h3 id="_9">持久化<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">SaveToFile</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">path</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">LoadFromFile</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">path</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-</code></pre></div>
-<table>
-<thead>
-<tr>
-<th>方法</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>SaveToFile</td>
-<td>将嵌入检查点保存到文件</td>
-</tr>
-<tr>
-<td>LoadFromFile</td>
-<td>从文件加载嵌入</td>
-</tr>
-</tbody>
-</table>
-<h2 id="kvclientop">KVClientOp 实现<a class="headerlink" href="#kvclientop" title="Permanent link">&para;</a></h2>
-<p><code>KVClientOp</code> 是 <code>CommonOp</code> 的标准实现，通过 <code>BasePSClient</code> 与参数服务器通信。</p>
-<p><strong>成员变量</strong></p>
-<table>
-<thead>
-<tr>
-<th>成员</th>
-<th>类型</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>embedding_dim_</td>
-<td>int64_t</td>
-<td>嵌入向量维度</td>
-</tr>
-<tr>
-<td>ps_client_</td>
-<td>BasePSClient*</td>
-<td>参数服务器客户端</td>
-</tr>
-</tbody>
-</table>
-<p><strong>创建实例</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">CommonOp</span><span class="o">&gt;</span><span class="w"> </span><span class="n">op</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">GetKVClientOp</span><span class="p">();</span>
-</code></pre></div>
-<h2 id="_10">数据类型<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h2>
-<h3 id="rectensor">RecTensor<a class="headerlink" href="#rectensor" title="Permanent link">&para;</a></h3>
-<p>用于跨 C++ 和 Python 传递数据的张量包装：</p>
-<table>
-<thead>
-<tr>
-<th>字段</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>data_ptr</td>
-<td>数据缓冲区指针</td>
-</tr>
-<tr>
-<td>shape</td>
-<td>张量形状</td>
-</tr>
-<tr>
-<td>dtype</td>
-<td>数据类型 (UINT64, FLOAT32)</td>
-</tr>
-</tbody>
-</table>
-<h3 id="initstrategy">InitStrategy<a class="headerlink" href="#initstrategy" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>字段</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>type</td>
-<td>InitStrategyType 枚举</td>
-</tr>
-<tr>
-<td>mean, std</td>
-<td>Normal 初始化参数</td>
-</tr>
-<tr>
-<td>lower, upper</td>
-<td>Uniform 初始化参数</td>
-</tr>
-</tbody>
-</table>
-<h3 id="embeddingtableconfig">EmbeddingTableConfig<a class="headerlink" href="#embeddingtableconfig" title="Permanent link">&para;</a></h3>
-<p>定义嵌入表的配置（详见参数服务器文档）。</p>
-<h2 id="_11">线程安全<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h2>
-<p><code>KVClientOp</code> 可在多线程环境下安全使用：</p>
-<ul>
-<li>每个线程可独立调用接口</li>
-<li>参数服务器客户端内部处理线程同步</li>
-</ul>
+<p><code>KVClientOp</code> 是默认实现。它根据配置选择远程 PS client 或本地 HierKV runtime。</p>
+<details class="note">
+<summary>新增接口时要改哪些文件</summary>
+<p>至少同步修改 <code>op.h</code>、<code>op.cc</code>、<code>op_torch.cc</code>。mock 路径也要补齐，否则 Python 单测可能只覆盖假实现。</p>
+</details>
+<details class="warning">
+<summary>占位接口</summary>
+<p><code>EmbWriteAsync</code>、<code>IsWriteDone</code>、<code>WaitForWrite</code>、<code>SaveToFile</code>、<code>LoadFromFile</code> 仍是占位接口。不要写成可用能力。</p>
+</details>
 
 
 

@@ -1072,14 +1072,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../calc/op_interface/" class="md-nav__link">
+      <a href="../calc/interfaces/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    CommonOp 接口
+    接口边界
   
 
     
@@ -1100,98 +1100,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../calc/kvclient/" class="md-nav__link">
+      <a href="../calc/embedding_optimizer/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    KVClient 客户端
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../calc/pytorch_binding/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PyTorch C++ 扩展
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../calc/embedding_modules/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    EmbeddingBag 模块
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../calc/optimizer/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    优化器与梯度更新
+    Embedding 与 Optimizer
   
 
     
@@ -1528,34 +1444,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../storage/cacheps/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CachePS 层
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../storage/basekv/" class="md-nav__link">
         
   
@@ -1563,7 +1451,7 @@
   <span class="md-ellipsis">
     
   
-    BaseKV 抽象
+    BaseKV 与配置
   
 
     
@@ -1591,35 +1479,7 @@
   <span class="md-ellipsis">
     
   
-    KV 引擎实现
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../storage/memory/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    内存管理
+    Composite KV 开发
   
 
     
@@ -2677,7 +2537,7 @@
 <p>作用位置：单节点客户端在 <a href="../src/ps/grpc/grpc_ps_client.cpp">src/ps/grpc/grpc_ps_client.cpp</a> 读取以上字段创建 gRPC 通道并标识分片，在 <a href="../src/ps/grpc/grpc_ps_client.h">src/ps/grpc/grpc_ps_client.h</a> 中保存元数据。</p>
 <details class="tip" open="open">
 <summary>动态覆盖</summary>
-<p>在实际运行时（尤其是在多机训练场景下），可以通过 KVClient 动态覆盖配置文件的 <code>host</code> 与 <code>port</code> 设置 <code>client.set_ps_config(host, port)</code>，这允许在不修改 <code>recstore_config.json</code> 的情况下灵活调整连接目标。你可以在 <a href="../calc/kvclient/">KVClient Python 客户端</a> 中找到详细信息。</p>
+<p>运行时可用 <code>client.set_ps_config(host, port)</code> 覆盖配置文件里的 <code>host</code> 和 <code>port</code>。接口说明见 <a href="../calc/interfaces/">计算层接口</a>。</p>
 </details>
 <h2 id="4-report_api">4. report_API 配置<a class="headerlink" href="#4-report_api" title="Permanent link">&para;</a></h2>
 <p><code>report_API</code> 是顶层配置项，用于指定性能 report 的 HTTP 上报入口。</p>
