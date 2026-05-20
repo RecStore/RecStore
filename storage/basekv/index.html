@@ -2141,6 +2141,22 @@
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">}</span>
 </code></pre></div>
 <p>允许的显式外部引擎是 <code>KVEngineFasterKV</code>、<code>KVEngineHPSHashMap</code>、<code>KVEngineHPSRocksDB</code>。它们不走 <code>KVEngineComposite</code> 的 <code>index/value</code> 组合规则。</p>
+<p><code>KVEngineFasterKV</code> 可以额外配置可选的 <code>fasterkv</code> 块，用来选择 FasterKV 自身的 memory 或 SSD 后端：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">&quot;external_engine_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;KVEngineFasterKV&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/tmp/fasterkv_data&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">&quot;value_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="nt">&quot;fasterkv&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="nt">&quot;storage&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ssd&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="nt">&quot;log_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/fasterkv/hlog&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span><span class="nt">&quot;hlog_memory_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1073741824</span><span class="p">,</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="nt">&quot;mutable_fraction&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.9</span><span class="p">,</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">    </span><span class="nt">&quot;read_cache_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">268435456</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>fasterkv.storage</code> 可取 <code>memory</code> 或 <code>ssd</code>，默认是 <code>memory</code>，保持 FasterKV <code>NullDisk</code> 行为。<code>ssd</code> 使用 FasterKV <code>FileSystemDisk</code>，FasterKV 的 hash index 仍在内存中，hybrid log/value 可落到 <code>log_path</code>。如果未显式设置 <code>log_path</code>，<code>KVEngineFasterKV</code> 会使用顶层 <code>path</code> 下的 <code>fasterkv-log</code>；<code>storage=ssd</code> 时必须至少提供非空的 <code>log_path</code> 或顶层 <code>path</code>。<code>hlog_memory_bytes</code> 是可选的内存 log 容量，<code>mutable_fraction</code> 必须大于 0 且不超过 1，<code>read_cache_bytes</code> 大于 0 时启用 FasterKV read cache，实际分配会按 FasterKV page 约束向上取整。</p>
 <p>旧字段 <code>engine_type</code> 仍作为兼容别名被接受，但新配置应使用 <code>external_engine_type</code>。如果两个字段同时出现，值必须一致。</p>
 
 

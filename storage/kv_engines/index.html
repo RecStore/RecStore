@@ -2140,6 +2140,7 @@
 </tr>
 </tbody>
 </table>
+<p>显式外部引擎不参与上表的 <code>KVEngineComposite</code> 组合规则。<code>KVEngineFasterKV</code> 使用 FasterKV 内部的内存 hash index；它的可选 <code>fasterkv.storage</code> 只控制 FasterKV hybrid log/value backend：<code>memory</code> 使用 <code>NullDisk</code>，<code>ssd</code> 使用 <code>FileSystemDisk</code> 并可将 hybrid log/value 放到 <code>fasterkv.log_path</code>。这和 RecStore 内置的 <code>index</code> / <code>value</code> 分层不是同一套配置面。</p>
 <h2 id="_2">配置样例<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <details class="example">
 <summary>DRAM index + DRAM value</summary>

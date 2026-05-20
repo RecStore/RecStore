@@ -2,122 +2,122 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://RecStore.github.io/RecStore/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/config/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/faq/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/quickrun/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/quickstart/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/agent/performance_comparison_capability/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/architecture/overview/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/calc/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/calc/embedding_optimizer/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/calc/interfaces/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/dev/distributed/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/dev/performance/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/dev/testing/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/dev/ycsb/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/dev/zero_config_run/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/dev/feature/add_operator/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/dev/tests/client_test/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/dev/tests/coverage/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/dev/tests/dist_emb_test/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/dev/tests/ebc_precision/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/dev/tests/tools/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/parameter_server/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/parameter_server/base/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/parameter_server/brpc/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/parameter_server/grpc/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/parameter_server/proto/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/parameter_server/rdma/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/storage/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/storage/basekv/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
     <url>
          <loc>https://RecStore.github.io/RecStore/storage/kv_engines/</loc>
-         <lastmod>2026-05-18</lastmod>
+         <lastmod>2026-05-20</lastmod>
     </url>
 </urlset>
