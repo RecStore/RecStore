@@ -12,7 +12,7 @@
         <meta name="author" content="RecStore Team">
       
       
-        <link rel="canonical" href="https://RecStore.github.io/RecStore/agent/performance_comparison_capability/">
+        <link rel="canonical" href="https://RecStore.github.io/RecStore/agent/perf/">
       
       
       
@@ -1847,10 +1847,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#purpose" class="md-nav__link">
+  <a href="#1-scope" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Purpose
+        1. Scope
       
     </span>
   </a>
@@ -1858,33 +1858,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#scope" class="md-nav__link">
+  <a href="#2-layer-boundaries" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Scope
+        2. Layer Boundaries
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#comparison-rules" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Comparison Rules
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Comparison Rules">
+    <nav class="md-nav" aria-label="2. Layer Boundaries">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#keep-resource-assumptions-explicit" class="md-nav__link">
+  <a href="#storage-only" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Keep resource assumptions explicit
+        Storage-only
       
     </span>
   </a>
@@ -1892,10 +1881,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#separate-throughput-from-bring-up-behavior" class="md-nav__link">
+  <a href="#psnetwork" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Separate throughput from bring-up behavior
+        PS/network
       
     </span>
   </a>
@@ -1903,32 +1892,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#keep-curves-dense-and-tables-compact" class="md-nav__link">
+  <a href="#pytorchmodel" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Keep curves dense and tables compact
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#treat-capacity-as-part-of-the-experiment-definition" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Treat capacity as part of the experiment definition
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#do-not-confuse-transport-conclusions-with-storage-conclusions" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Do not confuse transport conclusions with storage conclusions
+        PyTorch/model
       
     </span>
   </a>
@@ -1941,10 +1908,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#required-record" class="md-nav__link">
+  <a href="#3-default-matrix" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Required Record
+        3. Default Matrix
       
     </span>
   </a>
@@ -1952,10 +1919,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#repository-pitfalls" class="md-nav__link">
+  <a href="#4-workflow" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Repository Pitfalls
+        4. Workflow
       
     </span>
   </a>
@@ -1963,10 +1930,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#preferred-output" class="md-nav__link">
+  <a href="#5-required-records" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Preferred Output
+        5. Required Records
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-aggregation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Aggregation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-fairness-checks-before-concluding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Fairness Checks Before Concluding
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-interpretation-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Interpretation Rules
       
     </span>
   </a>
@@ -1990,7 +1990,7 @@
 
 
   
-    <a href="https://github.com/RecStore/RecStore/edit/main/docs/agent/performance_comparison_capability.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/RecStore/RecStore/edit/main/docs/agent/perf.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1999,85 +1999,132 @@
 
 
 <h1 id="performance-comparison-capability">Performance Comparison Capability<a class="headerlink" href="#performance-comparison-capability" title="Permanent link">&para;</a></h1>
-<h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h2>
-<p>This document defines how to produce credible performance comparisons in RecStore.
-It is project-specific and focused on the current benchmark layout, transport paths, memory modes, and reporting conventions.</p>
-<h2 id="scope">Scope<a class="headerlink" href="#scope" title="Permanent link">&para;</a></h2>
-<p>Use this capability when comparing:</p>
+<h2 id="1-scope">1. Scope<a class="headerlink" href="#1-scope" title="Permanent link">&para;</a></h2>
+<p>Use this guide when comparing:</p>
 <ul>
-<li>different storage backends or memory placements</li>
-<li>different transport paths</li>
-<li>the same path under different capacity or resource limits</li>
-<li>RecStore against an external baseline</li>
-<li>a new optimization against an existing in-repo baseline</li>
+<li>storage backends, index types, value stores, or memory placements</li>
+<li>BRPC, GRPC, LOCAL_SHM, RDMA, or other RecStore transports</li>
+<li>storage-only vs PS/network performance</li>
+<li>PS/network vs PyTorch/model performance</li>
+<li>RecStore vs third-party engines such as HPS, RocksDB, or HierarchicalKV</li>
+<li>a new optimization vs an existing baseline</li>
 </ul>
-<p>The expected output is a comparison that is reproducible, scoped, and explicit about what was actually compared.</p>
-<h2 id="comparison-rules">Comparison Rules<a class="headerlink" href="#comparison-rules" title="Permanent link">&para;</a></h2>
-<h3 id="keep-resource-assumptions-explicit">Keep resource assumptions explicit<a class="headerlink" href="#keep-resource-assumptions-explicit" title="Permanent link">&para;</a></h3>
-<p>A path name is not enough. State the effective resource model for each path, for example:</p>
+<p>Do not turn one benchmark lane into an architecture-level claim.</p>
+<h2 id="2-layer-boundaries">2. Layer Boundaries<a class="headerlink" href="#2-layer-boundaries" title="Permanent link">&para;</a></h2>
+<p>Always label every result with one of these layers.</p>
+<h3 id="storage-only">Storage-only<a class="headerlink" href="#storage-only" title="Permanent link">&para;</a></h3>
+<p>Direct backend benchmark. This measures storage engine behavior without PS
+transport overhead.</p>
+<p>Use this layer for RecStore native backends and third-party engines unless those
+engines are explicitly integrated into PS and PyTorch paths.</p>
+<h3 id="psnetwork">PS/network<a class="headerlink" href="#psnetwork" title="Permanent link">&para;</a></h3>
+<p>Client/server benchmark through RecStore PS. This measures client routing,
+transport, server dispatch, serialization, and copy overhead.</p>
+<p>Do not use this layer to claim storage-engine superiority by itself.</p>
+<h3 id="pytorchmodel">PyTorch/model<a class="headerlink" href="#pytorchmodel" title="Permanent link">&para;</a></h3>
+<p>Model integration benchmark, usually through <code>model_zoo/rs_demo</code>.</p>
+<p>This layer includes ID preparation, lookup wait, EmbeddingBag pooling, sparse
+update scheduling, backward, and Python runner overhead.</p>
+<h2 id="3-default-matrix">3. Default Matrix<a class="headerlink" href="#3-default-matrix" title="Permanent link">&para;</a></h2>
+<p>Default DRAM backends:</p>
 <ul>
-<li>GPU present with HBM used for vectors</li>
-<li>GPU present but HBM not used for vectors</li>
-<li>shared-memory local path</li>
-<li>RPC path</li>
+<li><code>DRAM_UNORDERED_MAP + DRAM_VALUE_STORE</code></li>
+<li><code>DRAM_EXTENDIBLE_HASH + DRAM_VALUE_STORE</code></li>
+<li><code>DRAM_PET_HASH + DRAM_VALUE_STORE</code></li>
+<li>third-party backends only at integrated layers</li>
 </ul>
-<p>Do not collapse these into a single “architecture-level” conclusion.</p>
-<h3 id="separate-throughput-from-bring-up-behavior">Separate throughput from bring-up behavior<a class="headerlink" href="#separate-throughput-from-bring-up-behavior" title="Permanent link">&para;</a></h3>
-<p>Initialization failures are not throughput results. Keep them separate. Common pre-steady-state failure surfaces include:</p>
+<p>Baseline parameters:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>value_size = 512
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>record_count = 1,000,000
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>batch_size = 1024
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>threads = 16
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>distribution = uniform
+</code></pre></div>
+<p>For paper reproduction, use the paper parameters instead of this baseline.</p>
+<h2 id="4-workflow">4. Workflow<a class="headerlink" href="#4-workflow" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Check branch, dirty files, and stale benchmark binaries.</li>
+<li>Run storage-only benchmarks first if measuring degradation.</li>
+<li>Run PS/network benchmarks with matching value size, key count, operation, and
+   backend where possible.</li>
+<li>Run PyTorch/model benchmarks after lower layers are understood.</li>
+<li>Aggregate raw results into CSV files.</li>
+<li>Report ratios only when numerator and denominator use compatible operation
+   and layer semantics.</li>
+</ol>
+<h2 id="5-required-records">5. Required Records<a class="headerlink" href="#5-required-records" title="Permanent link">&para;</a></h2>
+<p>Every comparison must record:</p>
 <ul>
-<li>server startup readiness</li>
-<li>benchmark binary path drift</li>
-<li>initialization timeout</li>
-<li>initialization OOM</li>
-<li>transport-specific startup artifacts</li>
-</ul>
-<p>If a path fails during initialization, report it as a reachability or initialization limit.</p>
-<h3 id="keep-curves-dense-and-tables-compact">Keep curves dense and tables compact<a class="headerlink" href="#keep-curves-dense-and-tables-compact" title="Permanent link">&para;</a></h3>
-<p>The full sweep and the report table serve different purposes:</p>
-<ul>
-<li>the curve should keep dense points so trend changes are visible</li>
-<li>the table should only keep highlighted scales</li>
-</ul>
-<h3 id="treat-capacity-as-part-of-the-experiment-definition">Treat capacity as part of the experiment definition<a class="headerlink" href="#treat-capacity-as-part-of-the-experiment-definition" title="Permanent link">&para;</a></h3>
-<p>In RecStore, capacity can change validity, reachability, and fairness.
-Whenever RecStore paths are involved, record the capacity policy for the measured points.</p>
-<h3 id="do-not-confuse-transport-conclusions-with-storage-conclusions">Do not confuse transport conclusions with storage conclusions<a class="headerlink" href="#do-not-confuse-transport-conclusions-with-storage-conclusions" title="Permanent link">&para;</a></h3>
-<p>A shared-memory result and an RPC result answer different questions:</p>
-<ul>
-<li>a shared-memory result says something about a local fast path</li>
-<li>an RPC result says something about a networked transport path</li>
-</ul>
-<p>Do not use an RPC result as proof of storage-layer inferiority or superiority.</p>
-<h2 id="required-record">Required Record<a class="headerlink" href="#required-record" title="Permanent link">&para;</a></h2>
-<p>Every reusable comparison should record:</p>
-<ul>
-<li>experiment goal</li>
-<li>compared path classes</li>
-<li>resource assumptions for each class</li>
-<li>workload definition</li>
-<li>measured scale points</li>
+<li>goal</li>
+<li>branch and relevant commits</li>
+<li>compared objects and their layers</li>
+<li>exact commands, runner scripts, or raw output paths</li>
+<li>value size, capacity/record count, batch size, thread/process count</li>
+<li>distribution and operation mode</li>
 <li>repeat policy</li>
-<li>capacity policy for RecStore paths</li>
-<li>aggregated throughput results</li>
-<li>any initialization or reachability limits</li>
-<li>location of raw records</li>
+<li>aggregate CSV paths</li>
+<li>warnings, startup failures, timeouts, OOMs, or allocator substitutions</li>
 </ul>
-<h2 id="repository-pitfalls">Repository Pitfalls<a class="headerlink" href="#repository-pitfalls" title="Permanent link">&para;</a></h2>
+<p>If a path fails before steady-state measurement, report it as startup,
+reachability, configuration, timeout, or OOM failure. Do not convert it into a
+throughput result.</p>
+<h2 id="6-aggregation">6. Aggregation<a class="headerlink" href="#6-aggregation" title="Permanent link">&para;</a></h2>
+<p>Use consistent units:</p>
 <ul>
-<li>Benchmark helper defaults may point to stale binary locations. Verify the actual built binary paths before trusting a runner.</li>
-<li>Startup readiness detection can be fragile if it depends on exact log text. Treat server-ready parsing as an implementation detail that may need hardening.</li>
-<li>Large-table RPC runs may fail during initialization before any meaningful steady-state number exists. Report this as an initialization limit.</li>
-<li>Shared-memory comparisons depend on explicit capacity sizing per measured scale. Reusing one fixed capacity across scales can invalidate the result.</li>
-<li>This environment may not have <code>pdflatex</code>; TeX reports may need text-level verification without local PDF compilation.</li>
+<li>storage-only: <code>M keys/s</code></li>
+<li>PS/network: <code>M keys/s</code></li>
+<li>PyTorch/model: <code>M rows/s</code> plus <code>ms</code></li>
 </ul>
-<h2 id="preferred-output">Preferred Output<a class="headerlink" href="#preferred-output" title="Permanent link">&para;</a></h2>
-<p>Preferred report shape:</p>
+<p>Storage and PS:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>M keys/s = throughput_keys_sec / 1e6
+</code></pre></div>
+<p>PyTorch EmbeddingBag:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>rows_per_step = batch_size * sparse_features_per_sample
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>read M rows/s = rows_per_step / (embed_lookup_local_ms / 1000) / 1e6
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>write M rows/s = rows_per_step / (sparse_update_ms / 1000) / 1e6
+</code></pre></div>
+<p>Layer retention:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>PS retention = PS M keys/s / storage-only M keys/s
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>PyTorch retention = PyTorch M rows/s / PS M keys/s
+</code></pre></div>
+<p>Call ratios "retention" or "remaining throughput", not speedup. If retention is
+above <code>1.0</code>, explain timing-boundary mismatch instead of claiming the higher
+layer is faster.</p>
+<h2 id="7-fairness-checks-before-concluding">7. Fairness Checks Before Concluding<a class="headerlink" href="#7-fairness-checks-before-concluding" title="Permanent link">&para;</a></h2>
+<p>Before concluding, confirm:</p>
 <ul>
-<li>one short goal statement</li>
-<li>one compact highlighted table</li>
-<li>one dense trend figure</li>
-<li>one short conclusion</li>
-<li>one short methodology block at the end</li>
+<li>same value size, operation mode, and distribution, or differences explained</li>
+<li>same key/row scale, or capacity policy stated</li>
+<li>PyTorch warmup rows excluded</li>
+<li>third-party engines compared only at integrated layers</li>
+<li>GPU/HBM assumptions stated for TorchRec or GPU paths</li>
+<li>shared-memory and RPC results not collapsed into one generic conclusion</li>
+<li>CPU affinity, readiness, timeout, and allocator warnings recorded</li>
+</ul>
+<h2 id="8-interpretation-rules">8. Interpretation Rules<a class="headerlink" href="#8-interpretation-rules" title="Permanent link">&para;</a></h2>
+<p>Good conclusions:</p>
+<ul>
+<li>"At storage-only layer, <code>DRAM_PET_HASH</code> has higher read throughput under this
+  uniform workload."</li>
+<li>"After PS/network, read throughput converges, suggesting transport and
+  client/server overhead dominate this setting."</li>
+</ul>
+<p>Bad conclusions:</p>
+<ul>
+<li>"<code>DRAM_PET_HASH</code> is always better."</li>
+<li>"LOCAL_SHM must be fastest because it uses shared memory."</li>
+<li>"PyTorch is faster than PS because converted rows/s is larger."</li>
+</ul>
+<p>Common caveats:</p>
+<ul>
+<li>LOCAL_SHM can be slower than RPC if queue, slot, synchronization, or copy cost
+  dominates.</li>
+<li><code>DRAM_UNORDERED_MAP</code> may lose less after PS because PS overhead hides faster
+  storage engines' advantage.</li>
+<li>Third-party storage-only numbers do not belong in PS/network or PyTorch tables
+  until those integrations exist.</li>
+<li><code>PersistLoopShmMalloc</code> is acceptable for local bring-up when <code>R2ShmMalloc</code> is
+  unstable, but the report must say so.</li>
 </ul>
 
 
