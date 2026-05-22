@@ -44,17 +44,17 @@
       <tr>
         <th scope="row">Lines:</th>
         <td class="coverage-none">0.0%</td>
-        <td class="coverage-none">0 / 0 / 177</td>
+        <td class="coverage-none">0 / 0 / 185</td>
       </tr>
       <tr>
         <th scope="row">Functions:</th>
         <td class="coverage-none">0.0%</td>
-        <td class="coverage-none">0 / 0 / 11</td>
+        <td class="coverage-none">0 / 0 / 13</td>
       </tr>
       <tr>
         <th scope="row">Branches:</th>
         <td class="coverage-none">0.0%</td>
-        <td class="coverage-none">0 / 0 / 443</td>
+        <td class="coverage-none">0 / 0 / 451</td>
       </tr>
     </table>
   </div>
@@ -103,6 +103,20 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l83">KVEngineExtendibleHash::Get(unsigned long, std::__cxx11::basic_string&lt;char, std::char_traits&lt;char&gt;, std::allocator&lt;char&gt; &gt;&amp;, unsigned int) (src/storage/kv_engine/engine_extendible_hash.h:83)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l489">KVEngineExtendibleHash::HashGet(unsigned long, unsigned long&amp;, unsigned int) (src/storage/kv_engine/engine_extendible_hash.h:489)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l494">KVEngineExtendibleHash::HashPut(unsigned long, unsigned long, unsigned int) (src/storage/kv_engine/engine_extendible_hash.h:494)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
@@ -160,7 +174,7 @@
     storage/kv_engine/engine_extendible_hash.h
     <div class="toggle-buttons">
       <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">0 covered</button>
-      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">144 uncovered</button>
+      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">152 uncovered</button>
       <button type="button" class="button_toggle_partialCoveredLine show_partialCoveredLine" value="partialCoveredLine" title="Toggle partial covered lines">0 partial covered</button>
       <button type="button" class="button_toggle_excludedLine show_excludedLine" value="excludedLine" title="Toggle excluded lines">0 excluded</button>
     </div>
@@ -806,7 +820,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
-        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">hash_table_</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">read_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">HashGet</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">read_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l91" href="#l91">91</a></td>
@@ -1597,7 +1611,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="n">hash_table_</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">read_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
+        <td class="src "><span class="w">      </span><span class="n">HashGet</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">read_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l204" href="#l204">204</a></td>
@@ -1982,7 +1996,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="n">hash_table_</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">read_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
+        <td class="src "><span class="w">      </span><span class="n">HashGet</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">read_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l259" href="#l259">259</a></td>
@@ -2465,7 +2479,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">        </span><span class="n">hash_table_</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">read_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
+        <td class="src "><span class="w">        </span><span class="n">HashGet</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">read_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l328" href="#l328">328</a></td>
@@ -2682,7 +2696,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="n">hash_table_</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">read_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
+        <td class="src "><span class="w">      </span><span class="n">HashGet</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">read_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l359" href="#l359">359</a></td>
@@ -2948,7 +2962,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="n">hash_table_</span><span class="o">-&gt;</span><span class="n">Put</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">shmkv_data</span><span class="p">.</span><span class="n">data_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
+        <td class="src "><span class="w">      </span><span class="n">HashPut</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">shmkv_data</span><span class="p">.</span><span class="n">data_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l397" href="#l397">397</a></td>
@@ -3256,7 +3270,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
-        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">hash_table_</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">old_val</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">HashGet</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">old_val</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l441" href="#l441">441</a></td>
@@ -3550,7 +3564,7 @@
         <td class="linebranch">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
-        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">hash_table_</span><span class="o">-&gt;</span><span class="n">Put</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">shmkv_data</span><span class="p">.</span><span class="n">data_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">HashPut</span><span class="p">(</span><span class="n">hash_key</span><span class="p">,</span><span class="w"> </span><span class="n">shmkv_data</span><span class="p">.</span><span class="n">data_value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l483" href="#l483">483</a></td>
@@ -3598,95 +3612,172 @@
         <td class="lineno"><a id="l489" href="#l489">489</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">ExtendibleHash</span><span class="o">*</span><span class="w"> </span><span class="n">hash_table_</span><span class="p">;</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">HashGet</span><span class="p">(</span><span class="n">Key_t</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">Value_t</span><span class="o">&amp;</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l490" href="#l490">490</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">dict_pool_name_</span><span class="p">;</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">shared_lock</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">shared_mutex</span><span class="o">&gt;</span><span class="w"> </span><span class="n">lk</span><span class="p">(</span><span class="n">hash_table_mutex_</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l491" href="#l491">491</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">value_size_</span><span class="p">;</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">hash_table_</span><span class="o">-&gt;</span><span class="n">Get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l492" href="#l492">492</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">base</span><span class="o">::</span><span class="n">MallocApi</span><span class="o">&gt;</span><span class="w"> </span><span class="n">shm_malloc_</span><span class="p">;</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l493" href="#l493">493</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">base</span><span class="o">::</span><span class="n">ShmFile</span><span class="w"> </span><span class="n">valid_shm_file_</span><span class="p">;</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l494" href="#l494">494</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">shared_mutex</span><span class="p">,</span><span class="w"> </span><span class="n">kLockStripeNum</span><span class="o">&gt;</span><span class="w"> </span><span class="n">key_mutexes_</span><span class="p">;</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">HashPut</span><span class="p">(</span><span class="n">Key_t</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">Value_t</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l495" href="#l495">495</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">fence_count_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">unique_lock</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">shared_mutex</span><span class="o">&gt;</span><span class="w"> </span><span class="n">lk</span><span class="p">(</span><span class="n">hash_table_mutex_</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l496" href="#l496">496</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="p">};</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">hash_table_</span><span class="o">-&gt;</span><span class="n">Put</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l497" href="#l497">497</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="linecount uncoveredLine show_uncoveredLine">&cross;</td>
+        <td class="src  uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l498" href="#l498">498</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="n">FACTORY_REGISTER</span><span class="p">(</span><span class="n">BaseKV</span><span class="p">,</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l499" href="#l499">499</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                 </span><span class="n">KVEngineExtendibleHash</span><span class="p">,</span></td>
+        <td class="src "><span class="w">  </span><span class="n">ExtendibleHash</span><span class="o">*</span><span class="w"> </span><span class="n">hash_table_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l500" href="#l500">500</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                 </span><span class="n">KVEngineExtendibleHash</span><span class="p">,</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">dict_pool_name_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l501" href="#l501">501</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                 </span><span class="k">const</span><span class="w"> </span><span class="n">BaseKVConfig</span><span class="o">&amp;</span><span class="p">);</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">value_size_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l502" href="#l502">502</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">base</span><span class="o">::</span><span class="n">MallocApi</span><span class="o">&gt;</span><span class="w"> </span><span class="n">shm_malloc_</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l503" href="#l503">503</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">  </span><span class="n">base</span><span class="o">::</span><span class="n">ShmFile</span><span class="w"> </span><span class="n">valid_shm_file_</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l504" href="#l504">504</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">shared_mutex</span><span class="p">,</span><span class="w"> </span><span class="n">kLockStripeNum</span><span class="o">&gt;</span><span class="w"> </span><span class="n">key_mutexes_</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l505" href="#l505">505</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">shared_mutex</span><span class="w"> </span><span class="n">hash_table_mutex_</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l506" href="#l506">506</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">fence_count_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l507" href="#l507">507</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="p">};</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l508" href="#l508">508</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l509" href="#l509">509</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="n">FACTORY_REGISTER</span><span class="p">(</span><span class="n">BaseKV</span><span class="p">,</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l510" href="#l510">510</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">                 </span><span class="n">KVEngineExtendibleHash</span><span class="p">,</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l511" href="#l511">511</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">                 </span><span class="n">KVEngineExtendibleHash</span><span class="p">,</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l512" href="#l512">512</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">                 </span><span class="k">const</span><span class="w"> </span><span class="n">BaseKVConfig</span><span class="o">&amp;</span><span class="p">);</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l513" href="#l513">513</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
@@ -3699,7 +3790,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.6">GCOVR (Version 8.6)</a>
-          at 2026-05-20 12:30:23
+          at 2026-05-22 04:56:06
         </footer>
       </div>
     </div>
