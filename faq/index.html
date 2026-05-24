@@ -2111,7 +2111,7 @@
 </details>
 <h2 id="runtime-errors">Runtime Errors<a class="headerlink" href="#runtime-errors" title="Permanent link">&para;</a></h2>
 <details class="failure">
-<summary>E20260117 01:49:19.761556 970021 engine_extendible_hash.h:88] shm malloc failed (OOM?), key: 93068 size: 512</summary>
+<summary>shm malloc failed (OOM?), key: ... size: ...</summary>
 <p>通常是 <code>cache_ps.base_kv_config</code> 的容量预算过小导致。优先检查并调大以下字段之一：</p>
 <ul>
 <li><code>ENTRY_CAPACITY</code></li>

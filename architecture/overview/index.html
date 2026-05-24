@@ -2044,7 +2044,7 @@
     subgraph Storage ["3. 存储层 (Storage Layer)"]
         PSServer --&gt; CachePS["CachePS 核心逻辑&lt;br/&gt;src/ps/base/cache_ps_impl.h"]
         CachePS --&gt; BaseKV["BaseKV 抽象层&lt;br/&gt;src/storage/kv_engine/base_kv.h"]
-        BaseKV --&gt; KVEngine["KV 引擎 (ExtendibleHash/CCEH/Hybrid)&lt;br/&gt;src/storage/kv_engine/"]
+        BaseKV --&gt; KVEngine["KV 引擎 (Composite/PetKV/External)&lt;br/&gt;src/storage/kv_engine/"]
         KVEngine --&gt; MemMgr["内存管理器&lt;br/&gt;src/memory/"]
     end
 
