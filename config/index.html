@@ -795,7 +795,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        引擎类型自动推导规则
+        引擎类型选择
       
     </span>
   </a>
@@ -1423,7 +1423,7 @@
   <span class="md-ellipsis">
     
   
-    架构总览
+    存储层总览
   
 
     
@@ -1451,7 +1451,7 @@
   <span class="md-ellipsis">
     
   
-    BaseKV 与配置
+    BaseKV 与 Engine
   
 
     
@@ -1472,14 +1472,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../storage/kv_engines/" class="md-nav__link">
+      <a href="../storage/composite_kvengine/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Composite KV 开发
+    KVEngineComposite
   
 
     
@@ -2164,7 +2164,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        引擎类型自动推导规则
+        引擎类型选择
       
     </span>
   </a>
@@ -2369,7 +2369,7 @@
 <p>默认配置中 <code>host</code> 为 <code>127.0.0.1</code>，仅允许本地访问。在多机场景下，必须修改为 <code>0.0.0.0</code> 或本机对外的局域网 IP (LAN IP)，以允许远程客户端连接。</p>
 </details>
 <h3 id="13-base_kv_config">1.3 base_kv_config 配置<a class="headerlink" href="#13-base_kv_config" title="Permanent link">&para;</a></h3>
-<p><code>base_kv_config</code> 定义底层键值存储引擎的配置，由 <a href="../src/storage/kv_engine/engine_selector.h">src/storage/kv_engine/engine_selector.h</a> 的 <code>ResolveEngine</code> 按 <code>index.type</code> 和 <code>value.type</code> 校验并解析。</p>
+<p><code>base_kv_config</code> 定义底层键值存储引擎的配置，由 <a href="../src/storage/kv_engine/engine_selector.h">src/storage/kv_engine/engine_selector.h</a> 的 <code>ResolveEngine</code> 解析 <code>engine_type</code>；具体字段校验在对应引擎构造时完成。</p>
 <h4 id="hybrid">通用必填字段（非 HYBRID 模式）<a class="headerlink" href="#hybrid" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
@@ -2382,6 +2382,12 @@
 </thead>
 <tbody>
 <tr>
+<td><code>engine_type</code></td>
+<td>string</td>
+<td>否</td>
+<td>省略时默认为 <code>KVEngineComposite</code>；全部引擎见 <a href="../storage/basekv/">basekv.md</a></td>
+</tr>
+<tr>
 <td><code>capacity</code></td>
 <td>integer</td>
 <td>是</td>
@@ -2390,21 +2396,21 @@
 <tr>
 <td><code>index</code></td>
 <td>object</td>
-<td>是</td>
-<td>索引配置，必须包含 <code>index.type</code>；SSD 索引还需要 <code>index.path</code> 与 <code>index.io</code></td>
+<td>Composite</td>
+<td>索引配置，见 <a href="../storage/composite_kvengine/">composite_kvengine.md</a></td>
 </tr>
 <tr>
 <td><code>value</code></td>
 <td>object</td>
-<td>是</td>
-<td>值存储配置，必须包含 <code>value.type</code> 与 <code>value.default_value_size_hint</code>；按类型提供 <code>value.path</code>、<code>value.dram_allocator</code> 或 <code>value.ssd_allocator</code></td>
+<td>Composite</td>
+<td>值存储配置，见 <a href="../storage/composite_kvengine/">composite_kvengine.md</a></td>
 </tr>
 </tbody>
 </table>
 <p>作用位置：字段最终进入 <code>BaseKVConfig.json_config_</code>，在 <a href="../src/storage/kv_engine/engine_selector.h">src/storage/kv_engine/engine_selector.h</a> 中推导引擎类型，并在 <a href="../src/storage/kv_engine/base_kv.h">src/storage/kv_engine/base_kv.h</a> 及对应引擎实现中用于容量预分配与值大小约束。</p>
 <details class="note" open="open">
 <summary>注意</summary>
-<p><code>ResolveEngine</code> 当前拒绝顶层 legacy 字段，例如 <code>path</code>、<code>index_type</code>、<code>value_type</code>、<code>value_size</code>、<code>value_memory_management</code>、<code>shmcapacity</code>、<code>ssdcapacity</code>。请使用 <code>index</code> / <code>value</code> 嵌套结构。</p>
+<p>Composite 配置请使用嵌套 <code>index</code> / <code>value</code>，不要混用已废弃的顶层 <code>index_type</code>、<code>value_type</code>、<code>value_memory_management</code> 等字段。组件类型与 allocator 明细见 <a href="../storage/composite_kvengine/">composite_kvengine.md</a>。</p>
 </details>
 <h4 id="value">value 配置结构<a class="headerlink" href="#value" title="Permanent link">&para;</a></h4>
 <table>
@@ -2455,8 +2461,8 @@
 </tr>
 </tbody>
 </table>
-<h4 id="_2">引擎类型自动推导规则<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h4>
-<p><code>base::ResolveEngine</code> 根据 <code>index.type</code> 和 <code>value.type</code> 组合解析引擎：</p>
+<h4 id="_2">引擎类型选择<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h4>
+<p><code>base::ResolveEngine</code> 读取 <code>engine_type</code>，缺省为 <code>KVEngineComposite</code>。<code>KVEngineComposite</code> 根据 <code>index.type</code> 和 <code>value.type</code> 组装组件：</p>
 <ul>
 <li><code>index.type</code> 取值：<code>DRAM_EXTENDIBLE_HASH</code> / <code>DRAM_UNORDERED_MAP</code> / <code>DRAM_PET_HASH</code> / <code>SSD</code> / <code>SSD_EXTENDIBLE_HASH</code></li>
 <li><code>value.type</code> 取值：<code>DRAM_VALUE_STORE</code> / <code>SSD_VALUE_STORE</code> / <code>TIERED_VALUE_STORE</code></li>
@@ -2726,7 +2732,7 @@
 <a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="w">    </span><span class="p">}</span>
 <a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="p">}</span>
 </code></pre></div>
-<p>推导引擎类型：<code>KVEngineComposite</code></p>
+<p><code>"engine_type": "KVEngineComposite"</code></p>
 </details>
 <details class="example">
 <summary>SSD 索引 + SSD 值配置</summary>

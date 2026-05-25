@@ -12,7 +12,7 @@
         <meta name="author" content="RecStore Team">
       
       
-        <link rel="canonical" href="https://RecStore.github.io/RecStore/storage/kv_engines/">
+        <link rel="canonical" href="https://RecStore.github.io/RecStore/storage/composite_kvengine/">
       
       
         <link rel="prev" href="../basekv/">
@@ -29,7 +29,7 @@
     
     
       
-        <title>Composite KV 开发 - RecStore Documentation</title>
+        <title>KVEngineComposite - RecStore Documentation</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#composite-kv" class="md-skip">
+        <a href="#kvenginecomposite" class="md-skip">
           跳转至
         </a>
       
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Composite KV 开发
+              KVEngineComposite
             
           </span>
         </div>
@@ -1210,7 +1210,7 @@
   <span class="md-ellipsis">
     
   
-    架构总览
+    存储层总览
   
 
     
@@ -1238,7 +1238,7 @@
   <span class="md-ellipsis">
     
   
-    BaseKV 与配置
+    BaseKV 与 Engine
   
 
     
@@ -1275,7 +1275,7 @@
   <span class="md-ellipsis">
     
   
-    Composite KV 开发
+    KVEngineComposite
   
 
     
@@ -1293,7 +1293,7 @@
   <span class="md-ellipsis">
     
   
-    Composite KV 开发
+    KVEngineComposite
   
 
     
@@ -1322,7 +1322,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        组件组合
+        代码入口
       
     </span>
   </a>
@@ -1333,40 +1333,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        配置样例
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#index" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Index 接口
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#valuestore" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ValueStore 接口
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#iobackend" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        IOBackend 接口
+        内部分层
       
     </span>
   </a>
@@ -1377,7 +1344,168 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        修改检查
+        配置骨架
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="配置骨架">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        顶层字段
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#indexindextype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Index（index.type）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#valuestorevaluetype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ValueStore（value.type）
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ValueStore（value.type）">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        组合与字段约束
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iobackendiotype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IOBackend（*.io.type）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dram-allocatorvaluedram_allocatortype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRAM Allocator（value.dram_allocator.type）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ssd-allocatorvaluessd_allocatortype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SSD Allocator（value.ssd_allocator.type）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        配置样例
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        扩展指南
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="扩展指南">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        新增 Index
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#valuestore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        新增 ValueStore
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#iobackend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        新增 IOBackend
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        修改检查清单
       
     </span>
   </a>
@@ -1985,7 +2113,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        组件组合
+        代码入口
       
     </span>
   </a>
@@ -1996,40 +2124,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        配置样例
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#index" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Index 接口
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#valuestore" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ValueStore 接口
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#iobackend" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        IOBackend 接口
+        内部分层
       
     </span>
   </a>
@@ -2040,7 +2135,168 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        修改检查
+        配置骨架
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="配置骨架">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        顶层字段
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#indexindextype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Index（index.type）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#valuestorevaluetype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ValueStore（value.type）
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ValueStore（value.type）">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        组合与字段约束
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iobackendiotype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IOBackend（*.io.type）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dram-allocatorvaluedram_allocatortype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRAM Allocator（value.dram_allocator.type）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ssd-allocatorvaluessd_allocatortype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SSD Allocator（value.ssd_allocator.type）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        配置样例
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        扩展指南
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="扩展指南">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        新增 Index
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#valuestore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        新增 ValueStore
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#iobackend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        新增 IOBackend
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        修改检查清单
       
     </span>
   </a>
@@ -2064,7 +2320,7 @@
 
 
   
-    <a href="https://github.com/RecStore/RecStore/edit/main/docs/storage/kv_engines.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/RecStore/RecStore/edit/main/docs/storage/composite_kvengine.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2072,261 +2328,280 @@
   
 
 
-<h1 id="composite-kv">Composite KV 开发指南<a class="headerlink" href="#composite-kv" title="Permanent link">&para;</a></h1>
-<p><code>KVEngineComposite</code> 把 KV 拆成三个层次：<code>Index</code> 保存 key 到 handle 的映射，<code>ValueStore</code> 管理 handle 指向的字节，<code>IOBackend</code> 只处理页级 SSD IO。开发新的本地 KV 能力时，优先扩展其中一个层次。</p>
-<h2 id="_1">组件组合<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<h1 id="kvenginecomposite">KVEngineComposite<a class="headerlink" href="#kvenginecomposite" title="Permanent link">&para;</a></h1>
+<p><code>KVEngineComposite</code> 是 RecStore 的<strong>默认</strong> KV 实现：用工厂分别创建 <code>Index</code> 与 <code>ValueStore</code>，在 <code>BaseKV</code> 层完成 Get/Put/BatchGet/BatchPut/BulkLoad 编排。</p>
+<ul>
+<li>存储层总览：<a href="../">index.md</a></li>
+<li><code>BaseKV</code> 与其他 <code>engine_type</code>：<a href="../basekv/">basekv.md</a></li>
+</ul>
+<h2 id="_1">代码入口<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>组件</th>
+<th>文件</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>src/storage/kv_engine/engine_composite.h</code></td>
+<td>实现与 <code>FACTORY_REGISTER</code></td>
+</tr>
+<tr>
+<td><code>src/storage/index/</code></td>
+<td><code>Index</code> 实现</td>
+</tr>
+<tr>
+<td><code>src/storage/value_store/</code></td>
+<td><code>ValueStore</code> 实现</td>
+</tr>
+<tr>
+<td><code>src/storage/io_backend/</code></td>
+<td><code>IOBackend</code>（SSD value / SSD 索引）</td>
+</tr>
+<tr>
+<td><code>src/memory/allocators/</code></td>
+<td>DRAM <code>MallocApi</code></td>
+</tr>
+<tr>
+<td><code>src/storage/allocator/ssd/</code></td>
+<td>SSD slab / buddy</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">内部分层<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>graph TD
+    Composite[KVEngineComposite]
+    Composite --&gt; Index[Index]
+    Composite --&gt; VS[ValueStore]
+    VS --&gt; DramAlloc[DRAM MallocApi]
+    VS --&gt; SsdAlloc[SsdBlockAllocator]
+    VS --&gt; IO[IOBackend]
+    Index --&gt; IOIdx[IOBackend 仅 SSD 索引]</code></pre>
+<p><strong>写路径</strong>：<code>ValueStore::AllocAndWrite</code> → <code>Index::Put</code>（得到旧 handle）→ <code>ValueStore::Retire(old)</code>。</p>
+<p><strong>读路径</strong>：<code>Index::Get</code> / <code>BatchGet</code> → <code>DirectPtr</code> 或 <code>Read</code> / <code>BatchRead</code>。</p>
+<h2 id="_3">配置骨架<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;engine_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;KVEngineComposite&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_EXTENDIBLE_HASH&quot;</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_VALUE_STORE&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/dev/shm/recstore_data/value&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">&quot;dram_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PERSIST_LOOP_SLAB&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">      </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512000000</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="p">}</span>
+</code></pre></div>
+<p>省略 <code>engine_type</code> 时，<code>ResolveEngine</code> 仍解析为 <code>KVEngineComposite</code>。</p>
+<h3 id="_4">顶层字段<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>capacity</code></td>
+<td>必填；索引容量估计，<code>DRAM_PET_HASH</code> 用于分配表</td>
+</tr>
+<tr>
+<td><code>index</code></td>
+<td>必填；至少 <code>index.type</code></td>
+</tr>
+<tr>
+<td><code>value</code></td>
+<td>必填；至少 <code>value.type</code>、<code>value.default_value_size_hint</code>，并按类型提供 allocator / path</td>
+</tr>
+</tbody>
+</table>
+<p>字段校验分布在各组件构造函数（如 <code>DramValueStore</code> 要求非空 <code>value.path</code> 与 <code>dram_allocator</code>）。集成测试见 <code>KVEngineCompositeConfigTest</code>（<code>src/test/test_kvengine.cpp</code>）。</p>
+<hr />
+<h2 id="indexindextype">Index（<code>index.type</code>）<a class="headerlink" href="#indexindextype" title="Permanent link">&para;</a></h2>
+<p>工厂：<code>Factory&lt;Index, const BaseKVConfig&amp;&gt;</code>，注册于 <code>src/storage/index/</code>。</p>
+<table>
+<thead>
+<tr>
+<th><code>index.type</code></th>
+<th>实现类</th>
+<th>额外配置</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DRAM_EXTENDIBLE_HASH</code></td>
+<td><code>DramExtendibleHashIndex</code></td>
+<td>—</td>
+<td>可扩展 hash；别名 <code>DRAM</code></td>
+</tr>
+<tr>
+<td><code>DRAM_UNORDERED_MAP</code></td>
+<td><code>DramUnorderedMapIndex</code></td>
+<td>—</td>
+<td><code>unordered_map</code> + 读写锁</td>
+</tr>
+<tr>
+<td><code>DRAM_PET_HASH</code></td>
+<td><code>DramPetHashIndex</code></td>
+<td>依赖 <code>capacity</code></td>
+<td>PetHash，BatchGet 带 prefetch hint</td>
+</tr>
+<tr>
+<td><code>SSD_EXTENDIBLE_HASH</code></td>
+<td><code>SsdExtendibleHashIndex</code></td>
+<td><code>index.path</code>、<code>index.io</code></td>
+<td>CCEH；别名 <code>SSD</code></td>
+</tr>
+<tr>
+<td><code>SSD</code></td>
+<td>同上</td>
+<td>同上</td>
+<td>与 <code>SSD_EXTENDIBLE_HASH</code> 相同</td>
+</tr>
+</tbody>
+</table>
+<p>SSD 索引创建 <code>IOBackend</code> 前的配置映射：</p>
+<table>
+<thead>
+<tr>
+<th>嵌套字段</th>
+<th>映射到 <code>BaseKVConfig</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>index.path</code></td>
+<td><code>file_path</code></td>
+</tr>
+<tr>
+<td><code>index.io.type</code></td>
+<td><code>io_backend_type</code>（默认 <code>IOURING</code>）</td>
+</tr>
+<tr>
+<td><code>index.io.queue_depth</code></td>
+<td><code>queue_cnt</code></td>
+</tr>
+<tr>
+<td><code>index.io.base_offset_bytes / PAGE_SIZE</code></td>
+<td><code>page_id_offset</code></td>
+</tr>
+</tbody>
+</table>
+<p>实践上 SSD 索引常与 <code>SSD_VALUE_STORE</code> 联调（见 <code>test_kvengine</code> 笛卡尔用例对 SSD 组合的 skip 规则）；DRAM 索引与三种 value store 均可组合。</p>
+<hr />
+<h2 id="valuestorevaluetype">ValueStore（<code>value.type</code>）<a class="headerlink" href="#valuestorevaluetype" title="Permanent link">&para;</a></h2>
+<p>工厂：<code>Factory&lt;ValueStore, const BaseKVConfig&amp;&gt;</code>。</p>
+<table>
+<thead>
+<tr>
+<th><code>value.type</code></th>
+<th>实现类</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DRAM_VALUE_STORE</code></td>
+<td><code>DramValueStore</code></td>
+<td>需非空 <code>value.path</code>、<code>value.dram_allocator</code></td>
+</tr>
+<tr>
+<td><code>SSD_VALUE_STORE</code></td>
+<td><code>SsdValueStore</code></td>
+<td>需非空 <code>value.path</code>、<code>value.ssd_allocator</code>（含 <code>io</code>）</td>
+</tr>
+<tr>
+<td><code>TIERED_VALUE_STORE</code></td>
+<td><code>HybridValueStore</code></td>
+<td>需 <code>dram_allocator</code> + <code>ssd_allocator</code>；无顶层 <code>value.path</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">组合与字段约束<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Index（常见）</th>
+<th style="text-align: center;"><code>DRAM_VALUE_STORE</code></th>
+<th style="text-align: center;"><code>SSD_VALUE_STORE</code></th>
+<th style="text-align: center;"><code>TIERED_VALUE_STORE</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DRAM 三类</td>
+<td style="text-align: center;">支持</td>
+<td style="text-align: center;">支持</td>
+<td style="text-align: center;">支持</td>
+</tr>
+<tr>
+<td><code>SSD</code> / <code>SSD_EXTENDIBLE_HASH</code></td>
+<td style="text-align: center;">不推荐</td>
+<td style="text-align: center;">支持（测试重点）</td>
+<td style="text-align: center;">需自行验证</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th><code>value.type</code></th>
+<th>允许 / 禁止</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DRAM_VALUE_STORE</code></td>
+<td><code>dram_allocator</code> 必填；不要 <code>ssd_allocator</code></td>
+</tr>
+<tr>
+<td><code>SSD_VALUE_STORE</code></td>
+<td><code>ssd_allocator</code> 必填；不要 <code>dram_allocator</code>；文件路径仅 <code>value.path</code></td>
+</tr>
+<tr>
+<td><code>TIERED_VALUE_STORE</code></td>
+<td>两者必填；SSD 路径在 <code>ssd_allocator.path</code>；DRAM 路径可选 <code>dram_allocator.path</code>（常为 <code>/dev/shm/...</code>）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Tiering</strong>：<code>HybridValueStore</code> 在 <code>dram_bytes_reserved + size &lt;= capacity * high_watermark_ratio</code>（默认 <code>0.85</code>）时优先 DRAM，否则 SSD；handle 最高位标记介质。<strong>无后台冷热迁移</strong>。</p>
+<hr />
+<h2 id="iobackendiotype">IOBackend（<code>*.io.type</code>）<a class="headerlink" href="#iobackendiotype" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th><code>io.type</code></th>
 <th>实现</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>Index</code></td>
-<td><code>DRAM_EXTENDIBLE_HASH</code>、<code>DRAM_UNORDERED_MAP</code>、<code>DRAM_PET_HASH</code>、<code>SSD</code>、<code>SSD_EXTENDIBLE_HASH</code></td>
+<td><code>IOURING</code></td>
+<td><code>IoUringBackend</code></td>
 </tr>
 <tr>
-<td><code>ValueStore</code></td>
-<td><code>DRAM_VALUE_STORE</code>、<code>SSD_VALUE_STORE</code>、<code>TIERED_VALUE_STORE</code></td>
-</tr>
-<tr>
-<td><code>IOBackend</code></td>
-<td><code>IOURING</code>、<code>SPDK</code></td>
-</tr>
-<tr>
-<td>DRAM allocator</td>
-<td><code>PERSIST_LOOP_SLAB</code>、<code>R2_SLAB</code></td>
-</tr>
-<tr>
-<td>SSD allocator</td>
-<td><code>SSD_SLAB</code>、<code>SSD_BUDDY</code></td>
+<td><code>SPDK</code></td>
+<td><code>SpdkBackend</code></td>
 </tr>
 </tbody>
 </table>
-<p><code>ResolveEngine</code> 限制以下组合：</p>
-<table>
-<thead>
-<tr>
-<th>组合</th>
-<th>状态</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>DRAM index + <code>DRAM_VALUE_STORE</code></td>
-<td>支持</td>
-</tr>
-<tr>
-<td>DRAM index + <code>SSD_VALUE_STORE</code></td>
-<td>支持</td>
-</tr>
-<tr>
-<td>DRAM index + <code>TIERED_VALUE_STORE</code></td>
-<td>支持</td>
-</tr>
-<tr>
-<td>SSD index + <code>SSD_VALUE_STORE</code></td>
-<td>支持</td>
-</tr>
-<tr>
-<td>SSD index + <code>DRAM_VALUE_STORE</code></td>
-<td>拒绝</td>
-</tr>
-<tr>
-<td>SSD index + <code>TIERED_VALUE_STORE</code></td>
-<td>拒绝</td>
-</tr>
-</tbody>
-</table>
-<p>显式外部引擎不参与上表的 <code>KVEngineComposite</code> 组合规则。<code>KVEngineFasterKV</code> 使用 FasterKV 内部的内存 hash index；它的可选 <code>fasterkv.storage</code> 只控制 FasterKV hybrid log/value backend：<code>memory</code> 使用 <code>NullDisk</code>，<code>ssd</code> 使用 <code>FileSystemDisk</code> 并可将 hybrid log/value 放到 <code>fasterkv.log_path</code>。这和 RecStore 内置的 <code>index</code> / <code>value</code> 分层不是同一套配置面。</p>
-<h2 id="_2">配置样例<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<details class="example">
-<summary>DRAM index + DRAM value</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_EXTENDIBLE_HASH&quot;</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="p">},</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_VALUE_STORE&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/dev/shm/recstore_data/value&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="nt">&quot;dram_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PERSIST_LOOP_SLAB&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">      </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512000000</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="p">}</span>
-</code></pre></div>
-</details>
-<details class="example">
-<summary>DRAM index + SSD value</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_UNORDERED_MAP&quot;</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="p">},</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_VALUE_STORE&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore/value_pages.db&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="nt">&quot;ssd_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_BUDDY&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">      </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512000000</span><span class="p">,</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">      </span><span class="nt">&quot;min_block_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">      </span><span class="nt">&quot;max_block_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">65536</span><span class="p">,</span>
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">      </span><span class="nt">&quot;io&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IOURING&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">        </span><span class="nt">&quot;queue_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
-<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="w">        </span><span class="nt">&quot;base_offset_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4096</span>
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="w">      </span><span class="p">}</span>
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="p">}</span>
-</code></pre></div>
-</details>
-<details class="example">
-<summary>DRAM index + tiered value</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_EXTENDIBLE_HASH&quot;</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="p">},</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;TIERED_VALUE_STORE&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">    </span><span class="nt">&quot;dram_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PERSIST_LOOP_SLAB&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">      </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128000000</span><span class="p">,</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">      </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/dev/shm/recstore_data/tiered_dram&quot;</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">    </span><span class="p">},</span>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">    </span><span class="nt">&quot;ssd_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_BUDDY&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">      </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512000000</span><span class="p">,</span>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">      </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore/tiered_value_pages.db&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">      </span><span class="nt">&quot;min_block_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">      </span><span class="nt">&quot;max_block_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">65536</span><span class="p">,</span>
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="w">      </span><span class="nt">&quot;io&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IOURING&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="w">        </span><span class="nt">&quot;queue_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="w">        </span><span class="nt">&quot;base_offset_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4096</span>
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="w">      </span><span class="p">}</span>
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="w">    </span><span class="p">},</span>
-<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a><span class="w">    </span><span class="nt">&quot;tiering&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="w">      </span><span class="nt">&quot;high_watermark_ratio&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.85</span>
-<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a><span class="p">}</span>
-</code></pre></div>
-</details>
-<details class="example">
-<summary>SSD index + SSD value</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_EXTENDIBLE_HASH&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore/index_pages.db&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="nt">&quot;io&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IOURING&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">      </span><span class="nt">&quot;queue_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">      </span><span class="nt">&quot;base_offset_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">  </span><span class="p">},</span>
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_VALUE_STORE&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">    </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
-<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="w">    </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore/value_pages.db&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="w">    </span><span class="nt">&quot;ssd_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_SLAB&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="w">      </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512000000</span><span class="p">,</span>
-<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="w">      </span><span class="nt">&quot;size_classes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">128</span><span class="p">,</span><span class="w"> </span><span class="mi">256</span><span class="p">,</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span><span class="w"> </span><span class="mi">1024</span><span class="p">,</span><span class="w"> </span><span class="mi">4096</span><span class="p">],</span>
-<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="w">      </span><span class="nt">&quot;io&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IOURING&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="w">        </span><span class="nt">&quot;queue_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
-<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="w">        </span><span class="nt">&quot;base_offset_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4096</span>
-<a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="w">      </span><span class="p">}</span>
-<a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a><span class="p">}</span>
-</code></pre></div>
-</details>
-<details class="example">
-<summary>完整配置示例</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">&quot;cache_ps&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">&quot;num_threads&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">32</span><span class="p">,</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="nt">&quot;base_kv_config&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">      </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">      </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_EXTENDIBLE_HASH&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">        </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore/index_pages.db&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">        </span><span class="nt">&quot;io&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">          </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IOURING&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">          </span><span class="nt">&quot;queue_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">          </span><span class="nt">&quot;base_offset_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">        </span><span class="p">}</span>
-<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">      </span><span class="p">},</span>
-<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">      </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_VALUE_STORE&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">        </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
-<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">        </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore/value_pages.db&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">        </span><span class="nt">&quot;ssd_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">          </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_BUDDY&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">          </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512000000</span><span class="p">,</span>
-<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">          </span><span class="nt">&quot;min_block_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
-<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">          </span><span class="nt">&quot;max_block_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">65536</span><span class="p">,</span>
-<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">          </span><span class="nt">&quot;io&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IOURING&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">            </span><span class="nt">&quot;queue_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
-<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="w">            </span><span class="nt">&quot;base_offset_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4096</span>
-<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="w">          </span><span class="p">}</span>
-<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a><span class="w">        </span><span class="p">}</span>
-<a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a><span class="w">      </span><span class="p">}</span>
-<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a><span class="p">}</span>
-</code></pre></div>
-</details>
-<h2 id="index">Index 接口<a class="headerlink" href="#index" title="Permanent link">&para;</a></h2>
-<p><code>Index</code> 只保存 <code>Key_t -&gt; Value_t</code>。value 字节由 <code>ValueStore</code> 读写。</p>
-<p>实现新索引时需要覆盖：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">Get</span><span class="p">(</span><span class="n">Key_t</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">Value_t</span><span class="o">&amp;</span><span class="w"> </span><span class="n">pointer</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kt">void</span><span class="w"> </span><span class="nf">Put</span><span class="p">(</span><span class="n">Key_t</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">Value_t</span><span class="w"> </span><span class="n">pointer</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kt">void</span><span class="w"> </span><span class="nf">BatchGet</span><span class="p">(</span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="n">Key_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">Value_t</span><span class="o">*</span><span class="w"> </span><span class="n">pointers</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kt">void</span><span class="w"> </span><span class="nf">BatchPut</span><span class="p">(</span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="n">Key_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">Value_t</span><span class="o">*</span><span class="w"> </span><span class="n">pointers</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="kt">bool</span><span class="w"> </span><span class="nf">Delete</span><span class="p">(</span><span class="n">Key_t</span><span class="o">&amp;</span><span class="w"> </span><span class="n">key</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
-</code></pre></div>
-<p>未命中必须返回 <code>kValueHandleNone</code>。注册示例：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">FACTORY_REGISTER</span><span class="p">(</span><span class="n">Index</span><span class="p">,</span><span class="w"> </span><span class="n">MY_INDEX</span><span class="p">,</span><span class="w"> </span><span class="n">MyIndex</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">BaseKVConfig</span><span class="o">&amp;</span><span class="p">);</span>
-</code></pre></div>
-<p>还要在 <code>engine_selector.h</code> 中加入 <code>MY_INDEX</code>，写清楚它需要哪些配置。SSD index 要求 <code>index.path</code> 和 <code>index.io</code>。</p>
-<h2 id="valuestore">ValueStore 接口<a class="headerlink" href="#valuestore" title="Permanent link">&para;</a></h2>
-<p><code>ValueStore</code> 负责分配、读写、释放 handle。<code>KVEngineComposite</code> 根据 <code>SlotCapacity(handle)</code> 判断覆盖还是重新分配。</p>
-<p>核心接口：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kt">uint64_t</span><span class="w"> </span><span class="nf">Alloc</span><span class="p">(</span><span class="kt">size_t</span><span class="w"> </span><span class="n">size</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kt">void</span><span class="w"> </span><span class="nf">Write</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">handle</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">size</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="kt">uint64_t</span><span class="w"> </span><span class="nf">AllocAndWrite</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">size</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="kt">size_t</span><span class="w"> </span><span class="nf">Read</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">handle</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">out_buf</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">buf_size</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="kt">void</span><span class="w"> </span><span class="nf">Free</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">handle</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="kt">size_t</span><span class="w"> </span><span class="nf">SlotCapacity</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">handle</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
-</code></pre></div>
-<p>DRAM value store 可以实现 <code>DirectPtr</code>，让 <code>BatchGet</code> 少一次拷贝。SSD value store 不应返回直接指针。</p>
-<p><code>TIERED_VALUE_STORE</code> 按容量水位选择 DRAM 或 SSD：DRAM 预留空间未超过 <code>high_watermark_ratio</code> 时分配 DRAM，否则分配 SSD。它不做后台冷热迁移。</p>
-<p>新增 value store 后要注册工厂，更新 <code>ResolveEngine</code> 的合法 value 类型和字段校验。</p>
-<h2 id="iobackend">IOBackend 接口<a class="headerlink" href="#iobackend" title="Permanent link">&para;</a></h2>
-<p><code>IOBackend</code> 的单位是 page。<code>SsdValueStore</code> 和 SSD index 将嵌套配置转换成后端字段：</p>
+<p><code>SsdValueStore</code>（及 tiered 的 SSD 子配置）映射关系：</p>
 <table>
 <thead>
 <tr>
 <th>嵌套字段</th>
-<th>传给 <code>IOBackend</code> 的字段</th>
+<th><code>IOBackend</code> 字段</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>path</code></td>
+<td><code>value.path</code> 或 <code>ssd_allocator.path</code></td>
 <td><code>file_path</code></td>
 </tr>
 <tr>
@@ -2339,16 +2614,218 @@
 </tr>
 <tr>
 <td><code>io.type</code></td>
-<td>工厂类型名</td>
+<td>工厂名</td>
 </tr>
 </tbody>
 </table>
-<p>新后端至少要实现同步页读写、异步页读写、页对齐 buffer 分配和完成轮询。<code>BatchReadPages</code> / <code>BatchWritePages</code> 有默认逐页实现；如果后端能批量提交，应覆盖它们。</p>
-<h2 id="_3">修改检查<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<p>改索引：跑 <code>test_kvengine</code> 中覆盖该 <code>index.type</code> 的用例。</p>
-<p>改 value store 或 allocator：跑 <code>test_kvengine</code>，必要时补充 <code>src/test/test_ssd_allocators.cpp</code>。</p>
-<p>改 IO 后端：跑 <code>test_io_backend</code>，补跑包含 SSD value 的 <code>test_kvengine</code> 场景。</p>
-<p>改 <code>ResolveEngine</code>：补充拒绝非法字段和非法组合的测试，现有样例在 <code>src/test/test_kvengine.cpp</code> 末尾。</p>
+<p>新后端需链接进 <code>force_link</code>（见 <code>kv_engine_register.cc</code>）。</p>
+<hr />
+<h2 id="dram-allocatorvaluedram_allocatortype">DRAM Allocator（<code>value.dram_allocator.type</code>）<a class="headerlink" href="#dram-allocatorvaluedram_allocatortype" title="Permanent link">&para;</a></h2>
+<p><code>Factory&lt;MallocApi, const std::string&amp;, int64, const std::string&amp;&gt;</code>；<code>DramValueStore</code> 默认类型 <strong><code>R2_SLAB</code></strong>。</p>
+<table>
+<thead>
+<tr>
+<th><code>type</code></th>
+<th>实现</th>
+<th>别名</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PERSIST_LOOP_SLAB</code></td>
+<td><code>PersistLoopShmMalloc</code></td>
+<td><code>PersistLoopShmMalloc</code></td>
+</tr>
+<tr>
+<td><code>R2_SLAB</code></td>
+<td><code>R2alloc</code></td>
+<td><code>R2ShmMalloc</code></td>
+</tr>
+<tr>
+<td><code>CONCURRENT_SLAB_MEMORY_POOL</code></td>
+<td><code>ConcurrentSlabMemoryPoolMalloc</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>PERSIST_MEMORY_POOL</code></td>
+<td><code>PersistMemoryPoolMalloc</code></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>必填：<code>capacity_bytes</code>。遗留别名见 <code>memory/allocators/allocator_factory.h</code>（如 <code>PERSIST_LOOP_SHM_MALLOC</code>）。</p>
+<hr />
+<h2 id="ssd-allocatorvaluessd_allocatortype">SSD Allocator（<code>value.ssd_allocator.type</code>）<a class="headerlink" href="#ssd-allocatorvaluessd_allocatortype" title="Permanent link">&para;</a></h2>
+<p><code>SsdValueStore</code> 内联构造；默认 <strong><code>SSD_SLAB</code></strong>。</p>
+<table>
+<thead>
+<tr>
+<th><code>type</code></th>
+<th>实现</th>
+<th>主要字段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SSD_SLAB</code></td>
+<td><code>SsdSlabAllocator</code></td>
+<td><code>capacity_bytes</code>；可选 <code>size_classes</code>（默认 128…4096）；<code>base_offset_bytes</code></td>
+</tr>
+<tr>
+<td><code>SSD_BUDDY</code></td>
+<td><code>SsdBuddyAllocator</code></td>
+<td><code>capacity_bytes</code>；<code>min_block_size</code> / <code>max_block_size</code>；<code>base_offset_bytes</code></td>
+</tr>
+</tbody>
+</table>
+<p>均需嵌套 <code>io</code> 对象。</p>
+<hr />
+<h2 id="_6">配置样例<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<p><strong>DRAM + DRAM</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_EXTENDIBLE_HASH&quot;</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_VALUE_STORE&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/dev/shm/recstore_data/value&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">&quot;dram_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PERSIST_LOOP_SLAB&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">      </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512000000</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>DRAM + SSD</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_UNORDERED_MAP&quot;</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_VALUE_STORE&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore/value_pages.db&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="nt">&quot;ssd_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_BUDDY&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">      </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512000000</span><span class="p">,</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">      </span><span class="nt">&quot;min_block_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">      </span><span class="nt">&quot;max_block_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">65536</span><span class="p">,</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">      </span><span class="nt">&quot;io&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IOURING&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">        </span><span class="nt">&quot;queue_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">        </span><span class="nt">&quot;base_offset_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4096</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">      </span><span class="p">}</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>DRAM + tiered</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DRAM_EXTENDIBLE_HASH&quot;</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;TIERED_VALUE_STORE&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nt">&quot;dram_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PERSIST_LOOP_SLAB&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">      </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128000000</span><span class="p">,</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">      </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/dev/shm/recstore_data/tiered_dram&quot;</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">    </span><span class="nt">&quot;ssd_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_BUDDY&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">      </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512000000</span><span class="p">,</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="w">      </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore/tiered_value_pages.db&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="w">      </span><span class="nt">&quot;min_block_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">      </span><span class="nt">&quot;max_block_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">65536</span><span class="p">,</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="w">      </span><span class="nt">&quot;io&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IOURING&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="w">        </span><span class="nt">&quot;queue_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="w">        </span><span class="nt">&quot;base_offset_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4096</span>
+<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="w">      </span><span class="p">}</span>
+<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="w">    </span><span class="nt">&quot;tiering&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;high_watermark_ratio&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.85</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>SSD index + SSD value</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">&quot;capacity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span><span class="p">,</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_EXTENDIBLE_HASH&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore/index_pages.db&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="nt">&quot;io&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IOURING&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">      </span><span class="nt">&quot;queue_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">      </span><span class="nt">&quot;base_offset_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_VALUE_STORE&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">    </span><span class="nt">&quot;default_value_size_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">    </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/data/recstore/value_pages.db&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">    </span><span class="nt">&quot;ssd_allocator&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SSD_SLAB&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">      </span><span class="nt">&quot;capacity_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512000000</span><span class="p">,</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">      </span><span class="nt">&quot;size_classes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">128</span><span class="p">,</span><span class="w"> </span><span class="mi">256</span><span class="p">,</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span><span class="w"> </span><span class="mi">1024</span><span class="p">,</span><span class="w"> </span><span class="mi">4096</span><span class="p">],</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">      </span><span class="nt">&quot;io&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IOURING&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">        </span><span class="nt">&quot;queue_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">        </span><span class="nt">&quot;base_offset_bytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4096</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">      </span><span class="p">}</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="p">}</span>
+</code></pre></div>
+<hr />
+<h2 id="_7">扩展指南<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
+<h3 id="index">新增 Index<a class="headerlink" href="#index" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">Get</span><span class="p">(</span><span class="n">Key_t</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">Value_t</span><span class="o">&amp;</span><span class="w"> </span><span class="n">pointer</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">Value_t</span><span class="w"> </span><span class="nf">Put</span><span class="p">(</span><span class="n">Key_t</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">Value_t</span><span class="w"> </span><span class="n">pointer</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kt">void</span><span class="w"> </span><span class="nf">BatchGet</span><span class="p">(</span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="n">Key_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">Value_t</span><span class="o">*</span><span class="w"> </span><span class="n">pointers</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kt">void</span><span class="w"> </span><span class="nf">BatchPut</span><span class="p">(</span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="n">Key_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">Value_t</span><span class="o">*</span><span class="w"> </span><span class="n">pointers</span><span class="p">,</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="kt">bool</span><span class="w"> </span><span class="nf">Delete</span><span class="p">(</span><span class="n">Key_t</span><span class="o">&amp;</span><span class="w"> </span><span class="n">key</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
+</code></pre></div>
+<p>未命中返回 <code>kValueHandleNone</code>。注册：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">FACTORY_REGISTER</span><span class="p">(</span><span class="n">Index</span><span class="p">,</span><span class="w"> </span><span class="n">MY_INDEX</span><span class="p">,</span><span class="w"> </span><span class="n">MyIndex</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">BaseKVConfig</span><span class="o">&amp;</span><span class="p">);</span>
+</code></pre></div>
+<p>在 <code>test_kvengine</code> 参数化中增加 <code>index.type</code> 组合。</p>
+<h3 id="valuestore">新增 ValueStore<a class="headerlink" href="#valuestore" title="Permanent link">&para;</a></h3>
+<p>实现 <code>Alloc</code> / <code>Write</code> / <code>Read</code> / <code>Free</code> / <code>SlotCapacity</code>；DRAM 可实现 <code>DirectPtr</code>。注册后补充 <code>test_kvengine</code> 与配置样例。</p>
+<h3 id="iobackend">新增 IOBackend<a class="headerlink" href="#iobackend" title="Permanent link">&para;</a></h3>
+<p>以 <strong>page</strong> 为单位；实现同步/异步读写、<code>AllocateBuffer</code>、完成轮询；能批量提交时覆盖 <code>BatchReadPages</code> / <code>BatchWritePages</code>。</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">FACTORY_REGISTER</span><span class="p">(</span><span class="n">IOBackend</span><span class="p">,</span><span class="w"> </span><span class="n">MY_IO</span><span class="p">,</span><span class="w"> </span><span class="n">MyIoBackend</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">BaseKVConfig</span><span class="o">&amp;</span><span class="p">);</span>
+</code></pre></div>
+<hr />
+<h2 id="_8">修改检查清单<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>改动</th>
+<th>验证</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Index</td>
+<td><code>ctest -R test_kvengine</code></td>
+</tr>
+<tr>
+<td>ValueStore / DRAM allocator</td>
+<td><code>test_kvengine</code></td>
+</tr>
+<tr>
+<td>SSD allocator / IO</td>
+<td><code>test_io_backend</code> + SSD value 相关 <code>test_kvengine</code></td>
+</tr>
+<tr>
+<td>配置校验行为</td>
+<td><code>KVEngineCompositeConfigTest</code></td>
+</tr>
+<tr>
+<td>YCSB / 对比</td>
+<td><code>.agents/skills/kvengine-ycsb/SKILL.md</code></td>
+</tr>
+</tbody>
+</table>
 
 
 
