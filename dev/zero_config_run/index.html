@@ -2325,7 +2325,7 @@
 <p>宿主机只需要准备 Docker 即可，不再要求本地提前安装编译依赖。</p>
 <h3 id="21">2.1 准备代码仓库<a class="headerlink" href="#21" title="Permanent link">&para;</a></h3>
 <p>建议克隆仓库，并把代码目录挂载进容器。这样可以直接复用仓库里的配置、脚本和示例：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/RecStore/RecStore.git
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>clone<span class="w"> </span>--depth<span class="w"> </span><span class="m">1</span><span class="w"> </span>--single-branch<span class="w"> </span>https://github.com/RecStore/RecStore.git
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">cd</span><span class="w"> </span>RecStore
 </code></pre></div>
 <h3 id="22-docker">2.2 安装 Docker<a class="headerlink" href="#22-docker" title="Permanent link">&para;</a></h3>
