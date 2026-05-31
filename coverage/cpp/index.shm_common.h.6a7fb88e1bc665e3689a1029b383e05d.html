@@ -43,18 +43,18 @@
       </tr>
       <tr>
         <th scope="row">Lines:</th>
-        <td class="coverage-low">25.8%</td>
-        <td class="coverage-low">8 / 0 / 31</td>
+        <td class="coverage-low">38.1%</td>
+        <td class="coverage-low">8 / 0 / 21</td>
       </tr>
       <tr>
         <th scope="row">Functions:</th>
         <td class="coverage-low">14.3%</td>
-        <td class="coverage-low">1 / 1 / 8</td>
+        <td class="coverage-low">1 / 0 / 7</td>
       </tr>
       <tr>
         <th scope="row">Branches:</th>
-        <td class="coverage-low">3.8%</td>
-        <td class="coverage-low">1 / 0 / 26</td>
+        <td class="coverage-low">10.0%</td>
+        <td class="coverage-low">1 / 0 / 10</td>
       </tr>
     </table>
   </div>
@@ -74,15 +74,8 @@
     <div role="rowheader" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2 sortable">Blocks</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l36">&lt;unknown function 36&gt; (src/storage/nvm/pet_kv/shm_common.h:36)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="-">excluded</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
-  </div>
-  <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l25">base::PetKVData::Config::Config(int) (src/storage/nvm/pet_kv/shm_common.h:25)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="12">called 12 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="10">called 10 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">16.7%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">55.0%</div>
@@ -329,7 +322,7 @@
         <td class="lineno"><a id="l25" href="#l25">25</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">12</td>
+        <td class="linecount coveredLine show_coveredLine">10</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">    </span><span class="n">explicit</span><span class="w"> </span><span class="nf">Config</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">offset_bit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
@@ -339,7 +332,7 @@
             <summary class="linebranchSummary">1/6</summary>
             <div class="linebranchContents">
               <div class="notTakenBranch">&cross; Branch 3 not taken.</div>
-              <div class="takenBranch">&check; Branch 4 taken 12 times.</div>
+              <div class="takenBranch">&check; Branch 4 taken 10 times.</div>
               <div class="notTakenBranch">&cross; Branch 7 not taken.</div>
               <div class="notTakenBranch">&cross; Branch 8 not taken.</div>
               <div class="notTakenBranch">&cross; Branch 10 not taken.</div>
@@ -347,49 +340,49 @@
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine">12</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine">10</td>
         <td class="src  partialCoveredLine show_partialCoveredLine"><span class="w">      </span><span class="n">CHECK_GE</span><span class="p">(</span><span class="n">offset_bit</span><span class="p">,</span><span class="w"> </span><span class="mi">32</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l27" href="#l27">27</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">12</td>
+        <td class="linecount coveredLine show_coveredLine">10</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">      </span><span class="n">kExpireBit</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="mi">64</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">offset_bit</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l28" href="#l28">28</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">12</td>
+        <td class="linecount coveredLine show_coveredLine">10</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">      </span><span class="n">kExpireReductBit</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mi">32</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">kExpireBit</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l29" href="#l29">29</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">12</td>
+        <td class="linecount coveredLine show_coveredLine">10</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">      </span><span class="n">kExpireMark</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="mf">1L</span><span class="n">L</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">kExpireBit</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l30" href="#l30">30</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">12</td>
+        <td class="linecount coveredLine show_coveredLine">10</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">      </span><span class="n">kExpireReductMark</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="mf">1L</span><span class="n">L</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">kExpireReductBit</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l31" href="#l31">31</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">12</td>
+        <td class="linecount coveredLine show_coveredLine">10</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">      </span><span class="n">kNoMallocOffset</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="mf">1L</span><span class="n">L</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">offset_bit</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l32" href="#l32">32</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">12</td>
+        <td class="linecount coveredLine show_coveredLine">10</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">    </span><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
@@ -616,7 +609,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.6">GCOVR (Version 8.6)</a>
-          at 2026-05-22 04:56:06
+          at 2026-06-01 01:38:59
         </footer>
       </div>
     </div>
