@@ -2973,7 +2973,7 @@
 
 
 <h1 id="rdma">RDMA 模块运行手册<a class="headerlink" href="#rdma" title="Permanent link">&para;</a></h1>
-<p>更新时间：2026-05-31</p>
+<p>更新时间：2026-06-03</p>
 <p>本文档整理当前 RecStore RDMA 主路径的边界、参数、验证入口、已知限制和下一步路线图。默认工作目录为仓库根目录：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">cd</span><span class="w"> </span>/app/RecStore
 </code></pre></div>
@@ -2982,7 +2982,7 @@
 <p>当前主路径已经完成两次硬切换：</p>
 <ul>
 <li>RDMA 数据面不再依赖历史 Mayfly <code>RawMessage</code> 路径。</li>
-<li>RDMA 控制面不再依赖 <code>memcached</code>，统一由 shard 0 <code>petps_server</code> 内置控制面承担。</li>
+<li>RDMA 控制面不再依赖 <code>memcached</code>，统一由 shard 0 <code>petps_server</code> 内置 gRPC 控制面承担。</li>
 </ul>
 <p>RecStore 现在有两条 RDMA 入口：</p>
 <table>
@@ -3034,7 +3034,7 @@
 <li>打开 RDMA 设备</li>
 <li>注册本地 MR</li>
 <li>创建 QP / CQ</li>
-<li>通过 shard 0 控制面交换 metadata</li>
+<li>通过 shard 0 gRPC 控制面交换 metadata</li>
 <li>轮询 RDMA write completion</li>
 </ul>
 <p>这条路径当前已经不再链接或包含 Mayfly 控制面代码；<code>GlobalAddress</code>、QP metadata exchange 和 ready 协调都在仓内自维护。</p>
@@ -3070,15 +3070,24 @@
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span>test_allshards_ps_client<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span>-j
 </code></pre></div>
+<p>吞吐测试优先使用 Release/O3 构建：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>cmake<span class="w"> </span>-S<span class="w"> </span>.<span class="w"> </span>-B<span class="w"> </span>build_release<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>cmake<span class="w"> </span>--build<span class="w"> </span>build_release<span class="w"> </span>--target<span class="w"> </span>ps_transport_benchmark<span class="w"> </span>petps_server<span class="w"> </span>-j
+</code></pre></div>
+<p>ssh runner 通过 <code>--build-dir build_release</code> 和 <code>--remote-build-dir build_release</code>
+选择 Release 二进制；local runner 的 client 和 server 也会跟随 <code>--build-dir</code>。
+Debug/O0 适合调试，不适合作为吞吐上限；2026-06-03 的 p4/t3/q16/d16 测试中，
+跨机 Release/O3 为 <code>45.238-45.523 M keys/s</code>，本机 Release/O3 为
+<code>45.720 M keys/s</code>。</p>
 <p>如果刚改过 <code>src/ps/rdma/*</code>、<code>src/test/scripts/*rdma*</code> 或 op-layer 相关代码，先重编对应目标再判断行为。旧的 <code>petps_server</code>、<code>ps_transport_benchmark</code>、<code>rdma_rc_transport_benchmark</code> 或 <code>recstore_torch_ops</code> 二进制很容易造成“源码已改但测试仍卡住”的假象。</p>
 <p>如果 <code>petps_server</code> 启动时报下面的动态库错误：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>error while loading shared libraries: librdkafka.so.1: cannot open shared object file
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>error while loading shared libraries: librdkafka.so.1: cannot open shared object file
 </code></pre></div>
 <p>当前 CMake 会把 HugeCTR vendored <code>librdkafka</code> 纳入构建，正常情况下 <code>petps_server</code> 会解析到：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>/app/RecStore/build/lib/librdkafka.so.1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>/app/RecStore/build/lib/librdkafka.so.1
 </code></pre></div>
 <p>如果旧构建目录或手工启动环境仍然找不到动态库，先把本地构建出的 <code>build/lib</code> 加到运行时库路径，再启动 integration 或 benchmark：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LD_LIBRARY_PATH</span><span class="o">=</span>/app/RecStore/build/lib:<span class="si">${</span><span class="nv">LD_LIBRARY_PATH</span><span class="si">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LD_LIBRARY_PATH</span><span class="o">=</span>/app/RecStore/build/lib:<span class="si">${</span><span class="nv">LD_LIBRARY_PATH</span><span class="si">}</span>
 </code></pre></div>
 <p>这只是 HPS 依赖的运行时动态库路径问题，不代表 RDMA verbs、QP 或控制面已经失败。</p>
 <h2 id="4">4. 参数说明<a class="headerlink" href="#4" title="Permanent link">&para;</a></h2>
@@ -3191,6 +3200,16 @@
 <td><code>--rdma-get-response-mode</code></td>
 <td>RDMA GET response payload 路径</td>
 <td><code>auto</code>、<code>direct_sg</code>、<code>staging_copy</code>；generic PS runner 参数</td>
+</tr>
+<tr>
+<td><code>--build-dir</code></td>
+<td>ssh runner 的本地构建目录</td>
+<td>默认 <code>build</code>；Release 压测设为 <code>build_release</code></td>
+</tr>
+<tr>
+<td><code>--remote-build-dir</code></td>
+<td>ssh runner 的远端构建目录</td>
+<td>默认 <code>build</code>；Release 压测设为 <code>build_release</code></td>
 </tr>
 </tbody>
 </table>
@@ -3310,21 +3329,21 @@
 </ul>
 <h3 id="62-ps-transport">6.2 通用 PS Transport 入口<a class="headerlink" href="#62-ps-transport" title="Permanent link">&para;</a></h3>
 <p>建议先跑 PetPS RC-write correctness 基线，再做 benchmark：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python3<span class="w"> </span>tools/benchmarks/run_rdma_transport_benchmarks.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/ps_transport_benchmark<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--iterations<span class="w"> </span><span class="m">300</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span>--rounds<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span>--rdma-warmup-rounds<span class="w"> </span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">  </span>--report-mode<span class="w"> </span>summary<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">  </span>--rdma-only<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">  </span>--rdma-thread-num<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">  </span>--rdma-put-protocol-version<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">  </span>--rdma-put-v2-transfer-mode<span class="w"> </span><span class="nb">read</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">  </span>--rdma-wait-timeout-ms<span class="w"> </span><span class="m">20000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">  </span>--rdma-client-timeout-sec<span class="w"> </span><span class="m">60</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">  </span>--show-runner-logs<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="w">  </span>--rdma-control-plane-host<span class="w"> </span><span class="m">127</span>.0.0.1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python3<span class="w"> </span>tools/benchmarks/run_rdma_transport_benchmarks.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/ps_transport_benchmark<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--iterations<span class="w"> </span><span class="m">300</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span>--rounds<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span>--rdma-warmup-rounds<span class="w"> </span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span>--report-mode<span class="w"> </span>summary<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">  </span>--rdma-only<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span>--rdma-thread-num<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">  </span>--rdma-put-protocol-version<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">  </span>--rdma-put-v2-transfer-mode<span class="w"> </span><span class="nb">read</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">  </span>--rdma-wait-timeout-ms<span class="w"> </span><span class="m">20000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">  </span>--rdma-client-timeout-sec<span class="w"> </span><span class="m">60</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">  </span>--show-runner-logs<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">  </span>--rdma-control-plane-host<span class="w"> </span><span class="m">127</span>.0.0.1
 </code></pre></div>
 <p>summary 表中的 <code>put_v2</code> 列用于确认 PUT-v2 payload transfer mode；<code>read</code> 和 <code>push</code> 的结果不能直接混比。</p>
 <p>如果你想在不继续增加 QP 数的情况下抬高 <code>async_stream</code> 深度，可以优先调 <code>--slots-per-qp</code>，再看 <code>qps-per-client-per-shard</code> 是否还需要一起放大。</p>
@@ -3341,27 +3360,27 @@
 <li><code>--rdma-get-response-mode</code>：GET response payload 路径；推荐默认用 <code>auto</code>。</li>
 </ul>
 <p>本地单 shard、4 client 进程的 RDMA fetch profile 示例：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python3<span class="w"> </span>tools/benchmarks/run_benchmark_ps.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/ps_transport_benchmark<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--transports<span class="w"> </span>rdma<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--server-shard-ips<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span>--client-ips<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span>--client-processes-per-ip<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span>--record-count<span class="w"> </span><span class="m">200000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">  </span>--value-size<span class="w"> </span><span class="m">512</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">1024</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">  </span>--client-threads-per-process<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">  </span>--client-load-threads-per-process<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">  </span>--server-worker-threads<span class="w"> </span><span class="m">32</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">  </span>--server-rdma-threads<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">  </span>--rdma-rc-server-get-workers<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">  </span>--rdma-rc-server-coroutines-per-thread<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">  </span>--rdma-rc-qps-per-client-per-shard<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">  </span>--rdma-rc-profile-interval-ms<span class="w"> </span><span class="m">1000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">  </span>--runtime-seconds<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">  </span>--repeat<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">  </span>--execution-backend<span class="w"> </span><span class="nb">local</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="w">  </span>--output-dir<span class="w"> </span>results/benchmark_ps_profile_0529/rdma_1s4c_profile_clean
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python3<span class="w"> </span>tools/benchmarks/run_benchmark_ps.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/ps_transport_benchmark<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--transports<span class="w"> </span>rdma<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span>--server-shard-ips<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span>--client-ips<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span>--client-processes-per-ip<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">  </span>--record-count<span class="w"> </span><span class="m">200000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">  </span>--value-size<span class="w"> </span><span class="m">512</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">1024</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">  </span>--client-threads-per-process<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">  </span>--client-load-threads-per-process<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">  </span>--server-worker-threads<span class="w"> </span><span class="m">32</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">  </span>--server-rdma-threads<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="w">  </span>--rdma-rc-server-get-workers<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="w">  </span>--rdma-rc-server-coroutines-per-thread<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="w">  </span>--rdma-rc-qps-per-client-per-shard<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="w">  </span>--rdma-rc-profile-interval-ms<span class="w"> </span><span class="m">1000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="w">  </span>--runtime-seconds<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="w">  </span>--repeat<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="w">  </span>--execution-backend<span class="w"> </span><span class="nb">local</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="w">  </span>--output-dir<span class="w"> </span>results/benchmark_ps_profile_0529/rdma_1s4c_profile_clean
 </code></pre></div>
 <h4 id="621">6.2.1 当前验证状态与边界<a class="headerlink" href="#621" title="Permanent link">&para;</a></h4>
 <p>截至 <code>2026-05-29</code>，<code>run_benchmark_ps.py</code> 的 RDMA <code>transactions/fetch</code> 路径已验证：</p>
@@ -3374,35 +3393,35 @@
 <li>benchmark 进程内复用同一个 RDMA client 做 load 和 run</li>
 </ul>
 <p>这个路径依赖 <code>RDMAPSClientAdapter</code> 保留 runner 传入的 <code>global_id</code>、<code>num_server_processes</code> 和 <code>num_client_processes</code>。如果 adapter 覆盖这些拓扑参数，多 client generic benchmark 会在控制面 metadata exchange 阶段超时，例如曾经出现过：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>get_meta timeout key=2:0-&gt;0:0
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>get_meta timeout key=2:0-&gt;0:0
 </code></pre></div>
 <p>通用 PS benchmark 的 RDMA 并发建议通过 <code>--client-ips</code> 和 <code>--client-processes-per-ip</code> 增加 client 进程数。单个 benchmark 进程内仍建议保持 <code>--client-threads-per-process=1</code>，除非已经重新验证同进程多线程下的 RDMA client/lane 语义。</p>
 <p>如果要复现当前 GET worker / poller 调度实验，建议显式写出 <code>T/N/C</code> 三个维度，并把它们编码进结果目录名：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python3<span class="w"> </span>tools/benchmarks/run_benchmark_ps.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span>--transports<span class="w"> </span>rdma<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>--client-ips<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span>--server-shard-ips<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span>--client-processes-per-ip<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span>--record-count<span class="w"> </span><span class="m">200000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">  </span>--value-size<span class="w"> </span><span class="m">512</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">  </span>--client-threads-per-process<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">  </span>--client-load-threads-per-process<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="w">  </span>--runtime-seconds<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="w">  </span>--repeat<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="w">  </span>--execution-backend<span class="w"> </span><span class="nb">local</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="w">  </span>--prefetch-depth<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="w">  </span>--rdma-rc-qps-per-client-per-shard<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="w">  </span>--rdma-rc-slots-per-qp<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="w">  </span>--rdma-rc-profile-interval-ms<span class="w"> </span><span class="m">1000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="w">  </span>--rdma-wait-timeout-ms<span class="w"> </span><span class="m">20000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="w">  </span>--client-timeout<span class="w"> </span><span class="m">240</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="w">  </span>--cluster-timeout<span class="w"> </span><span class="m">80</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="w">  </span>--transaction-profile<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a><span class="w">  </span>--server-rdma-threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a><span class="w">  </span>--rdma-rc-server-get-workers<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a><span class="w">  </span>--rdma-rc-server-coroutines-per-thread<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a><span class="w">  </span>--output-dir<span class="w"> </span>results/benchmark_ps_profile_&lt;date&gt;_n8_p8_t16_c1_repeat3
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>python3<span class="w"> </span>tools/benchmarks/run_benchmark_ps.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span>--transports<span class="w"> </span>rdma<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>--client-ips<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span>--server-shard-ips<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span>--client-processes-per-ip<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">  </span>--record-count<span class="w"> </span><span class="m">200000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">  </span>--value-size<span class="w"> </span><span class="m">512</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">  </span>--client-threads-per-process<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="w">  </span>--client-load-threads-per-process<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">  </span>--runtime-seconds<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="w">  </span>--repeat<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="w">  </span>--execution-backend<span class="w"> </span><span class="nb">local</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="w">  </span>--prefetch-depth<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="w">  </span>--rdma-rc-qps-per-client-per-shard<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="w">  </span>--rdma-rc-slots-per-qp<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a><span class="w">  </span>--rdma-rc-profile-interval-ms<span class="w"> </span><span class="m">1000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="w">  </span>--rdma-wait-timeout-ms<span class="w"> </span><span class="m">20000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="w">  </span>--client-timeout<span class="w"> </span><span class="m">240</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="w">  </span>--cluster-timeout<span class="w"> </span><span class="m">80</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a><span class="w">  </span>--transaction-profile<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="w">  </span>--server-rdma-threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a><span class="w">  </span>--rdma-rc-server-get-workers<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a><span class="w">  </span>--rdma-rc-server-coroutines-per-thread<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a><span class="w">  </span>--output-dir<span class="w"> </span>results/benchmark_ps_profile_&lt;date&gt;_n8_p8_t16_c1_repeat3
 </code></pre></div>
 <p>当前本机结果里，<code>p8/N8/T16/C1</code> repeat=3 平均 <code>14.45M keys/s</code>；同条件 <code>C4</code> 平均 <code>12.17M keys/s</code>。因此 <code>C=1</code> 是当前推荐 benchmark 默认，<code>C&gt;1</code> 只能作为 coroutine scanner 调度实验，不应默认为优化项。</p>
 <p>公平比较 RDMA / GRPC / BRPC 时，必须对齐 <code>--client-threads-per-process</code> 和 <code>--client-load-threads-per-process</code>。如果 RPC 使用 16 线程而 RDMA 使用 1 线程，这只能称为 mixed-concurrency capacity check，不能作为公平 transport 对比。</p>
@@ -3421,10 +3440,10 @@
 <li><code>rdma_rc_qps_per_client_per_shard=16</code></li>
 </ul>
 <p>raw results 保存在：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>results/benchmark_ps_matrix_0529
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>results/benchmark_ps_matrix_0529
 </code></pre></div>
 <p>这组历史矩阵已经由当前完整报告承接：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>ps_rdma_benchmark_report_0531.md
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>ps_rdma_benchmark_report_0531.md
 </code></pre></div>
 <p>总吞吐矩阵如下，单位为 <code>M keys/s</code>：</p>
 <table>
@@ -3528,7 +3547,7 @@
 <p>排障时先用 dedicated RC benchmark 建立 transport baseline，再看 generic benchmark 是否是更上层生命周期或调用方式问题。</p>
 <h4 id="624-2026-05-31-rdma-get-response-path">6.2.4 2026-05-31 RDMA GET response path 固化<a class="headerlink" href="#624-2026-05-31-rdma-get-response-path" title="Permanent link">&para;</a></h4>
 <p>当前完整报告见仓库根目录：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>ps_rdma_benchmark_report_0531.md
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>ps_rdma_benchmark_report_0531.md
 </code></pre></div>
 <p>本轮对齐了 storage-only 与 PS/network 两层：</p>
 <ul>
@@ -3573,8 +3592,14 @@
 <tr>
 <td>PS/network</td>
 <td><code>DRAM_PET_HASH</code></td>
-<td>staging-copy</td>
-<td style="text-align: right;"><code>44.87M keys/s</code></td>
+<td>staging-copy, stable <code>qps=16</code></td>
+<td style="text-align: right;"><code>41.64M keys/s</code> avg, best <code>45.62M keys/s</code></td>
+</tr>
+<tr>
+<td>PS/network</td>
+<td><code>DRAM_PET_HASH</code></td>
+<td>staging-copy, tuning <code>qps=20</code></td>
+<td style="text-align: right;">up to <code>46.69M keys/s</code></td>
 </tr>
 </tbody>
 </table>
@@ -3583,12 +3608,12 @@
 更快，但随机 row refs 更离散，direct-SG 需要组织更多 SGE/WR，反而慢于把 value
 先聚合到连续 response buffer 的 staging-copy。</p>
 <p>推荐默认：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>python3<span class="w"> </span>tools/benchmarks/run_benchmark_ps.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span>--transports<span class="w"> </span>rdma<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span>--index-type<span class="w"> </span>DRAM_PET_HASH<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span>--rdma-get-response-mode<span class="w"> </span>auto<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">  </span>--value-size<span class="w"> </span><span class="m">512</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>python3<span class="w"> </span>tools/benchmarks/run_benchmark_ps.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span>--transports<span class="w"> </span>rdma<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span>--index-type<span class="w"> </span>DRAM_PET_HASH<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span>--rdma-get-response-mode<span class="w"> </span>auto<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">  </span>--value-size<span class="w"> </span><span class="m">512</span>
 </code></pre></div>
 <p><code>auto</code> 当前解析为：</p>
 <table>
@@ -3614,65 +3639,65 @@
 <h3 id="63-rdma-rc">6.3 RDMA RC 专项入口<a class="headerlink" href="#63-rdma-rc" title="Permanent link">&para;</a></h3>
 <p>当前 <code>run_rdma_rc_transport_benchmark.py</code> 使用 shard 0 <code>petps_server</code> 内置控制面，不再接受旧的 <code>--use-local-memcached</code> 参数。看到 <code>unrecognized arguments: --use-local-memcached</code> 时，删除该参数即可；不要改回 memcached 控制面。</p>
 <p>最小真实 RDMA RC 闭环命令：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LD_LIBRARY_PATH</span><span class="o">=</span>/app/RecStore/build/lib:<span class="si">${</span><span class="nv">LD_LIBRARY_PATH</span><span class="si">}</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>python3<span class="w"> </span>tools/benchmarks/run_rdma_rc_transport_benchmark.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/rdma_rc_transport_benchmark<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">  </span>--client-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">  </span>--thread-num<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">  </span>--iterations<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">  </span>--rounds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">  </span>--warmup-rounds<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">  </span>--value-size<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="w">  </span>--op<span class="w"> </span>get<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="w">  </span>--report-mode<span class="w"> </span>summary<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a><span class="w">  </span>--qps-per-client-per-shard<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="w">  </span>--rdma-wait-timeout-ms<span class="w"> </span><span class="m">20000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="w">  </span>--client-timeout<span class="w"> </span><span class="m">60</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a><span class="w">  </span>--cluster-timeout<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a><span class="w">  </span>--rdma-control-plane-host<span class="w"> </span><span class="m">127</span>.0.0.1
-</code></pre></div>
-<p>单 client <code>async_stream</code> smoke 可用下面的命令，适合在调大吞吐前确认 RC 专项路径能完整跑通：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LD_LIBRARY_PATH</span><span class="o">=</span>/app/RecStore/build/lib:<span class="si">${</span><span class="nv">LD_LIBRARY_PATH</span><span class="si">}</span>
 <a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>python3<span class="w"> </span>tools/benchmarks/run_rdma_rc_transport_benchmark.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/rdma_rc_transport_benchmark<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">  </span>--client-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">  </span>--thread-num<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">  </span>--iterations<span class="w"> </span><span class="m">100</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">  </span>--rounds<span class="w"> </span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">  </span>--warmup-rounds<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="w">  </span>--value-size<span class="w"> </span><span class="m">512</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="w">  </span>--op<span class="w"> </span>async_stream<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="w">  </span>--async-depth<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="w">  </span>--qps-per-client-per-shard<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="w">  </span>--report-mode<span class="w"> </span>summary<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="w">  </span>--rdma-wait-timeout-ms<span class="w"> </span><span class="m">20000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a><span class="w">  </span>--client-timeout<span class="w"> </span><span class="m">300</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a><span class="w">  </span>--cluster-timeout<span class="w"> </span><span class="m">60</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">  </span>--iterations<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">  </span>--rounds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">  </span>--warmup-rounds<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="w">  </span>--value-size<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="w">  </span>--op<span class="w"> </span>get<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="w">  </span>--report-mode<span class="w"> </span>summary<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="w">  </span>--qps-per-client-per-shard<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="w">  </span>--rdma-wait-timeout-ms<span class="w"> </span><span class="m">20000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="w">  </span>--client-timeout<span class="w"> </span><span class="m">60</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a><span class="w">  </span>--cluster-timeout<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a><span class="w">  </span>--rdma-control-plane-host<span class="w"> </span><span class="m">127</span>.0.0.1
 </code></pre></div>
-<p>多 client 最小解析验证：</p>
+<p>单 client <code>async_stream</code> smoke 可用下面的命令，适合在调大吞吐前确认 RC 专项路径能完整跑通：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LD_LIBRARY_PATH</span><span class="o">=</span>/app/RecStore/build/lib:<span class="si">${</span><span class="nv">LD_LIBRARY_PATH</span><span class="si">}</span>
 <a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>python3<span class="w"> </span>tools/benchmarks/run_rdma_rc_transport_benchmark.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/rdma_rc_transport_benchmark<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">  </span>--client-count<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">  </span>--client-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">  </span>--thread-num<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">  </span>--iterations<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">  </span>--rounds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">  </span>--warmup-rounds<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">  </span>--value-size<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="w">  </span>--op<span class="w"> </span>get<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="w">  </span>--report-mode<span class="w"> </span>summary<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a><span class="w">  </span>--qps-per-client-per-shard<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a><span class="w">  </span>--rdma-wait-timeout-ms<span class="w"> </span><span class="m">20000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a><span class="w">  </span>--client-timeout<span class="w"> </span><span class="m">60</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a><span class="w">  </span>--cluster-timeout<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a><span class="w">  </span>--rdma-control-plane-host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a><span class="w">  </span>--quiet
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">  </span>--iterations<span class="w"> </span><span class="m">100</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">  </span>--rounds<span class="w"> </span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">  </span>--warmup-rounds<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">  </span>--value-size<span class="w"> </span><span class="m">512</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="w">  </span>--op<span class="w"> </span>async_stream<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="w">  </span>--async-depth<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a><span class="w">  </span>--qps-per-client-per-shard<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a><span class="w">  </span>--report-mode<span class="w"> </span>summary<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a><span class="w">  </span>--rdma-wait-timeout-ms<span class="w"> </span><span class="m">20000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a><span class="w">  </span>--client-timeout<span class="w"> </span><span class="m">300</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a><span class="w">  </span>--cluster-timeout<span class="w"> </span><span class="m">60</span>
+</code></pre></div>
+<p>多 client 最小解析验证：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LD_LIBRARY_PATH</span><span class="o">=</span>/app/RecStore/build/lib:<span class="si">${</span><span class="nv">LD_LIBRARY_PATH</span><span class="si">}</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>python3<span class="w"> </span>tools/benchmarks/run_rdma_rc_transport_benchmark.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/rdma_rc_transport_benchmark<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">  </span>--client-count<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">  </span>--thread-num<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">  </span>--iterations<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="w">  </span>--rounds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="w">  </span>--warmup-rounds<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="w">  </span>--value-size<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="w">  </span>--op<span class="w"> </span>get<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="w">  </span>--report-mode<span class="w"> </span>summary<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="w">  </span>--qps-per-client-per-shard<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="w">  </span>--rdma-wait-timeout-ms<span class="w"> </span><span class="m">20000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="w">  </span>--client-timeout<span class="w"> </span><span class="m">60</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="w">  </span>--cluster-timeout<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a><span class="w">  </span>--rdma-control-plane-host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a><span class="w">  </span>--quiet
 </code></pre></div>
 <p>判定标准：</p>
 <ul>
@@ -3752,17 +3777,24 @@
 <h2 id="8">8. 当前路线图<a class="headerlink" href="#8" title="Permanent link">&para;</a></h2>
 <p>当前主线已经从“单纯追更高并发”调整为“按 KVEngine 和 value layout 选择正确的
 GET response path”。根目录 <code>ps_rdma_benchmark_report_0531.md</code> 记录从
-<code>~2M keys/s</code> 到 <code>~44.87M keys/s</code> 的完整阶段。</p>
+<code>~2M keys/s</code> 到 <code>qps=16</code> repeat 平均 <code>~41.64M keys/s</code>、单轮最高
+<code>45.62M keys/s</code>，以及 <code>qps=20</code> tuning profile 最高 <code>~46.69M keys/s</code> 的完整阶段。</p>
 <h3 id="81-pet-staging-copy">8.1 第一优先级：固化 PET staging-copy 主线<a class="headerlink" href="#81-pet-staging-copy" title="Permanent link">&para;</a></h3>
 <p>现阶段推荐把下面的组合视为 RDMA GET 默认性能 case：</p>
 <ul>
 <li><code>DRAM_PET_HASH</code></li>
 <li><code>--rdma-get-response-mode auto</code></li>
+<li><code>rdma_rc_qps_per_client_per_shard=16</code></li>
 <li><code>batch_keys=500</code></li>
 <li><code>value_size=512</code></li>
 </ul>
 <p>后续优化应先保持这条路径可复现，再观察是否接近当前 RDMA transport/device 观测上限
 <code>~48.7M keys/s</code>。</p>
+<p><code>rdma_rc_qps_per_client_per_shard=20</code> 可作为冲高 tuning profile 保留记录，但不作为
+默认参数。2026-06-01 的复测显示，<code>qps=20</code> 可以单轮冲到 <code>46.69M keys/s</code>，
+但 repeat 结果更常落在 <code>41-43M keys/s</code>。增加 client 进程数、用
+<code>slots_per_qp=2</code> 加深单 client outstanding、round-robin QP acquisition、client
+wait-spin 都是负结果，不应作为默认优化方向。</p>
 <h3 id="82-eh-direct-sg">8.2 第二优先级：保留 EH direct-SG 回归<a class="headerlink" href="#82-eh-direct-sg" title="Permanent link">&para;</a></h3>
 <p><code>DRAM_EXTENDIBLE_HASH + direct-SG</code> 仍然有价值，因为它验证 SG response path 本身，
 也能作为 index lookup 瓶颈的稳定对照。当前 EH direct-SG 与 EH storage-only
@@ -3862,27 +3894,27 @@ batch lookup 都在 <code>~19M keys/s</code> 附近，说明继续优化 EH 需�
 <h2 id="10">10. 验证入口<a class="headerlink" href="#10" title="Permanent link">&para;</a></h2>
 <h3 id="101-petps-integration">10.1 PetPS Integration<a class="headerlink" href="#101-petps-integration" title="Permanent link">&para;</a></h3>
 <p>单分片：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>python3<span class="w"> </span>src/test/scripts/run_petps_integration.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">  </span>--config-path<span class="w"> </span>./src/test/configs/recstore_config.rdma_test.json<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">  </span>--test-binary<span class="w"> </span>./build/bin/petps_integration_test<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">  </span>--gtest-filter<span class="o">=</span>PetPSIntegrationTest.PutGetRoundTripSingleShard:PetPSIntegrationTest.UpdateGetRoundTripSingleShard<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">  </span>--rdma-control-plane-host<span class="o">=</span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">  </span>--show-runner-logs<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="w">  </span>--client-timeout<span class="o">=</span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="w">  </span>--cluster-timeout<span class="o">=</span><span class="m">35</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>python3<span class="w"> </span>src/test/scripts/run_petps_integration.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">  </span>--config-path<span class="w"> </span>./src/test/configs/recstore_config.rdma_test.json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">  </span>--test-binary<span class="w"> </span>./build/bin/petps_integration_test<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">  </span>--gtest-filter<span class="o">=</span>PetPSIntegrationTest.PutGetRoundTripSingleShard:PetPSIntegrationTest.UpdateGetRoundTripSingleShard<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">  </span>--rdma-control-plane-host<span class="o">=</span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="w">  </span>--show-runner-logs<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="w">  </span>--client-timeout<span class="o">=</span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="w">  </span>--cluster-timeout<span class="o">=</span><span class="m">35</span>
 </code></pre></div>
 <p>多分片：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>python3<span class="w"> </span>src/test/scripts/run_petps_integration.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">  </span>--client-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">  </span>--config-path<span class="w"> </span>./src/test/configs/recstore_config.rdma_multishard_test.json<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">  </span>--test-binary<span class="w"> </span>./build/bin/petps_integration_test<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">  </span>--gtest-filter<span class="o">=</span>PetPSIntegrationTest.PutGetRoundTripMultiShard<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="w">  </span>--rdma-control-plane-host<span class="o">=</span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="w">  </span>--show-runner-logs<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="w">  </span>--client-timeout<span class="o">=</span><span class="m">25</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="w">  </span>--cluster-timeout<span class="o">=</span><span class="m">45</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>python3<span class="w"> </span>src/test/scripts/run_petps_integration.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">  </span>--client-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">  </span>--config-path<span class="w"> </span>./src/test/configs/recstore_config.rdma_multishard_test.json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="w">  </span>--test-binary<span class="w"> </span>./build/bin/petps_integration_test<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="w">  </span>--gtest-filter<span class="o">=</span>PetPSIntegrationTest.PutGetRoundTripMultiShard<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">  </span>--rdma-control-plane-host<span class="o">=</span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="w">  </span>--show-runner-logs<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="w">  </span>--client-timeout<span class="o">=</span><span class="m">25</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="w">  </span>--cluster-timeout<span class="o">=</span><span class="m">45</span>
 </code></pre></div>
 <p>多分片排障时优先检查：</p>
 <ul>
@@ -3901,18 +3933,18 @@ batch lookup 都在 <code>~19M keys/s</code> 附近，说明继续优化 EH 需�
 <p>这些场景由 <code>run_petps_integration.py</code> 驱动，实际是否通过仍要看当次运行结果；文档这里只记录覆盖范围，不把一次运行结论长期固化在正文里。</p>
 <h3 id="102-op-layer-rdma">10.2 Op-layer RDMA<a class="headerlink" href="#102-op-layer-rdma" title="Permanent link">&para;</a></h3>
 <p>Op-layer RDMA 使用配置：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>src/test/configs/recstore_config.op_rdma.json
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>src/test/configs/recstore_config.op_rdma.json
 </code></pre></div>
 <p>常用 ctest：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>ctest<span class="w"> </span>--test-dir<span class="w"> </span>./build<span class="w"> </span>-R<span class="w"> </span><span class="s2">&quot;^test_op_runtime_support</span>$<span class="s2">|^test_op</span>$<span class="s2">&quot;</span><span class="w"> </span>-VV
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>ctest<span class="w"> </span>--test-dir<span class="w"> </span>./build<span class="w"> </span>-R<span class="w"> </span><span class="s2">&quot;^pytorch_client_test_rdma_basic</span>$<span class="s2">&quot;</span><span class="w"> </span>-VV
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>ctest<span class="w"> </span>--test-dir<span class="w"> </span>./build<span class="w"> </span>-R<span class="w"> </span><span class="s2">&quot;^pytorch_client_test_rdma</span>$<span class="s2">|^pytorch_client_test_rdma_auto</span>$<span class="s2">&quot;</span><span class="w"> </span>-VV
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>ctest<span class="w"> </span>--test-dir<span class="w"> </span>./build<span class="w"> </span>-R<span class="w"> </span><span class="s2">&quot;^test_op_runtime_support</span>$<span class="s2">|^test_op</span>$<span class="s2">&quot;</span><span class="w"> </span>-VV
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>ctest<span class="w"> </span>--test-dir<span class="w"> </span>./build<span class="w"> </span>-R<span class="w"> </span><span class="s2">&quot;^pytorch_client_test_rdma_basic</span>$<span class="s2">&quot;</span><span class="w"> </span>-VV
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>ctest<span class="w"> </span>--test-dir<span class="w"> </span>./build<span class="w"> </span>-R<span class="w"> </span><span class="s2">&quot;^pytorch_client_test_rdma</span>$<span class="s2">|^pytorch_client_test_rdma_auto</span>$<span class="s2">&quot;</span><span class="w"> </span>-VV
 </code></pre></div>
 <p>也可以手工运行基本 RDMA 客户端测试：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nv">RECSTORE_CONFIG</span><span class="o">=</span>./src/test/configs/recstore_config.op_rdma.json<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="nv">RECSTORE_CLIENT_TEST_PHASE</span><span class="o">=</span>basic<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="nv">RECSTORE_RDMA_CONTROL_PLANE_HOST</span><span class="o">=</span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>python3<span class="w"> </span>src/test/framework/pytorch/test_client.py<span class="w"> </span>./build/lib/lib_recstore_ops.so
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="nv">RECSTORE_CONFIG</span><span class="o">=</span>./src/test/configs/recstore_config.op_rdma.json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="nv">RECSTORE_CLIENT_TEST_PHASE</span><span class="o">=</span>basic<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="nv">RECSTORE_RDMA_CONTROL_PLANE_HOST</span><span class="o">=</span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>python3<span class="w"> </span>src/test/framework/pytorch/test_client.py<span class="w"> </span>./build/lib/lib_recstore_ops.so
 </code></pre></div>
 <p>这些测试的 <code>SKIP_RETURN_CODE</code> 是 <code>77</code>。skip 只说明 helper 的前置检查没有通过，不等价于真实 RDMA benchmark 一定不可运行。</p>
 <p>当前 op-layer RDMA 覆盖：</p>
@@ -3925,12 +3957,12 @@ batch lookup 都在 <code>~19M keys/s</code> 附近，说明继续优化 EH 需�
 <p>这些测试覆盖 PyTorch custom op 到 <code>RDMAPSClientAdapter -&gt; PetPSClient -&gt; verbs RC</code> 的 init/write/read、prefetch 和 table-aware update roundtrip；如果 helper 前置条件不满足，<code>SKIP_RETURN_CODE</code> 仍然是 <code>77</code>。</p>
 <h2 id="11">11. 单测和脚本测试<a class="headerlink" href="#11" title="Permanent link">&para;</a></h2>
 <p>协议 helper 和 wrapper：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>ctest<span class="w"> </span>--test-dir<span class="w"> </span>./build<span class="w"> </span>-R<span class="w"> </span><span class="s2">&quot;^test_allshards_ps_client</span>$<span class="s2">&quot;</span><span class="w"> </span>-VV
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>ctest<span class="w"> </span>--test-dir<span class="w"> </span>./build<span class="w"> </span>-R<span class="w"> </span><span class="s2">&quot;^test_allshards_ps_client</span>$<span class="s2">&quot;</span><span class="w"> </span>-VV
 </code></pre></div>
 <p>runner 参数拼接：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"> </span>src/test/scripts/test_petps_cluster_runner.py
-<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"> </span>src/test/scripts/test_run_rdma_rc_transport_benchmark.py
-<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>python3<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"> </span>src/test/scripts/test_run_rdma_transport_benchmarks.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"> </span>src/test/scripts/test_petps_cluster_runner.py
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"> </span>src/test/scripts/test_run_rdma_rc_transport_benchmark.py
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>python3<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"> </span>src/test/scripts/test_run_rdma_transport_benchmarks.py
 </code></pre></div>
 <p>这些测试不证明 RDMA 数据面可用，只证明协议编码、分片 wrapper 和脚本 plumbing 没有明显回归。其中 <code>test_run_rdma_rc_transport_benchmark.py</code> 覆盖：</p>
 <ul>
@@ -3951,14 +3983,14 @@ batch lookup 都在 <code>~19M keys/s</code> 附近，说明继续优化 EH 需�
 <li>如果 RDMA 路径卡住，重点检查 raw verbs buffer 是否注册、QP metadata 是否按 shard/lane 匹配、CQ 是否被错误线程消费、server/client mode 是否一致。</li>
 </ol>
 <p>最小日常验证顺序：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>cmake<span class="w"> </span>--build<span class="w"> </span>./build<span class="w"> </span>--target<span class="w"> </span>ps_transport_benchmark<span class="w"> </span>rdma_rc_transport_benchmark<span class="w"> </span>petps_server<span class="w"> </span>recstore_torch_ops<span class="w"> </span>-j
-<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>python3<span class="w"> </span>src/test/scripts/run_petps_integration.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="w">  </span>--config-path<span class="w"> </span>./src/test/configs/recstore_config.rdma_test.json<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="w">  </span>--test-binary<span class="w"> </span>./build/bin/petps_integration_test<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="w">  </span>--gtest-filter<span class="o">=</span>PetPSIntegrationTest.PutGetRoundTripSingleShard:PetPSIntegrationTest.UpdateGetRoundTripSingleShard<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="w">  </span>--rdma-control-plane-host<span class="o">=</span><span class="m">127</span>.0.0.1
-<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>ctest<span class="w"> </span>--test-dir<span class="w"> </span>./build<span class="w"> </span>-R<span class="w"> </span><span class="s2">&quot;^pytorch_client_test_rdma_basic</span>$<span class="s2">&quot;</span><span class="w"> </span>-VV
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>cmake<span class="w"> </span>--build<span class="w"> </span>./build<span class="w"> </span>--target<span class="w"> </span>ps_transport_benchmark<span class="w"> </span>rdma_rc_transport_benchmark<span class="w"> </span>petps_server<span class="w"> </span>recstore_torch_ops<span class="w"> </span>-j
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>python3<span class="w"> </span>src/test/scripts/run_petps_integration.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="w">  </span>--config-path<span class="w"> </span>./src/test/configs/recstore_config.rdma_test.json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="w">  </span>--test-binary<span class="w"> </span>./build/bin/petps_integration_test<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a><span class="w">  </span>--gtest-filter<span class="o">=</span>PetPSIntegrationTest.PutGetRoundTripSingleShard:PetPSIntegrationTest.UpdateGetRoundTripSingleShard<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="w">  </span>--rdma-control-plane-host<span class="o">=</span><span class="m">127</span>.0.0.1
+<a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a>ctest<span class="w"> </span>--test-dir<span class="w"> </span>./build<span class="w"> </span>-R<span class="w"> </span><span class="s2">&quot;^pytorch_client_test_rdma_basic</span>$<span class="s2">&quot;</span><span class="w"> </span>-VV
 </code></pre></div>
 
 
