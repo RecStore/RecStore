@@ -103,7 +103,7 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l81">Index::CurrentTid() (src/storage/index/index.h:81)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="200904">called 200904 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="201214">called 201214 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
@@ -124,7 +124,7 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l18">Index::Get(unsigned long, unsigned long&amp;) (src/storage/index/index.h:18)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="200904">called 200904 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="201214">called 201214 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
@@ -329,21 +329,21 @@
         <td class="lineno"><a id="l18" href="#l18">18</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">200904</td>
+        <td class="linecount coveredLine show_coveredLine">201214</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">Get</span><span class="p">(</span><span class="n">Key_t</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">Value_t</span><span class="o">&amp;</span><span class="w"> </span><span class="n">pointer</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l19" href="#l19">19</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">200904</td>
+        <td class="linecount coveredLine show_coveredLine">201214</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">    </span><span class="n">Get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">pointer</span><span class="p">,</span><span class="w"> </span><span class="n">CurrentTid</span><span class="p">());</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l20" href="#l20">20</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">200904</td>
+        <td class="linecount coveredLine show_coveredLine">201214</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
@@ -770,7 +770,7 @@
         <td class="lineno"><a id="l81" href="#l81">81</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">200904</td>
+        <td class="linecount coveredLine show_coveredLine">201214</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">CurrentTid</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
@@ -787,18 +787,18 @@
             <summary class="linebranchSummary">2/2</summary>
             <div class="linebranchContents">
               <div class="takenBranch">&check; Branch 0 taken 488 times.</div>
-              <div class="takenBranch">&check; Branch 1 taken 200416 times.</div>
+              <div class="takenBranch">&check; Branch 1 taken 200726 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount coveredLine show_coveredLine">201392</td>
+        <td class="linecount coveredLine show_coveredLine">201702</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">    </span><span class="k">thread_local</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">counter</span><span class="p">.</span><span class="n">fetch_add</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">memory_order_relaxed</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l84" href="#l84">84</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">200904</td>
+        <td class="linecount coveredLine show_coveredLine">201214</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">tid</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
@@ -843,7 +843,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.6">GCOVR (Version 8.6)</a>
-          at 2026-06-02 11:16:50
+          at 2026-06-03 14:23:57
         </footer>
       </div>
     </div>
