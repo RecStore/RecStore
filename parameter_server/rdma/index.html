@@ -3292,12 +3292,12 @@
 <tbody>
 <tr>
 <td><code>ps_transport_benchmark</code></td>
-<td><code>src/test/scripts/run_rdma_transport_benchmarks.py</code></td>
+<td><code>tools/benchmarks/run_rdma_transport_benchmarks.py</code></td>
 <td>通用 PS transport 对比入口，可跑 RDMA / gRPC / bRPC；RDMA 模式主要用于验证 PUT-v2 <code>read</code> 和 <code>push</code> 两条路径。</td>
 </tr>
 <tr>
 <td><code>rdma_rc_transport_benchmark</code></td>
-<td><code>src/test/scripts/run_rdma_rc_transport_benchmark.py</code></td>
+<td><code>tools/benchmarks/run_rdma_rc_transport_benchmark.py</code></td>
 <td>RDMA RC 专项压测入口，支持 <code>client-count</code>、<code>async_stream</code>、QP 池、server coroutine、fake get、skip client copy 等 RC 诊断参数。</td>
 </tr>
 </tbody>
@@ -3310,7 +3310,7 @@
 </ul>
 <h3 id="62-ps-transport">6.2 通用 PS Transport 入口<a class="headerlink" href="#62-ps-transport" title="Permanent link">&para;</a></h3>
 <p>建议先跑 PetPS RC-write correctness 基线，再做 benchmark：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python3<span class="w"> </span>src/test/scripts/run_rdma_transport_benchmarks.py<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python3<span class="w"> </span>tools/benchmarks/run_rdma_transport_benchmarks.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/ps_transport_benchmark<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--iterations<span class="w"> </span><span class="m">300</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
@@ -3328,7 +3328,7 @@
 </code></pre></div>
 <p>summary 表中的 <code>put_v2</code> 列用于确认 PUT-v2 payload transfer mode；<code>read</code> 和 <code>push</code> 的结果不能直接混比。</p>
 <p>如果你想在不继续增加 QP 数的情况下抬高 <code>async_stream</code> 深度，可以优先调 <code>--slots-per-qp</code>，再看 <code>qps-per-client-per-shard</code> 是否还需要一起放大。</p>
-<p><code>transactions/fetch</code> 路径使用 <code>src/test/scripts/run_benchmark_ps.py</code>。这个 runner 的拓扑参数采用显式命名：</p>
+<p><code>transactions/fetch</code> 路径使用 <code>tools/benchmarks/run_benchmark_ps.py</code>。这个 runner 的拓扑参数采用显式命名：</p>
 <ul>
 <li><code>--server-shard-ips</code>：每个 shard 对应一个 server IP，列表长度就是 shard 数。</li>
 <li><code>--client-ips</code>：要 ssh / 本地启动 client 的 IP 列表。</li>
@@ -3341,7 +3341,7 @@
 <li><code>--rdma-get-response-mode</code>：GET response payload 路径；推荐默认用 <code>auto</code>。</li>
 </ul>
 <p>本地单 shard、4 client 进程的 RDMA fetch profile 示例：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python3<span class="w"> </span>src/test/scripts/run_benchmark_ps.py<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python3<span class="w"> </span>tools/benchmarks/run_benchmark_ps.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/ps_transport_benchmark<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--transports<span class="w"> </span>rdma<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--server-shard-ips<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
@@ -3378,7 +3378,7 @@
 </code></pre></div>
 <p>通用 PS benchmark 的 RDMA 并发建议通过 <code>--client-ips</code> 和 <code>--client-processes-per-ip</code> 增加 client 进程数。单个 benchmark 进程内仍建议保持 <code>--client-threads-per-process=1</code>，除非已经重新验证同进程多线程下的 RDMA client/lane 语义。</p>
 <p>如果要复现当前 GET worker / poller 调度实验，建议显式写出 <code>T/N/C</code> 三个维度，并把它们编码进结果目录名：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python3<span class="w"> </span>src/test/scripts/run_benchmark_ps.py<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python3<span class="w"> </span>tools/benchmarks/run_benchmark_ps.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span>--transports<span class="w"> </span>rdma<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>--client-ips<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span>--server-shard-ips<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
@@ -3583,7 +3583,7 @@
 更快，但随机 row refs 更离散，direct-SG 需要组织更多 SGE/WR，反而慢于把 value
 先聚合到连续 response buffer 的 staging-copy。</p>
 <p>推荐默认：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>python3<span class="w"> </span>src/test/scripts/run_benchmark_ps.py<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>python3<span class="w"> </span>tools/benchmarks/run_benchmark_ps.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span>--transports<span class="w"> </span>rdma<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span>--index-type<span class="w"> </span>DRAM_PET_HASH<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span>--rdma-get-response-mode<span class="w"> </span>auto<span class="w"> </span><span class="se">\</span>
@@ -3615,7 +3615,7 @@
 <p>当前 <code>run_rdma_rc_transport_benchmark.py</code> 使用 shard 0 <code>petps_server</code> 内置控制面，不再接受旧的 <code>--use-local-memcached</code> 参数。看到 <code>unrecognized arguments: --use-local-memcached</code> 时，删除该参数即可；不要改回 memcached 控制面。</p>
 <p>最小真实 RDMA RC 闭环命令：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LD_LIBRARY_PATH</span><span class="o">=</span>/app/RecStore/build/lib:<span class="si">${</span><span class="nv">LD_LIBRARY_PATH</span><span class="si">}</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>python3<span class="w"> </span>src/test/scripts/run_rdma_rc_transport_benchmark.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>python3<span class="w"> </span>tools/benchmarks/run_rdma_rc_transport_benchmark.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/rdma_rc_transport_benchmark<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">  </span>--client-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
@@ -3635,7 +3635,7 @@
 </code></pre></div>
 <p>单 client <code>async_stream</code> smoke 可用下面的命令，适合在调大吞吐前确认 RC 专项路径能完整跑通：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LD_LIBRARY_PATH</span><span class="o">=</span>/app/RecStore/build/lib:<span class="si">${</span><span class="nv">LD_LIBRARY_PATH</span><span class="si">}</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>python3<span class="w"> </span>src/test/scripts/run_rdma_rc_transport_benchmark.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>python3<span class="w"> </span>tools/benchmarks/run_rdma_rc_transport_benchmark.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/rdma_rc_transport_benchmark<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">  </span>--client-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
@@ -3655,7 +3655,7 @@
 </code></pre></div>
 <p>多 client 最小解析验证：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LD_LIBRARY_PATH</span><span class="o">=</span>/app/RecStore/build/lib:<span class="si">${</span><span class="nv">LD_LIBRARY_PATH</span><span class="si">}</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>python3<span class="w"> </span>src/test/scripts/run_rdma_rc_transport_benchmark.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>python3<span class="w"> </span>tools/benchmarks/run_rdma_rc_transport_benchmark.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span>--benchmark-binary<span class="w"> </span>./build/bin/rdma_rc_transport_benchmark<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span>--server-count<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">  </span>--client-count<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
