@@ -74,7 +74,7 @@
     <div role="rowheader" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">Blocks</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l62">petps::RdmaControlPlaneServer::MetaKey::operator==(petps::RdmaControlPlaneServer::MetaKey const&amp;) const (src/ps/rdma/control_plane.h:62)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l70">petps::RdmaControlPlaneServer::MetaKey::operator==(petps::RdmaControlPlaneServer::MetaKey const&amp;) const (src/ps/rdma/control_plane.h:70)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="4">called 4 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">50.0%</div>
@@ -218,49 +218,49 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="n">namespace</span><span class="w"> </span><span class="n">petps</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src "><span class="n">namespace</span><span class="w"> </span><span class="n">grpc</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l17" href="#l17">17</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="n">class</span><span class="w"> </span><span class="n">Server</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l18" href="#l18">18</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="k">struct</span><span class="w"> </span><span class="nc">RdmaControlPlaneEndpoint</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src "><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l19" href="#l19">19</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">host</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;127.0.0.1&quot;</span><span class="p">;</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l20" href="#l20">20</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">port</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="mi">25100</span><span class="p">;</span></td>
+        <td class="src "><span class="n">namespace</span><span class="w"> </span><span class="n">petps</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l21" href="#l21">21</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">timeout_ms</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mi">30000</span><span class="p">;</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l22" href="#l22">22</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="p">};</span></td>
+        <td class="src "><span class="n">class</span><span class="w"> </span><span class="n">RdmaControlPlaneService</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l23" href="#l23">23</a></td>
@@ -274,283 +274,339 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="n">class</span><span class="w"> </span><span class="n">RdmaControlPlaneClient</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src "><span class="k">struct</span><span class="w"> </span><span class="nc">RdmaControlPlaneEndpoint</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l25" href="#l25">25</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="n">public</span><span class="o">:</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">host</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;127.0.0.1&quot;</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l26" href="#l26">26</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">explicit</span><span class="w"> </span><span class="n">RdmaControlPlaneClient</span><span class="p">(</span><span class="n">RdmaControlPlaneEndpoint</span><span class="w"> </span><span class="n">endpoint</span><span class="p">);</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">port</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="mi">25100</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l27" href="#l27">27</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">timeout_ms</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mi">30000</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l28" href="#l28">28</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">PublishMeta</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">publisher_node_id</span><span class="p">,</span></td>
+        <td class="src "><span class="p">};</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l29" href="#l29">29</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                   </span><span class="kt">int</span><span class="w"> </span><span class="n">publisher_lane</span><span class="p">,</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l30" href="#l30">30</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                   </span><span class="kt">int</span><span class="w"> </span><span class="n">receiver_node_id</span><span class="p">,</span></td>
+        <td class="src "><span class="n">class</span><span class="w"> </span><span class="n">RdmaControlPlaneClient</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l31" href="#l31">31</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                   </span><span class="kt">int</span><span class="w"> </span><span class="n">receiver_lane</span><span class="p">,</span></td>
+        <td class="src "><span class="n">public</span><span class="o">:</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l32" href="#l32">32</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                   </span><span class="k">const</span><span class="w"> </span><span class="n">RawVerbsNodeMeta</span><span class="o">&amp;</span><span class="w"> </span><span class="n">meta</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">explicit</span><span class="w"> </span><span class="n">RdmaControlPlaneClient</span><span class="p">(</span><span class="n">RdmaControlPlaneEndpoint</span><span class="w"> </span><span class="n">endpoint</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l33" href="#l33">33</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">RawVerbsNodeMeta</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l34" href="#l34">34</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="nf">GetMeta</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">publisher_node_id</span><span class="p">,</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">PublishMeta</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">publisher_node_id</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l35" href="#l35">35</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">          </span><span class="kt">int</span><span class="w"> </span><span class="n">publisher_lane</span><span class="p">,</span></td>
+        <td class="src "><span class="w">                   </span><span class="kt">int</span><span class="w"> </span><span class="n">publisher_lane</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l36" href="#l36">36</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">          </span><span class="kt">int</span><span class="w"> </span><span class="n">receiver_node_id</span><span class="p">,</span></td>
+        <td class="src "><span class="w">                   </span><span class="kt">int</span><span class="w"> </span><span class="n">receiver_node_id</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l37" href="#l37">37</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">          </span><span class="kt">int</span><span class="w"> </span><span class="n">receiver_lane</span><span class="p">,</span></td>
+        <td class="src "><span class="w">                   </span><span class="kt">int</span><span class="w"> </span><span class="n">receiver_lane</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l38" href="#l38">38</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">          </span><span class="kt">int</span><span class="w"> </span><span class="n">timeout_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-1</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src "><span class="w">                   </span><span class="k">const</span><span class="w"> </span><span class="n">RawVerbsNodeMeta</span><span class="o">&amp;</span><span class="w"> </span><span class="n">meta</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l39" href="#l39">39</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">PublishServerReady</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">server_id</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">RawVerbsNodeMeta</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l40" href="#l40">40</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">WaitServer</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">server_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">timeout_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-1</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="nf">GetMeta</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">publisher_node_id</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l41" href="#l41">41</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">WaitServerReady</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">num_servers</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">timeout_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-1</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src "><span class="w">          </span><span class="kt">int</span><span class="w"> </span><span class="n">publisher_lane</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l42" href="#l42">42</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="w">          </span><span class="kt">int</span><span class="w"> </span><span class="n">receiver_node_id</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l43" href="#l43">43</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="n">private</span><span class="o">:</span></td>
+        <td class="src "><span class="w">          </span><span class="kt">int</span><span class="w"> </span><span class="n">receiver_lane</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l44" href="#l44">44</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">RdmaControlPlaneEndpoint</span><span class="w"> </span><span class="n">endpoint_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">          </span><span class="kt">int</span><span class="w"> </span><span class="n">timeout_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-1</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l45" href="#l45">45</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="p">};</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">PublishServerReady</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">server_id</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l46" href="#l46">46</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">WaitServer</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">server_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">timeout_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-1</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l47" href="#l47">47</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="n">class</span><span class="w"> </span><span class="n">RdmaControlPlaneServer</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">WaitServerReady</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">num_servers</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">timeout_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-1</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l48" href="#l48">48</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="n">public</span><span class="o">:</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l49" href="#l49">49</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">explicit</span><span class="w"> </span><span class="n">RdmaControlPlaneServer</span><span class="p">(</span><span class="n">RdmaControlPlaneEndpoint</span><span class="w"> </span><span class="n">endpoint</span><span class="p">);</span></td>
+        <td class="src "><span class="n">private</span><span class="o">:</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l50" href="#l50">50</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="o">~</span><span class="n">RdmaControlPlaneServer</span><span class="p">();</span></td>
+        <td class="src "><span class="w">  </span><span class="n">RdmaControlPlaneEndpoint</span><span class="w"> </span><span class="n">endpoint_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l51" href="#l51">51</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="p">};</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l52" href="#l52">52</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">Start</span><span class="p">();</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l53" href="#l53">53</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">Stop</span><span class="p">();</span></td>
+        <td class="src "><span class="n">class</span><span class="w"> </span><span class="n">RdmaControlPlaneServer</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l54" href="#l54">54</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="n">public</span><span class="o">:</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l55" href="#l55">55</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="n">private</span><span class="o">:</span></td>
+        <td class="src "><span class="w">  </span><span class="n">explicit</span><span class="w"> </span><span class="n">RdmaControlPlaneServer</span><span class="p">(</span><span class="n">RdmaControlPlaneEndpoint</span><span class="w"> </span><span class="n">endpoint</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l56" href="#l56">56</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="k">struct</span><span class="w"> </span><span class="nc">MetaKey</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src "><span class="w">  </span><span class="o">~</span><span class="n">RdmaControlPlaneServer</span><span class="p">();</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l57" href="#l57">57</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">publisher_node_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l58" href="#l58">58</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">publisher_lane</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">Start</span><span class="p">();</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l59" href="#l59">59</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">receiver_node_id</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">Stop</span><span class="p">();</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l60" href="#l60">60</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">receiver_lane</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l61" href="#l61">61</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="n">private</span><span class="o">:</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l62" href="#l62">62</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">  </span><span class="n">friend</span><span class="w"> </span><span class="n">class</span><span class="w"> </span><span class="n">RdmaControlPlaneService</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l63" href="#l63">63</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l64" href="#l64">64</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">  </span><span class="k">struct</span><span class="w"> </span><span class="nc">MetaKey</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l65" href="#l65">65</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">publisher_node_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l66" href="#l66">66</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">publisher_lane</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l67" href="#l67">67</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">receiver_node_id</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l68" href="#l68">68</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">receiver_lane</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l69" href="#l69">69</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l70" href="#l70">70</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">4</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="n">operator</span><span class="o">==</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">MetaKey</span><span class="o">&amp;</span><span class="w"> </span><span class="n">other</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l63" href="#l63">63</a></td>
+        <td class="lineno"><a id="l71" href="#l71">71</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">8</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="n">publisher_node_id</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">other</span><span class="p">.</span><span class="n">publisher_node_id</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l64" href="#l64">64</a></td>
+        <td class="lineno"><a id="l72" href="#l72">72</a></td>
         <td class="linebranch">
           <details class="linebranchDetails">
             <summary class="linebranchSummary">1/2</summary>
@@ -564,7 +620,7 @@
         <td class="src  partialCoveredLine show_partialCoveredLine"><span class="w">             </span><span class="n">publisher_lane</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">other</span><span class="p">.</span><span class="n">publisher_lane</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l65" href="#l65">65</a></td>
+        <td class="lineno"><a id="l73" href="#l73">73</a></td>
         <td class="linebranch">
           <details class="linebranchDetails">
             <summary class="linebranchSummary">2/4</summary>
@@ -580,7 +636,7 @@
         <td class="src  partialCoveredLine show_partialCoveredLine"><span class="w">             </span><span class="n">receiver_node_id</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">other</span><span class="p">.</span><span class="n">receiver_node_id</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l66" href="#l66">66</a></td>
+        <td class="lineno"><a id="l74" href="#l74">74</a></td>
         <td class="linebranch">
           <details class="linebranchDetails">
             <summary class="linebranchSummary">1/2</summary>
@@ -594,161 +650,133 @@
         <td class="src  partialCoveredLine show_partialCoveredLine"><span class="w">             </span><span class="n">receiver_lane</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">other</span><span class="p">.</span><span class="n">receiver_lane</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l67" href="#l67">67</a></td>
+        <td class="lineno"><a id="l75" href="#l75">75</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="w">    </span><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l68" href="#l68">68</a></td>
-        <td class="linebranch">
-        </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="p">};</span></td>
-      </tr>
-      <tr class="source-line">
-        <td class="lineno"><a id="l69" href="#l69">69</a></td>
-        <td class="linebranch">
-        </td>
-        <td class="linecount"></td>
-        <td class="src "></td>
-      </tr>
-      <tr class="source-line">
-        <td class="lineno"><a id="l70" href="#l70">70</a></td>
-        <td class="linebranch">
-        </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="k">struct</span><span class="w"> </span><span class="nc">MetaKeyHash</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr class="source-line">
-        <td class="lineno"><a id="l71" href="#l71">71</a></td>
-        <td class="linebranch">
-        </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="nf">operator</span><span class="p">()(</span><span class="k">const</span><span class="w"> </span><span class="n">MetaKey</span><span class="o">&amp;</span><span class="w"> </span><span class="n">key</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
-      </tr>
-      <tr class="source-line">
-        <td class="lineno"><a id="l72" href="#l72">72</a></td>
-        <td class="linebranch">
-        </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="p">};</span></td>
-      </tr>
-      <tr class="source-line">
-        <td class="lineno"><a id="l73" href="#l73">73</a></td>
-        <td class="linebranch">
-        </td>
-        <td class="linecount"></td>
-        <td class="src "></td>
-      </tr>
-      <tr class="source-line">
-        <td class="lineno"><a id="l74" href="#l74">74</a></td>
-        <td class="linebranch">
-        </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">ListenLoop</span><span class="p">();</span></td>
-      </tr>
-      <tr class="source-line">
-        <td class="lineno"><a id="l75" href="#l75">75</a></td>
-        <td class="linebranch">
-        </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">HandleConnection</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">fd</span><span class="p">);</span></td>
-      </tr>
-      <tr class="source-line">
         <td class="lineno"><a id="l76" href="#l76">76</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="w">  </span><span class="p">};</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l77" href="#l77">77</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">RdmaControlPlaneEndpoint</span><span class="w"> </span><span class="n">endpoint_</span><span class="p">;</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l78" href="#l78">78</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">mutex</span><span class="w"> </span><span class="n">mu_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="k">struct</span><span class="w"> </span><span class="nc">MetaKeyHash</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l79" href="#l79">79</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">condition_variable</span><span class="w"> </span><span class="n">cv_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="nf">operator</span><span class="p">()(</span><span class="k">const</span><span class="w"> </span><span class="n">MetaKey</span><span class="o">&amp;</span><span class="w"> </span><span class="n">key</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l80" href="#l80">80</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unordered_map</span><span class="o">&lt;</span><span class="n">MetaKey</span><span class="p">,</span><span class="w"> </span><span class="n">RawVerbsNodeMeta</span><span class="p">,</span><span class="w"> </span><span class="n">MetaKeyHash</span><span class="o">&gt;</span><span class="w"> </span><span class="n">metadata_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="p">};</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l81" href="#l81">81</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unordered_set</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">ready_servers_</span><span class="p">;</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l82" href="#l82">82</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">bool</span><span class="o">&gt;</span><span class="w"> </span><span class="n">stop_requested_</span><span class="p">{</span><span class="nb">false</span><span class="p">};</span></td>
+        <td class="src "><span class="w">  </span><span class="n">RdmaControlPlaneEndpoint</span><span class="w"> </span><span class="n">endpoint_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l83" href="#l83">83</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">listen_fd_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">mutex</span><span class="w"> </span><span class="n">mu_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l84" href="#l84">84</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="kr">thread</span><span class="w"> </span><span class="n">accept_thread_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">condition_variable</span><span class="w"> </span><span class="n">cv_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l85" href="#l85">85</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kr">thread</span><span class="o">&gt;</span><span class="w"> </span><span class="n">handler_threads_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unordered_map</span><span class="o">&lt;</span><span class="n">MetaKey</span><span class="p">,</span><span class="w"> </span><span class="n">RawVerbsNodeMeta</span><span class="p">,</span><span class="w"> </span><span class="n">MetaKeyHash</span><span class="o">&gt;</span><span class="w"> </span><span class="n">metadata_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l86" href="#l86">86</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="p">};</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unordered_set</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">ready_servers_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l87" href="#l87">87</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">bool</span><span class="o">&gt;</span><span class="w"> </span><span class="n">stop_requested_</span><span class="p">{</span><span class="nb">false</span><span class="p">};</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l88" href="#l88">88</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="p">}</span><span class="w"> </span><span class="c1">// namespace petps</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">RdmaControlPlaneService</span><span class="o">&gt;</span><span class="w"> </span><span class="n">service_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l89" href="#l89">89</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">grpc</span><span class="o">::</span><span class="n">Server</span><span class="o">&gt;</span><span class="w"> </span><span class="n">server_</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l90" href="#l90">90</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="p">};</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l91" href="#l91">91</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l92" href="#l92">92</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="p">}</span><span class="w"> </span><span class="c1">// namespace petps</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l93" href="#l93">93</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
@@ -761,7 +789,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.6">GCOVR (Version 8.6)</a>
-          at 2026-06-03 14:23:57
+          at 2026-06-04 05:01:15
         </footer>
       </div>
     </div>
