@@ -2152,9 +2152,9 @@
 </code></pre></div></td></tr></table></div>
 <p>如果缺少某个库，CMake 会在 <code>find_library(... REQUIRED)</code> 处失败。先装库，或者先从 <code>--engines</code> 里去掉对应 engine。</p>
 <h2 id="_3">横向对比<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<p>脚本：<code>tools/benchmarks/run_ycsb_compare.py</code></p>
+<p>脚本：<code>tools/benchmarks/run_kvengine_compare.py</code></p>
 <p>默认只跑 <code>kvdb</code> 和 <code>cceh</code>，workload 用 <code>workloada</code>：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python3<span class="w"> </span>tools/benchmarks/run_kvengine_compare.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--build<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span>workloadb<span class="w"> </span>workloadc<span class="w"> </span><span class="se">\</span>
@@ -2193,6 +2193,7 @@ lookup 上限卡住。2026-05-31 的 RDMA GET 报告使用了 <code>batch_keys=5
 </tr>
 </tbody>
 </table>
+<p>PS RDMA 对齐结论和 response path 选择见 <code>docs/parameter_server/rdma.md</code>。</p>
 <p>直接运行二进制示例：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>./build/bin/benchmark_kv_engine<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--engine<span class="o">=</span>dram<span class="w"> </span><span class="se">\</span>
@@ -2206,7 +2207,7 @@ lookup 上限卡住。2026-05-31 的 RDMA GET 报告使用了 <code>batch_keys=5
 <a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">  </span>--batch_keys<span class="o">=</span><span class="m">500</span>
 </code></pre></div>
 <p>通过 compare runner 运行时，对应参数是：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python3<span class="w"> </span>tools/benchmarks/run_kvengine_compare.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloadc<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>--record-count<span class="w"> </span><span class="m">300000</span><span class="w"> </span><span class="se">\</span>
@@ -2219,7 +2220,7 @@ lookup 上限卡住。2026-05-31 的 RDMA GET 报告使用了 <code>batch_keys=5
 <p><code>summary.csv</code> 会记录 <code>read_mode</code> 和 <code>batch_keys</code>，用于和 PS/network 层报告对齐。</p>
 <h2 id="_4">外部存储<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>配好环境后执行：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python3<span class="w"> </span>tools/benchmarks/run_kvengine_compare.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span>rocksdb<span class="w"> </span>leveldb<span class="w"> </span>lmdb<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span>workloadb<span class="w"> </span>workloadc<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--record-count<span class="w"> </span><span class="m">100000</span><span class="w"> </span><span class="se">\</span>
@@ -2241,7 +2242,7 @@ lookup 上限卡住。2026-05-31 的 RDMA GET 报告使用了 <code>batch_keys=5
 <details class="example">
 <summary>调参</summary>
 <p>全局 YCSB 参数用 <code>--extra-prop</code>：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python3<span class="w"> </span>tools/benchmarks/run_kvengine_compare.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span>--extra-prop<span class="w"> </span><span class="nv">fieldcount</span><span class="o">=</span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
@@ -2249,7 +2250,7 @@ lookup 上限卡住。2026-05-31 的 RDMA GET 报告使用了 <code>batch_keys=5
 <a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span>--extra-prop<span class="w"> </span><span class="nv">requestdistribution</span><span class="o">=</span>zipfian
 </code></pre></div>
 <p>只给某个 engine 的参数用 <code>--engine-prop</code>：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python3<span class="w"> </span>tools/benchmarks/run_kvengine_compare.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span>--engine-prop<span class="w"> </span>kvdb:hybridkv.synthetic_bytes<span class="o">=</span><span class="m">1024</span><span class="w"> </span><span class="se">\</span>
