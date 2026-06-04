@@ -2308,10 +2308,8 @@
 <li>PS/network：通过 RecStore PS client/server 与 transport。</li>
 <li>PyTorch/model：模型训练侧端到端。</li>
 </ul>
-<p>不要把某一层的结果直接扩展成整体架构结论。当前 RDMA GET 的阶段性完整报告是：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ps_rdma_benchmark_report_0531.md
-</code></pre></div>
-<p>这份报告对齐了 storage-only 的 <code>BatchGetFlat(500 random keys)</code> 和 PS/network 的
+<p>不要把某一层的结果直接扩展成整体架构结论。当前 RDMA GET 的阶段性结论对齐了
+storage-only 的 <code>BatchGetFlat(500 random keys)</code> 和 PS/network 的
 RDMA GET <code>batch_keys=500</code>，结论是：</p>
 <table>
 <thead>
@@ -2349,31 +2347,31 @@ RDMA GET <code>batch_keys=500</code>，结论是：</p>
 GET worker 或 coroutine scanner。</p>
 <h3 id="grafana">Grafana<a class="headerlink" href="#grafana" title="Permanent link">&para;</a></h3>
 <p>编译时开启性能上报宏：</p>
-<div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-1-1">1</a></span>
-<span class="normal"><a href="#__codelineno-1-2">2</a></span>
-<span class="normal"><a href="#__codelineno-1-3">3</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1"></a>cmake<span class="w"> </span>..<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2"></a><span class="hll"><span class="w">    </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Debug<span class="w"> </span><span class="se">\</span>
-</span><a id="__codelineno-1-3" name="__codelineno-1-3"></a><span class="hll"><span class="w">    </span>-DUSE_PERF_REPORT<span class="o">=</span>ON
+<div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1">1</a></span>
+<span class="normal"><a href="#__codelineno-0-2">2</a></span>
+<span class="normal"><a href="#__codelineno-0-3">3</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1"></a>cmake<span class="w"> </span>..<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2"></a><span class="hll"><span class="w">    </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Debug<span class="w"> </span><span class="se">\</span>
+</span><a id="__codelineno-0-3" name="__codelineno-0-3"></a><span class="hll"><span class="w">    </span>-DUSE_PERF_REPORT<span class="o">=</span>ON
 </span></code></pre></div></td></tr></table></div>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">本地分析</label><label for="__tabbed_1_2">Grafana 在线看板（ClickHouse）</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>该模式无需依赖 ClickHouse/Grafana，可直接在模型训练时采集 <code>embupdate_stages</code> 真实链路数据，分析 update 在 OP 层、gRPC 客户端、gRPC 服务端各阶段耗时。</p>
-<div class="highlight"><span class="filename">开启本地结构化事件落盘（JSONL）</span><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_REPORT_MODE</span><span class="o">=</span><span class="nb">local</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_REPORT_LOCAL_SINK</span><span class="o">=</span>jsonl
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_REPORT_JSONL_PATH</span><span class="o">=</span>/tmp/recstore_report_events.jsonl
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_REPORT_FLUSH_EVERY_N</span><span class="o">=</span><span class="m">256</span>
+<div class="highlight"><span class="filename">开启本地结构化事件落盘（JSONL）</span><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_REPORT_MODE</span><span class="o">=</span><span class="nb">local</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_REPORT_LOCAL_SINK</span><span class="o">=</span>jsonl
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_REPORT_JSONL_PATH</span><span class="o">=</span>/tmp/recstore_report_events.jsonl
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_REPORT_FLUSH_EVERY_N</span><span class="o">=</span><span class="m">256</span>
 </code></pre></div>
 <p>接下来启动参数服务器与模型训练，可以使用随机数据集的DLRM：</p>
-<div class="highlight"><span class="filename">运行 DLRM 模型（随机数据），自动拉起ps_server</span><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span>model_zoo/torchrec_dlrm/
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>bash<span class="w"> </span>./run_single_day.sh<span class="w"> </span>--ps<span class="w"> </span>--random-dataset<span class="w"> </span>--dataset-size<span class="w"> </span><span class="m">256</span>
+<div class="highlight"><span class="filename">运行 DLRM 模型（随机数据），自动拉起ps_server</span><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">cd</span><span class="w"> </span>model_zoo/torchrec_dlrm/
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>bash<span class="w"> </span>./run_single_day.sh<span class="w"> </span>--ps<span class="w"> </span>--random-dataset<span class="w"> </span>--dataset-size<span class="w"> </span><span class="m">256</span>
 </code></pre></div>
 <p>使用分析脚本：</p>
-<div class="highlight"><span class="filename">分析模型层真实 update 数据</span><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python3<span class="w"> </span>src/test/scripts/analyze_embupdate_stages.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--input<span class="w"> </span>/tmp/recstore_report_events.jsonl<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>--group-by-prefix<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span>--export-csv<span class="w"> </span>/tmp/embupdate_real.csv<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span>--top<span class="w"> </span><span class="m">30</span>
+<div class="highlight"><span class="filename">分析模型层真实 update 数据</span><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python3<span class="w"> </span>src/test/scripts/analyze_embupdate_stages.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--input<span class="w"> </span>/tmp/recstore_report_events.jsonl<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--group-by-prefix<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--export-csv<span class="w"> </span>/tmp/embupdate_real.csv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span>--top<span class="w"> </span><span class="m">30</span>
 </code></pre></div>
 <p>脚本会输出：
 - 各阶段统计（mean / p50 / p95 / p99 / max）
@@ -2389,13 +2387,13 @@ GET worker 或 coroutine scanner。</p>
 - 复用 DLRM 相同 fused id 规则：<code>(table_idx &lt;&lt; fuse_k) + id</code>
 - 产出 <code>op_client / brpc_client / brpc_server</code> 三段 <code>embupdate_stages</code></p>
 <p>最小运行：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python3<span class="w"> </span>model_zoo/rs_demo/run_mock_stress.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--steps<span class="w"> </span><span class="m">60</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--batch-size<span class="w"> </span><span class="m">4096</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>--num-embeddings<span class="w"> </span><span class="m">200000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span>--embedding-dim<span class="w"> </span><span class="m">128</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span>--jsonl<span class="w"> </span>/tmp/rs_demo_events.jsonl<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">  </span>--csv<span class="w"> </span>/tmp/rs_demo_embupdate.csv
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python3<span class="w"> </span>model_zoo/rs_demo/run_mock_stress.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--steps<span class="w"> </span><span class="m">60</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>--batch-size<span class="w"> </span><span class="m">4096</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span>--num-embeddings<span class="w"> </span><span class="m">200000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span>--embedding-dim<span class="w"> </span><span class="m">128</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span>--jsonl<span class="w"> </span>/tmp/rs_demo_events.jsonl<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span>--csv<span class="w"> </span>/tmp/rs_demo_embupdate.csv
 </code></pre></div>
 <p>必看输出：
 - JSONL：<code>/tmp/rs_demo_events.jsonl</code>
@@ -2407,11 +2405,11 @@ GET worker 或 coroutine scanner。</p>
 <p>运行时确保 <code>recstore_config.json</code> 中 <code>report_API</code> 指向可写入 ClickHouse 的 report 服务，然后启动训练/服务端即可自动上报，可在 Grafana 端口查看看板。</p>
 <details class="info">
 <summary>启用 Grafana 和相关上报命令</summary>
-<div class="highlight"><span class="filename">启动 ClickHouse</span><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>systemctl<span class="w"> </span>is-active<span class="w"> </span>--quiet<span class="w"> </span>clickhouse-server<span class="w"> </span><span class="o">||</span><span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>clickhouse-server<span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;✅ ClickHouse is running.&quot;</span>
+<div class="highlight"><span class="filename">启动 ClickHouse</span><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>systemctl<span class="w"> </span>is-active<span class="w"> </span>--quiet<span class="w"> </span>clickhouse-server<span class="w"> </span><span class="o">||</span><span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>clickhouse-server<span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;✅ ClickHouse is running.&quot;</span>
 </code></pre></div>
-<div class="highlight"><span class="filename">启动 Grafana</span><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>systemctl<span class="w"> </span>is-active<span class="w"> </span>--quiet<span class="w"> </span>grafana-server<span class="w"> </span><span class="o">||</span><span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>grafana-server<span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;✅ Grafana is running (http://localhost:3000).&quot;</span>
+<div class="highlight"><span class="filename">启动 Grafana</span><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>systemctl<span class="w"> </span>is-active<span class="w"> </span>--quiet<span class="w"> </span>grafana-server<span class="w"> </span><span class="o">||</span><span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>grafana-server<span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;✅ Grafana is running (http://localhost:3000).&quot;</span>
 </code></pre></div>
-<div class="highlight"><span class="filename">启动 Report Service（端口需要和 recstore_config.json 对齐）</span><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>pkill<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;uvicorn report_service:app&quot;</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="p">;</span><span class="w"> </span>nohup<span class="w"> </span>uvicorn<span class="w"> </span>report_service:app<span class="w"> </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span><span class="w"> </span>&gt;<span class="w"> </span>report_service.log<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;✅ Report Service is running (http://127.0.0.1:8080).&quot;</span>
+<div class="highlight"><span class="filename">启动 Report Service（端口需要和 recstore_config.json 对齐）</span><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>pkill<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;uvicorn report_service:app&quot;</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="p">;</span><span class="w"> </span>nohup<span class="w"> </span>uvicorn<span class="w"> </span>report_service:app<span class="w"> </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span><span class="w"> </span>&gt;<span class="w"> </span>report_service.log<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;✅ Report Service is running (http://127.0.0.1:8080).&quot;</span>
 </code></pre></div>
 </details>
 </div>
@@ -2421,27 +2419,27 @@ GET worker 或 coroutine scanner。</p>
 <p>RecStore 支持直接用 bRPC builtin profiler 进行热点分析，适合 Get/Update 等多种 RPC 混合流量场景。</p>
 <h4 id="_2">编译<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h4>
 <p>需在 CMake 配置时打开 <code>USE_BRPC_CPU_PROFILER</code>：</p>
-<div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-9-1">1</a></span>
-<span class="normal"><a href="#__codelineno-9-2">2</a></span>
-<span class="normal"><a href="#__codelineno-9-3">3</a></span>
-<span class="normal"><a href="#__codelineno-9-4">4</a></span>
-<span class="normal"><a href="#__codelineno-9-5">5</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1"></a>cmake<span class="w"> </span>..<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2"></a><span class="w">    </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Debug<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3"></a><span class="w">    </span>-DUSE_PERF_REPORT<span class="o">=</span>ON<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4"></a><span class="hll"><span class="w">    </span>-DUSE_BRPC_CPU_PROFILER<span class="o">=</span>ON<span class="w"> </span><span class="se">\</span>
-</span><a id="__codelineno-9-5" name="__codelineno-9-5"></a><span class="w">    </span>-DUSE_GPERF_PROFILING<span class="o">=</span>ON
+<div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-8-1">1</a></span>
+<span class="normal"><a href="#__codelineno-8-2">2</a></span>
+<span class="normal"><a href="#__codelineno-8-3">3</a></span>
+<span class="normal"><a href="#__codelineno-8-4">4</a></span>
+<span class="normal"><a href="#__codelineno-8-5">5</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1"></a>cmake<span class="w"> </span>..<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2"></a><span class="w">    </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Debug<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3"></a><span class="w">    </span>-DUSE_PERF_REPORT<span class="o">=</span>ON<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4"></a><span class="hll"><span class="w">    </span>-DUSE_BRPC_CPU_PROFILER<span class="o">=</span>ON<span class="w"> </span><span class="se">\</span>
+</span><a id="__codelineno-8-5" name="__codelineno-8-5"></a><span class="w">    </span>-DUSE_GPERF_PROFILING<span class="o">=</span>ON
 </code></pre></div></td></tr></table></div>
 <h4 id="_3">启动<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h4>
 <details class="info">
 <summary>安装 FlameGraph 来生成火焰图</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">cd</span><span class="w"> </span>/tmp
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/brendangregg/FlameGraph.git
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>/tmp
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/brendangregg/FlameGraph.git
 </code></pre></div>
 </details>
 <p>启动时需要使用 bRPC 作为网络层通讯，同时不要设置 <code>CPUPROFILE</code>，否则会和 builtin profiler 冲突：</p>
-<div class="highlight"><span class="filename">带参数启用参数服务器</span><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nb">unset</span><span class="w"> </span>CPUPROFILE
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">FLAMEGRAPH_PL_PATH</span><span class="o">=</span>/tmp/FlameGraph/flamegraph.pl
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>./build/bin/ps_server<span class="w"> </span>--config_path<span class="w"> </span>./recstore_config.json
+<div class="highlight"><span class="filename">带参数启用参数服务器</span><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">unset</span><span class="w"> </span>CPUPROFILE
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">FLAMEGRAPH_PL_PATH</span><span class="o">=</span>/tmp/FlameGraph/flamegraph.pl
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>./build/bin/ps_server<span class="w"> </span>--config_path<span class="w"> </span>./recstore_config.json
 </code></pre></div>
 <p>假设服务监听端口为 15000（通常在终端输出地址），可访问：</p>
 <ul>
@@ -2458,13 +2456,13 @@ GET worker 或 coroutine scanner。</p>
 <h3 id="_4">运行性能统计<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
 <p><strong>服务端 (PS Server)</strong></p>
 <p>可以通过环境变量 <code>CPUPROFILE</code> 开启 CPU Profiler，并通过 <code>--perf_report_path</code> 指定性能报告输出路径：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nv">CPUPROFILE</span><span class="o">=</span>/tmp/ps_cpu.prof<span class="w"> </span>./build/bin/ps_server<span class="w"> </span>--perf_report_path<span class="o">=</span>/tmp/ps_perf.log
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nv">CPUPROFILE</span><span class="o">=</span>/tmp/ps_cpu.prof<span class="w"> </span>./build/bin/ps_server<span class="w"> </span>--perf_report_path<span class="o">=</span>/tmp/ps_perf.log
 </code></pre></div>
 <p><strong>训练端 (DLRM Trainer)</strong></p>
 <p>使用 <code>run_single_day.sh</code> 脚本一键运行性能测试：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_PERF_REPORT_PATH</span><span class="o">=</span>/tmp/trainer_perf.log
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_PERF_INTERVAL_MS</span><span class="o">=</span><span class="m">5000</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>bash<span class="w"> </span>run_single_day.sh<span class="w"> </span>--custom<span class="w"> </span>--dataset-size<span class="w"> </span><span class="m">4096</span><span class="w"> </span>--epochs<span class="w"> </span><span class="m">10</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_PERF_REPORT_PATH</span><span class="o">=</span>/tmp/trainer_perf.log
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_PERF_INTERVAL_MS</span><span class="o">=</span><span class="m">5000</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>bash<span class="w"> </span>run_single_day.sh<span class="w"> </span>--custom<span class="w"> </span>--dataset-size<span class="w"> </span><span class="m">4096</span><span class="w"> </span>--epochs<span class="w"> </span><span class="m">10</span>
 </code></pre></div>
 <details class="note" open="open">
 <summary>关于run_single_day 脚本</summary>
@@ -2474,20 +2472,20 @@ GET worker 或 coroutine scanner。</p>
 <h3 id="_5">查看结果<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
 <p><strong>日志分析</strong></p>
 <p><code>perf_report_path</code> 指定的文件会实时记录每个时间窗口（如 5000ms）内的耗时统计（P50/P99）：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># 查看服务端性能概览</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">50</span><span class="w"> </span>/tmp/ps_perf.log
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1"># 查看训练端性能概览</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">50</span><span class="w"> </span>/tmp/trainer_perf.log
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># 查看服务端性能概览</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">50</span><span class="w"> </span>/tmp/ps_perf.log
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="c1"># 查看训练端性能概览</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">50</span><span class="w"> </span>/tmp/trainer_perf.log
 </code></pre></div>
 <p><strong>CPU Profiling 分析</strong></p>
 <p>使用 <code>google-pprof</code> 分析 CPU 热点（需要安装 <code>gperftools</code>）：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>google-pprof<span class="w"> </span>--text<span class="w"> </span>build/bin/grpc_ps_server<span class="w"> </span>/tmp/ps_cpu.prof
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="c1"># 或者导出 pdf/svg</span>
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>google-pprof<span class="w"> </span>--pdf<span class="w"> </span>build/bin/grpc_ps_server<span class="w"> </span>/tmp/ps_cpu.prof<span class="w"> </span>&gt;<span class="w"> </span>ps_cpu.pdf
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>google-pprof<span class="w"> </span>--text<span class="w"> </span>build/bin/grpc_ps_server<span class="w"> </span>/tmp/ps_cpu.prof
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="c1"># 或者导出 pdf/svg</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>google-pprof<span class="w"> </span>--pdf<span class="w"> </span>build/bin/grpc_ps_server<span class="w"> </span>/tmp/ps_cpu.prof<span class="w"> </span>&gt;<span class="w"> </span>ps_cpu.pdf
 </code></pre></div>
 <p><strong>模型层统计</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>tensorboard<span class="w"> </span>--logdir<span class="o">=</span>./logs<span class="w"> </span>--port<span class="o">=</span><span class="m">6006</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>tensorboard<span class="w"> </span>--logdir<span class="o">=</span>./logs<span class="w"> </span>--port<span class="o">=</span><span class="m">6006</span>
 </code></pre></div>
 <h2 id="2">2. 性能埋点关键字<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
 <details class="warning">

@@ -2193,43 +2193,40 @@ lookup 上限卡住。2026-05-31 的 RDMA GET 报告使用了 <code>batch_keys=5
 </tr>
 </tbody>
 </table>
-<p>完整报告见仓库根目录：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>ps_rdma_benchmark_report_0531.md
-</code></pre></div>
 <p>直接运行二进制示例：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>./build/bin/benchmark_kv_engine<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--engine<span class="o">=</span>dram<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--index_type<span class="o">=</span>DRAM_PET_HASH<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>--record_count<span class="o">=</span><span class="m">300000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span>--operation_count<span class="o">=</span><span class="m">300000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span>--value_size<span class="o">=</span><span class="m">512</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">  </span>--threads<span class="o">=</span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">  </span>--workload<span class="o">=</span>c<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">  </span>--read_mode<span class="o">=</span>batch_get_flat<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">  </span>--batch_keys<span class="o">=</span><span class="m">500</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>./build/bin/benchmark_kv_engine<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--engine<span class="o">=</span>dram<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>--index_type<span class="o">=</span>DRAM_PET_HASH<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span>--record_count<span class="o">=</span><span class="m">300000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span>--operation_count<span class="o">=</span><span class="m">300000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span>--value_size<span class="o">=</span><span class="m">512</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span>--threads<span class="o">=</span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">  </span>--workload<span class="o">=</span>c<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">  </span>--read_mode<span class="o">=</span>batch_get_flat<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">  </span>--batch_keys<span class="o">=</span><span class="m">500</span>
 </code></pre></div>
 <p>通过 compare runner 运行时，对应参数是：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloadc<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--record-count<span class="w"> </span><span class="m">300000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span>--operation-count<span class="w"> </span><span class="m">300000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span>--threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span>--read-mode<span class="w"> </span>batch_get_flat<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span>--output-dir<span class="w"> </span>results/kv_batchget_compare
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloadc<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>--record-count<span class="w"> </span><span class="m">300000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span>--operation-count<span class="w"> </span><span class="m">300000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span>--threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">  </span>--read-mode<span class="w"> </span>batch_get_flat<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">  </span>--batch-keys<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">  </span>--output-dir<span class="w"> </span>results/kv_batchget_compare
 </code></pre></div>
 <p><code>summary.csv</code> 会记录 <code>read_mode</code> 和 <code>batch_keys</code>，用于和 PS/network 层报告对齐。</p>
 <h2 id="_4">外部存储<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>配好环境后执行：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span>rocksdb<span class="w"> </span>leveldb<span class="w"> </span>lmdb<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span>workloadb<span class="w"> </span>workloadc<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span>--record-count<span class="w"> </span><span class="m">100000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span>--operation-count<span class="w"> </span><span class="m">100000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span>--threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">  </span>--repeat<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">  </span>--output-dir<span class="w"> </span>/tmp/ycsb_storage_compare
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span>rocksdb<span class="w"> </span>leveldb<span class="w"> </span>lmdb<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span>workloadb<span class="w"> </span>workloadc<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--record-count<span class="w"> </span><span class="m">100000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span>--operation-count<span class="w"> </span><span class="m">100000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span>--threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span>--repeat<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">  </span>--output-dir<span class="w"> </span>/tmp/ycsb_storage_compare
 </code></pre></div>
 <p>脚本会自动给这些绑定传入独立路径：</p>
 <ul>
@@ -2244,59 +2241,59 @@ lookup 上限卡住。2026-05-31 的 RDMA GET 报告使用了 <code>batch_keys=5
 <details class="example">
 <summary>调参</summary>
 <p>全局 YCSB 参数用 <code>--extra-prop</code>：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span>--extra-prop<span class="w"> </span><span class="nv">fieldcount</span><span class="o">=</span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span>--extra-prop<span class="w"> </span><span class="nv">fieldlength</span><span class="o">=</span><span class="m">128</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span>--extra-prop<span class="w"> </span><span class="nv">requestdistribution</span><span class="o">=</span>zipfian
+</code></pre></div>
+<p>只给某个 engine 的参数用 <code>--engine-prop</code>：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span>--extra-prop<span class="w"> </span><span class="nv">fieldcount</span><span class="o">=</span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span>--extra-prop<span class="w"> </span><span class="nv">fieldlength</span><span class="o">=</span><span class="m">128</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span>--extra-prop<span class="w"> </span><span class="nv">requestdistribution</span><span class="o">=</span>zipfian
-</code></pre></div>
-<p>只给某个 engine 的参数用 <code>--engine-prop</code>：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>python3<span class="w"> </span>tools/benchmarks/run_ycsb_compare.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span>--engines<span class="w"> </span>kvdb<span class="w"> </span>cceh<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>--workloads<span class="w"> </span>workloada<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span>--engine-prop<span class="w"> </span>kvdb:hybridkv.synthetic_bytes<span class="o">=</span><span class="m">1024</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span>--engine-prop<span class="w"> </span>kvdb:hybridkv.read_return<span class="o">=</span>none<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">  </span>--engine-prop<span class="w"> </span>cceh:cceh.value_size<span class="o">=</span><span class="m">1024</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span>--engine-prop<span class="w"> </span>kvdb:hybridkv.synthetic_bytes<span class="o">=</span><span class="m">1024</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span>--engine-prop<span class="w"> </span>kvdb:hybridkv.read_return<span class="o">=</span>none<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span>--engine-prop<span class="w"> </span>cceh:cceh.value_size<span class="o">=</span><span class="m">1024</span>
 </code></pre></div>
 <p><code>kvdb</code> 默认用 <code>hybridkv.mode=perf</code> 和 <code>hybridkv.read_return=none</code>，适合先看存储路径吞吐。如果要检查字段反序列化成本，可以改成：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>--engine-prop<span class="w"> </span>kvdb:hybridkv.mode<span class="o">=</span>compat<span class="w"> </span>--engine-prop<span class="w"> </span>kvdb:hybridkv.read_return<span class="o">=</span>parse
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>--engine-prop<span class="w"> </span>kvdb:hybridkv.mode<span class="o">=</span>compat<span class="w"> </span>--engine-prop<span class="w"> </span>kvdb:hybridkv.read_return<span class="o">=</span>parse
 </code></pre></div>
 </details>
 <details class="example">
 <summary>单 engine 运行</summary>
 <p>脚本最终也是调用 <code>./build/bin/ycsb</code>。需要手工调试时可以直接跑：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>./build/bin/ycsb<span class="w"> </span>-load<span class="w"> </span>-run<span class="w"> </span>-db<span class="w"> </span>kvdb<span class="w"> </span>-threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>./build/bin/ycsb<span class="w"> </span>-load<span class="w"> </span>-run<span class="w"> </span>-db<span class="w"> </span>kvdb<span class="w"> </span>-threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/workloads/workloada<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/db/kv_db.properties<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span>-p<span class="w"> </span>hybridkv.path<span class="o">=</span>/tmp/ycsb-kvdb<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">recordcount</span><span class="o">=</span><span class="m">10000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">operationcount</span><span class="o">=</span><span class="m">10000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">measurementtype</span><span class="o">=</span>basic
+</code></pre></div>
+<p><code>cceh</code>：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>./build/bin/ycsb<span class="w"> </span>-load<span class="w"> </span>-run<span class="w"> </span>-db<span class="w"> </span>cceh<span class="w"> </span>-threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/workloads/workloada<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/db/kv_db.properties<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span>-p<span class="w"> </span>hybridkv.path<span class="o">=</span>/tmp/ycsb-kvdb<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/db/cceh.properties<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span>-p<span class="w"> </span>cceh.path<span class="o">=</span>/tmp/ycsb-cceh<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">recordcount</span><span class="o">=</span><span class="m">10000</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">operationcount</span><span class="o">=</span><span class="m">10000</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">measurementtype</span><span class="o">=</span>basic
 </code></pre></div>
-<p><code>cceh</code>：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>./build/bin/ycsb<span class="w"> </span>-load<span class="w"> </span>-run<span class="w"> </span>-db<span class="w"> </span>cceh<span class="w"> </span>-threads<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/workloads/workloada<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span>-P<span class="w"> </span>third_party/ycsb/db/cceh.properties<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span>-p<span class="w"> </span>cceh.path<span class="o">=</span>/tmp/ycsb-cceh<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">recordcount</span><span class="o">=</span><span class="m">10000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">operationcount</span><span class="o">=</span><span class="m">10000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">  </span>-p<span class="w"> </span><span class="nv">measurementtype</span><span class="o">=</span>basic
-</code></pre></div>
 </details>
 <h2 id="_5">结果<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <p>脚本会输出一个汇总 <code>summary.csv</code>：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nv">OUT</span><span class="o">=</span>/tmp/recstore_ycsb_compare
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>column<span class="w"> </span>-s,<span class="w"> </span>-t<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$OUT</span><span class="s2">/summary.csv&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>less<span class="w"> </span>-S
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nv">OUT</span><span class="o">=</span>/tmp/recstore_ycsb_compare
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>column<span class="w"> </span>-s,<span class="w"> </span>-t<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$OUT</span><span class="s2">/summary.csv&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>less<span class="w"> </span>-S
 </code></pre></div>
 <details class="example">
 <summary>输出示例</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>workload,engine,db,repeat,record_count,operation_count,threads,phase,exit_code,load_runtime_sec,load_operations,load_throughput_ops_sec,run_runtime_sec,run_operations,run_throughput_ops_sec,data_path,log_path,error_tail
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>workloada,rocksdb,rocksdb,0,100000,100000,16,load-run,0,1.41976,100000,70434.5,0.311262,100000,321273.0,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_rocksdb_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_rocksdb_r0.log,
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>workloada,leveldb,leveldb,0,100000,100000,16,load-run,0,0.752207,100000,132942.0,0.567562,100000,176192.0,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_leveldb_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_leveldb_r0.log,
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>workloada,lmdb,lmdb,0,100000,100000,16,load-run,0,2.40212,100000,41629.9,1.44824,100000,69049.2,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_lmdb_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_lmdb_r0.log,
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>workloada,sqlite,sqlite,0,100000,100000,16,load-run,0,7.40299,100000,13508.1,2.63494,100000,37951.6,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_sqlite_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_sqlite_r0.log,
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>workloada,wiredtiger,wiredtiger,0,100000,100000,16,load-run,0,1.72329,100000,58028.4,0.580689,100000,172209.0,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_wiredtiger_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_wiredtiger_r0.log,
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>workload,engine,db,repeat,record_count,operation_count,threads,phase,exit_code,load_runtime_sec,load_operations,load_throughput_ops_sec,run_runtime_sec,run_operations,run_throughput_ops_sec,data_path,log_path,error_tail
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>workloada,rocksdb,rocksdb,0,100000,100000,16,load-run,0,1.41976,100000,70434.5,0.311262,100000,321273.0,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_rocksdb_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_rocksdb_r0.log,
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>workloada,leveldb,leveldb,0,100000,100000,16,load-run,0,0.752207,100000,132942.0,0.567562,100000,176192.0,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_leveldb_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_leveldb_r0.log,
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>workloada,lmdb,lmdb,0,100000,100000,16,load-run,0,2.40212,100000,41629.9,1.44824,100000,69049.2,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_lmdb_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_lmdb_r0.log,
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>workloada,sqlite,sqlite,0,100000,100000,16,load-run,0,7.40299,100000,13508.1,2.63494,100000,37951.6,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_sqlite_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_sqlite_r0.log,
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>workloada,wiredtiger,wiredtiger,0,100000,100000,16,load-run,0,1.72329,100000,58028.4,0.580689,100000,172209.0,/tmp/recstore_ycsb_third_party_compare_100k_t16/data/workloada_wiredtiger_r0,/tmp/recstore_ycsb_third_party_compare_100k_t16/logs/workloada_wiredtiger_r0.log,
 </code></pre></div>
 </details>
 <p><code>summary.csv</code> 里的主要字段：</p>
