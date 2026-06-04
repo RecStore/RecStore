@@ -2073,7 +2073,7 @@
 <ul>
 <li><strong>核心逻辑 (CachePS)</strong>: <a href="src/ps/base/cache_ps_impl.h">CachePS</a> 是存储层的入口，负责处理来自 RPC Server 的请求。</li>
 <li><strong>引擎抽象 (BaseKV)</strong>: <a href="src/storage/kv_engine/base_kv.h">BaseKV</a> 定义了统一的操作接口。</li>
-<li><strong>组合引擎</strong>: <a href="src/storage/kv_engine/engine_composite.h">KVEngineComposite</a> 通过 <code>index.type</code> + <code>value.type</code> 组合 DRAM 索引与 DRAM/SSD/Tiered 值存储。</li>
+<li><strong>组合引擎</strong>: <a href="src/storage/kv_engine/engine_composite.h">KVEngineComposite</a> 通过 <code>index.type</code> + <code>value.type</code> 组合 DRAM 索引与 DRAM/SSD/Tiered 值存储；仓库默认组合为 <code>DRAM_PET_HASH</code> + <code>DRAM_VALUE_STORE</code> + <code>CONCURRENT_SLAB_MEMORY_POOL</code>。</li>
 <li><strong>内存管理</strong>: 提供 <a href="src/memory/persist_simple_malloc.h">PersistSimpleMalloc</a> 等组件，实现对持久化内存的直接管理。</li>
 </ul>
 <hr />

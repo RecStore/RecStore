@@ -2093,7 +2093,7 @@
 <li><strong>可组合组件</strong>（<code>src/storage/index/</code>、<code>value_store/</code>、<code>io_backend/</code>、<code>allocator/</code>）：主要由 <code>KVEngineComposite</code> 组装；也可被测试或后续引擎单独使用。</li>
 <li><strong>外部与遗留适配</strong>（<code>src/storage/external/</code>、<code>src/storage/nvm/pet_kv/</code>）：FasterKV、HugeCTR HPS、PetKV 等整包实现。</li>
 </ul>
-<p>引擎选择与 <code>BaseKV</code> 接口说明见 <a href="basekv/">basekv.md</a>。默认生产路径为 <strong><code>KVEngineComposite</code></strong>，组件与配置见 <a href="composite_kvengine/">composite_kvengine.md</a>。</p>
+<p>引擎选择与 <code>BaseKV</code> 接口说明见 <a href="basekv/">basekv.md</a>。默认生产路径为 <strong><code>KVEngineComposite</code></strong>（<code>DRAM_PET_HASH</code> + <code>DRAM_VALUE_STORE</code> + <code>CONCURRENT_SLAB_MEMORY_POOL</code>，见根目录 <code>recstore_config.json</code>），组件与配置见 <a href="composite_kvengine/">composite_kvengine.md</a>。</p>
 <h2 id="_2">代码目录<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

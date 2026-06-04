@@ -2026,11 +2026,14 @@ transport, server dispatch, serialization, and copy overhead.</p>
 <p>This layer includes ID preparation, lookup wait, EmbeddingBag pooling, sparse
 update scheduling, backward, and Python runner overhead.</p>
 <h2 id="3-default-matrix">3. Default Matrix<a class="headerlink" href="#3-default-matrix" title="Permanent link">&para;</a></h2>
-<p>Default DRAM backends:</p>
+<p>Default DRAM backend (matches root <code>recstore_config.json</code>):</p>
+<ul>
+<li><code>KVEngineComposite</code> + <code>DRAM_PET_HASH</code> + <code>DRAM_VALUE_STORE</code> + <code>CONCURRENT_SLAB_MEMORY_POOL</code></li>
+</ul>
+<p>Additional DRAM comparison lanes:</p>
 <ul>
 <li><code>DRAM_UNORDERED_MAP + DRAM_VALUE_STORE</code></li>
 <li><code>DRAM_EXTENDIBLE_HASH + DRAM_VALUE_STORE</code></li>
-<li><code>DRAM_PET_HASH + DRAM_VALUE_STORE</code></li>
 <li>third-party backends only at integrated layers</li>
 </ul>
 <p>Baseline parameters:</p>
