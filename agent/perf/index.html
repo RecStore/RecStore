@@ -25,7 +25,7 @@
     
     
       
-        <title>Performance Comparison Capability - RecStore Documentation</title>
+        <title>Performance Comparison Background - RecStore Documentation</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#performance-comparison-capability" class="md-skip">
+        <a href="#performance-comparison-background" class="md-skip">
           跳转至
         </a>
       
@@ -110,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Performance Comparison Capability
+              Performance Comparison Background
             
           </span>
         </div>
@@ -1908,10 +1908,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-default-matrix" class="md-nav__link">
+  <a href="#3-workload-matrix" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Default Matrix
+        3. Workload Matrix
       
     </span>
   </a>
@@ -1998,7 +1998,20 @@
   
 
 
-<h1 id="performance-comparison-capability">Performance Comparison Capability<a class="headerlink" href="#performance-comparison-capability" title="Permanent link">&para;</a></h1>
+<h1 id="performance-comparison-background">Performance Comparison Background<a class="headerlink" href="#performance-comparison-background" title="Permanent link">&para;</a></h1>
+<p>This document is legacy background for interpreting performance comparisons and
+labeling benchmark layers. It is not the source of truth for current benchmark
+commands, defaults, lanes, or report formats.</p>
+<p>Use the matching benchmark skill first:</p>
+<ul>
+<li>E2E RecStore/TorchRec benchmarks:
+  <code>.agents/skills/benchmark-e2e/SKILL.md</code></li>
+<li>PS, transport, and RDMA benchmarks:
+  <code>.agents/skills/benchmark-ps/SKILL.md</code></li>
+<li>KVEngine and storage-only benchmarks:
+  <code>.agents/skills/benchmark-kvengine/SKILL.md</code></li>
+</ul>
+<p>When this document disagrees with a matching skill, follow the skill.</p>
 <h2 id="1-scope">1. Scope<a class="headerlink" href="#1-scope" title="Permanent link">&para;</a></h2>
 <p>Use this guide when comparing:</p>
 <ul>
@@ -2025,27 +2038,16 @@ transport, server dispatch, serialization, and copy overhead.</p>
 <p>Model integration benchmark, usually through <code>model_zoo/rs_demo</code>.</p>
 <p>This layer includes ID preparation, lookup wait, EmbeddingBag pooling, sparse
 update scheduling, backward, and Python runner overhead.</p>
-<h2 id="3-default-matrix">3. Default Matrix<a class="headerlink" href="#3-default-matrix" title="Permanent link">&para;</a></h2>
-<p>Default DRAM backend (matches root <code>recstore_config.json</code>):</p>
-<ul>
-<li><code>KVEngineComposite</code> + <code>DRAM_PET_HASH</code> + <code>DRAM_VALUE_STORE</code> + <code>CONCURRENT_SLAB_MEMORY_POOL</code></li>
-</ul>
-<p>Additional DRAM comparison lanes:</p>
-<ul>
-<li><code>DRAM_UNORDERED_MAP + DRAM_VALUE_STORE</code></li>
-<li><code>DRAM_EXTENDIBLE_HASH + DRAM_VALUE_STORE</code></li>
-<li>third-party backends only at integrated layers</li>
-</ul>
-<p>Baseline parameters:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>value_size = 512
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>record_count = 1,000,000
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>batch_size = 1024
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>threads = 16
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>distribution = uniform
-</code></pre></div>
-<p>For paper reproduction, use the paper parameters instead of this baseline.</p>
+<h2 id="3-workload-matrix">3. Workload Matrix<a class="headerlink" href="#3-workload-matrix" title="Permanent link">&para;</a></h2>
+<p>Do not use this document to choose current default lanes or parameters. The
+benchmark skills define the current workload matrix for E2E, PS, RDMA, and
+KVEngine work.</p>
+<p>For any comparison, record the actual backend, PS type, index type, value store,
+allocator, transport, value size, key or row scale, batch size, distribution,
+runtime, warmup, repeat count, and topology used in that run.</p>
 <h2 id="4-workflow">4. Workflow<a class="headerlink" href="#4-workflow" title="Permanent link">&para;</a></h2>
 <ol>
+<li>Read the matching benchmark skill and use it for commands and report format.</li>
 <li>Check branch, dirty files, and stale benchmark binaries.</li>
 <li>Run storage-only benchmarks first if measuring degradation.</li>
 <li>Run PS/network benchmarks with matching value size, key count, operation, and
@@ -2079,16 +2081,16 @@ throughput result.</p>
 <li>PyTorch/model: <code>M rows/s</code> plus <code>ms</code></li>
 </ul>
 <p>Storage and PS:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>M keys/s = throughput_keys_sec / 1e6
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>M keys/s = throughput_keys_sec / 1e6
 </code></pre></div>
 <p>PyTorch EmbeddingBag:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>rows_per_step = batch_size * sparse_features_per_sample
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>read M rows/s = rows_per_step / (embed_lookup_local_ms / 1000) / 1e6
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>write M rows/s = rows_per_step / (sparse_update_ms / 1000) / 1e6
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rows_per_step = batch_size * sparse_features_per_sample
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>read M rows/s = rows_per_step / (embed_lookup_local_ms / 1000) / 1e6
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>write M rows/s = rows_per_step / (sparse_update_ms / 1000) / 1e6
 </code></pre></div>
 <p>Layer retention:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>PS retention = PS M keys/s / storage-only M keys/s
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>PyTorch retention = PyTorch M rows/s / PS M keys/s
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>PS retention = PS M keys/s / storage-only M keys/s
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>PyTorch retention = PyTorch M rows/s / PS M keys/s
 </code></pre></div>
 <p>Call ratios "retention" or "remaining throughput", not speedup. If retention is
 above <code>1.0</code>, explain timing-boundary mismatch instead of claiming the higher
@@ -2103,6 +2105,7 @@ layer is faster.</p>
 <li>GPU/HBM assumptions stated for TorchRec or GPU paths</li>
 <li>shared-memory and RPC results not collapsed into one generic conclusion</li>
 <li>CPU affinity, readiness, timeout, and allocator warnings recorded</li>
+<li>skill-specific preflight checks completed or skipped with reasons</li>
 </ul>
 <h2 id="8-interpretation-rules">8. Interpretation Rules<a class="headerlink" href="#8-interpretation-rules" title="Permanent link">&para;</a></h2>
 <p>Good conclusions:</p>
@@ -2126,8 +2129,9 @@ layer is faster.</p>
   storage engines' advantage.</li>
 <li>Third-party storage-only numbers do not belong in PS/network or PyTorch tables
   until those integrations exist.</li>
-<li><code>PersistLoopShmMalloc</code> is acceptable for local bring-up when <code>R2ShmMalloc</code> is
-  unstable, but the report must say so.</li>
+<li>Allocator substitutions, startup workarounds, failed lanes, skips, and
+  timeouts must be stated in the report instead of silently folded into a
+  throughput table.</li>
 </ul>
 
 
