@@ -18,7 +18,16 @@ USE_RECSTORE_PS=1 pip install -e .
 
 ```bash
 export QUANTAREC_PS_STORAGE_BACKEND=recstore
-python3 test/start_training_ps.py --port 18010
+python3 test/start_training_ps.py --port 18010 --ps-storage-backend recstore
 ```
 
 Default backend remains `hashtable`.
+
+## Quantarec integration model
+
+- **LookUp hot path**: served by `QuantarecPsStore` (flat DRAM rows + id index).
+- **PushGrad / Step / Dump / Load**: reuse existing `Hashtable` + serializer on a shadow table.
+- After each trainable `LookUp`, embeddings are synced into the shadow `Hashtable`.
+- After `Step` / `Load`, shadow state is rebuilt back into `QuantarecPsStore` for the next lookup.
+
+This keeps RankMixer / RPC / checkpoint formats unchanged while allowing lookup perf experiments.
