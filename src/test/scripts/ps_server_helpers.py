@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 import os
-import socket
-import json
 import glob
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -15,41 +15,49 @@ from tools.config.recstore_config_path import find_recstore_config_path
 
 
 RDMA_SKIP_EXIT_CODE = 77
+BUILD_BIN = REPO_ROOT / "build" / "bin"
+
+
+def find_ps_server_launcher_cli():
+    """Return ps_server_launcher_cli under build/bin."""
+    return str(BUILD_BIN / "ps_server_launcher_cli")
 
 
 def find_ps_server_binary():
-    """Find ps_server binary in common locations."""
-    server_path = os.environ.get('PS_SERVER_PATH')
-    if server_path:
-        return os.path.abspath(server_path)
-    
-    candidates = [
-        './bin/ps_server',
-        './build/bin/ps_server',
-        '../bin/ps_server',
-        '../../build/bin/ps_server',
-        '../../../build/bin/ps_server',
-        '../../../../build/bin/ps_server',
-    ]
-    
-    for candidate in candidates:
-        abs_candidate = os.path.abspath(candidate)
-        if os.path.exists(abs_candidate):
-            return abs_candidate
-    
-    return os.path.abspath('./build/bin/ps_server')
+    """Return ps_server under build/bin."""
+    return str(BUILD_BIN / "ps_server")
 
 
-def is_port_open(host, port, timeout=1):
-    """Check if a port is open/listening."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(timeout)
-    try:
-        result = sock.connect_ex((host, port))
-        sock.close()
-        return result == 0
-    except Exception:
-        return False
+def _launcher_env(config_path=None):
+    env = os.environ.copy()
+    if config_path:
+        env["RECSTORE_CONFIG"] = str(config_path)
+    return env
+
+
+def run_launcher_decision(config_path=None):
+    """Run C++ launch decision and return parsed JSON."""
+    cmd = [find_ps_server_launcher_cli(), "decision"]
+    if config_path:
+        cmd.extend(["--config", str(config_path)])
+
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        env=_launcher_env(config_path),
+        check=False,
+    )
+    if proc.returncode not in (0, 2):
+        raise RuntimeError(
+            "ps_server_launcher_cli decision failed: "
+            f"rc={proc.returncode} stderr={proc.stderr.strip()}"
+        )
+
+    decision = json.loads(proc.stdout)
+    if proc.returncode == 2 and not decision.get("should_fail"):
+        decision["should_fail"] = True
+    return decision
 
 
 def find_config_file():
@@ -64,37 +72,43 @@ def load_config():
     if not config_path:
         return None, {}
 
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         return config_path, json.load(f)
 
 
 def get_backend_type():
     """Return the configured backend type for the current test run."""
     _config_path, config = load_config()
-    cache_ps = config.get('cache_ps', {})
-    return str(cache_ps.get('ps_type', 'GRPC')).upper()
+    cache_ps = config.get("cache_ps", {})
+    return str(cache_ps.get("ps_type", "GRPC")).upper()
 
 
 def get_rdma_runner_config():
     """Extract the RDMA runner settings needed by the PetPS test harness."""
     _config_path, config = load_config()
-    cache_ps = config.get('cache_ps', {})
-    dist_client = config.get('distributed_client', {})
-    base_kv = cache_ps.get('base_kv_config', {})
+    cache_ps = config.get("cache_ps", {})
+    dist_client = config.get("distributed_client", {})
+    base_kv = cache_ps.get("base_kv_config", {})
     return {
-        'num_servers': int(dist_client.get('num_shards', cache_ps.get('num_shards', 1))),
-        'value_size': int(base_kv.get('value', {}).get('default_value_size_hint', base_kv.get('value_size', 512))),
-        'max_kv_num_per_request': int(dist_client.get('max_keys_per_request', 64)),
+        "num_servers": int(
+            dist_client.get("num_shards", cache_ps.get("num_shards", 1))
+        ),
+        "value_size": int(
+            base_kv.get("value", {}).get(
+                "default_value_size_hint", base_kv.get("value_size", 512)
+            )
+        ),
+        "max_kv_num_per_request": int(dist_client.get("max_keys_per_request", 64)),
     }
 
 
 def get_rdma_skip_reason():
     """Return skip reason when RDMA verbs devices are not available."""
-    rdma_device_dir = '/dev/infiniband'
+    rdma_device_dir = "/dev/infiniband"
     if not os.path.isdir(rdma_device_dir):
         return f"RDMA verbs device directory is unavailable: {rdma_device_dir}"
 
-    uverbs_devices = sorted(glob.glob(os.path.join(rdma_device_dir, 'uverbs*')))
+    uverbs_devices = sorted(glob.glob(os.path.join(rdma_device_dir, "uverbs*")))
     if not uverbs_devices:
         return f"RDMA verbs devices are unavailable under {rdma_device_dir}"
 
@@ -102,44 +116,19 @@ def get_rdma_skip_reason():
 
 
 def get_ports_from_config():
-    """Extract ports from recstore_config.json."""
-    config_path, config = load_config()
-    if not config_path:
-        return [15000, 15001, 15002, 15003]
-
-    try:
-        ports = []
-        # Try to get ports from cache_ps.servers
-        cache_ps = config.get('cache_ps', {})
-        servers = cache_ps.get('servers', [])
-        for s in servers:
-            if 'port' in s:
-                ports.append(s['port'])
-        
-        # If no ports found in cache_ps, try distributed_client.servers
-        if not ports:
-            dist_client = config.get('distributed_client', {})
-            servers = dist_client.get('servers', [])
-            for s in servers:
-                if 'port' in s:
-                    ports.append(s['port'])
-        
-        # Fallback if still no ports
-        if not ports:
-            return [15000, 15001, 15002, 15003]
-            
-        return sorted(list(set(ports)))
-    except Exception:
-        return [15000, 15001, 15002, 15003]
+    """Extract ports from recstore_config.json via the C++ launcher."""
+    decision = run_launcher_decision()
+    return decision.get("configured_ports") or [15000, 15001, 15002, 15003]
 
 
 def check_ps_server_running(ports=None):
     """Check if ps_server is running by checking if ports are open."""
-    if ports is None:
-        ports = get_ports_from_config()
-    
-    open_ports = [port for port in ports if is_port_open('127.0.0.1', port)]
-    
+    decision = run_launcher_decision()
+    configured_ports = decision.get("configured_ports") or []
+    open_set = set(decision.get("open_ports") or [])
+    check_ports = ports if ports is not None else configured_ports
+    open_ports = [port for port in check_ports if port in open_set]
+
     if open_ports:
         return True, open_ports
     return False, []
@@ -147,38 +136,40 @@ def check_ps_server_running(ports=None):
 
 def should_skip_server_start():
     """Determine if we should skip starting ps_server."""
-    is_ci = os.environ.get('CI') == 'true' or os.environ.get('GITHUB_ACTIONS') == 'true'
-    no_server = os.environ.get('NO_PS_SERVER', '').lower() in ('1', 'true', 'yes')
-    configured_ports = get_ports_from_config()
-    running, open_ports = check_ps_server_running(configured_ports)
-    all_ports_ready = bool(configured_ports) and len(open_ports) == len(configured_ports)
-    partial_ports_open = running and not all_ports_ready
-    
-    if no_server:
-        return True, "NO_PS_SERVER"
+    decision = run_launcher_decision()
 
-    if partial_ports_open:
-        raise RuntimeError(
-            f"ps_server ports are partially available: expected={configured_ports}, open={open_ports}"
+    if decision.get("should_fail"):
+        raise RuntimeError(decision.get("reason", "ps_server launch decision failed"))
+
+    if not decision.get("should_start"):
+        reason = decision.get("reason") or "skip"
+        open_ports = decision.get("open_ports") or []
+        if reason in ("already_running", "ci_reuse_running"):
+            return True, f"{reason}:{open_ports}"
+        if reason == "NO_PS_SERVER":
+            return True, "NO_PS_SERVER"
+        return True, reason
+
+    is_ci = os.environ.get("CI") == "true" or os.environ.get(
+        "GITHUB_ACTIONS"
+    ) == "true"
+    if is_ci and decision.get("reason") == "ci_server_not_ready":
+        configured_ports = decision.get("configured_ports") or []
+        open_ports = decision.get("open_ports") or []
+        return False, (
+            f"ci_server_not_ready: expected={configured_ports}, open={open_ports}"
         )
 
-    if is_ci:
-        if all_ports_ready:
-            return True, f"ci_reuse_running:{open_ports}"
-        return False, f"ci_server_not_ready: expected={configured_ports}, open={open_ports}"
-    
-    if all_ports_ready:
-        return True, f"already_running:{open_ports}"
-    
     return False, None
 
 
 def get_server_config():
     """Get server configuration from environment."""
     return {
-        'server_path': find_ps_server_binary(),
-        'config_path': os.environ.get('RECSTORE_CONFIG'),
-        'log_dir': os.environ.get('PS_LOG_DIR', './logs'),
-        'timeout': int(os.environ.get('PS_TIMEOUT', '60')),
-        'num_shards': int(os.environ.get('PS_NUM_SHARDS', '2')),
+        "server_path": find_ps_server_binary(),
+        "launcher_cli": find_ps_server_launcher_cli(),
+        "config_path": os.environ.get("RECSTORE_CONFIG"),
+        "log_dir": os.environ.get("PS_LOG_DIR", "/tmp/recstore_ps"),
+        "timeout": int(os.environ.get("PS_TIMEOUT", "60")),
+        "num_shards": int(os.environ.get("PS_NUM_SHARDS", "2")),
     }
