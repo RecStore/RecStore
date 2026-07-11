@@ -1,12 +1,9 @@
-import sys
 import unittest
 from io import StringIO
 from pathlib import Path
 from contextlib import redirect_stdout
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from run_hierkv_recstore_mixed_benchmark import (  # noqa: E402
+from tools.benchmarks.run_hierkv_recstore_mixed_benchmark import (  # noqa: E402
     build_recstore_server_cmd,
     build_hierkv_cmd,
     build_recstore_cmd,

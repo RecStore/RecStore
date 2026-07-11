@@ -44,8 +44,6 @@ if(ENABLE_CUDA)
 endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "") # works
 
-list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
-
 if(ENABLE_CUDA)
   find_package(CUDA REQUIRED)
   set(RECSTORE_CUDA_INCLUDE_DIRS ${CUDA_INCLUDE_DIRS} ${CUDA_TOOLKIT_INCLUDE})
@@ -209,9 +207,6 @@ include("${CMAKE_CURRENT_LIST_DIR}/cmake/FindGRPC.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/common.cmake")
 
 
-
-list(APPEND CMAKE_PREFIX_PATH "/home/xieminhui/.local/share/cmake/")
-list(APPEND CMAKE_PREFIX_PATH "/home/pod/.local/share/cmake/")
 
 list(APPEND CMAKE_PREFIX_PATH "${PROJECT_SOURCE_DIR}/third_party/libtorch/libtorch/share/cmake/Torch")
 set(Torch_DIR "${PROJECT_SOURCE_DIR}/third_party/libtorch/libtorch/share/cmake/Torch")

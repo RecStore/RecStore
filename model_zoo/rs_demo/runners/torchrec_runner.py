@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import pickle
+import re
 import subprocess
 import sys
 import time
@@ -76,6 +77,18 @@ def _pick_socket_ifname() -> str | None:
         if name in available:
             return name
     return None
+
+
+def _parse_nccl_transport_log(log_path: Path | None) -> str:
+    if log_path is None or not log_path.exists():
+        return "unknown"
+    match = re.search(
+        r"NCCL INFO NET/(IB|Socket)\s*:\s*Using",
+        log_path.read_text(errors="replace"),
+    )
+    if not match:
+        return "unknown"
+    return "RDMA" if match.group(1) == "IB" else "TCP"
 
 
 def _debug_log_path(cfg: RunConfig, rank: int) -> Path:
@@ -371,8 +384,30 @@ def _run_single_or_dist_worker(
     else:
         device = torch.device("cpu")
     if (is_dist or use_uvm_caching) and not dist.is_initialized():
+        nccl_log_path = None
+        if backend == "nccl" and is_dist:
+            if "NCCL_DEBUG_FILE" in os.environ:
+                nccl_log_path = Path(os.environ["NCCL_DEBUG_FILE"])
+            else:
+                nccl_log_path = (
+                    Path(cfg.output_root)
+                    / "outputs"
+                    / cfg.run_id
+                    / f"torchrec_nccl_rank{rank}.log"
+                )
+                nccl_log_path.parent.mkdir(parents=True, exist_ok=True)
+                os.environ["NCCL_DEBUG_FILE"] = str(nccl_log_path)
+            os.environ.setdefault("NCCL_DEBUG", "INFO")
+            os.environ.setdefault("NCCL_DEBUG_SUBSYS", "NET")
         _append_worker_debug(cfg, rank, f"before_init_process_group device={device}")
         dist.init_process_group(backend=backend)
+        if backend == "nccl" and is_dist:
+            dist.barrier()
+            _append_worker_debug(
+                cfg,
+                rank,
+                f"nccl_transport={_parse_nccl_transport_log(nccl_log_path)}",
+            )
         _append_worker_debug(cfg, rank, "after_init_process_group")
 
     if is_dist:
@@ -804,9 +839,6 @@ class TorchRecRunner(BenchmarkRunner):
         if socket_ifname:
             env.setdefault("NCCL_SOCKET_IFNAME", socket_ifname)
             env.setdefault("GLOO_SOCKET_IFNAME", socket_ifname)
-        env.setdefault("NCCL_IB_DISABLE", "1")
-        env.setdefault("NCCL_SOCKET_FAMILY", "AF_INET")
-        env.setdefault("NCCL_DEBUG", "WARN")
         res = subprocess.run(
             cmd,
             cwd=str(repo_root),

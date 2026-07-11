@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pickle
 import tempfile
 from pathlib import Path
@@ -19,6 +20,7 @@ from model_zoo.rs_demo.runners.torchrec_runner import (
     _merge_rank_outputs,
     _debug_log_path,
     _maybe_wrap_dense_module_for_dist,
+    _parse_nccl_transport_log,
     _write_or_verify_worker_fingerprint,
     _compute_or_load_shared_sharding_plan,
     _summarize_sharding_plan,
@@ -493,6 +495,30 @@ class TestTorchRecDispatch(unittest.TestCase):
         dist_run.assert_called_once()
         single_run.assert_not_called()
 
+    def test_parse_nccl_transport_log(self) -> None:
+        cases = [
+            (
+                "node:1:2 [0] NCCL INFO NET/IB : Using [0]mlx5_0:1/IB [RO]; "
+                "OOB enp3s0f0:10.0.2.192<0>\n",
+                "RDMA",
+            ),
+            (
+                "node:1:2 [0] NCCL INFO NET/Socket : Using [0]enp3s0f0:10.0.2.192<0>\n",
+                "TCP",
+            ),
+        ]
+        for sample, expected in cases:
+            with self.subTest(expected=expected):
+                with tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8", delete=False
+                ) as handle:
+                    handle.write(sample)
+                    path = Path(handle.name)
+                try:
+                    self.assertEqual(_parse_nccl_transport_log(path), expected)
+                finally:
+                    path.unlink()
+
     def test_runner_sets_explicit_socket_env_for_multi_node(self) -> None:
         cfg = RunConfig(
             backend="torchrec",
@@ -514,7 +540,12 @@ class TestTorchRecDispatch(unittest.TestCase):
         runner = TorchRecRunner(Path("/tmp/runtime"))
         fake_result = mock.Mock(returncode=0, stdout="", stderr="")
         run_mock = mock.Mock(return_value=fake_result)
-        with mock.patch(
+        clean_env = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in {"NCCL_SOCKET_IFNAME", "GLOO_SOCKET_IFNAME"}
+        }
+        with mock.patch.dict(os.environ, clean_env, clear=True), mock.patch(
             "model_zoo.rs_demo.runners.torchrec_runner.ensure_torchrec_available",
             return_value=None,
         ), mock.patch(
@@ -538,8 +569,6 @@ class TestTorchRecDispatch(unittest.TestCase):
         env = run_mock.call_args.kwargs["env"]
         self.assertEqual(env["NCCL_SOCKET_IFNAME"], "eno1")
         self.assertEqual(env["GLOO_SOCKET_IFNAME"], "eno1")
-        self.assertEqual(env["NCCL_IB_DISABLE"], "1")
-        self.assertEqual(env["NCCL_SOCKET_FAMILY"], "AF_INET")
 
     def test_distributed_run_removes_stale_coordination_files_before_launch(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

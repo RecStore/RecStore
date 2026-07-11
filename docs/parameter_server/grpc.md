@@ -71,4 +71,3 @@ gRPC 服务实现，处理客户端的参数请求。
 | `grpc_ps_client.h` / `.cpp` | 单服务器客户端 |
 | `dist_grpc_ps_client.h` / `.cpp` | 分布式客户端 |
 | `*_test.cpp` | 单元测试 |
-| `grpc_ps_client_pytorch.cpp` | PyTorch 集成 |

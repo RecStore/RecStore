@@ -165,13 +165,8 @@ KVClientOp::KVClientOp() {
       } catch (...) {
         use_rdma = false;
       }
-      std::cerr << "[RDMA-DBG] KVClientOp ctor use_rdma="
-                << (use_rdma ? "true" : "false") << std::endl;
 
       if (use_rdma) {
-        std::cerr << "[RDMA-DBG] InitializeRdmaProcessRuntime before "
-                     "ConfigureLogging"
-                  << std::endl;
         InitializeRdmaProcessRuntime();
         ConfigureLogging(false);
       } else {

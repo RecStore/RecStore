@@ -349,6 +349,13 @@ class PetPSClusterRunner:
                 "--rdma_rc_server_get_workers="
                 f"{self.rdma_server_get_workers}"
             )
+        if self.rdma_wait_timeout_ms is not None:
+            cmd.append(f"--rdma_wait_timeout_ms={self.rdma_wait_timeout_ms}")
+        if self.rdma_control_plane_timeout_ms is not None:
+            cmd.append(
+                "--rdma_control_plane_timeout_ms="
+                f"{self.rdma_control_plane_timeout_ms}"
+            )
         if self.rdma_inline_bytes is not None:
             cmd.append(f"--rdma_rc_inline_bytes={self.rdma_inline_bytes}")
         if self.rdma_server_numa_id is not None:

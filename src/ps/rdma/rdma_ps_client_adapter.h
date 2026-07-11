@@ -11,6 +11,7 @@
 #include "base/json.h"
 #include "ps/base/base_client.h"
 #include "ps/rdma/petps_client.h"
+#include "ps/rdma/shard_routing.h"
 
 namespace recstore {
 
@@ -62,30 +63,9 @@ private:
     EmbeddingTableConfig config;
   };
 
-  struct PendingShardRpc {
-    int shard_id     = 0;
-    int client_index = 0;
-    int rpc_id       = -1;
-    std::vector<std::size_t> original_positions;
-    void* recv_buffer     = nullptr;
-    std::size_t key_count = 0;
-  };
-
-  struct BatchRequest {
-    float* user_buffer          = nullptr;
-    bool assembled              = false;
-    std::size_t total_key_count = 0;
-    std::int32_t status_code =
-        static_cast<std::int32_t>(petps::RpcStatus::kPending);
-    std::vector<PendingShardRpc> shard_rpcs;
-  };
-
-  struct ShardChunk {
-    int shard_id     = 0;
-    int client_index = 0;
-    std::vector<uint64_t> keys;
-    std::vector<std::size_t> positions;
-  };
+  using PendingShardRpc = shard_routing::PendingShardRpc;
+  using BatchRequest    = shard_routing::BatchRequest;
+  using ShardChunk      = shard_routing::ShardChunk;
 
   struct PrefetchState {
     float* buffer          = nullptr;
@@ -102,10 +82,9 @@ private:
   void EnsureTableReady(const std::string& table_name, int64_t embedding_dim);
   int64_t DefaultEmbeddingDimOrThrow() const;
   std::size_t MaxGetKeysPerRpc() const;
+  std::size_t MaxPutKeysPerRpc() const;
   std::size_t MaxInFlightGetRpcs() const;
-  int PartitionKey(uint64_t key) const;
   std::vector<ShardChunk> BuildChunks(base::ConstArray<uint64_t> keys) const;
-  bool FinalizeBatchIfNeeded(BatchRequest* batch);
   void
   WaitShardRpcsCooperatively(const std::vector<PendingShardRpc>& shard_rpcs);
   int SubmitGetParameter(base::ConstArray<uint64_t> keys,

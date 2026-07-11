@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Tuple
 import torch
 
 _LOCAL_FAST_PATH_BACKENDS = {"local_shm", "hierkv"}
-_NATIVE_DISTRIBUTED_BACKENDS = {"distributed_grpc", "distributed_brpc"}
+_NATIVE_DISTRIBUTED_BACKENDS = {"distributed_grpc", "distributed_brpc", "rdma"}
 _DEFAULT_LOCAL_SHM_SLOT_BUFFER_BYTES = 8 * 1024 * 1024
 _GPU_CACHE_PROFILE_KEYS = (
     "gpu_cache_query_ms",
