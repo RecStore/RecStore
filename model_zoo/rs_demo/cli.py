@@ -160,6 +160,7 @@ def main(argv: list[str] | None = None) -> int:
         "RECSTORE_RDMA_RC_NAMESPACE",
         "RECSTORE_RDMA_CONTROL_PLANE_HOST",
         "RECSTORE_RDMA_CONTROL_PLANE_PORT",
+        "RECSTORE_RDMA_GET_RESPONSE_MODE",
         "RECSTORE_RDMA_WAIT_TIMEOUT_MS",
         "RECSTORE_RDMA_RC_QPS_PER_CLIENT_PER_SHARD",
         "RECSTORE_RDMA_RC_SLOTS_PER_QP",
@@ -170,6 +171,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if cfg.backend == "recstore":
             os.environ["RECSTORE_CONFIG"] = str(runtime_cfg_path)
+            if effective_ps_type == "RDMA":
+                os.environ["RECSTORE_RDMA_GET_RESPONSE_MODE"] = (
+                    "staging_copy"
+                    if cfg.recstore_index_type == "DRAM_PET_HASH"
+                    else "direct_sg"
+                )
         if server_needed:
             print(f"[rs_demo] starting server ({effective_ps_type}) with {runtime_cfg_path}")
             if effective_ps_type == "RDMA":

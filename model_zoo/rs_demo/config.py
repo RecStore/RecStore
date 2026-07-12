@@ -148,6 +148,7 @@ class RunConfig:
     torchrec_dist_mode: str = "replicated"
     torchrec_memory_mode: str = "hbm"
     torchrec_timing_sync_mode: str = "stage"
+    torchrec_align_recstore_init: bool = False
     torchrec_profiler_warmup: int = 0
     torchrec_profiler_active: int = 2
     torchrec_profiler_repeat: int = 1
@@ -362,6 +363,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="stage",
         choices=["stage", "step", "none"],
         help="TorchRec CUDA synchronization policy for benchmark timing. stage synchronizes inside each measured stage; step synchronizes only at step boundaries; none avoids explicit timing synchronizes.",
+    )
+    parser.add_argument(
+        "--torchrec-align-recstore-init",
+        action="store_true",
+        default=False,
+        help=(
+            "Validation mode: zero TorchRec embeddings and reset dense-module RNG "
+            "to match RecStore's zero-initialized PS path."
+        ),
     )
     parser.add_argument("--torchrec-profiler-warmup", type=int, default=0)
     parser.add_argument("--torchrec-profiler-active", type=int, default=2)

@@ -20,6 +20,7 @@ DECLARE_int32(global_id);
 DECLARE_int32(num_server_processes);
 DECLARE_int32(rdma_rc_qps_per_client_per_shard);
 DECLARE_int32(rdma_rc_slots_per_qp);
+DECLARE_string(rdma_get_response_mode);
 
 namespace {
 
@@ -178,6 +179,8 @@ TEST(PetPSIntegrationTest, HashedValueBatchGetTransferSingleShard) {
   auto values = MakeHashedValues(keys, embedding_dim);
   ASSERT_EQ(client.PutParameter(keys, values), 0);
 
+  const std::string previous_response_mode = FLAGS_rdma_get_response_mode;
+  FLAGS_rdma_get_response_mode             = "staging_copy";
   std::vector<float> output(
       keys.size() * static_cast<std::size_t>(embedding_dim) + 1, 0.0f);
   int rpc_id = client.GetParameter(
@@ -190,6 +193,7 @@ TEST(PetPSIntegrationTest, HashedValueBatchGetTransferSingleShard) {
       keys.size() * static_cast<std::size_t>(FLAGS_value_size));
   EXPECT_EQ(*status, static_cast<std::int32_t>(petps::RpcStatus::kOk));
   client.RevokeRPCResource(rpc_id);
+  FLAGS_rdma_get_response_mode = previous_response_mode;
 }
 
 TEST(PetPSIntegrationTest, PutGetRoundTripMultiShard) {
@@ -252,6 +256,57 @@ TEST(PetPSIntegrationTest, AdapterSplitGetRoundTripMultiShard) {
             0);
 
   ExpectFlatSlots(output.data(), values, embedding_dim);
+}
+
+TEST(PetPSIntegrationTest, AdapterFlatUpdateRoundTripMultiShard) {
+  const int embedding_dim       = FLAGS_value_size / sizeof(float);
+  json config                   = json::object();
+  config["cache_ps"]["ps_type"] = "RDMA";
+  config["cache_ps"]["base_kv_config"]["value"]["default_value_size_hint"] =
+      FLAGS_value_size;
+  config["client"] = json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}};
+  config["distributed_client"] = {
+      {"num_shards", 2},
+      {"hash_method", "simple_mod"},
+      {"max_keys_per_request", 2},
+      {"servers",
+       json::array(
+           {json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}},
+            json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 1}}})},
+  };
+  recstore::RDMAPSClientAdapter adapter(config);
+  ASSERT_EQ(adapter.InitEmbeddingTable(
+                "flat_update",
+                recstore::EmbeddingTableConfig{10000000,
+                                               static_cast<uint64_t>(embedding_dim)}),
+            0);
+
+  std::vector<std::uint64_t> keys;
+  std::vector<float> grads;
+  keys.reserve(10);
+  grads.reserve(10 * static_cast<std::size_t>(embedding_dim));
+  for (std::uint64_t row = 0; row < 10; ++row) {
+    keys.push_back(6000000ULL + row);
+    for (int col = 0; col < embedding_dim; ++col) {
+      grads.push_back(static_cast<float>(row * embedding_dim + col + 1));
+    }
+  }
+
+  ASSERT_EQ(adapter.UpdateParameterFlat(
+                "flat_update",
+                base::ConstArray<std::uint64_t>(keys),
+                grads.data(),
+                static_cast<int64_t>(keys.size()),
+                embedding_dim),
+            0);
+
+  std::vector<float> output(grads.size(), 0.0f);
+  ASSERT_EQ(adapter.GetParameter(
+                base::ConstArray<std::uint64_t>(keys), output.data()),
+            0);
+  for (std::size_t index = 0; index < grads.size(); ++index) {
+    EXPECT_FLOAT_EQ(output[index], -0.01f * grads[index]);
+  }
 }
 
 TEST(PetPSIntegrationTest, ExhaustedQpPoolFailsLoudly) {

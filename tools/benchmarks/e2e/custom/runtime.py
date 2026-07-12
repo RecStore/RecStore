@@ -85,11 +85,12 @@ def _rdma_client_process_count(clients: tuple[ClientSpec, ...]) -> int:
     return sum(max(int(client.nproc_per_node), 1) for client in clients)
 
 
-def _rdma_client_env(runner: Any) -> dict[str, str]:
+def _rdma_client_env(runner: Any, *, response_mode: str) -> dict[str, str]:
     env = {
         "RECSTORE_RDMA_RC_NAMESPACE": str(runner.rdma_namespace),
         "RECSTORE_RDMA_CONTROL_PLANE_HOST": str(runner.rdma_control_plane_host),
         "RECSTORE_RDMA_CONTROL_PLANE_PORT": str(runner.rdma_control_plane_port),
+        "RECSTORE_RDMA_GET_RESPONSE_MODE": response_mode,
     }
     if runner.rdma_control_plane_timeout_ms is not None:
         env["RECSTORE_RDMA_CONTROL_PLANE_TIMEOUT_MS"] = str(
@@ -212,15 +213,16 @@ def _nccl_socket_ifnames() -> str:
 
 
 def _recstore_nccl_env() -> dict[str, str]:
-    # RecStore lanes only use NCCL for the small dense all-reduce; the embedding
-    # traffic is the PS transport under test (BRPC-RDMA or raw-verbs RDMA), so
-    # keep NCCL on TCP sockets over the Ethernet control net.
+    # Embedding traffic uses the RecStore PS transport; dense DDP uses NCCL-IB.
     ifnames = _nccl_socket_ifnames()
     return {
         "NCCL_SOCKET_IFNAME": ifnames,
         "GLOO_SOCKET_IFNAME": ifnames,
         "NCCL_SOCKET_FAMILY": "AF_INET",
-        "NCCL_IB_DISABLE": "1",
+        "NCCL_IB_DISABLE": "0",
+        "NCCL_IB_HCA": "mlx5_0",
+        "NCCL_DEBUG": "INFO",
+        "NCCL_DEBUG_SUBSYS": "NET",
     }
 
 
@@ -261,8 +263,16 @@ def build_client_command(
     if transport.upper() == "BRPC":
         env_prefix.extend(f"{key}={value}" for key, value in _brpc_rdma_env().items())
     if transport.upper() == "RDMA" and rdma_runner is not None:
+        response_mode = (
+            "staging_copy"
+            if cfg.index_type == "DRAM_PET_HASH"
+            else "direct_sg"
+        )
         env_prefix.extend(
-            f"{key}={value}" for key, value in _rdma_client_env(rdma_runner).items()
+            f"{key}={value}"
+            for key, value in _rdma_client_env(
+                rdma_runner, response_mode=response_mode
+            ).items()
         )
     cmd = [
         *env_prefix,

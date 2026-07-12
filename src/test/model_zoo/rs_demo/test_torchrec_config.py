@@ -123,6 +123,17 @@ class TestTorchRecConfig(unittest.TestCase):
         )
         self.assertEqual(cfg.torchrec_timing_sync_mode, "step")
 
+    def test_torchrec_align_recstore_init_parses(self) -> None:
+        cfg = parse_config(
+            [
+                "--backend",
+                "torchrec",
+                "--torchrec-align-recstore-init",
+            ]
+        )
+
+        self.assertTrue(cfg.torchrec_align_recstore_init)
+
     def test_recstore_ps_type_accepts_rdma(self) -> None:
         cfg = parse_config(
             [
@@ -805,6 +816,9 @@ class TestTorchRecConfig(unittest.TestCase):
                     captured["RECSTORE_RDMA_CONTROL_PLANE_PORT"] = os.environ.get(
                         "RECSTORE_RDMA_CONTROL_PLANE_PORT"
                     )
+                    captured["RECSTORE_RDMA_GET_RESPONSE_MODE"] = os.environ.get(
+                        "RECSTORE_RDMA_GET_RESPONSE_MODE"
+                    )
                     Path(cfg.recstore_main_csv).parent.mkdir(parents=True, exist_ok=True)
                     Path(cfg.recstore_main_csv).write_text(
                         "step_total_ms,input_pack_ms,embed_lookup_local_ms,embed_pool_local_ms,output_unpack_ms,dense_fwd_ms,backward_ms,optimizer_ms,sparse_update_ms,emb_stage_ms\n"
@@ -861,6 +875,9 @@ class TestTorchRecConfig(unittest.TestCase):
             self.assertEqual(captured["RECSTORE_CONFIG"], str(runtime_config))
             self.assertEqual(captured["RECSTORE_RDMA_RC_NAMESPACE"], "test-rdma-ns")
             self.assertEqual(captured["RECSTORE_RDMA_CONTROL_PLANE_PORT"], "32123")
+            self.assertEqual(
+                captured["RECSTORE_RDMA_GET_RESPONSE_MODE"], "direct_sg"
+            )
             self.assertEqual(start_rdma.call_count, 1)
             self.assertEqual(stop_rdma.call_count, 1)
 

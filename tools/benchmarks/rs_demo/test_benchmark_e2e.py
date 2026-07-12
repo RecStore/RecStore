@@ -168,6 +168,44 @@ class TestBenchmarkE2E(unittest.TestCase):
         self.assertIn("cd /remote/RecStore", cmd[-1])
         self.assertIn("/remote/RecStore/build/bin/petps_server", cmd[-1])
 
+    def test_rdma_pet_hash_client_uses_staging_copy(self) -> None:
+        from tools.benchmarks.e2e.custom import BenchmarkConfig, ClientSpec, ServerSpec
+        from tools.benchmarks.e2e.custom.runtime import build_client_command
+
+        cfg = BenchmarkConfig(
+            clients=(ClientSpec(repo_root=Path("/app/RecStore")),),
+            servers=(ServerSpec(),),
+            index_type="DRAM_PET_HASH",
+        )
+        rdma_runner = type(
+            "RdmaRunner",
+            (),
+            {
+                "rdma_namespace": "ns",
+                "rdma_control_plane_host": "127.0.0.1",
+                "rdma_control_plane_port": 25100,
+                "rdma_control_plane_timeout_ms": 30000,
+                "rdma_wait_timeout_ms": 20000,
+                "rdma_qps_per_client_per_shard": 16,
+                "rdma_slots_per_qp": 1,
+                "rdma_server_coroutines_per_thread": 1,
+                "rdma_server_get_workers": 0,
+            },
+        )()
+
+        cmd = build_client_command(
+            cfg=cfg,
+            transport="RDMA",
+            client=cfg.clients[0],
+            run_id="rdma-pet",
+            rdma_runner=rdma_runner,
+        )
+
+        self.assertIn("RECSTORE_RDMA_GET_RESPONSE_MODE=staging_copy", cmd)
+        self.assertIn("NCCL_IB_DISABLE=0", cmd)
+        self.assertIn("NCCL_IB_HCA=mlx5_0", cmd)
+        self.assertIn("NCCL_DEBUG=INFO", cmd)
+
     def test_build_torchrec_command_uses_same_workload(self) -> None:
         from tools.benchmarks.e2e.custom import (
             BenchmarkConfig,

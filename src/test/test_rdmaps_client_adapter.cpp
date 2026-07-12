@@ -10,6 +10,8 @@
 #include "ps/client_factory.h"
 #include "ps/rdma/rdma_ps_client_adapter.h"
 
+DECLARE_string(rdma_get_response_mode);
+
 namespace recstore {
 namespace {
 
@@ -67,6 +69,15 @@ TEST(RDMAPSClientAdapterTest, ResolveEmbeddedIdentityRejectsOutOfRangeIndex) {
   ScopedEnvVar world_size("WORLD_SIZE", "2");
 
   EXPECT_THROW(ResolveEmbeddedRdmaClientIdentity(1), std::runtime_error);
+}
+
+TEST(RDMAPSClientAdapterTest, RuntimeReadsGetResponseModeFromEnv) {
+  ScopedEnvVar response_mode(
+      "RECSTORE_RDMA_GET_RESPONSE_MODE", "staging_copy");
+
+  InitializeRdmaProcessRuntime();
+
+  EXPECT_EQ(FLAGS_rdma_get_response_mode, "staging_copy");
 }
 
 TEST(RDMAPSClientAdapterTest, FactoryCreatesRdmaClientAndSupportsTableInit) {

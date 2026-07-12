@@ -6,6 +6,7 @@ import hashlib
 import importlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -374,6 +375,18 @@ def _pick_socket_ifname() -> str | None:
     return None
 
 
+def _parse_nccl_transport_log(log_path: Path | None) -> str:
+    if log_path is None or not log_path.exists():
+        return "unknown"
+    match = re.search(
+        r"NCCL INFO NET/(IB|Socket)\s*:\s*Using",
+        log_path.read_text(errors="replace"),
+    )
+    if not match:
+        return "unknown"
+    return "RDMA" if match.group(1) == "IB" else "TCP"
+
+
 def _debug_log_path(cfg: RunConfig, rank: int) -> Path:
     return Path(cfg.output_root) / "outputs" / cfg.run_id / f"recstore_worker_rank{rank}.log"
 
@@ -739,10 +752,32 @@ class RecStoreRunner(BenchmarkRunner):
                 torch.cuda.set_device(local_rank)
             device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
             if use_dist and not dist.is_initialized():
+                nccl_log_path = None
+                if backend == "nccl":
+                    if "NCCL_DEBUG_FILE" in os.environ:
+                        nccl_log_path = Path(os.environ["NCCL_DEBUG_FILE"])
+                    else:
+                        nccl_log_path = (
+                            Path(cfg.output_root)
+                            / "outputs"
+                            / cfg.run_id
+                            / f"recstore_nccl_rank{rank}.log"
+                        )
+                        nccl_log_path.parent.mkdir(parents=True, exist_ok=True)
+                        os.environ["NCCL_DEBUG_FILE"] = str(nccl_log_path)
+                    os.environ.setdefault("NCCL_DEBUG", "INFO")
+                    os.environ.setdefault("NCCL_DEBUG_SUBSYS", "NET")
                 dist.init_process_group(
                     backend=backend,
                     device_id=device if device.type == "cuda" else None,
                 )
+                if backend == "nccl":
+                    dist.barrier()
+                    _append_worker_debug(
+                        cfg,
+                        rank,
+                        f"nccl_transport={_parse_nccl_transport_log(nccl_log_path)}",
+                    )
             if use_dist:
                 fingerprint_path = (
                     Path(cfg.output_root)
@@ -1060,6 +1095,7 @@ class RecStoreRunner(BenchmarkRunner):
                     logits = dense_module(dense_features, embedded_sparse)
                     loss = criterion(logits, labels)
                     sync_device(torch, device)
+                row["loss"] = float(loss.detach().float().cpu().item())
 
                 with stage_timer(row, "backward_ms"):
                     embedded_sparse_grad = run_hybrid_backward(
@@ -1100,17 +1136,24 @@ class RecStoreRunner(BenchmarkRunner):
                     row["sparse_optimizer_flush_ms"] = (
                         time.perf_counter() - flush_start
                     ) * 1e3
-                    updated_fused_ids = _safe_fused_ids(
-                        sparse_features,
-                        table_offsets,
-                    )
-                    _notify_bagpipe_sparse_update(
-                        bagpipe_policy=bagpipe_policy,
-                        sparse_optimizer=sparse_optimizer,
-                        fallback_updated_ids=updated_fused_ids,
-                        row=row,
-                        step=step,
-                    )
+                    if cfg.enable_gpu_cache or cfg.prefetch_depth > 0:
+                        updated_fused_ids = _safe_fused_ids(
+                            sparse_features,
+                            table_offsets,
+                        )
+                        _notify_bagpipe_sparse_update(
+                            bagpipe_policy=bagpipe_policy,
+                            sparse_optimizer=sparse_optimizer,
+                            fallback_updated_ids=updated_fused_ids,
+                            row=row,
+                            step=step,
+                        )
+                    else:
+                        row["bagpipe_gpu_cache_update_ids"] = 0
+                        row["bagpipe_gpu_cache_update_attempt_ids"] = 0
+                        row["bagpipe_policy_cached_update_ids"] = 0
+                        row["bagpipe_gpu_cache_update_failures"] = 0
+                        row["bagpipe_gpu_cache_update_failure_reason"] = ""
 
                     zero_grad_start = time.perf_counter()
                     sparse_optimizer.zero_grad()

@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 
 EXTRA_NUMERIC_COLUMNS = {
+    "loss",
     "prefetch_depth",
     "prefetch_issued_batches",
     "prefetch_consumed_batches",

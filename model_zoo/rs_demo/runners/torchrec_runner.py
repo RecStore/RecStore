@@ -295,6 +295,12 @@ def _build_uvm_caching_constraints(
     }
 
 
+def _zero_embedding_parameters(module, torch) -> None:
+    with torch.no_grad():
+        for param in module.parameters():
+            param.zero_()
+
+
 def _build_train_dataloader_for_mode(
     repo_root: Path,
     cfg: RunConfig,
@@ -511,6 +517,11 @@ def _run_single_or_dist_worker(
         collective_mode = "not_measured_single_process"
         collective_measured = 0
 
+    if cfg.torchrec_align_recstore_init:
+        _zero_embedding_parameters(embedding_module, torch)
+        torch.manual_seed(cfg.seed)
+        _append_worker_debug(cfg, rank, "torchrec_align_recstore_init=1")
+
     dense_module = build_hybrid_dense_arch(
         torch=torch,
         dense_in_features=13,
@@ -637,6 +648,7 @@ def _run_single_or_dist_worker(
                     logits = dense_module(dense_features, embedded_sparse)
                     loss = criterion(logits, labels)
                     _sync_for_timing(torch, device, cfg, "stage")
+                row["loss"] = float(loss.detach().float().cpu().item())
                 _append_worker_debug(cfg, rank, f"after_dense_fwd step={step}")
 
                 _append_worker_debug(cfg, rank, f"before_backward step={step}")
@@ -793,6 +805,8 @@ class TorchRecRunner(BenchmarkRunner):
             str(cfg.torchrec_timing_sync_mode),
             "--no-start-server",
         ]
+        if cfg.torchrec_align_recstore_init:
+            cmd.append("--torchrec-align-recstore-init")
         if cfg.num_embeddings_per_feature:
             cmd.extend(
                 [
