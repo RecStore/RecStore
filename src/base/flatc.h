@@ -95,6 +95,13 @@ public:
     item_data_.clear();
   }
 
+  // Pre-allocate internal buffers to avoid repeated reallocation when the
+  // number of items and their total byte size are known in advance.
+  void Reserve(int item_count, int estimated_data_bytes) {
+    offsets_.reserve(static_cast<size_t>(item_count) + 1);
+    item_data_.reserve(static_cast<size_t>(estimated_data_bytes));
+  }
+
   template <typename RawItemT>
   int AddItem(const RawItemT& raw_item, std::vector<std::string>* blocks) {
     FlatItemDetail<ItemT>::CompressAppend(raw_item, &item_data_);

@@ -2,7 +2,9 @@
 #include <atomic>
 #include <cassert>
 #include <condition_variable>
-#include <cpptrace/cpptrace.hpp>
+#ifndef RECSTORE_DISABLE_CPPTRACE
+#  include <cpptrace/cpptrace.hpp>
+#endif
 #include <iostream>
 #include <mutex>
 #include <thread>

@@ -21,7 +21,10 @@
 
 using json = nlohmann::json;
 
-static const int MAX_PARAMETER_BATCH_BRPC = 2000;
+// Increased from 2000 to 65536 to reduce per-call protobuf message and
+// brpc::Controller allocation overhead. The server max_batch_keys_size is
+// also 65536, so this stays within the single-request limit.
+static const int MAX_PARAMETER_BATCH_BRPC = 65536;
 
 // Prefetch batch structure for bRPC
 struct BrpcPrefetchBatch {

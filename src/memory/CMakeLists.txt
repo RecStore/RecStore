@@ -11,7 +11,7 @@ target_include_directories(base_memory PRIVATE
 )
 
 add_dependencies(base_memory jemalloc)
-target_link_libraries(base_memory PUBLIC base jemalloc)
+target_link_libraries(base_memory PUBLIC base jemalloc ${CMAKE_DL_LIBS})
 
 add_executable(pm_command pm_command.cc)
 target_link_libraries(pm_command PUBLIC base_memory)

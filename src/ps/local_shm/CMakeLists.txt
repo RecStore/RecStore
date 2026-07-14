@@ -44,7 +44,7 @@ if(TARGET report_client)
   target_link_libraries(local_shm_ps_server_runtime PRIVATE report_client)
 endif()
 
-if(NOT BUILD_SHARED_LIBS)
+if(NOT BUILD_SHARED_LIBS AND TARGET spdk_backend)
   target_link_libraries(local_shm_ps_server_runtime PUBLIC spdk_backend)
 endif()
 

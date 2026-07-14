@@ -1,6 +1,6 @@
 #include "grpc_ps_client.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <grpcpp/grpcpp.h>
 
 #include <cstdint>

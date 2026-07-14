@@ -44,6 +44,9 @@ target_link_libraries(petps_server PUBLIC
     Folly::folly
     boost_context
     boost_coroutine
+    boost_regex
+    boost_regex_cxx11
+    boost_system
     pthread
     rt
     ibverbs
@@ -63,6 +66,9 @@ target_link_libraries(petps_integration_test PUBLIC
     base
     gtest
     Folly::folly
+    boost_regex
+    boost_regex_cxx11
+    boost_system
     pthread
 )
 

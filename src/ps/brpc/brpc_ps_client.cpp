@@ -1,13 +1,15 @@
 #include "brpc_ps_client.h"
 
 #include <brpc/channel.h>
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <cstdint>
 #include <cstring>
 #include <future>
 #include <string>
 #include <vector>
+
+#include <google/protobuf/arena.h>
 
 #include "base/array.h"
 #include "base/factory.h"
@@ -162,8 +164,13 @@ int BRPCParameterClient::GetParameter(const base::ConstArray<uint64_t>& keys,
 
   int request_num =
       (keys.Size() + MAX_PARAMETER_BATCH_BRPC - 1) / MAX_PARAMETER_BATCH_BRPC;
-  std::vector<GetParameterRequest> requests(request_num);
-  std::vector<GetParameterResponse> responses(request_num);
+  google::protobuf::Arena arena;
+  std::vector<GetParameterRequest*> requests(request_num);
+  std::vector<GetParameterResponse*> responses(request_num);
+  for (int i = 0; i < request_num; ++i) {
+    requests[i] = google::protobuf::Arena::Create<GetParameterRequest>(&arena);
+    responses[i] = google::protobuf::Arena::Create<GetParameterResponse>(&arena);
+  }
   std::vector<brpc::Controller> controllers(request_num);
   std::vector<int> key_sizes;
 
@@ -187,7 +194,7 @@ int BRPCParameterClient::GetParameter(const base::ConstArray<uint64_t>& keys,
 
     google::protobuf::Closure* done = brpc::NewCallback([]() { /* no-op */ });
     stub.GetParameter(
-        &controllers[index], &requests[index], &responses[index], done);
+        &controllers[index], requests[index], responses[index], done);
   }
 
   // Wait for all RPCs to complete
@@ -242,11 +249,11 @@ int BRPCParameterClient::GetParameter(const base::ConstArray<uint64_t>& keys,
   std::string payload_storage;
 
   for (int i = 0; i < responses.size(); ++i) {
-    auto& response   = responses[i];
+    auto* response   = responses[i];
     int key_size     = key_sizes[i];
     int payload_size = 0;
     auto parameters  = ExtractGetResponseReader(
-        controllers[i], response, &payload_storage, &payload_size);
+        controllers[i], *response, &payload_storage, &payload_size);
 
     if (parameters == nullptr || !parameters->Valid(payload_size)) {
       LOG(ERROR) << "GetParameter invalid payload: " << payload_size;
@@ -373,8 +380,13 @@ int BRPCParameterClient::GetParameter(const base::ConstArray<uint64_t>& keys,
 
   int request_num =
       (keys.Size() + MAX_PARAMETER_BATCH_BRPC - 1) / MAX_PARAMETER_BATCH_BRPC;
-  std::vector<GetParameterRequest> requests(request_num);
-  std::vector<GetParameterResponse> responses(request_num);
+  google::protobuf::Arena arena;
+  std::vector<GetParameterRequest*> requests(request_num);
+  std::vector<GetParameterResponse*> responses(request_num);
+  for (int i = 0; i < request_num; ++i) {
+    requests[i] = google::protobuf::Arena::Create<GetParameterRequest>(&arena);
+    responses[i] = google::protobuf::Arena::Create<GetParameterResponse>(&arena);
+  }
   std::vector<brpc::Controller> controllers(request_num);
   std::vector<int> key_sizes;
 
@@ -397,7 +409,7 @@ int BRPCParameterClient::GetParameter(const base::ConstArray<uint64_t>& keys,
 
     google::protobuf::Closure* done = brpc::NewCallback([]() { /* no-op */ });
     stub.GetParameter(
-        &controllers[index], &requests[index], &responses[index], done);
+        &controllers[index], requests[index], responses[index], done);
   }
 
   // Wait for all RPCs to complete
@@ -450,11 +462,11 @@ int BRPCParameterClient::GetParameter(const base::ConstArray<uint64_t>& keys,
   // Parse responses
   std::string payload_storage;
   for (int i = 0; i < responses.size(); ++i) {
-    auto& response   = responses[i];
+    auto* response   = responses[i];
     int key_size     = key_sizes[i];
     int payload_size = 0;
     auto parameters  = ExtractGetResponseReader(
-        controllers[i], response, &payload_storage, &payload_size);
+        controllers[i], *response, &payload_storage, &payload_size);
 
     if (parameters == nullptr || !parameters->Valid(payload_size)) {
       LOG(ERROR) << "GetParameter(vector) invalid payload: " << payload_size;

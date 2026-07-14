@@ -1,7 +1,7 @@
 #include "brpc_ps_server.h"
 
 #include <brpc/server.h>
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <gflags/gflags.h>
 
 #include <chrono>
@@ -222,6 +222,14 @@ void BRPCParameterServiceImpl::GetParameter(
   std::vector<ParameterPack> packs;
   packs.reserve(keys_array.Size());
   cache_ps_->GetParameterRun2Completion(keys_array, packs, 0);
+
+  {
+    int est_bytes = 0;
+    for (const auto& pack : packs) {
+      est_bytes += ParameterCompressItem::GetSize(pack.dim);
+    }
+    compressor.Reserve(static_cast<int>(packs.size()), est_bytes);
+  }
 
   for (auto& pack : packs) {
     compressor.AddItem(pack, nullptr);
