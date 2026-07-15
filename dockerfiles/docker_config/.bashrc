@@ -127,3 +127,7 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
 export PATH="$HOME/.local/bin:$PATH"
+
+if [ -f ${PROJECT_PATH}/dockerfiles/docker_config/.env ]; then
+    source ${PROJECT_PATH}/dockerfiles/docker_config/.env
+fi

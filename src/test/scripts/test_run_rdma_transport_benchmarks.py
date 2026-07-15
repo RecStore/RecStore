@@ -13,7 +13,7 @@ from ps_test_config import (
     DEFAULT_GRPC_MAIN_CONFIG,
     DEFAULT_RDMA_SINGLE_SHARD_CONFIG,
 )
-from run_rdma_transport_benchmarks import (
+from tools.benchmarks.run_rdma_transport_benchmarks import (  # noqa: E402
     build_benchmark_cmd,
     build_rdma_runner,
     collect_summary_rows,
@@ -182,7 +182,7 @@ class TestRunRDMATransportBenchmarks(unittest.TestCase):
         self.assertIn("| get", text)
 
     def test_help_contains_rdma_only_switch(self):
-        script = Path(__file__).resolve().parent / "run_rdma_transport_benchmarks.py"
+        script = Path(__file__).resolve().parents[3] / "tools" / "benchmarks" / "run_rdma_transport_benchmarks.py"
         completed = subprocess.run(
             ["python3", str(script), "--help"],
             text=True,

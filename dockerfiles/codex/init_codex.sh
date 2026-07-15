@@ -13,16 +13,19 @@ export NVM_DIR="$HOME/.nvm"
 nvm install --lts
 npm install -g @openai/codex
 
-mkdir -p ~/.codex
-cp ${SCRIPT_DIR}/auth.json ~/.codex/auth.json
-cp ${SCRIPT_DIR}/config.toml ~/.codex/config.toml
-
 curl https://cursor.com/install -fsS | bash
+curl -fsSL https://claude.ai/install.sh | bash
+curl -fsSL https://github.com/SaladDay/cc-switch-cli/releases/latest/download/install.sh | bash
 
-ln -s /app/RecStore/dockerfiles/codex/.cursor-agent ~/.cursor
+cp -r .cc-switch ~/
 
+echo 'root:1234' | chpasswd
+sed -Ei 's/#PermitRootLogin.*/PermitRootLogin yes/g' /etc/ssh/sshd_config
+
+service ssh restart 
 
 git config --global user.name "Minhui Xie"
 git config --global user.email "645214784@qq.com"
 
-cp -r /app/RecStore/dockerfiles/codex/.claude ~/.claude
+npm i -g happy
+npm install -g @getpaseo/cli

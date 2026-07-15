@@ -49,3 +49,5 @@ rpc_data/
 Testing/
 build_release/
 tmp/
+CURRENT_STATUS_*.md
+dockerfiles/docker_config/.env

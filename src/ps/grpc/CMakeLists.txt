@@ -102,22 +102,3 @@ target_link_libraries(grpc_ps_bench PUBLIC
     grpc_ps_client
     gflags
 )
-
-if(ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
-    find_package(Torch REQUIRED)
-
-    # gRPC PS Client Python Binding
-    add_library(grpc_ps_client_python MODULE
-        grpc_ps_client_pytorch.cpp
-    )
-
-    target_include_directories(grpc_ps_client_python PUBLIC ${TORCH_INCLUDE_DIRS})
-
-    target_link_libraries(grpc_ps_client_python PUBLIC
-        grpc_ps_client
-        ${TORCH_LIBRARIES}
-        Python3::Python
-    )
-else()
-    message(STATUS "Skipping grpc_ps_client_python because CUDA is disabled or nvcc not found")
-endif()

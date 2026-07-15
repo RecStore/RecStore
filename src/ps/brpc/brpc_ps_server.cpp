@@ -55,6 +55,33 @@ DEFINE_int32(local_shard_id,
 DEFINE_int32(brpc_server_num_threads,
              0,
              "Number of threads for bRPC server, 0 means auto");
+DEFINE_bool(brpc_ps_use_rdma,
+            false,
+            "Use RDMA transport for the brpc PS server (requires brpc built "
+            "with WITH_RDMA=ON).");
+
+namespace {
+
+// Mirror the client: allow enabling RDMA and selecting the HCA via env vars so
+// the ps_server launcher does not require extra command-line flags.
+//   RECSTORE_BRPC_USE_RDMA=1        -> enable RDMA transport
+//   RECSTORE_BRPC_RDMA_DEVICE=mlx5_0 -> select the HCA (maps to -rdma_device)
+bool ResolveBrpcServerUseRdmaFromEnv(bool fallback) {
+  const char* value = std::getenv("RECSTORE_BRPC_USE_RDMA");
+  if (value == nullptr || *value == '\0') {
+    return fallback;
+  }
+  return std::string(value) != "0";
+}
+
+void ApplyBrpcServerRdmaDeviceFromEnv() {
+  const char* dev = std::getenv("RECSTORE_BRPC_RDMA_DEVICE");
+  if (dev != nullptr && *dev != '\0') {
+    google::SetCommandLineOption("rdma_device", dev);
+  }
+}
+
+} // namespace
 
 namespace recstore {
 
@@ -757,6 +784,11 @@ public:
           brpc::Server server;
           brpc::ServerOptions options;
           options.num_threads = FLAGS_brpc_server_num_threads;
+          options.use_rdma    = ResolveBrpcServerUseRdmaFromEnv(
+              FLAGS_brpc_ps_use_rdma);
+          if (options.use_rdma) {
+            ApplyBrpcServerRdmaDeviceFromEnv();
+          }
 
           if (server.AddService(
                   service.get(), brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
@@ -799,6 +831,10 @@ public:
       brpc::Server server;
       brpc::ServerOptions options;
       options.num_threads = FLAGS_brpc_server_num_threads;
+      options.use_rdma    = ResolveBrpcServerUseRdmaFromEnv(FLAGS_brpc_ps_use_rdma);
+      if (options.use_rdma) {
+        ApplyBrpcServerRdmaDeviceFromEnv();
+      }
 
       if (server.AddService(service.get(), brpc::SERVER_DOESNT_OWN_SERVICE) !=
           0) {

@@ -7,9 +7,11 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
 from petps_cluster_runner import PetPSClusterRunner
 from ps_test_config import DEFAULT_RDMA_SINGLE_SHARD_CONFIG
-from run_rdma_transport_benchmarks import build_benchmark_cmd
+from tools.benchmarks.run_rdma_transport_benchmarks import build_benchmark_cmd
 
 
 def prepend_ld_preload(env, library):

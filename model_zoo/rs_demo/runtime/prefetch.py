@@ -44,10 +44,12 @@ class LookaheadPrefetcher:
             "prefetch_depth": float(self._depth),
             "prefetch_issued_batches": 0.0,
             "prefetch_consumed_batches": 0.0,
+            "prefetch_discarded_batches": 0.0,
             "prefetch_pending_batches": float(len(self._pending)),
             "prefetch_ready_batches": float(len(self._ready)),
             "prefetch_total_ids": 0.0,
             "prefetch_consumed_total_ids": 0.0,
+            "prefetch_discarded_total_ids": 0.0,
             "prefetch_issue_to_consume_ms": 0.0,
             "prefetch_window_live_ids": float(self.live_ids),
             "prefetch_window_live_bytes": float(self.live_bytes),
@@ -102,6 +104,29 @@ class LookaheadPrefetcher:
         self._stats["prefetch_total_ids"] += float(num_ids)
         self._refresh_window_stats()
 
+    def enqueue_fused_ids(self, fused_ids: Any) -> None:
+        if self._depth <= 0:
+            return
+        issue = getattr(self._embedding_module, "issue_fused_id_prefetch", None)
+        if not callable(issue):
+            raise RuntimeError(
+                "BagPipe fused-id prefetch requires issue_fused_id_prefetch()."
+            )
+        result = issue(fused_ids, record_handle=False)
+        handle, num_ids, issue_ts, fused_ids_cpu, fused_inverse = result
+        self._pending.append(
+            PrefetchSlot(
+                handle=int(handle),
+                num_ids=int(num_ids),
+                issue_ts=float(issue_ts),
+                fused_ids_cpu=fused_ids_cpu,
+                fused_inverse=fused_inverse,
+            )
+        )
+        self._stats["prefetch_issued_batches"] += 1.0
+        self._stats["prefetch_total_ids"] += float(num_ids)
+        self._refresh_window_stats()
+
     def advance(self) -> bool:
         if self._depth <= 0 or len(self._pending) <= self._depth:
             self._refresh_window_stats()
@@ -118,7 +143,7 @@ class LookaheadPrefetcher:
         self._refresh_window_stats()
         return moved
 
-    def attach_next(self) -> bool:
+    def attach_next(self, *, invalid_fused_ids: Any = None) -> bool:
         if self._depth <= 0 or not self._ready:
             self._refresh_window_stats()
             return False
@@ -129,6 +154,7 @@ class LookaheadPrefetcher:
             issue_ts=slot.issue_ts,
             fused_ids_cpu=slot.fused_ids_cpu,
             fused_inverse=slot.fused_inverse,
+            invalid_fused_ids_cpu=invalid_fused_ids,
         )
         self._stats["prefetch_consumed_batches"] += 1.0
         self._stats["prefetch_consumed_total_ids"] += float(slot.num_ids)
@@ -136,6 +162,16 @@ class LookaheadPrefetcher:
             0.0,
             (time.perf_counter() - slot.issue_ts) * 1e3,
         )
+        self._refresh_window_stats()
+        return True
+
+    def discard_next_ready(self) -> bool:
+        if self._depth <= 0 or not self._ready:
+            self._refresh_window_stats()
+            return False
+        slot = self._ready.popleft()
+        self._stats["prefetch_discarded_batches"] += 1.0
+        self._stats["prefetch_discarded_total_ids"] += float(slot.num_ids)
         self._refresh_window_stats()
         return True
 

@@ -5,7 +5,7 @@ RECSTORE_PATH="$(cd ".." && pwd)"
 Docker_RECSTORE_PATH="/app/RecStore"
 
 sudo docker run --cap-add=SYS_ADMIN --privileged --security-opt seccomp=unconfined  \
---name shq_recstore --net=host \
+--name xmh_recstore --net=host \
 -v ${RECSTORE_PATH}:${Docker_RECSTORE_PATH} \
 -v /dev/shm:/dev/shm \
 -v /dev/hugepages:/dev/hugepages \

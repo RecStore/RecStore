@@ -127,7 +127,7 @@ PSServerLauncher::PSServerLauncher(LauncherOptions options)
   }
 
   if (options_.log_dir.empty()) {
-    options_.log_dir = "./logs";
+    options_.log_dir = "/tmp/recstore_ps";
   }
   options_.log_dir = MakeAbsolute(options_.log_dir);
 }
@@ -158,7 +158,7 @@ LauncherOptions PSServerLauncher::LoadOptionsFromEnvironment() {
   if (log_dir != nullptr && *log_dir != '\0') {
     options.log_dir = MakeAbsolute(log_dir);
   } else {
-    options.log_dir = MakeAbsolute("./logs");
+    options.log_dir = MakeAbsolute("/tmp/recstore_ps");
   }
 
   if (auto timeout = ParseIntEnv("PS_TIMEOUT");
@@ -268,43 +268,6 @@ PSServerLauncher::CheckOpenPorts(const std::vector<int>& ports) {
     }
   }
   return open_ports;
-}
-
-std::vector<int> PSServerLauncher::FindAvailablePorts(size_t count) {
-  std::vector<int> ports;
-  ports.reserve(count);
-
-  while (ports.size() < count) {
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-      break;
-    }
-
-    int reuse = 1;
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-
-    sockaddr_in addr;
-    std::memset(&addr, 0, sizeof(addr));
-    addr.sin_family      = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port        = 0;
-
-    if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-      close(sock);
-      break;
-    }
-
-    socklen_t len = sizeof(addr);
-    if (getsockname(sock, reinterpret_cast<sockaddr*>(&addr), &len) != 0) {
-      close(sock);
-      break;
-    }
-
-    ports.push_back(static_cast<int>(ntohs(addr.sin_port)));
-    close(sock);
-  }
-
-  return ports;
 }
 
 LaunchDecision

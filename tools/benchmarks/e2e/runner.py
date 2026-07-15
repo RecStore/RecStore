@@ -118,7 +118,12 @@ def run_e2e_plan(
                                 master_port=29600 + (run_index % 1000),
                             )
                             run_cmd = (
-                                wrap_remote_command(cmd, context.remote_train_host, cwd=context.remote_repo_root)
+                                wrap_remote_command(
+                                    cmd,
+                                    context.remote_train_host,
+                                    cwd=context.remote_repo_root,
+                                    ssh_port=context.remote_ssh_port,
+                                )
                                 if context.remote_train_host
                                 else cmd
                             )

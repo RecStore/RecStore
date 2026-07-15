@@ -74,6 +74,7 @@ class PetPSClusterRunner:
         rdma_qps_per_client_per_shard=None,
         rdma_slots_per_qp=None,
         rdma_wait_timeout_ms=None,
+        rdma_control_plane_timeout_ms=None,
         rdma_profile_interval_ms=None,
         rdma_server_coroutines_per_thread=None,
         rdma_server_get_workers=None,
@@ -87,6 +88,7 @@ class PetPSClusterRunner:
         rdma_fake_get_mode=None,
         rdma_skip_client_copy=None,
         validate_routing=False,
+        server_command_wrapper=None,
     ):
         self.server_path = Path(server_path)
         if not self.server_path.is_absolute():
@@ -135,6 +137,7 @@ class PetPSClusterRunner:
             rdma_rc_qps_per_client_per_shard,
         )
         self.rdma_wait_timeout_ms = rdma_wait_timeout_ms
+        self.rdma_control_plane_timeout_ms = rdma_control_plane_timeout_ms
         self.rdma_slots_per_qp = self._coalesce_optional_values(
             "rdma_slots_per_qp",
             rdma_slots_per_qp,
@@ -214,6 +217,7 @@ class PetPSClusterRunner:
         self.rdma_rc_fake_get_mode = self.rdma_fake_get_mode
         self.rdma_rc_skip_client_copy = self.rdma_skip_client_copy
         self.validate_routing = validate_routing
+        self.server_command_wrapper = server_command_wrapper
         self.processes = []
         self.process_logs = {}
         self.ready = set()
@@ -345,6 +349,13 @@ class PetPSClusterRunner:
                 "--rdma_rc_server_get_workers="
                 f"{self.rdma_server_get_workers}"
             )
+        if self.rdma_wait_timeout_ms is not None:
+            cmd.append(f"--rdma_wait_timeout_ms={self.rdma_wait_timeout_ms}")
+        if self.rdma_control_plane_timeout_ms is not None:
+            cmd.append(
+                "--rdma_control_plane_timeout_ms="
+                f"{self.rdma_control_plane_timeout_ms}"
+            )
         if self.rdma_inline_bytes is not None:
             cmd.append(f"--rdma_rc_inline_bytes={self.rdma_inline_bytes}")
         if self.rdma_server_numa_id is not None:
@@ -352,6 +363,8 @@ class PetPSClusterRunner:
             cmd.append(f"--numa_id={self.rdma_server_numa_id}")
         if self.rdma_fake_get_mode is not None:
             cmd.append(f"--rdma_rc_fake_get_mode={self.rdma_fake_get_mode}")
+        if self.server_command_wrapper is not None:
+            cmd = self.server_command_wrapper(global_id, cmd)
         return cmd
 
     def build_client_cmd(self, argv, client_index=0):
@@ -414,6 +427,11 @@ class PetPSClusterRunner:
             cmd.append(f"--rdma_rc_slots_per_qp={self.rdma_slots_per_qp}")
         if self.rdma_wait_timeout_ms is not None:
             cmd.append(f"--rdma_wait_timeout_ms={self.rdma_wait_timeout_ms}")
+        if self.rdma_control_plane_timeout_ms is not None:
+            cmd.append(
+                "--rdma_control_plane_timeout_ms="
+                f"{self.rdma_control_plane_timeout_ms}"
+            )
         if self.rdma_profile_interval_ms is not None:
             cmd.append(
                 "--rdma_rc_profile_interval_ms="
@@ -528,7 +546,7 @@ class PetPSClusterRunner:
             time.sleep(0.2)
 
     def start(self):
-        if not self.server_path.exists():
+        if self.server_command_wrapper is None and not self.server_path.exists():
             raise FileNotFoundError(f"Server binary not found: {self.server_path}")
 
         env = self.build_server_env(0)

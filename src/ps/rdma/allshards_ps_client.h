@@ -11,6 +11,7 @@
 #include "base/log.h"
 #include "ps/rdma/base_client.h"
 #include "ps/rdma/rdma_status.h"
+#include "ps/rdma/shard_routing.h"
 
 class AllShardsParameterClientWrapper : public BaseParameterClient {
 public:
@@ -44,35 +45,11 @@ public:
                       const std::vector<std::vector<float>>* grads) override;
 
 private:
-  struct PendingShardRpc {
-    int shard_id     = 0;  // Logical shard this RPC belongs to.
-    int client_index = 0;  // Underlying client selected for this shard.
-    int rpc_id       = -1; // RPC id returned by the shard-local client.
-    std::vector<std::size_t>
-        original_positions;          // Positions in the caller's batch.
-    void* recv_buffer     = nullptr; // Caller-visible response buffer.
-    std::size_t key_count = 0;       // Number of keys in this shard chunk.
-  };
+  using PendingShardRpc = recstore::shard_routing::PendingShardRpc;
+  using BatchRequest    = recstore::shard_routing::BatchRequest;
+  using ShardChunk      = recstore::shard_routing::ShardChunk;
 
-  struct BatchRequest {
-    float* user_buffer = nullptr; // Final output buffer owned by caller.
-    bool assembled     = false;   // True once all shard RPCs have been merged.
-    std::size_t total_key_count = 0; // Total keys across all shards.
-    std::int32_t status_code =
-        static_cast<std::int32_t>(petps::RpcStatus::kPending);
-    std::vector<PendingShardRpc> shard_rpcs; // One pending RPC per shard chunk.
-  };
-
-  struct ShardChunk {
-    int shard_id     = 0;               // Routed shard id.
-    int client_index = 0;               // Client that serves this shard.
-    std::vector<uint64_t> keys;         // Keys assigned to this shard chunk.
-    std::vector<std::size_t> positions; // Original positions in caller input.
-  };
-
-  int PartitionKey(uint64_t key) const;
   std::vector<ShardChunk> BuildChunks(base::ConstArray<uint64_t> keys) const;
-  bool FinalizeBatchIfNeeded(BatchRequest* batch);
   void WaitShardRpcsCooperatively(
       const std::vector<PendingShardRpc>& shard_rpcs) const;
 

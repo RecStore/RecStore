@@ -130,9 +130,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         if cfg.recstore_runtime_dir:
             runtime_dir = Path(cfg.recstore_runtime_dir)
-            runtime_cfg_path = runtime_dir / "recstore_config.json"
         else:
-            runtime_dir, runtime_cfg_path = make_runtime_dir(
+            runtime_dir, _runtime_cfg_path = make_runtime_dir(
                 base_cfg=base_cfg,
                 host=cfg.server_host,
                 port0=cfg.server_port0,
@@ -149,7 +148,9 @@ def main(argv: list[str] | None = None) -> int:
                 ps_kv_backend=cfg.ps_kv_backend,
                 tiered_dram_capacity_multiplier=cfg.tiered_dram_capacity_multiplier,
             )
-            cfg.recstore_runtime_dir = str(runtime_dir)
+        runtime_dir = runtime_dir.resolve()
+        runtime_cfg_path = runtime_dir / "recstore_config.json"
+        cfg.recstore_runtime_dir = str(runtime_dir)
 
     proc = None
     rdma_cluster = None
@@ -159,6 +160,7 @@ def main(argv: list[str] | None = None) -> int:
         "RECSTORE_RDMA_RC_NAMESPACE",
         "RECSTORE_RDMA_CONTROL_PLANE_HOST",
         "RECSTORE_RDMA_CONTROL_PLANE_PORT",
+        "RECSTORE_RDMA_GET_RESPONSE_MODE",
         "RECSTORE_RDMA_WAIT_TIMEOUT_MS",
         "RECSTORE_RDMA_RC_QPS_PER_CLIENT_PER_SHARD",
         "RECSTORE_RDMA_RC_SLOTS_PER_QP",
@@ -169,6 +171,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if cfg.backend == "recstore":
             os.environ["RECSTORE_CONFIG"] = str(runtime_cfg_path)
+            if effective_ps_type == "RDMA":
+                os.environ["RECSTORE_RDMA_GET_RESPONSE_MODE"] = (
+                    "staging_copy"
+                    if cfg.recstore_index_type == "DRAM_PET_HASH"
+                    else "direct_sg"
+                )
         if server_needed:
             print(f"[rs_demo] starting server ({effective_ps_type}) with {runtime_cfg_path}")
             if effective_ps_type == "RDMA":
@@ -176,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
                     repo_root,
                     runtime_cfg_path,
                     Path(cfg.server_log),
+                    num_clients=max(1, int(cfg.nnodes) * int(cfg.nproc_per_node)),
                     thread_num=1,
                     value_size=int(cfg.embedding_dim) * 4,
                     max_kv_num_per_request=max(1, int(cfg.batch_size) * 26),

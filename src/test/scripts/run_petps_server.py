@@ -87,15 +87,19 @@ def main():
     print(
         f"[petps-launch] config={args.config_path} servers={server_count} "
         f"clients={args.client_count} control_plane="
-        f"{runner.rdma_control_plane_host}:{runner.rdma_control_plane_port}"
+        f"{runner.rdma_control_plane_host}:{runner.rdma_control_plane_port}",
+        flush=True,
     )
     runner.start()
-    print("[petps-launch] petps server cluster is running. Press Ctrl+C to stop.")
+    print(
+        "[petps-launch] petps server cluster is running. Press Ctrl+C to stop.",
+        flush=True,
+    )
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n[petps-launch] stopping petps server cluster...")
+        print("\n[petps-launch] stopping petps server cluster...", flush=True)
     finally:
         runner.stop()
     return 0

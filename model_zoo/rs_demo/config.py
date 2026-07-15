@@ -102,6 +102,8 @@ class RunConfig:
     read_before_update: bool = True
     read_mode: str = "prefetch"
     prefetch_depth: int = 0
+    prefetch_issue_depth: int = 20
+    recstore_enable_fusion: bool = True
     start_server: bool = True
     server_host: str = "127.0.0.1"
     server_port0: int | None = None
@@ -146,6 +148,7 @@ class RunConfig:
     torchrec_dist_mode: str = "replicated"
     torchrec_memory_mode: str = "hbm"
     torchrec_timing_sync_mode: str = "stage"
+    torchrec_align_recstore_init: bool = False
     torchrec_profiler_warmup: int = 0
     torchrec_profiler_active: int = 2
     torchrec_profiler_repeat: int = 1
@@ -291,6 +294,23 @@ def build_parser() -> argparse.ArgumentParser:
             "0 keeps the legacy issue-and-immediate-wait path."
         ),
     )
+    parser.add_argument(
+        "--prefetch-issue-depth",
+        type=int,
+        default=20,
+        help=(
+            "Maximum future batches with live issued prefetch handles. "
+            "The oracle may still observe --prefetch-depth batches, but this "
+            "caps outstanding network/GPU-cache pressure for large windows. "
+            "Use 0 to match --prefetch-depth."
+        ),
+    )
+    parser.add_argument(
+        "--disable-recstore-fusion",
+        action="store_true",
+        default=False,
+        help="Disable RecStore fused table id path for ablation runs.",
+    )
     parser.add_argument("--start-server", action="store_true", default=True)
     parser.add_argument("--no-start-server", action="store_true")
     parser.add_argument("--server-host", type=str, default="127.0.0.1")
@@ -343,6 +363,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="stage",
         choices=["stage", "step", "none"],
         help="TorchRec CUDA synchronization policy for benchmark timing. stage synchronizes inside each measured stage; step synchronizes only at step boundaries; none avoids explicit timing synchronizes.",
+    )
+    parser.add_argument(
+        "--torchrec-align-recstore-init",
+        action="store_true",
+        default=False,
+        help=(
+            "Validation mode: zero TorchRec embeddings and reset dense-module RNG "
+            "to match RecStore's zero-initialized PS path."
+        ),
     )
     parser.add_argument("--torchrec-profiler-warmup", type=int, default=0)
     parser.add_argument("--torchrec-profiler-active", type=int, default=2)
@@ -407,6 +436,7 @@ def parse_config(argv: list[str] | None = None) -> RunConfig:
     cfg_kwargs = vars(ns).copy()
     cfg_kwargs.pop("no_read_before_update", None)
     cfg_kwargs.pop("no_start_server", None)
+    disable_recstore_fusion = bool(cfg_kwargs.pop("disable_recstore_fusion", False))
     hps_no_materialize = bool(cfg_kwargs.pop("hps_torch_no_materialize_embeddings", False))
     hps_disable_gpucache = bool(cfg_kwargs.pop("hps_torch_disable_gpucache", False))
     if cfg_kwargs["nproc_per_node"] is None:
@@ -414,6 +444,8 @@ def parse_config(argv: list[str] | None = None) -> RunConfig:
     cfg = RunConfig(**cfg_kwargs)
     if ns.no_read_before_update:
         cfg.read_before_update = False
+    if disable_recstore_fusion:
+        cfg.recstore_enable_fusion = False
     if ns.no_start_server:
         cfg.start_server = False
     if hps_no_materialize:
@@ -484,6 +516,8 @@ def validate_recstore_config(cfg: RunConfig) -> None:
         )
     if cfg.prefetch_depth < 0:
         raise RuntimeError("--prefetch-depth must be non-negative")
+    if cfg.prefetch_issue_depth < 0:
+        raise RuntimeError("--prefetch-issue-depth must be non-negative")
     if cfg.tiered_dram_capacity_multiplier < 0:
         raise RuntimeError("--tiered-dram-capacity-multiplier must be non-negative")
     if cfg.enable_single_node_distributed_fast_path:
@@ -551,6 +585,9 @@ def populate_default_paths(cfg: RunConfig) -> None:
         cfg.hps_torch_main_csv = str(outputs_base / "hps_torch_main.csv")
     if not cfg.hps_torch_main_agg_csv:
         cfg.hps_torch_main_agg_csv = str(outputs_base / "hps_torch_main_agg.csv")
+
+    cfg.recstore_main_csv = str(Path(cfg.recstore_main_csv).resolve())
+    cfg.recstore_main_agg_csv = str(Path(cfg.recstore_main_agg_csv).resolve())
 
 
 def ensure_parent_dirs(cfg: RunConfig) -> None:

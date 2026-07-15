@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 
+#include "base/array.h"
 #include "base/flatc.h"
 #include "base/log.h"
 #include "ps/base/parameters.h"
@@ -165,6 +166,31 @@ inline std::size_t UpdatePayloadBytes(
     std::string* payload,
     std::string* error = nullptr) {
   return PutPayloadBytes(keys, values, payload, error);
+}
+
+inline std::size_t UpdatePayloadBytesFlat(
+    base::ConstArray<std::uint64_t> keys,
+    const float* values,
+    std::size_t embedding_dim,
+    std::string* payload,
+    std::string* error = nullptr) {
+  if (payload == nullptr || (keys.Size() > 0 && values == nullptr)) {
+    if (error != nullptr) {
+      *error = "payload buffer or values is null";
+    }
+    return 0;
+  }
+
+  ParameterCompressor compressor;
+  for (std::size_t i = 0; i < keys.Size(); ++i) {
+    compressor.AddItem(
+        ParameterPack(keys[i], static_cast<int>(embedding_dim),
+                      values + i * embedding_dim),
+        nullptr);
+  }
+  payload->clear();
+  compressor.ToBlock(payload);
+  return payload->size();
 }
 
 inline bool CopyTableName(std::string_view table_name,

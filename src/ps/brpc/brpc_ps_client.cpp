@@ -2,6 +2,7 @@
 
 #include <brpc/channel.h>
 #include <fmt/core.h>
+#include <gflags/gflags.h>
 
 #include <cstdint>
 #include <cstring>
@@ -94,6 +95,34 @@ int BuildUpdateBlocksFromFlat(
 DEFINE_int32(brpc_timeout_ms, 5000, "brpc request timeout in milliseconds");
 DEFINE_int32(brpc_max_retry, 3, "brpc max retry times");
 DEFINE_bool(parameter_client_random_init_brpc, false, "");
+DEFINE_bool(brpc_ps_use_rdma,
+            false,
+            "Use RDMA transport for the brpc PS channel (requires brpc built "
+            "with WITH_RDMA=ON).");
+
+namespace {
+
+// The brpc PS client is loaded as a shared library from Python and never calls
+// gflags::ParseCommandLineFlags, so RDMA options are configured from env vars
+// (consistent with the RECSTORE_RDMA_* convention used by the raw-verbs path).
+//   RECSTORE_BRPC_USE_RDMA=1        -> enable RDMA transport
+//   RECSTORE_BRPC_RDMA_DEVICE=mlx5_0 -> select the HCA (maps to brpc -rdma_device)
+bool ResolveBrpcUseRdmaFromEnv(bool fallback) {
+  const char* value = std::getenv("RECSTORE_BRPC_USE_RDMA");
+  if (value == nullptr || *value == '\0') {
+    return fallback;
+  }
+  return std::string(value) != "0";
+}
+
+void ApplyBrpcRdmaDeviceFromEnv() {
+  const char* dev = std::getenv("RECSTORE_BRPC_RDMA_DEVICE");
+  if (dev != nullptr && *dev != '\0') {
+    google::SetCommandLineOption("rdma_device", dev);
+  }
+}
+
+} // namespace
 
 // New constructor that takes JSON config
 BRPCParameterClient::BRPCParameterClient(json config)
@@ -111,13 +140,18 @@ BRPCParameterClient::BRPCParameterClient(json config)
   brpc::ChannelOptions options;
   options.timeout_ms = timeout_ms_;
   options.max_retry  = max_retry_;
+  options.use_rdma   = ResolveBrpcUseRdmaFromEnv(
+      config.value("use_rdma", FLAGS_brpc_ps_use_rdma));
+  if (options.use_rdma) {
+    ApplyBrpcRdmaDeviceFromEnv();
+  }
 
   std::string server_addr = fmt::format("{}:{}", host_, port_);
   if (channel_->Init(server_addr.c_str(), &options) != 0) {
     LOG(ERROR) << "Failed to initialize bRPC channel to " << server_addr;
   } else {
     LOG(INFO) << "Initialized bRPC PS Client Shard " << shard_ << " at "
-              << server_addr;
+              << server_addr << " (use_rdma=" << options.use_rdma << ")";
   }
 }
 
@@ -137,13 +171,17 @@ BRPCParameterClient::BRPCParameterClient(
   brpc::ChannelOptions options;
   options.timeout_ms = timeout_ms_;
   options.max_retry  = max_retry_;
+  options.use_rdma   = ResolveBrpcUseRdmaFromEnv(FLAGS_brpc_ps_use_rdma);
+  if (options.use_rdma) {
+    ApplyBrpcRdmaDeviceFromEnv();
+  }
 
   std::string server_addr = fmt::format("{}:{}", host, port);
   if (channel_->Init(server_addr.c_str(), &options) != 0) {
     LOG(ERROR) << "Failed to initialize bRPC channel to " << server_addr;
   } else {
     LOG(INFO) << "Initialized bRPC PS Client Shard " << shard_ << " at "
-              << server_addr;
+              << server_addr << " (use_rdma=" << options.use_rdma << ")";
   }
 }
 

@@ -4,9 +4,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from run_rdma_rc_transport_benchmark import (  # noqa: E402
+from tools.benchmarks.run_rdma_rc_transport_benchmark import (  # noqa: E402
     _stream_process_output,
     build_benchmark_cmd,
     collect_summary_rows,
@@ -17,7 +15,7 @@ from run_rdma_rc_transport_benchmark import (  # noqa: E402
 
 class TestRunRDMARCTransportBenchmark(unittest.TestCase):
     def test_quiet_mode_filters_progress_lines(self):
-        from run_rdma_rc_transport_benchmark import print_filtered_output  # noqa: E402
+        from tools.benchmarks.run_rdma_rc_transport_benchmark import print_filtered_output  # noqa: E402
 
         text = (
             "transport=RDMA_RC op=async_stream progress stage=complete phase=measure round=1/1 completed=1/1 submitted=1 elapsed_ms=1.0\n"
@@ -91,7 +89,7 @@ class TestRunRDMARCTransportBenchmark(unittest.TestCase):
         self.assertIn("--rdma_rc_server_numa_id=2", cmd)
 
     def test_help_exposes_normalized_rdma_rc_arguments(self):
-        script = Path(__file__).resolve().parent / "run_rdma_rc_transport_benchmark.py"
+        script = Path(__file__).resolve().parents[3] / "tools" / "benchmarks" / "run_rdma_rc_transport_benchmark.py"
         completed = subprocess.run(
             ["python3", str(script), "--help"],
             text=True,

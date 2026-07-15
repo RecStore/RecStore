@@ -6,8 +6,11 @@ from pathlib import Path
 from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 import tools.config.recstore_config_path as recstore_config_path
 import ps_server_helpers
@@ -46,19 +49,19 @@ class TestPSServerHelpers(unittest.TestCase):
         self.assertIsNone(reason)
 
     def test_should_skip_server_start_raises_when_ports_partially_open(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            with mock.patch.object(
-                ps_server_helpers,
-                'get_ports_from_config',
-                return_value=[15000, 15001],
-            ):
-                with mock.patch.object(
-                    ps_server_helpers,
-                    'check_ps_server_running',
-                    return_value=(True, [15000]),
-                ):
-                    with self.assertRaisesRegex(RuntimeError, 'partially available'):
-                        ps_server_helpers.should_skip_server_start()
+        with mock.patch.object(
+            ps_server_helpers,
+            "run_launcher_decision",
+            return_value={
+                "should_start": False,
+                "should_fail": True,
+                "reason": "ps_server ports are partially available: expected=[15000,15001], open=[15000]",
+                "configured_ports": [15000, 15001],
+                "open_ports": [15000],
+            },
+        ):
+            with self.assertRaisesRegex(RuntimeError, "partially available"):
+                ps_server_helpers.should_skip_server_start()
 
 
 if __name__ == '__main__':

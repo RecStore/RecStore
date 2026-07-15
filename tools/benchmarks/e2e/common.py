@@ -60,6 +60,7 @@ class PlanOverrides:
 @dataclass(frozen=True)
 class ExecutionContext:
     remote_train_host: str = ""
+    remote_ssh_port: int = 22
     remote_repo_root: Path = ROOT
     python_bin: str = sys.executable
     nnodes: int = 1

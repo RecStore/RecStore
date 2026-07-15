@@ -55,6 +55,11 @@ public:
   int UpdateParameter(const std::string& table_name,
                       base::ConstArray<uint64_t> keys,
                       const std::vector<std::vector<float>>* grads) override;
+  int SubmitUpdateParameterFlat(const std::string& table_name,
+                                base::ConstArray<uint64_t> keys,
+                                const float* grads,
+                                std::size_t embedding_dim);
+  int WaitUpdateParameter(int rpc_id);
   int FakePutParameter(base::ConstArray<uint64_t> keys, float* values) override;
 
 private:

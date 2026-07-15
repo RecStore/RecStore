@@ -80,10 +80,18 @@ def _process_generic_module_with_trace(mod: Any, lr: float, kv_client: Any):
         summed_grads.index_add_(0, inverse_indices, all_grads)
 
         # Backend sparse optimizers own learning-rate application for these modules.
+        handle = module_kv_client.update_async(name=name, ids=unique_ids, grads=summed_grads)
         handles.append(
             (
                 module_kv_client,
-                module_kv_client.update_async(name=name, ids=unique_ids, grads=summed_grads),
+                handle,
+                {
+                    "module": mod,
+                    "name": name,
+                    "ids": unique_ids.detach(),
+                    "grads": summed_grads.detach(),
+                    "lr": float(lr),
+                },
             )
         )
     return handles
@@ -165,9 +173,12 @@ def _merge_numeric_profile(dst: Dict[str, float], src: Dict[str, Any] | None) ->
             dst[key] = dst.get(key, 0.0) + float(value)
 
 
-def _process_generic_module_with_trace_single_node_distributed(mod: Any) -> None:
+def _process_generic_module_with_trace_single_node_distributed(
+    mod: Any,
+    lr: float,
+) -> List[Dict[str, Any]]:
     if not mod._trace:
-        return
+        return []
 
     dist = torch.distributed
     rank = int(dist.get_rank())
@@ -193,6 +204,7 @@ def _process_generic_module_with_trace_single_node_distributed(mod: Any) -> None
         "owner_aggregate_ms": 0.0,
         "local_update_ms": 0.0,
     }
+    payloads: List[Dict[str, Any]] = []
     collect_start = time.perf_counter()
     traces_by_name = _collect_traces_by_name(mod)
     profile["trace_collect_ms"] += (time.perf_counter() - collect_start) * 1e3
@@ -278,6 +290,15 @@ def _process_generic_module_with_trace_single_node_distributed(mod: Any) -> None
             ids=owner_unique_ids,
             grads=owner_summed_grads,
         )
+        payloads.append(
+            {
+                "module": mod,
+                "name": name,
+                "ids": owner_unique_ids.detach(),
+                "grads": owner_summed_grads.detach(),
+                "lr": float(lr),
+            }
+        )
         profile["local_update_ms"] += (time.perf_counter() - local_update_start) * 1e3
         _merge_numeric_profile(
             profile,
@@ -285,11 +306,15 @@ def _process_generic_module_with_trace_single_node_distributed(mod: Any) -> None
         )
 
     setattr(mod, "_single_node_fast_path_profile", profile)
+    return payloads
 
 
-def _process_generic_module_with_trace_shared_local_shm_single_table(mod: Any) -> None:
+def _process_generic_module_with_trace_shared_local_shm_single_table(
+    mod: Any,
+    lr: float,
+) -> List[Dict[str, Any]]:
     if not mod._trace:
-        return
+        return []
 
     dist = torch.distributed
     dist_available = (
@@ -319,6 +344,7 @@ def _process_generic_module_with_trace_shared_local_shm_single_table(mod: Any) -
         "owner_aggregate_ms": 0.0,
         "local_update_ms": 0.0,
     }
+    payloads: List[Dict[str, Any]] = []
     collect_start = time.perf_counter()
     traces_by_name = _collect_traces_by_name(mod)
     profile["trace_collect_ms"] += (time.perf_counter() - collect_start) * 1e3
@@ -334,6 +360,15 @@ def _process_generic_module_with_trace_shared_local_shm_single_table(mod: Any) -
             ids=local_unique_ids,
             grads=local_summed_grads,
         )
+        payloads.append(
+            {
+                "module": mod,
+                "name": name,
+                "ids": local_unique_ids.detach(),
+                "grads": local_summed_grads.detach(),
+                "lr": float(lr),
+            }
+        )
         profile["local_update_ms"] += (time.perf_counter() - local_update_start) * 1e3
         _merge_numeric_profile(
             profile,
@@ -341,6 +376,7 @@ def _process_generic_module_with_trace_shared_local_shm_single_table(mod: Any) -
         )
 
     setattr(mod, "_single_node_fast_path_profile", profile)
+    return payloads
 
 # --- Core Classes ---
 
@@ -363,6 +399,7 @@ class SparseOptimizer:
         self.param_groups = [{"params": params, "lr": lr}]
         self.kv_client = _get_kv_client_if_needed(params)
         self._inflight_handles: List[Tuple[Any, int]] = []
+        self._last_update_payloads: List[Dict[str, Any]] = []
         self._last_step_profile: Dict[str, float] = {}
         self.reset_perf_stats()
 
@@ -396,6 +433,16 @@ class SparseOptimizer:
             self.reset_perf_stats()
         return stats
 
+    def last_update_payloads(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                **payload,
+                "ids": payload["ids"].detach(),
+                "grads": payload["grads"].detach(),
+            }
+            for payload in self._last_update_payloads
+        ]
+
     def step(self):
         """
         Performs a single optimization step.
@@ -421,10 +468,11 @@ class SparseOptimizer:
         if self.kv_client is None:
             self._inflight_handles.clear()
             return
-        for kv_client, handle in self._inflight_handles:
+        for kv_client, handle, payload in self._inflight_handles:
             t_wait_start = perf_counter()
             kv_client.wait(handle)
             self._perf_add("update_flush_wait_ms", (perf_counter() - t_wait_start) * 1e3)
+            self._last_update_payloads.append(payload)
         self._inflight_handles.clear()
 
 class SparseSGD(SparseOptimizer):
@@ -432,6 +480,7 @@ class SparseSGD(SparseOptimizer):
         """Performs a single Sparse SGD optimization step."""
         with torch.no_grad():
             self._last_step_profile = {}
+            self._last_update_payloads = []
             for group in self.param_groups:
                 lr = group["lr"]
                 for mod in group["params"]:
@@ -439,10 +488,14 @@ class SparseSGD(SparseOptimizer):
                         _process_dist_embedding_module(mod, lr)
                     elif hasattr(mod, '_config_names') and hasattr(mod, '_trace'):
                         if _can_use_shared_local_shm_direct_fast_path(mod):
-                            _process_generic_module_with_trace_shared_local_shm_single_table(mod)
+                            self._last_update_payloads.extend(
+                                _process_generic_module_with_trace_shared_local_shm_single_table(mod, lr)
+                            )
                             self._capture_module_fast_path_profile(mod)
                         elif _can_use_single_node_distributed_fast_path(mod):
-                            _process_generic_module_with_trace_single_node_distributed(mod)
+                            self._last_update_payloads.extend(
+                                _process_generic_module_with_trace_single_node_distributed(mod, lr)
+                            )
                             self._capture_module_fast_path_profile(mod)
                         else:
                             t_enqueue_start = perf_counter()

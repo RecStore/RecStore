@@ -181,9 +181,19 @@ def format_command(cmd: list[str]) -> str:
     return " ".join(shlex.quote(part) for part in cmd)
 
 
-def wrap_remote_command(cmd: list[str], host: str, *, cwd: Path) -> list[str]:
+def wrap_remote_command(
+    cmd: list[str],
+    host: str,
+    *,
+    cwd: Path,
+    ssh_port: int = 22,
+) -> list[str]:
     remote = "cd {cwd} && {cmd}".format(
         cwd=shlex.quote(str(cwd)),
         cmd=" ".join(shlex.quote(part) for part in cmd),
     )
-    return ["ssh", host, remote]
+    ssh_cmd = ["ssh"]
+    if ssh_port != 22:
+        ssh_cmd.extend(["-p", str(ssh_port)])
+    ssh_cmd.extend([host.strip(), remote])
+    return ssh_cmd
