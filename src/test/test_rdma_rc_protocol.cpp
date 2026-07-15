@@ -38,6 +38,29 @@ TEST(RdmaRcProtocolTest, PutPayloadRoundTripBuildsValidReader) {
   EXPECT_FLOAT_EQ(reader->item(1)->data()[1], 4.0f);
 }
 
+TEST(RdmaRcProtocolTest, FlatUpdatePayloadMatchesRowPayload) {
+  std::vector<std::uint64_t> keys        = {10, 20};
+  std::vector<std::vector<float>> values = {{1.0f, 2.0f}, {3.0f, 4.0f}};
+  const std::vector<float> flat_values   = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::string row_payload;
+  std::string flat_payload;
+  std::string error;
+
+  ASSERT_GT(petps::UpdatePayloadBytes(
+                keys, values, &row_payload, &error),
+            0u)
+      << error;
+  ASSERT_GT(petps::UpdatePayloadBytesFlat(
+                base::ConstArray<std::uint64_t>(keys),
+                flat_values.data(),
+                2,
+                &flat_payload,
+                &error),
+            0u)
+      << error;
+  EXPECT_EQ(flat_payload, row_payload);
+}
+
 TEST(RdmaRcProtocolTest, StatusWordDoneRequiresMatchingSeq) {
   petps::StatusWord status;
   petps::ResetStatusWord(&status, 7);

@@ -1,4 +1,19 @@
-# Performance Comparison Capability
+# Performance Comparison Background
+
+This document is legacy background for interpreting performance comparisons and
+labeling benchmark layers. It is not the source of truth for current benchmark
+commands, defaults, lanes, or report formats.
+
+Use the matching benchmark skill first:
+
+- E2E RecStore/TorchRec benchmarks:
+  `.agents/skills/benchmark-e2e/SKILL.md`
+- PS, transport, and RDMA benchmarks:
+  `.agents/skills/benchmark-ps/SKILL.md`
+- KVEngine and storage-only benchmarks:
+  `.agents/skills/benchmark-kvengine/SKILL.md`
+
+When this document disagrees with a matching skill, follow the skill.
 
 ## 1. Scope
 
@@ -39,39 +54,26 @@ Model integration benchmark, usually through `model_zoo/rs_demo`.
 This layer includes ID preparation, lookup wait, EmbeddingBag pooling, sparse
 update scheduling, backward, and Python runner overhead.
 
-## 3. Default Matrix
+## 3. Workload Matrix
 
-Default DRAM backend (matches root `recstore_config.json`):
+Do not use this document to choose current default lanes or parameters. The
+benchmark skills define the current workload matrix for E2E, PS, RDMA, and
+KVEngine work.
 
-- `KVEngineComposite` + `DRAM_PET_HASH` + `DRAM_VALUE_STORE` + `CONCURRENT_SLAB_MEMORY_POOL`
-
-Additional DRAM comparison lanes:
-
-- `DRAM_UNORDERED_MAP + DRAM_VALUE_STORE`
-- `DRAM_EXTENDIBLE_HASH + DRAM_VALUE_STORE`
-- third-party backends only at integrated layers
-
-Baseline parameters:
-
-```text
-value_size = 512
-record_count = 1,000,000
-batch_size = 1024
-threads = 16
-distribution = uniform
-```
-
-For paper reproduction, use the paper parameters instead of this baseline.
+For any comparison, record the actual backend, PS type, index type, value store,
+allocator, transport, value size, key or row scale, batch size, distribution,
+runtime, warmup, repeat count, and topology used in that run.
 
 ## 4. Workflow
 
-1. Check branch, dirty files, and stale benchmark binaries.
-2. Run storage-only benchmarks first if measuring degradation.
-3. Run PS/network benchmarks with matching value size, key count, operation, and
+1. Read the matching benchmark skill and use it for commands and report format.
+2. Check branch, dirty files, and stale benchmark binaries.
+3. Run storage-only benchmarks first if measuring degradation.
+4. Run PS/network benchmarks with matching value size, key count, operation, and
    backend where possible.
-4. Run PyTorch/model benchmarks after lower layers are understood.
-5. Aggregate raw results into CSV files.
-6. Report ratios only when numerator and denominator use compatible operation
+5. Run PyTorch/model benchmarks after lower layers are understood.
+6. Aggregate raw results into CSV files.
+7. Report ratios only when numerator and denominator use compatible operation
    and layer semantics.
 
 ## 5. Required Records
@@ -136,6 +138,7 @@ Before concluding, confirm:
 - GPU/HBM assumptions stated for TorchRec or GPU paths
 - shared-memory and RPC results not collapsed into one generic conclusion
 - CPU affinity, readiness, timeout, and allocator warnings recorded
+- skill-specific preflight checks completed or skipped with reasons
 
 ## 8. Interpretation Rules
 
@@ -160,5 +163,6 @@ Common caveats:
   storage engines' advantage.
 - Third-party storage-only numbers do not belong in PS/network or PyTorch tables
   until those integrations exist.
-- `PersistLoopShmMalloc` is acceptable for local bring-up when `R2ShmMalloc` is
-  unstable, but the report must say so.
+- Allocator substitutions, startup workarounds, failed lanes, skips, and
+  timeouts must be stated in the report instead of silently folded into a
+  throughput table.

@@ -23,7 +23,7 @@ struct LauncherOptions {
   std::optional<std::string> override_ps_type;
   std::vector<int> override_ports;
   std::optional<int> local_shard_id;
-  std::filesystem::path log_dir     = "./logs";
+  std::filesystem::path log_dir     = "/tmp/recstore_ps";
   int startup_timeout_sec           = 60;
   int graceful_shutdown_timeout_sec = 5;
   int startup_delay_ms              = 2000;
@@ -59,7 +59,6 @@ public:
   static LaunchDecision EvaluateLaunchDecision(const LauncherOptions& options);
   static std::vector<int>
   ExtractPortsFromConfig(const std::filesystem::path& config_path);
-  static std::vector<int> FindAvailablePorts(size_t count);
   static std::optional<int> ParseReadyShard(const std::string& line);
   static std::string FormatRecentLogsForErrorForTest(
       const std::vector<std::string>& logs, size_t max_lines);

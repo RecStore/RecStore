@@ -11,6 +11,8 @@ class _FakeOps:
         self.lookup_calls = []
         self.update_calls = []
         self.prefill_calls = []
+        self.gpu_cache_sgd_update_calls = []
+        self.emb_read_calls = []
         self.update_clear_gpu_cache_call_counts = []
         self.backend_switch_calls = []
         self.clear_gpu_cache_calls = 0
@@ -27,12 +29,28 @@ class _FakeOps:
         rows = keys.numel()
         return torch.arange(rows * int(embedding_dim), dtype=torch.float32).view(rows, int(embedding_dim))
 
+    def emb_read(self, keys: torch.Tensor, embedding_dim: int) -> torch.Tensor:
+        self.emb_read_calls.append((keys.clone(), int(embedding_dim)))
+        rows = keys.numel()
+        return torch.arange(rows * int(embedding_dim), dtype=torch.float32).view(rows, int(embedding_dim))
+
     def local_update_flat(self, table_name: str, keys: torch.Tensor, grads: torch.Tensor) -> None:
         self.update_clear_gpu_cache_call_counts.append(self.clear_gpu_cache_calls)
         self.update_calls.append((table_name, keys.clone(), grads.clone()))
 
     def prefill_gpu_cache(self, keys: torch.Tensor, values: torch.Tensor) -> None:
         self.prefill_calls.append((keys.clone(), values.clone()))
+
+    def apply_sgd_update_gpu_cache(
+        self,
+        keys: torch.Tensor,
+        grads: torch.Tensor,
+        learning_rate: float,
+    ) -> bool:
+        self.gpu_cache_sgd_update_calls.append(
+            (keys.clone(), grads.clone(), float(learning_rate))
+        )
+        return True
 
     def clear_gpu_cache(self) -> None:
         self.clear_gpu_cache_calls += 1
@@ -90,6 +108,36 @@ class TestKVClientLocalFastPath(unittest.TestCase):
         called_keys, called_values = client.ops.prefill_calls[0]
         self.assertTrue(torch.equal(called_keys, keys))
         self.assertTrue(torch.equal(called_values, values))
+        self.assertEqual(client._gpu_cache_table_name, "table_a")
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required for GPU-cache-aware pull coverage")
+    def test_pull_with_gpu_cache_keeps_cuda_ids(self):
+        client = self._build_client(backend="BRPC")
+        device = torch.device("cuda", 0)
+
+        keys = torch.tensor([7, 3], dtype=torch.int64, device=device)
+        client.pull_with_gpu_cache("table_a", keys)
+
+        self.assertEqual(len(client.ops.emb_read_calls), 1)
+        called_keys, called_dim = client.ops.emb_read_calls[0]
+        self.assertEqual(called_keys.device.type, "cuda")
+        self.assertTrue(torch.equal(called_keys, keys))
+        self.assertEqual(called_dim, 4)
+
+    def test_apply_sgd_update_gpu_cache_forwards_to_ops(self):
+        client = self._build_client()
+
+        keys = torch.tensor([7, 3], dtype=torch.int64)
+        grads = torch.ones((2, 4), dtype=torch.float32)
+        self.assertTrue(
+            client.apply_sgd_update_gpu_cache("table_a", keys, grads, learning_rate=0.25)
+        )
+
+        self.assertEqual(len(client.ops.gpu_cache_sgd_update_calls), 1)
+        called_keys, called_grads, called_lr = client.ops.gpu_cache_sgd_update_calls[0]
+        self.assertTrue(torch.equal(called_keys, keys))
+        self.assertTrue(torch.equal(called_grads, grads))
+        self.assertEqual(called_lr, 0.25)
         self.assertEqual(client._gpu_cache_table_name, "table_a")
 
     @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required for CPU-normalization regression coverage")

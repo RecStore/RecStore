@@ -8,9 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from run_benchmark_ps import (  # noqa: E402
+from tools.benchmarks.run_benchmark_ps import (  # noqa: E402
     apply_interactive_prompts,
     build_benchmark_cmd,
     build_rdma_runner,
@@ -637,7 +635,7 @@ class TestRunBenchmarkPS(unittest.TestCase):
         self.assertEqual(args.output_dir, Path("/tmp/bench-out"))
 
     def test_help_mentions_remote_and_topology_args(self):
-        script = Path(__file__).resolve().parent / "run_benchmark_ps.py"
+        script = Path(__file__).resolve().parents[3] / "tools" / "benchmarks" / "run_benchmark_ps.py"
         completed = subprocess.run(
             ["python3", str(script), "--help"],
             text=True,

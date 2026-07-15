@@ -1,0 +1,4 @@
+interface:
+  display_name: "Loss Aligned"
+  short_description: "Validate aligned RecStore and TorchRec loss trajectories"
+  default_prompt: "Use $loss-aligned to run matched RecStore and TorchRec jobs and verify their per-step loss trajectories."

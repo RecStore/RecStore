@@ -8,10 +8,17 @@ from pathlib import Path
 from typing import Any
 
 from ..commands import _run, format_command
-from ..common import ROOT, _load_manifest, _write_csv
+from ..common import ROOT, _has_rdma, _load_manifest, _write_csv
 from .config import BenchmarkConfig, infer_client_deployment, infer_ps_deployment, torchrec_label
 from .report import collect_summary_rows, render_summary_md
-from .runtime import build_client_command, build_runtime_config, build_server_command, build_torchrec_command
+from .runtime import (
+    build_client_command,
+    build_runtime_config,
+    build_server_command,
+    build_torchrec_command,
+    start_rdma_ps_cluster,
+    stop_rdma_ps_cluster,
+)
 
 
 def _write_json(path: Path, data: Any) -> None:
@@ -30,14 +37,15 @@ def _write_deployment(path: Path, cfg: BenchmarkConfig, transports: tuple[str, .
     ]
     for client in cfg.clients:
         lines.append(
-            f"  - ssh_host={client.ssh_host}, repo={client.repo_root}, ip={client.ip}, "
-            f"gpu={client.gpu_id}, node_rank={client.node_rank}, nproc_per_node={client.nproc_per_node}"
+            f"  - ssh_host={client.ssh_host}, ssh_port={client.ssh_port}, repo={client.repo_root}, "
+            f"ip={client.ip}, gpu={client.gpu_id}, node_rank={client.node_rank}, "
+            f"nproc_per_node={client.nproc_per_node}"
         )
     lines.append("ps:")
     for server in cfg.servers:
         lines.append(
-            f"  - ssh_host={server.ssh_host}, repo={server.repo_root}, ip={server.ip}, "
-            f"port={server.port}, shard={server.shard_id}"
+            f"  - ssh_host={server.ssh_host}, ssh_port={server.ssh_port}, repo={server.repo_root}, "
+            f"ip={server.ip}, ps_port={server.port}, shard={server.shard_id}"
         )
     lines.extend(
         [
@@ -140,17 +148,31 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
 
     if not cfg.skip_build and not dry_run:
         _checked_run(["cmake", "-S", ".", "-B", "build"], cwd=ROOT)
-        _checked_run(["cmake", "--build", "build", "--target", "ps_server", "-j"], cwd=ROOT)
+        build_targets = ["ps_server"]
+        if any(transport.upper() == "RDMA" for transport in transports):
+            build_targets.append("petps_server")
+        _checked_run(["cmake", "--build", "build", "--target", *build_targets, "-j"], cwd=ROOT)
     if not cfg.skip_tests and not dry_run:
-        _checked_run(
-            [
-                "ctest",
-                "-R",
-                "brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_server_launcher|test_ps_client_factory|test_allshards_ps_client",
-                "--output-on-failure",
-            ],
-            cwd=ROOT,
-        )
+        if any(transport.upper() == "RDMA" for transport in transports):
+            _checked_run(
+                [
+                    "ctest",
+                    "-R",
+                    "test_rdma_rc_protocol|test_raw_verbs_allocator|test_rdmaps_client_adapter|test_allshards_ps_client",
+                    "--output-on-failure",
+                ],
+                cwd=ROOT,
+            )
+        else:
+            _checked_run(
+                [
+                    "ctest",
+                    "-R",
+                    "brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_server_launcher|test_ps_client_factory|test_allshards_ps_client",
+                    "--output-on-failure",
+                ],
+                cwd=ROOT,
+            )
 
     for transport in transports:
         transport_lower = transport.lower()
@@ -163,34 +185,62 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
         )
         _write_json(config_path, runtime)
         processes: list[subprocess.Popen[Any]] = []
+        rdma_runner = None
         try:
-            for server in cfg.servers:
-                server_cmd = build_server_command(server=server, runtime_config=config_path, transport=transport)
-                commands.append(format_command(server_cmd))
-                if not dry_run:
-                    processes.append(
-                        _start_process(
-                            server_cmd,
-                            log_path=logs_dir / f"{transport_lower}_server_shard{server.shard_id}.log",
-                            cwd=server.repo_root,
+            if transport.upper() != "RDMA":
+                for server in cfg.servers:
+                    server_cmd = build_server_command(server=server, runtime_config=config_path, transport=transport)
+                    commands.append(format_command(server_cmd))
+                    if not dry_run:
+                        processes.append(
+                            _start_process(
+                                server_cmd,
+                                log_path=logs_dir / f"{transport_lower}_server_shard{server.shard_id}.log",
+                                cwd=server.repo_root,
+                            )
                         )
-                    )
-            if processes:
-                time.sleep(3.0)
+                if processes:
+                    time.sleep(3.0)
             for repeat_index in range(cfg.repeat):
+                if transport.upper() == "RDMA":
+                    if not _has_rdma():
+                        raise RuntimeError("RDMA verbs devices are not available on the PS host")
+                    first_server = sorted(cfg.servers, key=lambda item: item.shard_id)[0]
+                    if not dry_run:
+                        stop_rdma_ps_cluster(rdma_runner)
+                        rdma_runner = start_rdma_ps_cluster(
+                            cfg=cfg,
+                            config_path=config_path,
+                            log_path=logs_dir / f"{transport_lower}_server_shard0_r{repeat_index}.log",
+                            control_plane_host=first_server.ip,
+                        )
+                        _write_json(
+                            runtime_dir / "rdma_env.json",
+                            {
+                                "namespace": rdma_runner.rdma_namespace,
+                                "control_plane_host": first_server.ip,
+                                "control_plane_port": rdma_runner.rdma_control_plane_port,
+                            },
+                        )
+                        time.sleep(2.0)
+                group_run_id = (
+                    f"{transport_lower}_b{cfg.batch_size}_d{cfg.embedding_dim}"
+                    f"_r{repeat_index}"
+                )
                 client_entries: list[dict[str, Any]] = []
                 for client in cfg.clients:
-                    run_id = f"{transport_lower}_b{cfg.batch_size}_d{cfg.embedding_dim}_r{repeat_index}_n{client.node_rank}"
                     client_cmd = build_client_command(
                         cfg=cfg,
                         transport=transport,
                         client=client,
-                        run_id=run_id,
+                        run_id=group_run_id,
+                        rdzv_id=group_run_id,
+                        rdma_runner=rdma_runner,
                     )
-                    log_path = logs_dir / f"{run_id}.log"
-                    main_csv = cfg.output_dir / "outputs" / run_id / "recstore_main.csv"
+                    log_path = logs_dir / f"{group_run_id}_n{client.node_rank}.log"
+                    main_csv = cfg.output_dir / "outputs" / group_run_id / "recstore_main.csv"
                     row = {
-                        "run_id": run_id,
+                        "run_id": group_run_id,
                         "lane": transport,
                         "backend": "recstore",
                         "transport": transport,
@@ -212,25 +262,30 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
                     manifest=manifest,
                 )
         finally:
+            stop_rdma_ps_cluster(rdma_runner)
             _stop_processes(processes)
 
     for memory_mode in cfg.torchrec_baselines:
         lane = torchrec_label(memory_mode)
         mode_slug = memory_mode.replace("_", "")
         for repeat_index in range(cfg.repeat):
+            group_run_id = (
+                f"torchrec_{mode_slug}_b{cfg.batch_size}_d{cfg.embedding_dim}"
+                f"_r{repeat_index}"
+            )
             client_entries = []
             for client in cfg.clients:
-                run_id = f"torchrec_{mode_slug}_b{cfg.batch_size}_d{cfg.embedding_dim}_r{repeat_index}_n{client.node_rank}"
                 client_cmd = build_torchrec_command(
                     cfg=cfg,
                     memory_mode=memory_mode,
                     client=client,
-                    run_id=run_id,
+                    run_id=group_run_id,
+                    rdzv_id=group_run_id,
                 )
-                log_path = logs_dir / f"{run_id}.log"
-                main_csv = cfg.output_dir / "outputs" / run_id / "torchrec_main.csv"
+                log_path = logs_dir / f"{group_run_id}_n{client.node_rank}.log"
+                main_csv = cfg.output_dir / "outputs" / group_run_id / "torchrec_main.csv"
                 row = {
-                    "run_id": run_id,
+                    "run_id": group_run_id,
                     "lane": lane,
                     "backend": "torchrec",
                     "transport": "",

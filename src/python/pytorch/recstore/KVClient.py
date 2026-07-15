@@ -260,6 +260,32 @@ class RecStoreClient:
         
         return res
 
+    def pull_with_gpu_cache(self, name: str, ids: torch.Tensor) -> torch.Tensor:
+        """Pull rows while preserving CUDA ids so the backend can use GPU cache."""
+        if name not in self._tensor_meta:
+            raise RuntimeError(f"Tensor '{name}' has not been initialized.")
+
+        meta = self._tensor_meta[name]
+        embedding_dim = meta['shape'][1]
+        ids = self._normalize_ids(ids, preserve_device=True)
+        self._reject_gpu_cache_reserved_ids(ids)
+
+        start_t = time.time()
+        res = self.ops.emb_read(ids, embedding_dim)
+        end_t = time.time()
+
+        start_us = int(start_t * 1e6)
+        duration_us = (end_t - start_t) * 1e6
+        report_metric("embread_stages", f"KVClient::pull_with_gpu_cache|{start_us}", "duration_us", duration_us)
+        report_metric(
+            "embread_stages",
+            f"KVClient::pull_with_gpu_cache|{start_us}",
+            "request_size",
+            float(ids.numel()),
+        )
+
+        return res
+
     def _normalize_ids(
         self,
         ids: torch.Tensor,
@@ -415,6 +441,51 @@ class RecStoreClient:
         if ids.device.type == "cpu":
             self._reject_gpu_cache_reserved_ids(ids)
         prefill(ids, values)
+
+    def invalidate_gpu_cache(self, name: str, ids: torch.Tensor) -> None:
+        if name not in self._tensor_meta:
+            raise RuntimeError(f"Tensor '{name}' has not been initialized.")
+        invalidator = getattr(self.ops, "invalidate_gpu_cache", None)
+        if not callable(invalidator):
+            raise RuntimeError(
+                "invalidate_gpu_cache requires a RecStore ops library exposing "
+                "invalidate_gpu_cache()."
+            )
+        self._ensure_gpu_cache_table(name)
+        ids = self._normalize_ids(ids, preserve_device=True)
+        if ids.device.type == "cpu":
+            if torch.cuda.is_available():
+                ids = ids.to(torch.device("cuda", torch.cuda.current_device()))
+            else:
+                raise RuntimeError("invalidate_gpu_cache requires CUDA ids")
+        invalidator(ids)
+
+    def apply_sgd_update_gpu_cache(
+        self,
+        name: str,
+        ids: torch.Tensor,
+        grads: torch.Tensor,
+        *,
+        learning_rate: float,
+    ) -> bool:
+        if name not in self._tensor_meta:
+            raise RuntimeError(f"Tensor '{name}' has not been initialized.")
+        updater = getattr(self.ops, "apply_sgd_update_gpu_cache", None)
+        if not callable(updater):
+            raise RuntimeError(
+                "apply_sgd_update_gpu_cache requires a RecStore ops library exposing "
+                "apply_sgd_update_gpu_cache()."
+            )
+        self._ensure_gpu_cache_table(name)
+        ids = self._normalize_ids(ids, preserve_device=True)
+        grads = self._normalize_grads(grads, preserve_device=True)
+        if grads.dim() != 2:
+            raise ValueError("grads must be a 2-dimensional tensor")
+        if ids.size(0) != grads.size(0):
+            raise ValueError("ids and grads must have the same number of rows")
+        if ids.device.type == "cpu":
+            self._reject_gpu_cache_reserved_ids(ids)
+        return bool(updater(ids, grads, float(learning_rate)))
 
     def set_gpu_cache_lookup_bypass_enabled(self, enabled: bool) -> None:
         setter = getattr(self.ops, "set_gpu_cache_lookup_bypass_enabled", None)

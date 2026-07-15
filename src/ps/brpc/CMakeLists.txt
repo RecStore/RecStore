@@ -87,9 +87,9 @@ if(brpc_FOUND)
         ${CUSTOM_PROTOBUF_LIB}   
         ${SYSTEM_OPENSSL_SSL_LIB}     
         ${SYSTEM_OPENSSL_CRYPTO_LIB} 
-        ZLIB::ZLIB              
-        Threads::Threads         
-        dl                       
+        ZLIB::ZLIB
+        Threads::Threads
+        dl
         gflags
         leveldb
     )
@@ -145,8 +145,8 @@ if(brpc_FOUND)
         target_link_libraries(brpc_ps_server PUBLIC report_client)
     endif()
 
-    # Distributed bRPC PS Client
-    add_library(dist_brpc_ps_client
+    # Distributed bRPC PS Client (SHARED so FACTORY_REGISTER static init is linked)
+    add_library(dist_brpc_ps_client SHARED
         dist_brpc_ps_client.cpp dist_brpc_ps_client.h
     )
     target_include_directories(dist_brpc_ps_client PUBLIC ${BRPC_INCLUDE_PATH})

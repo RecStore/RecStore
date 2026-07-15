@@ -286,6 +286,14 @@ class TestSparseOptimizerSingleNodeDistributed(unittest.TestCase):
                 ),
             )
         )
+        payloads = optimizer.last_update_payloads()
+        self.assertEqual(len(payloads), 1)
+        payload = payloads[0]
+        self.assertIs(payload["module"], mod)
+        self.assertEqual(payload["name"], "table0")
+        self.assertEqual(payload["lr"], 0.1)
+        self.assertTrue(torch.equal(payload["ids"], ids))
+        self.assertTrue(torch.equal(payload["grads"], grads))
         profile = getattr(mod, "_single_node_fast_path_profile", None)
         self.assertIsInstance(profile, dict)
         self.assertEqual(profile.get("exchange_ms"), 0.0)

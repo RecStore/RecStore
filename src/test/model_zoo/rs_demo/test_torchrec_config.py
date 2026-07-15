@@ -123,6 +123,17 @@ class TestTorchRecConfig(unittest.TestCase):
         )
         self.assertEqual(cfg.torchrec_timing_sync_mode, "step")
 
+    def test_torchrec_align_recstore_init_parses(self) -> None:
+        cfg = parse_config(
+            [
+                "--backend",
+                "torchrec",
+                "--torchrec-align-recstore-init",
+            ]
+        )
+
+        self.assertTrue(cfg.torchrec_align_recstore_init)
+
     def test_recstore_ps_type_accepts_rdma(self) -> None:
         cfg = parse_config(
             [
@@ -595,6 +606,85 @@ class TestTorchRecConfig(unittest.TestCase):
 
             self.assertEqual(rc, 0)
 
+    def test_cli_recstore_resolves_relative_runtime_and_csv_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            base_cfg = {
+                "client": {"host": "127.0.0.1", "port": 15123, "shard": 0},
+                "cache_ps": {"servers": []},
+                "distributed_client": {"servers": []},
+            }
+            (repo_root / "recstore_config.json").write_text(
+                json.dumps(base_cfg),
+                encoding="utf-8",
+            )
+            shared_runtime = repo_root / "relative-runtime"
+            shared_runtime.mkdir()
+            (shared_runtime / "recstore_config.json").write_text(
+                json.dumps(base_cfg),
+                encoding="utf-8",
+            )
+            captured = {}
+
+            class _FakeRunner:
+                def run(self, repo_root, cfg):
+                    captured["runtime_dir"] = cfg.recstore_runtime_dir
+                    captured["RECSTORE_CONFIG"] = os.environ.get("RECSTORE_CONFIG")
+                    captured["recstore_main_csv"] = cfg.recstore_main_csv
+                    Path(cfg.recstore_main_csv).parent.mkdir(parents=True, exist_ok=True)
+                    Path(cfg.recstore_main_csv).write_text(
+                        "step_total_ms,input_pack_ms,embed_lookup_local_ms,embed_pool_local_ms,output_unpack_ms,dense_fwd_ms,backward_ms,optimizer_ms,sparse_update_ms,emb_stage_ms\n"
+                        "1.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,1.0\n",
+                        encoding="utf-8",
+                    )
+                    return {"backend": "recstore", "rows": []}
+
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(repo_root)
+                with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(
+                    cli, "build_runner", return_value=_FakeRunner()
+                ), mock.patch.object(
+                    cli, "repo_root_from_this_file", return_value=repo_root
+                ), mock.patch.object(
+                    cli,
+                    "make_runtime_dir",
+                    side_effect=AssertionError("make_runtime_dir should not be called"),
+                ), mock.patch.object(
+                    cli, "analyze_embupdate", return_value="ok"
+                ):
+                    rc = cli.main(
+                        [
+                            "--backend",
+                            "recstore",
+                            "--steps",
+                            "1",
+                            "--no-start-server",
+                            "--output-root",
+                            str(repo_root),
+                            "--run-id",
+                            "recstore-relative-runtime",
+                            "--recstore-runtime-dir",
+                            "relative-runtime",
+                            "--recstore-main-csv",
+                            "relative-artifacts/recstore_main.csv",
+                        ]
+                    )
+            finally:
+                os.chdir(old_cwd)
+
+            expected_runtime = shared_runtime.resolve()
+            self.assertEqual(rc, 0)
+            self.assertEqual(captured["runtime_dir"], str(expected_runtime))
+            self.assertEqual(
+                captured["RECSTORE_CONFIG"],
+                str(expected_runtime / "recstore_config.json"),
+            )
+            self.assertEqual(
+                captured["recstore_main_csv"],
+                str((repo_root / "relative-artifacts/recstore_main.csv").resolve()),
+            )
+
     def test_cli_recstore_assigns_generated_runtime_dir_back_to_cfg(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_root = Path(tmpdir)
@@ -726,6 +816,9 @@ class TestTorchRecConfig(unittest.TestCase):
                     captured["RECSTORE_RDMA_CONTROL_PLANE_PORT"] = os.environ.get(
                         "RECSTORE_RDMA_CONTROL_PLANE_PORT"
                     )
+                    captured["RECSTORE_RDMA_GET_RESPONSE_MODE"] = os.environ.get(
+                        "RECSTORE_RDMA_GET_RESPONSE_MODE"
+                    )
                     Path(cfg.recstore_main_csv).parent.mkdir(parents=True, exist_ok=True)
                     Path(cfg.recstore_main_csv).write_text(
                         "step_total_ms,input_pack_ms,embed_lookup_local_ms,embed_pool_local_ms,output_unpack_ms,dense_fwd_ms,backward_ms,optimizer_ms,sparse_update_ms,emb_stage_ms\n"
@@ -782,6 +875,9 @@ class TestTorchRecConfig(unittest.TestCase):
             self.assertEqual(captured["RECSTORE_CONFIG"], str(runtime_config))
             self.assertEqual(captured["RECSTORE_RDMA_RC_NAMESPACE"], "test-rdma-ns")
             self.assertEqual(captured["RECSTORE_RDMA_CONTROL_PLANE_PORT"], "32123")
+            self.assertEqual(
+                captured["RECSTORE_RDMA_GET_RESPONSE_MODE"], "direct_sg"
+            )
             self.assertEqual(start_rdma.call_count, 1)
             self.assertEqual(stop_rdma.call_count, 1)
 

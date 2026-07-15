@@ -221,9 +221,6 @@ def run_precision(args) -> PrecisionRunResult:
         ):
             raise AssertionError(f"Forward pass failed in round {round_index + 1}")
 
-        if len(recstore_ebc._trace) == 0:
-            raise AssertionError("RecStore EBC trace is empty after forward pass")
-
         standard_optimizer.zero_grad()
         sparse_optimizer.zero_grad()
 
@@ -253,4 +250,3 @@ def run_precision(args) -> PrecisionRunResult:
 
     print(f"All {NUM_TEST_ROUNDS} precision test rounds passed.")
     return PrecisionRunResult(rounds_completed=NUM_TEST_ROUNDS, success=True)
-

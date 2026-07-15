@@ -768,6 +768,65 @@ int PetPSClient::UpdateParameter(const std::string& table_name,
   return 0;
 }
 
+int PetPSClient::SubmitUpdateParameterFlat(
+    const std::string& table_name,
+    base::ConstArray<uint64_t> keys,
+    const float* grads,
+    std::size_t embedding_dim) {
+  if (keys.Size() == 0) {
+    return 0;
+  }
+  if (grads == nullptr || embedding_dim == 0 ||
+      keys.Size() > static_cast<std::size_t>(FLAGS_max_kv_num_per_request)) {
+    return -1;
+  }
+
+  std::string payload;
+  std::string error;
+  const std::size_t payload_bytes = UpdatePayloadBytesFlat(
+      keys, grads, embedding_dim, &payload, &error);
+  if (payload_bytes == 0) {
+    throw std::runtime_error("RC UPDATE payload build failed: " + error);
+  }
+
+  std::lock_guard<std::mutex> guard(mu_);
+  EnsureThreadInitializedLocked();
+  const SlotHandle slot_handle = AcquireIdleSlot();
+  auto& slot = SlotAt(slot_handle.qp_index, slot_handle.slot_in_qp);
+  RequestDescriptor descriptor;
+  FillUpdateDescriptor(
+      &descriptor,
+      slot.next_seq++,
+      keys.Size(),
+      payload_bytes,
+      table_name,
+      slot.view);
+  if (!RequestPayloadFitsSlot(payload_bytes)) {
+    slot.busy = false;
+    throw std::runtime_error("UPDATE request exceeds RC request slot");
+  }
+  float* recv = AllocateStatusReceiveBufferLocked();
+  return SubmitRpcLocked(
+      &slot, descriptor, payload.data(), payload_bytes, recv, 0, 0, true);
+}
+
+int PetPSClient::WaitUpdateParameter(int rpc_id) {
+  if (rpc_id == 0) {
+    return 0;
+  }
+  WaitRPCFinish(rpc_id);
+  PendingRpc pending;
+  {
+    std::lock_guard<std::mutex> guard(mu_);
+    if (!PendingRpcLocked(rpc_id, &pending)) {
+      return -1;
+    }
+  }
+  const auto status = *reinterpret_cast<const std::int32_t*>(pending.recv_buffer);
+  RevokeRPCResource(rpc_id);
+  return status == static_cast<std::int32_t>(RpcStatus::kOk) ? 0 : -1;
+}
+
 int PetPSClient::FakePutParameter(base::ConstArray<uint64_t> keys,
                                   float* values) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);

@@ -89,6 +89,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Run E2E benchmark commands through ssh on this host/container.",
     )
     parser.add_argument(
+        "--remote-ssh-port",
+        type=int,
+        default=22,
+        help="SSH port for --remote-train-host (default: 22).",
+    )
+    parser.add_argument(
         "--remote-repo-root",
         type=Path,
         default=ROOT,
@@ -157,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     plan = build_plan(args.profile, output_root, overrides)
     context = ExecutionContext(
         remote_train_host=args.remote_train_host,
+        remote_ssh_port=args.remote_ssh_port,
         remote_repo_root=args.remote_repo_root,
         python_bin=args.remote_python_bin,
         nnodes=args.nnodes,

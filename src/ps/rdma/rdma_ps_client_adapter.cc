@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -18,7 +19,6 @@
 
 #include "framework/common/ps_client_config_adapter.h"
 #include "ps/base/config.h"
-#include "base/hash.h"
 #include "ps/rdma/rdma_common.h"
 #include "ps/rdma/rc_options.h"
 
@@ -27,6 +27,10 @@ DECLARE_int32(num_server_processes);
 DECLARE_int32(num_client_processes);
 DECLARE_int32(value_size);
 DECLARE_int32(max_kv_num_per_request);
+DECLARE_int32(rdma_rc_client_id_base);
+DECLARE_int32(rdma_rc_num_logical_clients);
+DECLARE_int32(rdma_control_plane_timeout_ms);
+DECLARE_string(rdma_get_response_mode);
 DECLARE_string(rdma_transport_mode);
 DEFINE_string(rdma_transport_mode, "rc_write", "RDMA transport mode: rc_write");
 DEFINE_bool(rdma_adapter_skip_prefetch_result_copy,
@@ -36,20 +40,34 @@ DEFINE_bool(rdma_adapter_skip_prefetch_result_copy,
 
 namespace recstore {
 
+namespace detail {
+
+bool TryParseIntEnv(const char* env_name, int* parsed_value) {
+  const char* value = std::getenv(env_name);
+  if (value == nullptr || *value == '\0') {
+    return false;
+  }
+  char* end         = nullptr;
+  const long parsed = std::strtol(value, &end, 10);
+  if (end == value || *end != '\0') {
+    return false;
+  }
+  *parsed_value = static_cast<int>(parsed);
+  return true;
+}
+
+} // namespace detail
+
 namespace {
+
 bool AdapterProfileEnabled() {
   const char* value = std::getenv("RECSTORE_RDMA_ADAPTER_PROFILE");
   return value != nullptr && std::string(value) != "0";
 }
 
 void SetIntFlagFromEnv(const char* env_name, int32_t* flag_value) {
-  const char* value = std::getenv(env_name);
-  if (value == nullptr || *value == '\0') {
-    return;
-  }
-  char* end         = nullptr;
-  const long parsed = std::strtol(value, &end, 10);
-  if (end != value && *end == '\0') {
+  int parsed = 0;
+  if (detail::TryParseIntEnv(env_name, &parsed)) {
     *flag_value = static_cast<int32_t>(parsed);
   }
 }
@@ -61,8 +79,19 @@ void ApplyRdmaFlagsFromEnv() {
   if (const char* value = std::getenv("RECSTORE_RDMA_CONTROL_PLANE_HOST")) {
     FLAGS_rdma_control_plane_host = value;
   }
+  if (const char* value = std::getenv("RECSTORE_RDMA_GET_RESPONSE_MODE")) {
+    const std::string mode(value);
+    if (mode != "direct_sg" && mode != "staging_copy") {
+      throw std::runtime_error(
+          "RECSTORE_RDMA_GET_RESPONSE_MODE must be direct_sg or staging_copy");
+    }
+    FLAGS_rdma_get_response_mode = mode;
+  }
   SetIntFlagFromEnv(
       "RECSTORE_RDMA_CONTROL_PLANE_PORT", &FLAGS_rdma_control_plane_port);
+  SetIntFlagFromEnv(
+      "RECSTORE_RDMA_CONTROL_PLANE_TIMEOUT_MS",
+      &FLAGS_rdma_control_plane_timeout_ms);
   SetIntFlagFromEnv(
       "RECSTORE_RDMA_WAIT_TIMEOUT_MS", &FLAGS_rdma_wait_timeout_ms);
   SetIntFlagFromEnv("RECSTORE_RDMA_RC_QPS_PER_CLIENT_PER_SHARD",
@@ -120,92 +149,50 @@ std::vector<std::string> ReadProcessArgv() {
 }
 } // namespace
 
-int RDMAPSClientAdapter::PartitionKey(uint64_t key) const {
-  CHECK_GT(num_shards_, 0);
-  if (hash_method_ == "city_hash") {
-    return static_cast<int>(GetHash(key) % static_cast<uint64_t>(num_shards_));
+EmbeddedRdmaClientIdentity ResolveEmbeddedRdmaClientIdentity(int num_shards) {
+  if (num_shards <= 0) {
+    throw std::runtime_error("embedded RDMA num_shards must be positive");
   }
-  if (hash_method_ == "simple_mod") {
-    return static_cast<int>(key % static_cast<uint64_t>(num_shards_));
+
+  int client_index = 0;
+  if (!detail::TryParseIntEnv("RECSTORE_RDMA_OS_CLIENT_INDEX", &client_index) &&
+      !detail::TryParseIntEnv("RANK", &client_index)) {
+    detail::TryParseIntEnv("LOCAL_RANK", &client_index);
   }
-  throw std::runtime_error("unsupported shard hash method: " + hash_method_);
+
+  int num_client_processes = 1;
+  if (!detail::TryParseIntEnv("RECSTORE_RDMA_NUM_CLIENT_PROCESSES",
+                              &num_client_processes) &&
+      !detail::TryParseIntEnv("WORLD_SIZE", &num_client_processes)) {
+    detail::TryParseIntEnv("LOCAL_WORLD_SIZE", &num_client_processes);
+  }
+
+  if (client_index < 0) {
+    throw std::runtime_error("embedded RDMA client index must be non-negative");
+  }
+  if (num_client_processes <= 0) {
+    throw std::runtime_error(
+        "embedded RDMA num_client_processes must be positive");
+  }
+  if (client_index >= num_client_processes) {
+    throw std::runtime_error(
+        "embedded RDMA client index out of range for num_client_processes");
+  }
+
+  EmbeddedRdmaClientIdentity identity;
+  identity.client_index         = client_index;
+  identity.num_client_processes = num_client_processes;
+  identity.global_id            = num_shards + client_index;
+  return identity;
 }
 
 std::vector<RDMAPSClientAdapter::ShardChunk>
 RDMAPSClientAdapter::BuildChunks(base::ConstArray<uint64_t> keys) const {
-  std::vector<std::vector<uint64_t>> shard_keys(num_shards_);
-  std::vector<std::vector<std::size_t>> shard_positions(num_shards_);
-
-  for (std::size_t i = 0; i < keys.Size(); ++i) {
-    const int shard = PartitionKey(keys[i]);
-    shard_keys[static_cast<std::size_t>(shard)].push_back(keys[i]);
-    shard_positions[static_cast<std::size_t>(shard)].push_back(i);
-  }
-
-  std::vector<ShardChunk> chunks;
-  const std::size_t max_keys_per_rpc = MaxGetKeysPerRpc();
-  for (int shard = 0; shard < num_shards_; ++shard) {
-    const int client_index = shard_to_client_index_.at(shard);
-    for (std::size_t offset = 0;
-         offset < shard_keys[static_cast<std::size_t>(shard)].size();
-         offset += max_keys_per_rpc) {
-      const std::size_t end =
-          std::min(offset + max_keys_per_rpc,
-                   shard_keys[static_cast<std::size_t>(shard)].size());
-      ShardChunk chunk;
-      chunk.shard_id     = shard;
-      chunk.client_index = client_index;
-      chunk.keys.assign(
-          shard_keys[static_cast<std::size_t>(shard)].begin() + offset,
-          shard_keys[static_cast<std::size_t>(shard)].begin() + end);
-      chunk.positions.assign(
-          shard_positions[static_cast<std::size_t>(shard)].begin() + offset,
-          shard_positions[static_cast<std::size_t>(shard)].begin() + end);
-      chunks.push_back(std::move(chunk));
-    }
-  }
-  return chunks;
-}
-
-bool RDMAPSClientAdapter::FinalizeBatchIfNeeded(BatchRequest* batch) {
-  if (batch == nullptr) {
-    return false;
-  }
-  if (batch->assembled) {
-    return batch->status_code ==
-           static_cast<std::int32_t>(petps::RpcStatus::kOk);
-  }
-
-  batch->status_code = static_cast<std::int32_t>(petps::RpcStatus::kOk);
-  for (const auto& pending : batch->shard_rpcs) {
-    const auto* status_word = petps::FixedSlotStatusWord(
-        pending.recv_buffer, pending.key_count, FLAGS_value_size);
-    if (*status_word != static_cast<std::int32_t>(petps::RpcStatus::kOk)) {
-      batch->status_code = *status_word;
-      break;
-    }
-  }
-
-  const int embedding_dim = FLAGS_value_size / sizeof(float);
-  if (batch->status_code == static_cast<std::int32_t>(petps::RpcStatus::kOk)) {
-    for (const auto& pending : batch->shard_rpcs) {
-      const float* shard_values =
-          static_cast<const float*>(pending.recv_buffer);
-      for (std::size_t i = 0; i < pending.original_positions.size(); ++i) {
-        std::memcpy(
-            batch->user_buffer + pending.original_positions[i] * embedding_dim,
-            shard_values + i * embedding_dim,
-            FLAGS_value_size);
-      }
-    }
-  }
-
-  auto* batch_status_word = reinterpret_cast<std::int32_t*>(
-      reinterpret_cast<char*>(batch->user_buffer) +
-      batch->total_key_count * static_cast<std::size_t>(FLAGS_value_size));
-  *batch_status_word = batch->status_code;
-  batch->assembled   = true;
-  return batch->status_code == static_cast<std::int32_t>(petps::RpcStatus::kOk);
+  return shard_routing::BuildChunks(keys,
+                                    num_shards_,
+                                    hash_method_,
+                                    shard_to_client_index_,
+                                    MaxGetKeysPerRpc());
 }
 
 void RDMAPSClientAdapter::WaitShardRpcsCooperatively(
@@ -270,15 +257,20 @@ void RDMAPSClientAdapter::EnsureClientInitialized() {
   const json client_cfg =
       config_.contains("client") ? config_["client"] : json::object();
   const json dist_cfg = ResolveFrameworkDistributedClientConfig(config_);
-  const int logical_client_id =
-      config_.value("rdma_logical_client_id", FLAGS_rdma_rc_client_id_base);
 
   num_shards_  = dist_cfg.value("num_shards", 1);
   hash_method_ = dist_cfg.value("hash_method", "city_hash");
   if (FLAGS_global_id < num_shards_) {
+    const auto identity = ResolveEmbeddedRdmaClientIdentity(num_shards_);
     FLAGS_num_server_processes = num_shards_;
-    FLAGS_num_client_processes = 1;
-    FLAGS_global_id            = num_shards_;
+    FLAGS_num_client_processes = identity.num_client_processes;
+    FLAGS_global_id            = identity.global_id;
+    if (FLAGS_rdma_rc_num_logical_clients < 0) {
+      FLAGS_rdma_rc_num_logical_clients = identity.num_client_processes;
+    }
+    if (FLAGS_rdma_rc_client_id_base < 0) {
+      FLAGS_rdma_rc_client_id_base = identity.client_index;
+    }
   } else if (FLAGS_num_server_processes != num_shards_) {
     throw std::runtime_error(
         "RDMA num_server_processes must match distributed_client.num_shards");
@@ -293,6 +285,9 @@ void RDMAPSClientAdapter::EnsureClientInitialized() {
   if (const char* mode = std::getenv("RECSTORE_RDMA_TRANSPORT_MODE")) {
     FLAGS_rdma_transport_mode = mode;
   }
+
+  const int logical_client_id =
+      config_.value("rdma_logical_client_id", FLAGS_rdma_rc_client_id_base);
 
   shard_clients_.clear();
   shard_to_client_index_.clear();
@@ -397,6 +392,25 @@ std::size_t RDMAPSClientAdapter::MaxGetKeysPerRpc() const {
   return std::max<std::size_t>(limit, 1);
 }
 
+std::size_t RDMAPSClientAdapter::MaxPutKeysPerRpc() const {
+  const std::size_t payload_budget = petps::PutPayloadBudget(
+      static_cast<std::size_t>(FLAGS_rdma_rc_request_slot_bytes));
+  const std::size_t embedding_dim =
+      static_cast<std::size_t>(DefaultEmbeddingDimOrThrow());
+  const std::size_t bytes_per_row =
+      sizeof(ParameterCompressItem) + embedding_dim * sizeof(float) +
+      sizeof(int);
+  std::size_t limit = static_cast<std::size_t>(FLAGS_max_kv_num_per_request);
+  if (payload_budget > sizeof(int) && bytes_per_row > 0) {
+    const std::size_t request_limited =
+        (payload_budget - sizeof(int)) / bytes_per_row;
+    if (request_limited > 0) {
+      limit = std::min(limit, request_limited);
+    }
+  }
+  return std::max<std::size_t>(limit, 1);
+}
+
 std::size_t RDMAPSClientAdapter::MaxInFlightGetRpcs() const {
   const std::size_t qps = static_cast<std::size_t>(
       std::max(FLAGS_rdma_rc_qps_per_client_per_shard, 1));
@@ -442,7 +456,7 @@ bool RDMAPSClientAdapter::QueryRPCFinished(int rpc_id) {
     }
   }
 
-  return FinalizeBatchIfNeeded(&it->second);
+  return shard_routing::FinalizeBatchIfNeeded(&it->second, FLAGS_value_size);
 }
 
 void RDMAPSClientAdapter::WaitRPCFinish(int rpc_id) {
@@ -470,7 +484,7 @@ void RDMAPSClientAdapter::WaitRPCFinish(int rpc_id) {
     std::lock_guard<std::mutex> guard(batches_mu_);
     auto it = batches_.find(rpc_id);
     CHECK(it != batches_.end());
-    FinalizeBatchIfNeeded(&it->second);
+    shard_routing::FinalizeBatchIfNeeded(&it->second, FLAGS_value_size);
   }
 }
 
@@ -718,14 +732,32 @@ int RDMAPSClientAdapter::PutParameter(
     const base::ConstArray<uint64_t>& keys,
     const std::vector<std::vector<float>>& values) {
   EnsureThreadInitialized();
+  if (keys.Size() != values.size()) {
+    return -1;
+  }
+  const std::size_t max_keys_per_rpc = MaxPutKeysPerRpc();
   if (num_shards_ <= 1) {
     if (client_ == nullptr) {
       return -1;
     }
-    return client_->PutParameter(keys.ToVector(), values);
-  }
-  if (keys.Size() != values.size()) {
-    return -1;
+    const std::size_t key_count = static_cast<std::size_t>(keys.Size());
+    for (std::size_t offset = 0; offset < key_count;
+         offset += max_keys_per_rpc) {
+      const std::size_t end = std::min(offset + max_keys_per_rpc, key_count);
+      std::vector<uint64_t> key_slice;
+      key_slice.reserve(end - offset);
+      for (std::size_t i = offset; i < end; ++i) {
+        key_slice.push_back(keys[i]);
+      }
+      std::vector<std::vector<float>> value_slice(
+          values.begin() + static_cast<std::ptrdiff_t>(offset),
+          values.begin() + static_cast<std::ptrdiff_t>(end));
+      const int rc = client_->PutParameter(key_slice, value_slice);
+      if (rc != 0) {
+        return rc;
+      }
+    }
+    return 0;
   }
   if (keys.Size() == 0) {
     return 0;
@@ -735,7 +767,8 @@ int RDMAPSClientAdapter::PutParameter(
   std::vector<std::vector<std::vector<float>>> shard_values(num_shards_);
 
   for (std::size_t i = 0; i < keys.Size(); ++i) {
-    const int shard = PartitionKey(keys[i]);
+    const int shard =
+        shard_routing::PartitionKey(keys[i], num_shards_, hash_method_);
     shard_keys[static_cast<std::size_t>(shard)].push_back(keys[i]);
     shard_values[static_cast<std::size_t>(shard)].push_back(values[i]);
   }
@@ -744,9 +777,9 @@ int RDMAPSClientAdapter::PutParameter(
     const int client_index = shard_to_client_index_.at(shard);
     for (std::size_t offset = 0;
          offset < shard_keys[static_cast<std::size_t>(shard)].size();
-         offset += static_cast<std::size_t>(FLAGS_max_kv_num_per_request)) {
+         offset += max_keys_per_rpc) {
       const std::size_t end = std::min(
-          offset + static_cast<std::size_t>(FLAGS_max_kv_num_per_request),
+          offset + max_keys_per_rpc,
           shard_keys[static_cast<std::size_t>(shard)].size());
       std::vector<uint64_t> key_slice(
           shard_keys[static_cast<std::size_t>(shard)].begin() + offset,
@@ -776,11 +809,30 @@ int RDMAPSClientAdapter::UpdateParameter(
     return 0;
   }
   EnsureThreadInitialized();
+  const std::size_t max_keys_per_rpc = MaxPutKeysPerRpc();
   if (num_shards_ <= 1) {
     if (client_ == nullptr) {
       return -1;
     }
-    return client_->UpdateParameter(table_name, keys, grads);
+    const std::size_t key_count = static_cast<std::size_t>(keys.Size());
+    for (std::size_t offset = 0; offset < key_count;
+         offset += max_keys_per_rpc) {
+      const std::size_t end = std::min(offset + max_keys_per_rpc, key_count);
+      std::vector<uint64_t> key_slice;
+      key_slice.reserve(end - offset);
+      for (std::size_t i = offset; i < end; ++i) {
+        key_slice.push_back(keys[i]);
+      }
+      std::vector<std::vector<float>> grad_slice(
+          grads->begin() + static_cast<std::ptrdiff_t>(offset),
+          grads->begin() + static_cast<std::ptrdiff_t>(end));
+      const int rc = client_->UpdateParameter(
+          table_name, base::ConstArray<uint64_t>(key_slice), &grad_slice);
+      if (rc != 0) {
+        return rc;
+      }
+    }
+    return 0;
   }
   if (keys.Size() != grads->size()) {
     return -1;
@@ -793,7 +845,8 @@ int RDMAPSClientAdapter::UpdateParameter(
   std::vector<std::vector<std::vector<float>>> shard_grads(num_shards_);
 
   for (std::size_t i = 0; i < keys.Size(); ++i) {
-    const int shard = PartitionKey(keys[i]);
+    const int shard =
+        shard_routing::PartitionKey(keys[i], num_shards_, hash_method_);
     shard_keys[static_cast<std::size_t>(shard)].push_back(keys[i]);
     shard_grads[static_cast<std::size_t>(shard)].push_back((*grads)[i]);
   }
@@ -803,14 +856,24 @@ int RDMAPSClientAdapter::UpdateParameter(
       continue;
     }
     const int client_index = shard_to_client_index_.at(shard);
-    const int rc =
-        shard_clients_[static_cast<std::size_t>(client_index)]->UpdateParameter(
-            table_name,
-            base::ConstArray<uint64_t>(
-                shard_keys[static_cast<std::size_t>(shard)]),
-            &shard_grads[static_cast<std::size_t>(shard)]);
-    if (rc != 0) {
-      return rc;
+    for (std::size_t offset = 0;
+         offset < shard_keys[static_cast<std::size_t>(shard)].size();
+         offset += max_keys_per_rpc) {
+      const std::size_t end = std::min(
+          offset + max_keys_per_rpc,
+          shard_keys[static_cast<std::size_t>(shard)].size());
+      std::vector<uint64_t> key_slice(
+          shard_keys[static_cast<std::size_t>(shard)].begin() + offset,
+          shard_keys[static_cast<std::size_t>(shard)].begin() + end);
+      std::vector<std::vector<float>> grad_slice(
+          shard_grads[static_cast<std::size_t>(shard)].begin() + offset,
+          shard_grads[static_cast<std::size_t>(shard)].begin() + end);
+      const int rc =
+          shard_clients_[static_cast<std::size_t>(client_index)]->UpdateParameter(
+              table_name, base::ConstArray<uint64_t>(key_slice), &grad_slice);
+      if (rc != 0) {
+        return rc;
+      }
     }
   }
   return 0;
@@ -826,25 +889,87 @@ int RDMAPSClientAdapter::UpdateParameterFlat(
   if (num_rows == 0) {
     return 0;
   }
-  if (grads == nullptr) {
+  if (num_rows < 0 || grads == nullptr) {
     return -1;
   }
   if (keys.Size() != static_cast<std::size_t>(num_rows)) {
     return -1;
   }
-  std::vector<std::vector<float>> updated;
-  updated.reserve(static_cast<std::size_t>(num_rows));
-  for (int64_t row = 0; row < num_rows; ++row) {
-    std::vector<float> values(static_cast<std::size_t>(embedding_dim), 0.0f);
-    for (int64_t col = 0; col < embedding_dim; ++col) {
-      const std::size_t idx =
-          static_cast<std::size_t>(row * embedding_dim + col);
-      values[static_cast<std::size_t>(col)] = grads[idx];
+  EnsureThreadInitialized();
+  const std::size_t max_keys_per_rpc = MaxPutKeysPerRpc();
+  const std::size_t dim = static_cast<std::size_t>(embedding_dim);
+
+  if (num_shards_ <= 1) {
+    for (std::size_t offset = 0; offset < keys.Size();
+         offset += max_keys_per_rpc) {
+      const std::size_t count =
+          std::min(max_keys_per_rpc, keys.Size() - offset);
+      const int rpc_id = shard_clients_.front()->SubmitUpdateParameterFlat(
+          table_name,
+          base::ConstArray<uint64_t>(keys.Data() + offset, count),
+          grads + offset * dim,
+          dim);
+      if (rpc_id < 0 ||
+          shard_clients_.front()->WaitUpdateParameter(rpc_id) != 0) {
+        return -1;
+      }
     }
-    updated.push_back(std::move(values));
+    return 0;
   }
 
-  return UpdateParameter(table_name, keys, &updated);
+  std::vector<std::vector<uint64_t>> shard_keys(num_shards_);
+  std::vector<std::vector<float>> shard_grads(num_shards_);
+  for (std::size_t row = 0; row < keys.Size(); ++row) {
+    const int shard =
+        shard_routing::PartitionKey(keys[row], num_shards_, hash_method_);
+    auto& keys_for_shard = shard_keys[static_cast<std::size_t>(shard)];
+    auto& grads_for_shard = shard_grads[static_cast<std::size_t>(shard)];
+    keys_for_shard.push_back(keys[row]);
+    grads_for_shard.insert(
+        grads_for_shard.end(), grads + row * dim, grads + (row + 1) * dim);
+  }
+
+  std::vector<std::pair<int, int>> pending;
+  pending.reserve(static_cast<std::size_t>(num_shards_));
+  auto wait_pending = [this, &pending]() {
+    int result = 0;
+    for (const auto& [client_index, rpc_id] : pending) {
+      if (shard_clients_[static_cast<std::size_t>(client_index)]
+              ->WaitUpdateParameter(rpc_id) != 0) {
+        result = -1;
+      }
+    }
+    pending.clear();
+    return result;
+  };
+
+  for (int shard = 0; shard < num_shards_; ++shard) {
+    const auto& keys_for_shard = shard_keys[static_cast<std::size_t>(shard)];
+    const auto& grads_for_shard = shard_grads[static_cast<std::size_t>(shard)];
+    const int client_index = shard_to_client_index_.at(shard);
+    for (std::size_t offset = 0; offset < keys_for_shard.size();
+         offset += max_keys_per_rpc) {
+      const std::size_t count =
+          std::min(max_keys_per_rpc, keys_for_shard.size() - offset);
+      const int rpc_id =
+          shard_clients_[static_cast<std::size_t>(client_index)]
+              ->SubmitUpdateParameterFlat(
+                  table_name,
+                  base::ConstArray<uint64_t>(keys_for_shard.data() + offset,
+                                             count),
+                  grads_for_shard.data() + offset * dim,
+                  dim);
+      if (rpc_id < 0) {
+        wait_pending();
+        return -1;
+      }
+      pending.emplace_back(client_index, rpc_id);
+      if (pending.size() >= MaxInFlightGetRpcs() && wait_pending() != 0) {
+        return -1;
+      }
+    }
+  }
+  return wait_pending();
 }
 
 int RDMAPSClientAdapter::InitEmbeddingTable(

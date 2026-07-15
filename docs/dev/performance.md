@@ -10,17 +10,17 @@ RecStore 内置了完善的性能埋点与分析机制，涵盖了从 PyTorch OP
 
 用 Claude Code/Cursor/Codex 跑性能基准时，先按**测试层级**选 skill（定义在仓库 `.agents/skills/`）。
 
-| 测试层级 | 测什么 | 使用 skill | 主要入口 |
-|---|---|---|---|
-| **storage-only** | KVEngine（纯本地，无 PS 传输） | [benchmark-kvengine](../../.agents/skills/benchmark-kvengine/SKILL.md) | `tools/benchmarks/run_kvengine_compare.py` |
-| **PS/network** | 本机或指定拓扑上的 GRPC / BRPC / RDMA 等传输 | [benchmark-ps](../../.agents/skills/benchmark-ps/SKILL.md) | `tools/benchmarks/run_benchmark_ps.py` |
-| **PS/network（跨机 RDMA）** | 多机容器 + SSH 的 RDMA PS 压测与对照 | [cross-host-rdma-ps](../../.agents/skills/cross-host-rdma-ps/SKILL.md) | 同上 `run_benchmark_ps.py`，`--execution-backend ssh` |
-| **RDMA 代码/正确性** | `src/ps/rdma` 修改、PetPS/RDMA 测试、profile 解读 | [rdma-module](../../.agents/skills/rdma-module/SKILL.md) | RDMA 单测与 RC transport benchmark |
-| **跨层汇总 / 论文式报告** | 端到端 | [benchmark-e2e](../../.agents/skills/benchmark-e2e/SKILL.md) | `tools/benchmarks/run_paper_e2e.py` |
+
+| 测试层级                    | 测什么                                       | 使用 skill                                                                   | 主要入口                                               |
+| ----------------------- | ----------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------- |
+| **storage-only**        | KVEngine（纯本地，无 PS 传输）                     | [benchmark-kvengine](../../.agents/skills/benchmark-kvengine/SKILL.md)     | `tools/benchmarks/run_kvengine_compare.py`         |
+| **PS/network**          | 本机或指定拓扑上的 GRPC / BRPC / RDMA 等传输          | [benchmark-ps](../../.agents/skills/benchmark-ps/SKILL.md)                 | `tools/benchmarks/run_benchmark_ps.py`             |
+| **端到端**                 | 端到端                                       | [benchmark-e2e](../../.agents/skills/benchmark-e2e/SKILL.md) | `tools/benchmarks/run_bench_e2e.py`                |
 
 不要把某一层的结果直接扩展成整体架构结论。当前 RDMA GET 的阶段性结论对齐了
 storage-only 的 `BatchGetFlat(500 random keys)` 和 PS/network 的
 RDMA GET `batch_keys=500`，结论是：
+
 
 目前的性能数据（由于机器配置不同），仅供参考，PS启动了16核，RDMA网卡为200 Gbps：
 
@@ -260,4 +260,5 @@ RecStore 的 Grafana 看板基于 `report()` 函数上报链路，完整链路�
 | `ps_client_latency`  | `latency_us`                                                             | PS 客户端侧延迟         |
 | `ps_server_latency`  | `latency_us`                                                             | PS 服务端侧延迟         |
 | `emb_read_flame_map` | `level`、`value`、`self`、`start`                                           | 火焰图分层结构数据         |
+
 

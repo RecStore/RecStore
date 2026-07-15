@@ -166,7 +166,8 @@ class TestBenchE2E(unittest.TestCase):
             nproc_per_node=1,
         )
         context = ExecutionContext(
-            remote_train_host="root@10.0.2.191 -p 50201",
+            remote_train_host="root@10.0.2.191",
+            remote_ssh_port=50201,
             remote_repo_root=Path("/remote/RecStore"),
             python_bin="/usr/bin/python3",
             nnodes=2,
@@ -192,7 +193,12 @@ class TestBenchE2E(unittest.TestCase):
             embedding_dim=128,
             master_port=29600,
         )
-        remote = wrap_remote_command(cmd, context.remote_train_host, cwd=context.remote_repo_root)
+        remote = wrap_remote_command(
+            cmd,
+            context.remote_train_host,
+            cwd=context.remote_repo_root,
+            ssh_port=context.remote_ssh_port,
+        )
 
         self.assertEqual(cmd[0], "/usr/bin/python3")
         self.assertIn("/remote/RecStore/model_zoo/rs_demo/run_mock_stress.py", cmd)
@@ -206,8 +212,10 @@ class TestBenchE2E(unittest.TestCase):
         self.assertIn("--nnodes", cmd)
         self.assertIn("2", cmd)
         self.assertEqual(remote[0], "ssh")
-        self.assertEqual(remote[1], "root@10.0.2.191 -p 50201")
-        self.assertIn("cd /remote/RecStore &&", remote[2])
+        self.assertEqual(remote[1], "-p")
+        self.assertEqual(remote[2], "50201")
+        self.assertEqual(remote[3], "root@10.0.2.191")
+        self.assertIn("cd /remote/RecStore &&", remote[4])
 
     def test_collect_e2e_summary_computes_rows_per_second(self) -> None:
         from tools.benchmarks.run_bench_e2e import collect_e2e_summary

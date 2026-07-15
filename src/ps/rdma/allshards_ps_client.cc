@@ -9,7 +9,6 @@
 #include <thread>
 #include <vector>
 
-#include "base/hash.h"
 #include "ps/rdma/rdma_common.h"
 
 DECLARE_int32(value_size);
@@ -37,90 +36,15 @@ AllShardsParameterClientWrapper::AllShardsParameterClientWrapper(
   }
 }
 
-int AllShardsParameterClientWrapper::PartitionKey(uint64_t key) const {
-  CHECK_GT(num_shards_, 0);
-  if (hash_method_ == "city_hash") {
-    return static_cast<int>(GetHash(key) % static_cast<uint64_t>(num_shards_));
-  }
-  if (hash_method_ == "simple_mod") {
-    return static_cast<int>(key % static_cast<uint64_t>(num_shards_));
-  }
-  throw std::runtime_error("unsupported shard hash method: " + hash_method_);
-}
-
 std::vector<AllShardsParameterClientWrapper::ShardChunk>
 AllShardsParameterClientWrapper::BuildChunks(
     base::ConstArray<uint64_t> keys) const {
-  std::vector<std::vector<uint64_t>> shard_keys(num_shards_);
-  std::vector<std::vector<std::size_t>> shard_positions(num_shards_);
-
-  for (std::size_t i = 0; i < keys.Size(); ++i) {
-    const int shard = PartitionKey(keys[i]);
-    shard_keys[static_cast<std::size_t>(shard)].push_back(keys[i]);
-    shard_positions[static_cast<std::size_t>(shard)].push_back(i);
-  }
-
-  std::vector<ShardChunk> chunks;
-  for (int shard = 0; shard < num_shards_; ++shard) {
-    const int client_index = shard_to_client_index_.at(shard);
-    for (std::size_t offset = 0;
-         offset < shard_keys[static_cast<std::size_t>(shard)].size();
-         offset += static_cast<std::size_t>(FLAGS_max_kv_num_per_request)) {
-      const std::size_t end = std::min(
-          offset + static_cast<std::size_t>(FLAGS_max_kv_num_per_request),
-          shard_keys[static_cast<std::size_t>(shard)].size());
-      ShardChunk chunk;
-      chunk.shard_id     = shard;
-      chunk.client_index = client_index;
-      chunk.keys.assign(
-          shard_keys[static_cast<std::size_t>(shard)].begin() + offset,
-          shard_keys[static_cast<std::size_t>(shard)].begin() + end);
-      chunk.positions.assign(
-          shard_positions[static_cast<std::size_t>(shard)].begin() + offset,
-          shard_positions[static_cast<std::size_t>(shard)].begin() + end);
-      chunks.push_back(std::move(chunk));
-    }
-  }
-  return chunks;
-}
-
-bool AllShardsParameterClientWrapper::FinalizeBatchIfNeeded(
-    BatchRequest* batch) {
-  if (batch->assembled) {
-    return batch->status_code ==
-           static_cast<std::int32_t>(petps::RpcStatus::kOk);
-  }
-
-  batch->status_code = static_cast<std::int32_t>(petps::RpcStatus::kOk);
-  for (const auto& pending : batch->shard_rpcs) {
-    const auto* status_word = petps::FixedSlotStatusWord(
-        pending.recv_buffer, pending.key_count, FLAGS_value_size);
-    if (*status_word != static_cast<std::int32_t>(petps::RpcStatus::kOk)) {
-      batch->status_code = *status_word;
-      break;
-    }
-  }
-
-  const int embedding_dim = FLAGS_value_size / sizeof(float);
-  if (batch->status_code == static_cast<std::int32_t>(petps::RpcStatus::kOk)) {
-    for (const auto& pending : batch->shard_rpcs) {
-      const float* shard_values =
-          static_cast<const float*>(pending.recv_buffer);
-      for (std::size_t i = 0; i < pending.original_positions.size(); ++i) {
-        std::memcpy(
-            batch->user_buffer + pending.original_positions[i] * embedding_dim,
-            shard_values + i * embedding_dim,
-            FLAGS_value_size);
-      }
-    }
-  }
-
-  auto* batch_status_word = reinterpret_cast<std::int32_t*>(
-      reinterpret_cast<char*>(batch->user_buffer) +
-      batch->total_key_count * static_cast<std::size_t>(FLAGS_value_size));
-  *batch_status_word = batch->status_code;
-  batch->assembled   = true;
-  return batch->status_code == static_cast<std::int32_t>(petps::RpcStatus::kOk);
+  return recstore::shard_routing::BuildChunks(
+      keys,
+      num_shards_,
+      hash_method_,
+      shard_to_client_index_,
+      static_cast<std::size_t>(FLAGS_max_kv_num_per_request));
 }
 
 void AllShardsParameterClientWrapper::WaitShardRpcsCooperatively(
@@ -259,7 +183,8 @@ bool AllShardsParameterClientWrapper::QueryRPCFinished(int rpc_id) {
     }
   }
 
-  return FinalizeBatchIfNeeded(&it->second);
+  return recstore::shard_routing::FinalizeBatchIfNeeded(&it->second,
+                                                        FLAGS_value_size);
 }
 
 void AllShardsParameterClientWrapper::WaitRPCFinish(int rpc_id) {
@@ -280,7 +205,8 @@ void AllShardsParameterClientWrapper::WaitRPCFinish(int rpc_id) {
     std::lock_guard<std::mutex> guard(batches_mu_);
     auto it = batches_.find(rpc_id);
     CHECK(it != batches_.end());
-    FinalizeBatchIfNeeded(&it->second);
+    recstore::shard_routing::FinalizeBatchIfNeeded(&it->second,
+                                                   FLAGS_value_size);
   }
 }
 
@@ -305,7 +231,8 @@ int AllShardsParameterClientWrapper::PutParameter(
   std::vector<std::vector<std::vector<float>>> shard_values(num_shards_);
 
   for (std::size_t i = 0; i < keys.size(); ++i) {
-    const int shard = PartitionKey(keys[i]);
+    const int shard =
+        recstore::shard_routing::PartitionKey(keys[i], num_shards_, hash_method_);
     shard_keys[static_cast<std::size_t>(shard)].push_back(keys[i]);
     shard_values[static_cast<std::size_t>(shard)].push_back(values[i]);
   }
@@ -366,7 +293,8 @@ int AllShardsParameterClientWrapper::UpdateParameter(
   std::vector<std::vector<std::vector<float>>> shard_grads(num_shards_);
 
   for (std::size_t i = 0; i < keys.Size(); ++i) {
-    const int shard = PartitionKey(keys[i]);
+    const int shard =
+        recstore::shard_routing::PartitionKey(keys[i], num_shards_, hash_method_);
     shard_keys[static_cast<std::size_t>(shard)].push_back(keys[i]);
     shard_grads[static_cast<std::size_t>(shard)].push_back((*grads)[i]);
   }

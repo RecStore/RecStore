@@ -12,9 +12,21 @@ more specific instruction.
 
 ## Task-Specific Guides
 
-Read the relevant guide before doing specialized work:
+Read the relevant current guide before doing specialized work. Prefer the
+task-specific skills for benchmark execution details; keep root guidance focused
+on repository-wide rules.
 
-- Performance comparisons and benchmark reports: `docs/agent/perf.md`
+- End-to-end RecStore/TorchRec benchmarks: `.agents/skills/benchmark-e2e/SKILL.md`
+- Parameter Server, transport, or RDMA benchmarks:
+  `.agents/skills/benchmark-ps/SKILL.md`
+- KVEngine and storage-only benchmarks:
+  `.agents/skills/benchmark-kvengine/SKILL.md`
+- General performance interpretation and layer-labeling background:
+  `docs/agent/perf.md`
+
+When a skill and `docs/agent/perf.md` disagree, treat the matching skill as the
+source of truth for commands, defaults, current benchmark lanes, and report
+format.
 
 ## Git Rules
 
@@ -26,6 +38,8 @@ Read the relevant guide before doing specialized work:
 - Assume the worktree may be dirty. Do not revert unrelated user changes.
 - Do not commit transient AI planning files or scratch artifacts such as
   `docs/superpowers/specs/*`.
+- Do not commit generated benchmark outputs, temporary runtime directories, or
+  large local result artifacts unless explicitly requested.
 
 ## Development Workflow
 
@@ -83,13 +97,11 @@ Prioritize correctness before performance. Pay special attention to:
   fail loudly.
 - Async-looking APIs are not automatically safe; verify handle uniqueness and
   visibility semantics.
-- For correctness, stable `prefetch + immediate wait` is better than a
-  misleading async path.
-- For local benchmark bring-up, first get a stable closed loop. If
-  `R2ShmMalloc` makes `ps_server` unstable, `PersistLoopShmMalloc` is acceptable
-  as a temporary baseline, but state it in the report.
-- A result comparing `TorchRec-Local-HBM` with `RecStore-Local-RPC` is a lane
-  observation, not architecture-level proof.
+- For correctness, prefer explicit submit, wait, and consume boundaries until an
+  async path has proven handle uniqueness, ordering, and visibility semantics.
+- Treat cross-resource or cross-layer benchmark comparisons as lane observations,
+  not architecture-level proof. Use the benchmark skills for current lane names,
+  ablation definitions, and reporting requirements.
 
 ## Testing
 
@@ -104,6 +116,7 @@ Useful verification layers:
 - `model_zoo/rs_demo` smoke and benchmark runs
 - compiled targets in `build/`
 - server/client smoke tests against `ps_server`
+- benchmark-specific tests and preflight commands from the matching skill
 
 ## PyTorch Client Verification
 
@@ -113,8 +126,9 @@ When asked to validate baseline PyTorch client operability:
 2. Run `make -j` inside `build/`.
 3. Start `./build/bin/ps_server --config_path ./recstore_config.json`.
 4. Confirm shards listen on the ports in `recstore_config.json`.
-5. Run `ctest -R pytorch_client_test -VV` inside `build/`.
-6. Stop the manually started server.
+5. Inspect available tests with `ctest -N | rg pytorch_client`.
+6. Run the narrow matching `pytorch_client` test with `ctest -R ... -VV`.
+7. Stop the manually started server.
 
 ## Editing Safety
 
@@ -124,5 +138,3 @@ When asked to validate baseline PyTorch client operability:
 - Ask only when conflicting changes make the right resolution unclear.
 - Keep patches scoped to the task.
 - Do not present hypothetical fixes as completed work.
-- Do not say tests pass unless you ran them.
-

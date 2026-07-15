@@ -1,14 +1,11 @@
 import json
-import sys
 import tempfile
 import unittest
 from io import StringIO
 from pathlib import Path
 from contextlib import redirect_stdout
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from run_local_shm_mixed_benchmark import (  # noqa: E402
+from tools.benchmarks.run_local_shm_mixed_benchmark import (  # noqa: E402
     build_benchmark_cmd,
     build_local_shm_server_cmd,
     build_runtime_config,

@@ -13,6 +13,7 @@ DEFAULT_OUTPUT_DIR = Path("results") / time.strftime("brpc_e2e_%m%d%H%M")
 @dataclass(frozen=True)
 class ClientSpec:
     ssh_host: str = "local"
+    ssh_port: int = 22
     repo_root: Path = ROOT
     ip: str = "127.0.0.1"
     gpu_id: int = 0
@@ -23,6 +24,7 @@ class ClientSpec:
 @dataclass(frozen=True)
 class ServerSpec:
     ssh_host: str = "local"
+    ssh_port: int = 22
     repo_root: Path = ROOT
     ip: str = "127.0.0.1"
     port: int = 15000
@@ -71,10 +73,19 @@ def _parse_key_values(raw: str) -> dict[str, str]:
     return out
 
 
+def _ssh_from_values(values: dict[str, str]) -> tuple[str, int]:
+    ssh_host = values.get("ssh", values.get("ssh_host", "local")).strip()
+    ssh_port_raw = values.get("ssh_port", values.get("ssh-port"))
+    ssh_port = 22 if ssh_port_raw is None else int(ssh_port_raw)
+    return ssh_host, ssh_port
+
+
 def parse_client_spec(raw: str) -> ClientSpec:
     values = _parse_key_values(raw)
+    ssh_host, ssh_port = _ssh_from_values(values)
     return ClientSpec(
-        ssh_host=values.get("ssh", values.get("ssh_host", "local")),
+        ssh_host=ssh_host,
+        ssh_port=ssh_port,
         repo_root=Path(values.get("repo", values.get("repo_root", str(ROOT)))),
         ip=values.get("ip", "127.0.0.1"),
         gpu_id=int(values.get("gpu", values.get("gpu_id", "0"))),
@@ -85,8 +96,10 @@ def parse_client_spec(raw: str) -> ClientSpec:
 
 def parse_server_spec(raw: str) -> ServerSpec:
     values = _parse_key_values(raw)
+    ssh_host, ssh_port = _ssh_from_values(values)
     return ServerSpec(
-        ssh_host=values.get("ssh", values.get("ssh_host", "local")),
+        ssh_host=ssh_host,
+        ssh_port=ssh_port,
         repo_root=Path(values.get("repo", values.get("repo_root", str(ROOT)))),
         ip=values.get("ip", "127.0.0.1"),
         port=int(values.get("port", "15000")),
@@ -108,7 +121,7 @@ def parse_transports(raw: str) -> tuple[str, ...]:
     transports = tuple(part.strip().upper() for part in raw.split(",") if part.strip())
     if not transports:
         return ("BRPC",)
-    unsupported = [item for item in transports if item not in {"BRPC", "GRPC"}]
+    unsupported = [item for item in transports if item not in {"BRPC", "GRPC", "RDMA"}]
     if unsupported:
         raise ValueError(f"unsupported transports: {unsupported}")
     return transports

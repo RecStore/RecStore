@@ -68,6 +68,10 @@ class _FakeOpsWithGpuCache(_FakeOps):
     def __init__(self) -> None:
         super().__init__()
         self.gpu_cache_calls: list[tuple[int, int]] = []
+        self.gpu_cache_sgd_update_calls: list[tuple[list[int], list[list[float]], float]] = []
+        self.gpu_cache_sgd_update_devices: list[tuple[str, str]] = []
+        self.gpu_cache_invalidate_calls: list[list[int]] = []
+        self.gpu_cache_invalidate_devices: list[str] = []
         self.bypass_enabled = True
 
     def enable_gpu_cache(self, capacity: int, embedding_dim: int) -> bool:
@@ -85,6 +89,26 @@ class _FakeOpsWithGpuCache(_FakeOps):
 
     def reset_gpu_cache_bypass_state(self) -> None:
         self.bypass_enabled = True
+
+    def apply_sgd_update_gpu_cache(
+        self,
+        ids: torch.Tensor,
+        grads: torch.Tensor,
+        learning_rate: float,
+    ) -> bool:
+        self.gpu_cache_sgd_update_devices.append((str(ids.device), str(grads.device)))
+        self.gpu_cache_sgd_update_calls.append(
+            (
+                [int(v) for v in ids.tolist()],
+                [[float(x) for x in row] for row in grads.tolist()],
+                float(learning_rate),
+            )
+        )
+        return True
+
+    def invalidate_gpu_cache(self, ids: torch.Tensor) -> None:
+        self.gpu_cache_invalidate_devices.append(str(ids.device))
+        self.gpu_cache_invalidate_calls.append([int(v) for v in ids.tolist()])
 
 
 class _FakeClient:
@@ -195,6 +219,12 @@ class _FakeClientWithOpsGpuCache(_FakeClient):
     def __init__(self) -> None:
         super().__init__()
         self.ops = _FakeOpsWithGpuCache()
+
+
+class _FakeClientWithClientAndOpsGpuCache(_FakeClientWithOpsGpuCache):
+    def apply_sgd_update_gpu_cache(self, name, ids, grads, *, learning_rate):
+        del name, ids, grads, learning_rate
+        raise RuntimeError("raw client metadata is intentionally unavailable")
 
 
 class _FakeClientWithWriteRowLimit(_FakeClient):
@@ -813,6 +843,103 @@ class TestShardedRecstoreClient(unittest.TestCase):
         self.assertTrue(client.is_gpu_cache_lookup_bypassed())
         client.reset_gpu_cache_bypass_state()
         self.assertTrue(fake_client.ops.bypass_enabled)
+
+    def test_apply_sgd_update_gpu_cache_forwards_to_underlying_ops(self) -> None:
+        runtime_dir = self._make_runtime_dir()
+        fake_client = _FakeClientWithOpsGpuCache()
+        client = ShardedRecstoreClient(fake_client, runtime_dir)
+        client.register_tensor_meta("table0", shape=(16, 2), dtype=torch.float32)
+        client._activate_shard(1)
+        self.assertTrue(client.enable_gpu_cache(2048, 2))
+
+        ids = torch.tensor([7, 3], dtype=torch.int32)
+        grads = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float64)
+        ok = client.apply_sgd_update_gpu_cache(
+            "table0",
+            ids,
+            grads,
+            learning_rate=0.25,
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(
+            fake_client.ops.gpu_cache_sgd_update_calls,
+            [([7, 3], [[1.0, 2.0], [3.0, 4.0]], 0.25)],
+        )
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required")
+    def test_invalidate_gpu_cache_forwards_to_underlying_ops(self) -> None:
+        runtime_dir = self._make_runtime_dir()
+        fake_client = _FakeClientWithOpsGpuCache()
+        client = ShardedRecstoreClient(fake_client, runtime_dir)
+        client.register_tensor_meta("table0", shape=(16, 2), dtype=torch.float32)
+        self.assertTrue(client.enable_gpu_cache(2048, 2))
+
+        client.invalidate_gpu_cache("table0", torch.tensor([7, 3], dtype=torch.int64))
+
+        self.assertEqual(fake_client.ops.gpu_cache_invalidate_calls, [[7, 3]])
+        self.assertEqual(fake_client.ops.gpu_cache_invalidate_devices, ["cuda:0"])
+
+    def test_apply_sgd_update_gpu_cache_prefers_ops_over_raw_client_wrapper(self) -> None:
+        runtime_dir = self._make_runtime_dir()
+        fake_client = _FakeClientWithClientAndOpsGpuCache()
+        client = ShardedRecstoreClient(fake_client, runtime_dir)
+        client.register_tensor_meta("table0", shape=(16, 2), dtype=torch.float32)
+        client._activate_shard(1)
+        self.assertTrue(client.enable_gpu_cache(2048, 2))
+
+        ok = client.apply_sgd_update_gpu_cache(
+            "table0",
+            torch.tensor([7], dtype=torch.int64),
+            torch.ones((1, 2), dtype=torch.float32),
+            learning_rate=0.5,
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(
+            fake_client.ops.gpu_cache_sgd_update_calls,
+            [([7], [[1.0, 1.0]], 0.5)],
+        )
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required")
+    def test_apply_sgd_update_gpu_cache_moves_cpu_payload_to_cuda_ops(self) -> None:
+        runtime_dir = self._make_runtime_dir()
+        fake_client = _FakeClientWithOpsGpuCache()
+        client = ShardedRecstoreClient(fake_client, runtime_dir)
+        client.register_tensor_meta("table0", shape=(16, 2), dtype=torch.float32)
+        client._activate_shard(1)
+        self.assertTrue(client.enable_gpu_cache(2048, 2))
+
+        ok = client.apply_sgd_update_gpu_cache(
+            "table0",
+            torch.tensor([7], dtype=torch.int64),
+            torch.ones((1, 2), dtype=torch.float32),
+            learning_rate=0.5,
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(fake_client.ops.gpu_cache_sgd_update_devices, [("cpu", "cuda:0")])
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required")
+    def test_apply_sgd_update_gpu_cache_does_not_require_active_network_shard(self) -> None:
+        runtime_dir = self._make_runtime_dir()
+        fake_client = _FakeClientWithOpsGpuCache()
+        client = ShardedRecstoreClient(fake_client, runtime_dir)
+        client.register_tensor_meta("table0", shape=(16, 2), dtype=torch.float32)
+        self.assertTrue(client.enable_gpu_cache(2048, 2))
+
+        ok = client.apply_sgd_update_gpu_cache(
+            "table0",
+            torch.tensor([7], dtype=torch.int64),
+            torch.ones((1, 2), dtype=torch.float32),
+            learning_rate=0.5,
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(
+            fake_client.ops.gpu_cache_sgd_update_calls,
+            [([7], [[1.0, 1.0]], 0.5)],
+        )
 
     def test_gpu_cache_enable_requires_underlying_support(self) -> None:
         runtime_dir = self._make_runtime_dir()

@@ -40,6 +40,24 @@ class TestPetPSClusterRunner(unittest.TestCase):
         self.assertIn("--rdma_control_plane_host=127.0.0.2", cmd)
         self.assertIn("--rdma_control_plane_port=32000", cmd)
 
+    def test_build_server_command_uses_optional_wrapper(self):
+        runner = PetPSClusterRunner(
+            server_path="/tmp/petps_server",
+            config_path="/tmp/recstore_config.json",
+            rdma_control_plane_port=32000,
+            server_command_wrapper=lambda global_id, cmd: [
+                "ssh",
+                f"host{global_id}",
+                " ".join(cmd),
+            ],
+        )
+
+        cmd = runner.build_server_cmd(1)
+
+        self.assertEqual(cmd[0:2], ["ssh", "host1"])
+        self.assertIn("/tmp/petps_server", cmd[2])
+        self.assertIn("--global_id=1", cmd[2])
+
     def test_build_client_command_assigns_client_global_id(self):
         runner = PetPSClusterRunner(
             num_servers=2,

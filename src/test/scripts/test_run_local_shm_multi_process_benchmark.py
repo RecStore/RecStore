@@ -1,10 +1,7 @@
-import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from run_local_shm_multi_process_benchmark import (  # noqa: E402
+from tools.benchmarks.run_local_shm_multi_process_benchmark import (  # noqa: E402
     build_worker_env,
     build_worker_label,
     resolve_ready_queue_index,
