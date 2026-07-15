@@ -39,6 +39,7 @@ from ..runtime.hybrid_dlrm import (
     sync_device,
 )
 from ..runtime.prefetch import LookaheadPrefetcher
+from ..runtime.bagpipe_cache import BagPipeCacheController, BagPipeSparseSGD
 from ..runtime.recstore_distributed import ShardedRecstoreClient
 from ..runtime.report import finalize_recstore_row, summarize_us, write_stage_csv
 from .base import BenchmarkRunner
@@ -659,6 +660,16 @@ class RecStoreRunner(BenchmarkRunner):
             )
             if cfg.disable_gpu_cache_lookup_bypass:
                 cmd.append("--disable-gpu-cache-lookup-bypass")
+        if cfg.enable_bagpipe_cache:
+            cmd.extend(
+                [
+                    "--enable-bagpipe-cache",
+                    "--bagpipe-lookahead",
+                    str(cfg.bagpipe_lookahead),
+                    "--bagpipe-cleanup-proportion",
+                    str(cfg.bagpipe_cleanup_proportion),
+                ]
+            )
         if not cfg.read_before_update:
             cmd.append("--no-read-before-update")
         return cmd
@@ -899,7 +910,27 @@ class RecStoreRunner(BenchmarkRunner):
             )
             criterion = torch.nn.BCEWithLogitsLoss()
             dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
-            sparse_optimizer = SparseSGD([embedding_module], lr=0.01)
+            bagpipe_controller: BagPipeCacheController | None = None
+            if cfg.enable_bagpipe_cache:
+                bagpipe_controller = BagPipeCacheController(
+                    embedding_module,
+                    client,
+                    lookahead_value=cfg.bagpipe_lookahead,
+                    cleanup_batch_proportion=cfg.bagpipe_cleanup_proportion,
+                    cache_capacity=cfg.gpu_cache_capacity,
+                    embedding_dim=cfg.embedding_dim,
+                    fuse_k=cfg.fuse_k,
+                    table_offsets=table_offsets,
+                    master_table_name=cfg.table_name,
+                    device=device,
+                    lr=0.01,
+                )
+            if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
+                sparse_optimizer = BagPipeSparseSGD(
+                    [embedding_module], lr=0.01, controller=bagpipe_controller
+                )
+            else:
+                sparse_optimizer = SparseSGD([embedding_module], lr=0.01)
             fast_path_region_warmed = _maybe_warmup_gpu_local_shm_fast_path(
                 cfg=cfg,
                 client=client,
@@ -998,6 +1029,9 @@ class RecStoreRunner(BenchmarkRunner):
                 )
                 bagpipe_scheduler.observe_batch(batch_step, prefetch_fused_ids)
 
+                if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
+                    bagpipe_controller.enqueue(prefetch_sparse_features)
+
                 return (
                     batch_step,
                     row,
@@ -1009,7 +1043,10 @@ class RecStoreRunner(BenchmarkRunner):
 
             data_iter_state = {"iter": data_iter}
             for step in range(cfg.steps):
-                observed_depth = lookahead_prefetcher.depth * 2
+                if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
+                    observed_depth = bagpipe_controller.lookahead_value
+                else:
+                    observed_depth = lookahead_prefetcher.depth * 2
                 while (
                     len(prepared_batches) <= observed_depth
                     and step + len(prepared_batches) < cfg.steps
@@ -1020,7 +1057,8 @@ class RecStoreRunner(BenchmarkRunner):
                     prepared_batches=prepared_batches,
                 )
                 if step + len(prepared_batches) >= cfg.steps:
-                    lookahead_prefetcher.advance_all()
+                    if not (cfg.enable_bagpipe_cache and bagpipe_controller is not None):
+                        lookahead_prefetcher.advance_all()
 
                 _, row, step_start, dense_batch, sparse_batch, labels_batch = (
                     prepared_batches.popleft()
@@ -1046,16 +1084,13 @@ class RecStoreRunner(BenchmarkRunner):
                 embeddings = None
                 with stage_timer(row, "embed_lookup_local_ms"):
                     sync_device(torch, device)
-                    if cfg.read_before_update and cfg.read_mode == "prefetch":
-                        _attach_or_refetch_with_bagpipe_policy(
-                            prefetch_depth=cfg.prefetch_depth,
-                            bagpipe_policy=bagpipe_policy,
-                            lookahead_prefetcher=lookahead_prefetcher,
-                            embedding_module=embedding_module,
-                            sparse_features=sparse_features,
-                            row=row,
-                            step=step,
-                        )
+                    if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
+                        bagpipe_controller.prefill_cache(sparse_features, device)
+                    elif cfg.read_before_update and cfg.read_mode == "prefetch":
+                        if cfg.prefetch_depth > 0:
+                            lookahead_prefetcher.attach_next()
+                        else:
+                            embedding_module.issue_fused_prefetch(sparse_features)
                     embeddings = embedding_module(sparse_features)
                     sync_device(torch, device)
                 prefetch_row_stats = lookahead_prefetcher.consume_stats(reset=False)
@@ -1136,24 +1171,12 @@ class RecStoreRunner(BenchmarkRunner):
                     row["sparse_optimizer_flush_ms"] = (
                         time.perf_counter() - flush_start
                     ) * 1e3
-                    if cfg.enable_gpu_cache or cfg.prefetch_depth > 0:
-                        updated_fused_ids = _safe_fused_ids(
-                            sparse_features,
-                            table_offsets,
-                        )
-                        _notify_bagpipe_sparse_update(
-                            bagpipe_policy=bagpipe_policy,
-                            sparse_optimizer=sparse_optimizer,
-                            fallback_updated_ids=updated_fused_ids,
-                            row=row,
-                            step=step,
-                        )
-                    else:
-                        row["bagpipe_gpu_cache_update_ids"] = 0
-                        row["bagpipe_gpu_cache_update_attempt_ids"] = 0
-                        row["bagpipe_policy_cached_update_ids"] = 0
-                        row["bagpipe_gpu_cache_update_failures"] = 0
-                        row["bagpipe_gpu_cache_update_failure_reason"] = ""
+                    if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
+                        cleanup_start = time.perf_counter()
+                        bagpipe_controller.cleanup(step)
+                        row["bagpipe_cleanup_step_ms"] = (
+                            time.perf_counter() - cleanup_start
+                        ) * 1e3
 
                     zero_grad_start = time.perf_counter()
                     sparse_optimizer.zero_grad()
@@ -1192,6 +1215,9 @@ class RecStoreRunner(BenchmarkRunner):
                     }:
                         continue
                     row[key] = value
+
+                if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
+                    row.update(bagpipe_controller.consume_stats(reset=False))
                 gpu_cache_capacity = float(row.get("gpu_cache_capacity", 0.0))
                 row["prefetch_window_live_cache_capacity_ratio"] = _safe_ratio(
                     float(row.get("prefetch_window_live_ids", 0.0)),

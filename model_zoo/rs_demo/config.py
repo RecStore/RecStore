@@ -136,6 +136,9 @@ class RunConfig:
     enable_gpu_cache: bool = False
     gpu_cache_capacity: int = 0
     disable_gpu_cache_lookup_bypass: bool = False
+    enable_bagpipe_cache: bool = False
+    bagpipe_lookahead: int = 0
+    bagpipe_cleanup_proportion: float = 0.25
     master_addr: str = "127.0.0.1"
     master_port: int = 29500
     rdzv_backend: str = "c10d"
@@ -220,6 +223,28 @@ def build_parser() -> argparse.ArgumentParser:
             "Keep querying the RecStore GPU cache for large low-hit lookups. "
             "Useful for planned/lookahead cache experiments."
         ),
+    )
+    parser.add_argument(
+        "--enable-bagpipe-cache",
+        action="store_true",
+        default=False,
+        help=(
+            "Enable BagPipe-style GPU cache with TTL-based eviction, "
+            "oracle lookahead prefetch, and sync_now/sync_later gradient "
+            "split. Requires --enable-gpu-cache."
+        ),
+    )
+    parser.add_argument(
+        "--bagpipe-lookahead",
+        type=int,
+        default=0,
+        help="Number of future batches to analyze for oracle cache decisions.",
+    )
+    parser.add_argument(
+        "--bagpipe-cleanup-proportion",
+        type=float,
+        default=0.25,
+        help="Proportion of lookahead batches at which to evict and write back.",
     )
     parser.add_argument("--master-addr", type=str, default="127.0.0.1")
     parser.add_argument("--master-port", type=int, default=29500)
@@ -518,6 +543,22 @@ def validate_recstore_config(cfg: RunConfig) -> None:
         raise RuntimeError("--prefetch-depth must be non-negative")
     if cfg.prefetch_issue_depth < 0:
         raise RuntimeError("--prefetch-issue-depth must be non-negative")
+    if cfg.enable_bagpipe_cache:
+        if not cfg.enable_gpu_cache:
+            raise RuntimeError(
+                "--enable-bagpipe-cache requires --enable-gpu-cache"
+            )
+        # BagPipe relies on the GPU cache being queried on every forward;
+        # disable the low-hit bypass so the prefilled cache is not cleared.
+        cfg.disable_gpu_cache_lookup_bypass = True
+        if cfg.bagpipe_lookahead <= 0:
+            raise RuntimeError(
+                "--bagpipe-lookahead must be positive when --enable-bagpipe-cache is set"
+            )
+        if cfg.bagpipe_cleanup_proportion <= 0 or cfg.bagpipe_cleanup_proportion > 1:
+            raise RuntimeError(
+                "--bagpipe-cleanup-proportion must be within (0, 1]"
+            )
     if cfg.tiered_dram_capacity_multiplier < 0:
         raise RuntimeError("--tiered-dram-capacity-multiplier must be non-negative")
     if cfg.enable_single_node_distributed_fast_path:

@@ -591,6 +591,49 @@ class ShardedRecstoreClient:
             normalized_grads = normalized_grads.to(cache_device)
         return bool(updater(normalized_ids, normalized_grads, float(learning_rate)))
 
+    def gpu_cache_lookup_flat(self, keys: torch.Tensor, embedding_dim: int) -> torch.Tensor:
+        """Client-side GPU cache lookup that works with any backend."""
+        if not self._gpu_cache_enabled:
+            raise RuntimeError("gpu_cache_lookup_flat requires GPU cache to be enabled")
+        fn = getattr(self._client, "gpu_cache_lookup_flat", None)
+        if not callable(fn):
+            raise RuntimeError(
+                "gpu_cache_lookup_flat requires a RecStore client exposing "
+                "gpu_cache_lookup_flat()."
+            )
+        normalized = self._normalize_ids(keys, keep_device=True)
+        if not normalized.is_contiguous():
+            normalized = normalized.contiguous()
+        return fn(normalized, int(embedding_dim))
+
+    def query_gpu_cache(self, keys: torch.Tensor, embedding_dim: int) -> tuple[torch.Tensor, torch.Tensor]:
+        fn = getattr(self._client, "query_gpu_cache", None)
+        if not callable(fn):
+            raise RuntimeError("query_gpu_cache requires client support.")
+        return fn(self._normalize_ids(keys, keep_device=True), int(embedding_dim))
+
+    def update_gpu_cache(self, ids: torch.Tensor, values: torch.Tensor) -> None:
+        fn = getattr(self._client, "update_gpu_cache", None)
+        if not callable(fn):
+            raise RuntimeError("update_gpu_cache requires client support.")
+        fn(self._normalize_ids(ids, keep_device=True), self._normalize_grads(values, keep_device=True))
+
+    def invalidate_gpu_cache(self, keys: torch.Tensor) -> None:
+        fn = getattr(self._client, "invalidate_gpu_cache", None)
+        if not callable(fn):
+            raise RuntimeError("invalidate_gpu_cache requires client support.")
+        if keys.numel() == 0:
+            return
+        fn(self._normalize_ids(keys, keep_device=True))
+
+    def apply_sgd_update_gpu_cache(self, keys: torch.Tensor, grads: torch.Tensor, lr: float) -> bool:
+        fn = getattr(self._client, "apply_sgd_update_gpu_cache", None)
+        if not callable(fn):
+            raise RuntimeError("apply_sgd_update_gpu_cache requires client support.")
+        if keys.numel() == 0:
+            return True
+        return bool(fn(self._normalize_ids(keys, keep_device=True), self._normalize_grads(grads, keep_device=True), float(lr)))
+
     def get_last_gpu_cache_profile(self) -> dict[str, float]:
         getter = getattr(self._client, "get_last_gpu_cache_profile", None)
         if callable(getter):
@@ -759,6 +802,37 @@ class ShardedRecstoreClient:
             shard_keys = keys.index_select(0, index_tensor).contiguous()
             shard_grads = grads.index_select(0, index_tensor).contiguous()
             self._client.emb_update_table(table_name, shard_keys, shard_grads)
+
+    def update(self, name: str, ids: torch.Tensor, grads: torch.Tensor) -> None:
+        """Push gradients to the PS and invalidate ONLY these keys from the
+        GPU cache (not a full cache clear).
+
+        This routes through emb_update_table with device-preserved keys so
+        the C++ cache maintenance takes the specific-key invalidation path
+        (InvalidateGpuCache) instead of clearing the whole cache.  The BagPipe
+        controller relies on this for sync_now/sync_later grad flush so that
+        non-evicted cache entries survive.
+        """
+        if ids.numel() == 0:
+            return
+        if name not in self._tensor_meta:
+            raise RuntimeError(f"Tensor {name} has not been initialized.")
+        ids_n = self._normalize_ids(ids, keep_device=True)
+        grads_n = self._normalize_grads(grads, keep_device=True)
+        if ids_n.size(0) != grads_n.size(0):
+            raise RuntimeError("ids and grads must have the same number of rows for update")
+        if self._uses_native_distributed_backend():
+            self._client.emb_update_table(name, ids_n, grads_n)
+            return
+        for shard, index_tensor, shard_keys in self._group_ids_by_shard(
+            ids_n, keep_key_device=True
+        ):
+            self._activate_shard(shard)
+            idx = index_tensor
+            if grads_n.device != idx.device:
+                idx = idx.to(grads_n.device)
+            shard_grads = grads_n.index_select(0, idx).contiguous()
+            self._client.emb_update_table(name, shard_keys, shard_grads)
 
     def init_data(
         self,

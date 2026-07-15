@@ -846,6 +846,35 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
         setattr(self, "_single_node_forward_profile", profile)
         return local_embeddings
 
+    def _lookup_fused_embeddings_gpu_cache(
+        self,
+        fused_ids: torch.Tensor,
+        *,
+        compute_device: torch.device,
+    ) -> torch.Tensor:
+        """Forward lookup backed by the GPU cache (any backend).
+
+        Serves hits from the GPU cache; misses are fetched via the active
+        backend (BRPC/GRPC/RDMA) and filled back into the cache.  This is
+        the path used by the BagPipe controller when the local_shm fast
+        path is unavailable, so the GPU cache is actually queried instead
+        of bypassed by a plain pull.
+        """
+        t_lookup = perf_counter()
+        embedding_dim = self._master_config.embedding_dim
+        ids_for_query = fused_ids
+        if ids_for_query.device.type != "cuda":
+            ids_for_query = ids_for_query.to(compute_device)
+        if not ids_for_query.is_contiguous():
+            ids_for_query = ids_for_query.contiguous()
+        embeddings = self.kv_client.gpu_cache_lookup_flat(
+            ids_for_query, embedding_dim
+        )
+        if embeddings.device != compute_device:
+            embeddings = embeddings.to(compute_device)
+        self._perf_add("lookup_gpu_cache_ms", (perf_counter() - t_lookup) * 1e3)
+        return embeddings
+
     def _prefill_gpu_cache_from_fused_prefetch(
         self,
         fused_values_all: torch.Tensor,
@@ -1233,6 +1262,8 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
             # Obtain embeddings: prefer single-node owner lookup; else fused prefetch; else merge per-feature prefetch; else single pull
             all_embeddings: torch.Tensor
             used_fused_prefetch = False
+            _gpu_cache_fn = getattr(self.kv_client, "is_gpu_cache_enabled", None)
+            _gpu_cache_on = bool(_gpu_cache_fn()) if callable(_gpu_cache_fn) else False
             if use_local_shm_direct_fast_path:
                 is_gpu_cache_enabled = getattr(self.kv_client, "is_gpu_cache_enabled", None)
                 gpu_cache_enabled = bool(is_gpu_cache_enabled()) if callable(is_gpu_cache_enabled) else True
@@ -1298,6 +1329,11 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
                             )
                             per_feature_embs.append(emb)
                 all_embeddings = torch.cat(per_feature_embs, dim=0) if len(per_feature_embs) > 0 else torch.empty((0, self._master_config.embedding_dim), device=features.device(), dtype=torch.float32)
+            elif _gpu_cache_on:
+                all_embeddings = self._lookup_fused_embeddings_gpu_cache(
+                    fused_values_all,
+                    compute_device=compute_device,
+                )
             else:
                 # Single pull for all fused IDs
                 all_embeddings = self._pull_fused_rows(
