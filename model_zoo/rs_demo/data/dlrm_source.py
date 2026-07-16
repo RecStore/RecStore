@@ -13,9 +13,16 @@ def inject_project_paths(repo_root: Path) -> None:
     recstore_src = str(repo_root / "src")
     dlrm_root = str(repo_root / "model_zoo/torchrec_dlrm")
     py_client = str(repo_root / "src/test/framework/pytorch")
+    # Force these entries to the front of sys.path even when they are already
+    # present (e.g. via PYTHONPATH).  This matters because torchrun launches
+    # each worker as `python model_zoo/rs_demo/run_mock_stress.py`, which puts
+    # model_zoo/rs_demo/ at sys.path[0]; its sibling `data` package would
+    # otherwise shadow model_zoo/torchrec_dlrm/data (which provides
+    # data.custom_dataloader).
     for p in (recstore_src, dlrm_root, py_client):
-        if p not in sys.path:
-            sys.path.insert(0, p)
+        while p in sys.path:
+            sys.path.remove(p)
+        sys.path.insert(0, p)
 
 
 def build_kjt_batch_from_dense_sparse_labels(

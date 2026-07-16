@@ -32,6 +32,15 @@ else()
   project(RecStore LANGUAGES CXX C)
 endif()
 
+option(RECSTORE_DISABLE_BRPC "Disable bRPC backend" OFF)
+option(RECSTORE_DISABLE_CPPTRACE "Disable cpptrace dependency" OFF)
+if(RECSTORE_DISABLE_BRPC)
+  add_compile_definitions(RECSTORE_DISABLE_BRPC)
+endif()
+if(RECSTORE_DISABLE_CPPTRACE)
+  add_compile_definitions(RECSTORE_DISABLE_CPPTRACE)
+endif()
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(CMAKE_EXPORT_COMPILE_COMMANDS)
     set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
@@ -231,7 +240,7 @@ add_subdirectory(third_party/fmt)
 add_library(jemalloc_compat STATIC
   ${PROJECT_SOURCE_DIR}/src/base/jemalloc_compat.cc
 )
-target_link_libraries(jemalloc_compat PUBLIC jemalloc)
+target_link_libraries(jemalloc_compat PUBLIC jemalloc ${CMAKE_DL_LIBS})
 
 if(EXISTS "${RECSTORE_FOLLY_INSTALL_DIR}/folly-config.cmake")
   find_package(folly REQUIRED)
@@ -274,6 +283,13 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/third_party/folly/_build
 )
 
+# Boost headers: on distros where boost lives in a versioned include dir
+# (e.g. CentOS /usr/include/boost169) expose it globally so storage/rdma
+# targets that use boost/coroutine2 compile without per-target wiring.
+if(Boost_INCLUDE_DIR)
+  include_directories(${Boost_INCLUDE_DIR})
+endif()
+
 set(glog_DIR "${RECSTORE_GLOG_INSTALL_DIR}")
 if(EXISTS "${RECSTORE_GLOG_INSTALL_DIR}/glog-config.cmake")
   find_package(glog CONFIG REQUIRED)
@@ -281,6 +297,15 @@ elseif(EXISTS "${PROJECT_SOURCE_DIR}/third_party/glog/CMakeLists.txt")
   add_subdirectory(third_party/glog EXCLUDE_FROM_ALL)
 else()
   find_package(glog CONFIG REQUIRED)
+endif()
+
+if(TARGET glog::glog AND NOT TARGET glog)
+  add_library(glog ALIAS glog::glog)
+endif()
+if(TARGET gflags_shared AND NOT TARGET gflags)
+  add_library(gflags ALIAS gflags_shared)
+elseif(TARGET gflags::gflags AND NOT TARGET gflags)
+  add_library(gflags ALIAS gflags::gflags)
 endif()
 
 
@@ -298,7 +323,7 @@ add_subdirectory(third_party/json)
 # add_subdirectory(third_party/pybind11)
 # add_subdirectory(third_party/mimalloc)
 
-set(PYBIND11_CMAKE_DIR "/usr/local/lib/python3.10/dist-packages/pybind11/share/cmake/pybind11")
+set(PYBIND11_CMAKE_DIR "/usr/local/python3.12.11/lib/python3.12/site-packages/pybind11/share/cmake/pybind11")
 list(APPEND CMAKE_PREFIX_PATH ${PYBIND11_CMAKE_DIR})
 find_package(pybind11 REQUIRED)
 

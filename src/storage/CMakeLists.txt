@@ -8,7 +8,11 @@ add_subdirectory(io_backend)
 add_subdirectory(index)
 add_subdirectory(nvm)
 add_subdirectory(external/fasterkv)
-add_subdirectory(external/hps)
+if(EXISTS "${PROJECT_SOURCE_DIR}/third_party/HugeCTR/third_party/rocksdb/CMakeLists.txt")
+  add_subdirectory(external/hps)
+else()
+  message(STATUS "Skipping storage/external/hps: HugeCTR submodules not available")
+endif()
 
 # 保持最后
 add_subdirectory(kv_engine)

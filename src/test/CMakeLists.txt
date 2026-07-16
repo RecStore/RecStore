@@ -30,6 +30,11 @@ add_subdirectory(server_mgr)
 
 # target_compile_options(test_f14_slab PUBLIC -msse -msse2 -msse3 -msse4)
 
+# brpc client libraries, only available when bRPC backend is enabled
+if(NOT RECSTORE_DISABLE_BRPC)
+    set(BRPC_TEST_LIBS brpc_ps_client dist_brpc_ps_client)
+endif()
+
 add_executable(test_hash_map
     test_hash_map.cpp 
 )
@@ -259,12 +264,18 @@ target_sources(test_ps_client_factory PRIVATE
 target_link_libraries(test_ps_client_factory PUBLIC
     base
     wq_ps_client
+    Folly::folly
+    boost_regex
+    boost_regex_cxx11
+    boost_system
     grpc_ps_client
     dist_grpc_ps_client
-    brpc_ps_client
-    dist_brpc_ps_client
+    ${BRPC_TEST_LIBS}
     local_shm_ps_client
     Folly::folly
+    boost_regex
+    boost_regex_cxx11
+    boost_system
     gflags
     glog
     gtest
@@ -287,12 +298,18 @@ target_sources(test_rdmaps_client_adapter PRIVATE
 target_link_libraries(test_rdmaps_client_adapter PUBLIC
     base
     wq_ps_client
+    Folly::folly
+    boost_regex
+    boost_regex_cxx11
+    boost_system
     grpc_ps_client
     dist_grpc_ps_client
-    brpc_ps_client
-    dist_brpc_ps_client
+    ${BRPC_TEST_LIBS}
     local_shm_ps_client
     Folly::folly
+    boost_regex
+    boost_regex_cxx11
+    boost_system
     gflags
     glog
     gtest
@@ -365,12 +382,18 @@ target_sources(test_op_runtime_support PRIVATE
 target_link_libraries(test_op_runtime_support PUBLIC
     base
     wq_ps_client
+    Folly::folly
+    boost_regex
+    boost_regex_cxx11
+    boost_system
     grpc_ps_client
     dist_grpc_ps_client
-    brpc_ps_client
-    dist_brpc_ps_client
+    ${BRPC_TEST_LIBS}
     local_shm_ps_client
     Folly::folly
+    boost_regex
+    boost_regex_cxx11
+    boost_system
     gflags
     glog
     gtest
@@ -393,12 +416,18 @@ target_sources(test_op PRIVATE
 target_link_libraries(test_op PUBLIC
     base
     wq_ps_client
+    Folly::folly
+    boost_regex
+    boost_regex_cxx11
+    boost_system
     grpc_ps_client
     dist_grpc_ps_client
-    brpc_ps_client
-    dist_brpc_ps_client
+    ${BRPC_TEST_LIBS}
     local_shm_ps_client
     Folly::folly
+    boost_regex
+    boost_regex_cxx11
+    boost_system
     gflags
     glog
     gtest
@@ -549,12 +578,18 @@ if(ENABLE_CUDA AND CMAKE_CUDA_COMPILER AND
     target_link_libraries(test_hugectr_emb PUBLIC
         base
         wq_ps_client
+    Folly::folly
+    boost_regex
+    boost_regex_cxx11
+    boost_system
         grpc_ps_client
         dist_grpc_ps_client
-        brpc_ps_client
-        dist_brpc_ps_client
+        ${BRPC_TEST_LIBS}
         local_shm_ps_client
         Folly::folly
+        boost_regex
+        boost_regex_cxx11
+        boost_system
         protobuf::libprotobuf
         gRPC::grpc++
         glog::glog
@@ -569,6 +604,7 @@ else()
     )
 endif()
 
+if(NOT RECSTORE_DISABLE_BRPC)
 add_executable(brpc_ps_server_unit_test
     test_brpc_ps_server.cpp
     ${PROJECT_SOURCE_DIR}/src/ps/brpc/brpc_ps_server.cpp
@@ -600,11 +636,16 @@ target_link_libraries(brpc_ps_server_unit_test PUBLIC
 )
 add_test(NAME brpc_ps_server_unit_test COMMAND brpc_ps_server_unit_test)
 set_tests_properties(brpc_ps_server_unit_test PROPERTIES LABELS "ps_unit")
+endif()
 
 add_executable(test_allshards_ps_client test_allshards_ps_client.cpp)
 target_link_libraries(test_allshards_ps_client PUBLIC
     base
     wq_ps_client
+    Folly::folly
+    boost_regex
+    boost_regex_cxx11
+    boost_system
     gtest
     gtest_main
     pthread
@@ -632,6 +673,10 @@ target_link_libraries(test_rdma_control_plane PUBLIC
     base
     ps_proto
     gRPC::grpc++
+    Folly::folly
+    boost_regex
+    boost_regex_cxx11
+    boost_system
     gtest
     gtest_main
     pthread
@@ -649,6 +694,7 @@ add_test(NAME test_ps_transport_benchmark COMMAND test_ps_transport_benchmark)
 
 add_executable(test_raw_verbs_allocator test_raw_verbs_allocator.cpp)
 target_link_libraries(test_raw_verbs_allocator PUBLIC
+    base
     gtest
     gtest_main
     pthread

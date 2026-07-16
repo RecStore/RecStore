@@ -1,4 +1,5 @@
 set(BRPC_ROOT "${PROJECT_SOURCE_DIR}/third_party/brpc-install")
+link_directories(${PROJECT_SOURCE_DIR}/third_party/leveldb/lib)
 set(PROTOBUF_ROOT "${PROJECT_SOURCE_DIR}/third_party/protobuf-install")
 
 # Find bRPC (禁止去系统找)

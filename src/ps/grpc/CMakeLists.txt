@@ -1,11 +1,12 @@
 find_package(Python3 COMPONENTS Interpreter Development)
 
-set(BUILD_SHARED_LIBS ON)
+set(BUILD_SHARED_LIBS OFF)  # grpc_ps_client/dist_grpc_ps_client are STATIC; avoids duplicate gRPC static init when loaded by recstore_torch_ops
 
 # gRPC PS Client Library
-add_library(grpc_ps_client SHARED
+add_library(grpc_ps_client STATIC
     grpc_ps_client.cpp grpc_ps_client.h
 )
+set_target_properties(grpc_ps_client PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(grpc_ps_client PUBLIC
     ${PROJECT_BINARY_DIR}/src/ps/proto
@@ -69,6 +70,7 @@ endif()
 add_library(dist_grpc_ps_client
     dist_grpc_ps_client.cpp dist_grpc_ps_client.h
 )
+set_target_properties(dist_grpc_ps_client PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # Link gRPC only through grpc_ps_client to avoid duplicate grpc symbols in
 # consumers (e.g. dist_grpc_ps_client_test), which can deadlock in grpc_init().
 target_link_libraries(dist_grpc_ps_client PUBLIC
