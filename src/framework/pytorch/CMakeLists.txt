@@ -1,9 +1,5 @@
 find_package(Torch REQUIRED)
 
-set(RECSTORE_DEPS_DIR ${PROJECT_SOURCE_DIR}/third_party/deps)
-# boost_regex_cxx11 is now defined in src/base/CMakeLists.txt (processed
-# earlier) so both the .so and server/test targets can link it.
-
 add_library(recstore_torch_ops SHARED
     op_torch.cc
     ../op.cc
@@ -43,8 +39,8 @@ target_link_libraries(recstore_torch_ops PRIVATE
     wq_ps_client
     grpc_ps_client
     dist_grpc_ps_client
-    $<$<NOT:$<BOOL:${RECSTORE_DISABLE_BRPC}>>:brpc_ps_client>
-    $<$<NOT:$<BOOL:${RECSTORE_DISABLE_BRPC}>>:dist_brpc_ps_client>
+    brpc_ps_client
+    dist_brpc_ps_client
     local_shm_ps_client
     protobuf::libprotobuf
     gRPC::grpc++
@@ -52,8 +48,6 @@ target_link_libraries(recstore_torch_ops PRIVATE
     Folly::folly
     ${TORCH_LIBRARIES}
 )
-
-target_link_libraries(recstore_torch_ops PRIVATE boost_regex_cxx11)
 
 if(TARGET framework_gpu_cache)
     target_compile_definitions(recstore_torch_ops PRIVATE RECSTORE_ENABLE_GPU_CACHE)

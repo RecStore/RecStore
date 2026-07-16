@@ -3,10 +3,8 @@
 #include <stdexcept>
 
 #include "base/factory.h"
-#ifndef RECSTORE_DISABLE_BRPC
-#  include "ps/brpc/brpc_ps_client.h"
-#  include "ps/brpc/dist_brpc_ps_client.h"
-#endif
+#include "ps/brpc/brpc_ps_client.h"
+#include "ps/brpc/dist_brpc_ps_client.h"
 #include "ps/grpc/grpc_ps_client.h"
 #include "ps/grpc/dist_grpc_ps_client.h"
 #include "ps/local_shm/local_shm_client.h"
@@ -45,12 +43,10 @@ CreatePSClient(const PSClientCreateOptions& options) {
       return std::make_unique<DistributedGRPCParameterClient>(
           options.raw_config);
     }
-#ifndef RECSTORE_DISABLE_BRPC
     if (options.type == PSClientType::kBrpc) {
       return std::make_unique<DistributedBRPCParameterClient>(
           options.raw_config);
     }
-#endif
   }
 
   BasePSClient* client = base::Factory<BasePSClient, json>::NewInstance(
@@ -63,11 +59,9 @@ CreatePSClient(const PSClientCreateOptions& options) {
     return std::make_unique<GRPCParameterClient>(options.transport_config);
   }
 
-#ifndef RECSTORE_DISABLE_BRPC
   if (options.type == PSClientType::kBrpc) {
     return std::make_unique<BRPCParameterClient>(options.transport_config);
   }
-#endif
 
   if (options.type == PSClientType::kLocalShm) {
     return std::make_unique<LocalShmPSClient>(options.transport_config);

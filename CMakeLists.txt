@@ -32,15 +32,6 @@ else()
   project(RecStore LANGUAGES CXX C)
 endif()
 
-option(RECSTORE_DISABLE_BRPC "Disable bRPC backend" OFF)
-option(RECSTORE_DISABLE_CPPTRACE "Disable cpptrace dependency" OFF)
-if(RECSTORE_DISABLE_BRPC)
-  add_compile_definitions(RECSTORE_DISABLE_BRPC)
-endif()
-if(RECSTORE_DISABLE_CPPTRACE)
-  add_compile_definitions(RECSTORE_DISABLE_CPPTRACE)
-endif()
-
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(CMAKE_EXPORT_COMPILE_COMMANDS)
     set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
@@ -283,9 +274,6 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/third_party/folly/_build
 )
 
-# Boost headers: on distros where boost lives in a versioned include dir
-# (e.g. CentOS /usr/include/boost169) expose it globally so storage/rdma
-# targets that use boost/coroutine2 compile without per-target wiring.
 if(Boost_INCLUDE_DIR)
   include_directories(${Boost_INCLUDE_DIR})
 endif()
@@ -323,7 +311,9 @@ add_subdirectory(third_party/json)
 # add_subdirectory(third_party/pybind11)
 # add_subdirectory(third_party/mimalloc)
 
-set(PYBIND11_CMAKE_DIR "/usr/local/python3.12.11/lib/python3.12/site-packages/pybind11/share/cmake/pybind11")
+if(NOT DEFINED PYBIND11_CMAKE_DIR)
+  set(PYBIND11_CMAKE_DIR "/usr/local/lib/python3.10/dist-packages/pybind11/share/cmake/pybind11")
+endif()
 list(APPEND CMAKE_PREFIX_PATH ${PYBIND11_CMAKE_DIR})
 find_package(pybind11 REQUIRED)
 
