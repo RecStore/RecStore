@@ -524,7 +524,14 @@ class BagPipeCacheController:
             # Fallback: some keys not in cache.  Apply grads directly to PS.
             # all_reduce first to aggregate across GPUs, then only rank 0 pushes.
             self._stats["bagpipe_sgd_cache_fallback"] += 1
-            agg_ids, agg_grads = self._all_reduce_sparse_grads(ids_cuda, grads_cuda)
+            # Fold in accumulated sync_later grads (same rationale as
+            # _flush_sync_now) so deferred grads are not silently dropped.
+            fallback_grads_cpu = grads_cpu.clone()
+            for j, fid in enumerate(id_list):
+                if fid in self.sync_later_grads:
+                    fallback_grads_cpu[j] += self.sync_later_grads[fid]
+            agg_ids, agg_grads = self._all_reduce_sparse_grads(
+                ids_cpu, fallback_grads_cpu)
             if not self._is_distributed() or self._get_rank() == 0:
                 try:
                     self.kv_client.update(table_name, agg_ids, agg_grads)
@@ -568,6 +575,16 @@ class BagPipeCacheController:
         )
         now_ids_cpu = torch.tensor(sync_now_ids, dtype=torch.int64)
         now_grads_cpu = grads_cpu.index_select(0, now_indices)
+
+        # Fold in any previously accumulated sync_later grads for these IDs.
+        # An ID may have been sync_later in earlier steps (deferred push) and
+        # now becomes sync_now (last use).  Without this, the accumulated
+        # deferred grads would be silently dropped when sync_later_grads is
+        # cleared below, causing a permanent gradient loss on the PS.
+        now_grads_cpu = now_grads_cpu.clone()
+        for j, fid in enumerate(sync_now_ids):
+            if fid in self.sync_later_grads:
+                now_grads_cpu[j] += self.sync_later_grads[fid]
 
         # Step 1: all_reduce across GPUs
         agg_ids, agg_grads = self._all_reduce_sparse_grads(now_ids_cpu, now_grads_cpu)
