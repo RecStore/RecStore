@@ -960,18 +960,25 @@ class RecStoreRunner(BenchmarkRunner):
                 lookahead_prefetcher.depth,
                 cfg.prefetch_issue_depth,
             )
-            bagpipe_policy = BagPipeCachePolicy(
-                lookahead_depth=prefetch_issue_depth,
-                cache_capacity=cfg.gpu_cache_capacity if cfg.enable_gpu_cache else 0,
-            )
-            bagpipe_scheduler = BagPipeWindowScheduler(
-                bagpipe_policy=bagpipe_policy,
-                lookahead_prefetcher=lookahead_prefetcher,
-                embedding_module=embedding_module,
-                read_before_update=cfg.read_before_update,
-                read_mode=cfg.read_mode,
-                prefetch_issue_depth=prefetch_issue_depth,
-            )
+            # Master library-layer BagPipe scheduler is only used in the
+            # non-bagpipe-cache prefetch path.  When enable_bagpipe_cache is
+            # on, BagPipeCacheController owns the full lookahead/prefetch/sync
+            # lifecycle, so the scheduler would be redundant.
+            bagpipe_policy = None
+            bagpipe_scheduler = None
+            if not cfg.enable_bagpipe_cache:
+                bagpipe_policy = BagPipeCachePolicy(
+                    lookahead_depth=prefetch_issue_depth,
+                    cache_capacity=cfg.gpu_cache_capacity if cfg.enable_gpu_cache else 0,
+                )
+                bagpipe_scheduler = BagPipeWindowScheduler(
+                    bagpipe_policy=bagpipe_policy,
+                    lookahead_prefetcher=lookahead_prefetcher,
+                    embedding_module=embedding_module,
+                    read_before_update=cfg.read_before_update,
+                    read_mode=cfg.read_mode,
+                    prefetch_issue_depth=prefetch_issue_depth,
+                )
             prepared_batches: deque[
                 tuple[int, dict[str, Any], float, Any, Any, Any]
             ] = deque()
@@ -1027,7 +1034,8 @@ class RecStoreRunner(BenchmarkRunner):
                     prefetch_sparse_features,
                     table_offsets,
                 )
-                bagpipe_scheduler.observe_batch(batch_step, prefetch_fused_ids)
+                if bagpipe_scheduler is not None:
+                    bagpipe_scheduler.observe_batch(batch_step, prefetch_fused_ids)
 
                 if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
                     bagpipe_controller.enqueue(prefetch_sparse_features)
@@ -1052,10 +1060,11 @@ class RecStoreRunner(BenchmarkRunner):
                     and step + len(prepared_batches) < cfg.steps
                 ):
                     prepared_batches.append(prepare_next_batch(step + len(prepared_batches)))
-                bagpipe_scheduler.plan_ready(
-                    current_step=step,
-                    prepared_batches=prepared_batches,
-                )
+                if bagpipe_scheduler is not None:
+                    bagpipe_scheduler.plan_ready(
+                        current_step=step,
+                        prepared_batches=prepared_batches,
+                    )
                 if step + len(prepared_batches) >= cfg.steps:
                     if not (cfg.enable_bagpipe_cache and bagpipe_controller is not None):
                         lookahead_prefetcher.advance_all()
@@ -1087,10 +1096,15 @@ class RecStoreRunner(BenchmarkRunner):
                     if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
                         bagpipe_controller.prefill_cache(sparse_features, device)
                     elif cfg.read_before_update and cfg.read_mode == "prefetch":
-                        if cfg.prefetch_depth > 0:
-                            lookahead_prefetcher.attach_next()
-                        else:
-                            embedding_module.issue_fused_prefetch(sparse_features)
+                        _attach_or_refetch_with_bagpipe_policy(
+                            prefetch_depth=cfg.prefetch_depth,
+                            bagpipe_policy=bagpipe_policy,
+                            lookahead_prefetcher=lookahead_prefetcher,
+                            embedding_module=embedding_module,
+                            sparse_features=sparse_features,
+                            row=row,
+                            step=step,
+                        )
                     embeddings = embedding_module(sparse_features)
                     sync_device(torch, device)
                 prefetch_row_stats = lookahead_prefetcher.consume_stats(reset=False)
@@ -1177,6 +1191,24 @@ class RecStoreRunner(BenchmarkRunner):
                         row["bagpipe_cleanup_step_ms"] = (
                             time.perf_counter() - cleanup_start
                         ) * 1e3
+                    elif cfg.enable_gpu_cache or cfg.prefetch_depth > 0:
+                        updated_fused_ids = _safe_fused_ids(
+                            sparse_features,
+                            table_offsets,
+                        )
+                        _notify_bagpipe_sparse_update(
+                            bagpipe_policy=bagpipe_policy,
+                            sparse_optimizer=sparse_optimizer,
+                            fallback_updated_ids=updated_fused_ids,
+                            row=row,
+                            step=step,
+                        )
+                    else:
+                        row["bagpipe_gpu_cache_update_ids"] = 0
+                        row["bagpipe_gpu_cache_update_attempt_ids"] = 0
+                        row["bagpipe_policy_cached_update_ids"] = 0
+                        row["bagpipe_gpu_cache_update_failures"] = 0
+                        row["bagpipe_gpu_cache_update_failure_reason"] = ""
 
                     zero_grad_start = time.perf_counter()
                     sparse_optimizer.zero_grad()
@@ -1233,7 +1265,8 @@ class RecStoreRunner(BenchmarkRunner):
                 )
                 if step >= cfg.warmup_steps:
                     update_lat_us.append(row["sparse_update_ms"] * 1e3)
-                bagpipe_scheduler.on_step_end(step, row)
+                if bagpipe_scheduler is not None:
+                    bagpipe_scheduler.on_step_end(step, row)
                 _finalize_step_timing(row, consume_start=consume_step_start)
                 _barrier_for_step_alignment(
                     dist=dist,
@@ -1241,10 +1274,11 @@ class RecStoreRunner(BenchmarkRunner):
                     local_rank=local_rank,
                     use_dist=use_dist,
                 )
-                bagpipe_scheduler.issue_prefetches_ready_after_update(
-                    current_step=step,
-                    row=row,
-                )
+                if bagpipe_scheduler is not None:
+                    bagpipe_scheduler.issue_prefetches_ready_after_update(
+                        current_step=step,
+                        row=row,
+                    )
                 rows.append(finalize_recstore_row(row))
                 lookahead_prefetcher.reset_stats()
 
