@@ -45,7 +45,6 @@ target_link_libraries(petps_server PUBLIC
     boost_context
     boost_coroutine
     boost_regex
-    boost_regex_cxx11
     boost_system
     pthread
     rt
@@ -67,7 +66,6 @@ target_link_libraries(petps_integration_test PUBLIC
     gtest
     Folly::folly
     boost_regex
-    boost_regex_cxx11
     boost_system
     pthread
 )
