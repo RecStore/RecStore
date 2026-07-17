@@ -258,19 +258,27 @@ def main(argv: list[str] | None = None) -> int:
 
         if is_recstore_worker:
             return 0
-        print("[rs_demo] analyzing embupdate stages...")
-        extra_inputs: list[str] = []
-        server_log_path = Path(cfg.server_log)
-        if server_log_path.exists():
-            extra_inputs.append(str(server_log_path))
-        analyze_output = analyze_embupdate(
-            repo_root,
-            cfg.jsonl,
-            cfg.csv,
-            top_n=20,
-            extra_inputs=extra_inputs,
-        )
-        print(analyze_output)
+        # The analysis step needs the structured event log (jsonl).  The quanta
+        # backend (no PS) doesn't produce one, so skip gracefully.
+        if Path(cfg.jsonl).exists():
+            print("[rs_demo] analyzing embupdate stages...")
+            extra_inputs: list[str] = []
+            server_log_path = Path(cfg.server_log)
+            if server_log_path.exists():
+                extra_inputs.append(str(server_log_path))
+            try:
+                analyze_output = analyze_embupdate(
+                    repo_root,
+                    cfg.jsonl,
+                    cfg.csv,
+                    top_n=20,
+                    extra_inputs=extra_inputs,
+                )
+                print(analyze_output)
+            except Exception as exc:
+                print(f"[rs_demo] analysis skipped: {exc}")
+        else:
+            print(f"[rs_demo] no event log ({cfg.jsonl}), skipping analysis")
         if effective_ps_type == "LOCAL_SHM":
             print("[rs_demo] analyzing local_shm server stages...")
             local_shm_output = analyze_stage_table(

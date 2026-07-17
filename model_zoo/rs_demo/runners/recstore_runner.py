@@ -744,11 +744,19 @@ class RecStoreRunner(BenchmarkRunner):
 
         world_size = cfg.nnodes * cfg.nproc_per_node
         rank_csvs = [rank_dir / f"rank{rank}.csv" for rank in range(world_size)]
-        missing = [str(path) for path in rank_csvs if not path.exists()]
-        if missing:
-            raise RuntimeError(f"missing rank csv outputs: {missing}")
-        rows = _merge_rank_outputs(rank_csvs, Path(cfg.recstore_main_csv))
-        return {"backend": "recstore", "rows": rows}
+        # For multi-node, only local ranks write to this filesystem; remote
+        # rank CSVs are collected by the external benchmark script.  Don't
+        # fail on missing remote CSVs — just merge what's available.
+        local_rank_csvs = [p for p in rank_csvs if p.exists()]
+        if cfg.nnodes == 1:
+            missing = [str(path) for path in rank_csvs if not path.exists()]
+            if missing:
+                raise RuntimeError(f"missing rank csv outputs: {missing}")
+        if local_rank_csvs:
+            rows = _merge_rank_outputs(local_rank_csvs, Path(cfg.recstore_main_csv))
+        else:
+            rows = []
+        return {"backend": str(cfg.backend), "rows": rows}
 
     def _run_local_worker(
         self,
