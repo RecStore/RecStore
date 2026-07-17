@@ -21,9 +21,13 @@ from ..config import (
     validate_torchrec_config,
 )
 from ..runtime.hybrid_dlrm import (
+    build_criterion,
+    build_dense_module,
     build_hybrid_dense_arch,
+    compute_dense_loss,
     parse_layer_sizes,
     prepare_hybrid_dlrm_input,
+    rankmixer_task_names,
     reshape_torchrec_embeddings_for_dlrm,
     run_hybrid_backward,
     sync_device,
@@ -522,7 +526,9 @@ def _run_single_or_dist_worker(
         torch.manual_seed(cfg.seed)
         _append_worker_debug(cfg, rank, "torchrec_align_recstore_init=1")
 
-    dense_module = build_hybrid_dense_arch(
+    model_type = getattr(cfg, "model", "dlrm")
+    dense_module = build_dense_module(
+        model_type=model_type,
         torch=torch,
         dense_in_features=13,
         embedding_dim=cfg.embedding_dim,
@@ -530,6 +536,11 @@ def _run_single_or_dist_worker(
         dense_arch_layer_sizes=parse_layer_sizes(cfg.dense_arch_layer_sizes),
         over_arch_layer_sizes=parse_layer_sizes(cfg.over_arch_layer_sizes),
         device=device,
+        rankmixer_segment_dims=getattr(cfg, "rankmixer_segment_dims", None),
+        rankmixer_tokens_split_dim=getattr(cfg, "rankmixer_tokens_split_dim", 2400),
+        rankmixer_blocks=getattr(cfg, "rankmixer_blocks", 2),
+        rankmixer_gate_num=getattr(cfg, "rankmixer_gate_num", 6),
+        rankmixer_masked_dim=getattr(cfg, "rankmixer_masked_dim", 56),
     )
     dense_module = _maybe_wrap_dense_module_for_dist(
         dense_module=dense_module,
@@ -542,7 +553,12 @@ def _run_single_or_dist_worker(
     if use_dist and fair_remote_mode:
         _append_worker_debug(cfg, rank, "skip_dense_ddp_fair_remote")
 
-    criterion = nn.BCEWithLogitsLoss()
+    _dispatch_module = dense_module.module if isinstance(
+        dense_module, torch.nn.parallel.DistributedDataParallel) else dense_module
+    criterion = build_criterion(
+        getattr(_dispatch_module, "model_type", "dlrm"),
+        rankmixer_task_names(_dispatch_module),
+    )
     _append_worker_debug(cfg, rank, "after_criterion")
     _append_worker_debug(cfg, rank, "before_optimizer_init")
     dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
@@ -645,8 +661,9 @@ def _run_single_or_dist_worker(
                 _append_worker_debug(cfg, rank, f"before_dense_fwd step={step}")
                 with stage_timer(row, "dense_fwd_ms"):
                     _sync_for_timing(torch, device, cfg, "stage")
-                    logits = dense_module(dense_features, embedded_sparse)
-                    loss = criterion(logits, labels)
+                    loss, logits = compute_dense_loss(
+                        model_type, dense_module, criterion,
+                        dense_features, embedded_sparse, labels)
                     _sync_for_timing(torch, device, cfg, "stage")
                 row["loss"] = float(loss.detach().float().cpu().item())
                 _append_worker_debug(cfg, rank, f"after_dense_fwd step={step}")
@@ -783,6 +800,8 @@ class TorchRecRunner(BenchmarkRunner):
             str(cfg.dense_arch_layer_sizes),
             "--over-arch-layer-sizes",
             str(cfg.over_arch_layer_sizes),
+            "--model",
+            str(cfg.model),
             "--seed",
             str(cfg.seed),
             "--data-dir",
@@ -824,6 +843,21 @@ class TorchRecRunner(BenchmarkRunner):
                     str(cfg.torchrec_profiler_active),
                     "--torchrec-profiler-repeat",
                     str(cfg.torchrec_profiler_repeat),
+                ]
+            )
+        if cfg.model == "rankmixer":
+            cmd.extend(
+                [
+                    "--rankmixer-tokens-split-dim",
+                    str(cfg.rankmixer_tokens_split_dim),
+                    "--rankmixer-blocks",
+                    str(cfg.rankmixer_blocks),
+                    "--rankmixer-gate-num",
+                    str(cfg.rankmixer_gate_num),
+                    "--rankmixer-masked-dim",
+                    str(cfg.rankmixer_masked_dim),
+                    "--rankmixer-segment-dims",
+                    str(cfg.rankmixer_segment_dims),
                 ]
             )
         return cmd

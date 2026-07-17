@@ -31,9 +31,13 @@ from ..data.dlrm_source import (
     inject_project_paths,
 )
 from ..runtime.hybrid_dlrm import (
+    build_criterion,
+    build_dense_module,
     build_hybrid_dense_arch,
+    compute_dense_loss,
     parse_layer_sizes,
     prepare_hybrid_dlrm_input,
+    rankmixer_task_names,
     reshape_torchrec_embeddings_for_dlrm,
     run_hybrid_backward,
     sync_device,
@@ -611,6 +615,8 @@ class RecStoreRunner(BenchmarkRunner):
             str(cfg.dense_arch_layer_sizes),
             "--over-arch-layer-sizes",
             str(cfg.over_arch_layer_sizes),
+            "--model",
+            str(cfg.model),
             "--seed",
             str(cfg.seed),
             "--data-dir",
@@ -672,6 +678,21 @@ class RecStoreRunner(BenchmarkRunner):
             )
         if not cfg.read_before_update:
             cmd.append("--no-read-before-update")
+        if cfg.model == "rankmixer":
+            cmd.extend(
+                [
+                    "--rankmixer-tokens-split-dim",
+                    str(cfg.rankmixer_tokens_split_dim),
+                    "--rankmixer-blocks",
+                    str(cfg.rankmixer_blocks),
+                    "--rankmixer-gate-num",
+                    str(cfg.rankmixer_gate_num),
+                    "--rankmixer-masked-dim",
+                    str(cfg.rankmixer_masked_dim),
+                    "--rankmixer-segment-dims",
+                    str(cfg.rankmixer_segment_dims),
+                ]
+            )
         return cmd
 
     def _run_single_process(self, repo_root: Path, cfg: RunConfig) -> dict[str, Any]:
@@ -893,7 +914,9 @@ class RecStoreRunner(BenchmarkRunner):
                 local_rank=local_rank,
                 use_dist=use_dist,
             )
-            dense_module = build_hybrid_dense_arch(
+            model_type = getattr(cfg, "model", "dlrm")
+            dense_module = build_dense_module(
+                model_type=model_type,
                 torch=torch,
                 dense_in_features=13,
                 embedding_dim=cfg.embedding_dim,
@@ -901,6 +924,11 @@ class RecStoreRunner(BenchmarkRunner):
                 dense_arch_layer_sizes=parse_layer_sizes(cfg.dense_arch_layer_sizes),
                 over_arch_layer_sizes=parse_layer_sizes(cfg.over_arch_layer_sizes),
                 device=device,
+                rankmixer_segment_dims=getattr(cfg, "rankmixer_segment_dims", None),
+                rankmixer_tokens_split_dim=getattr(cfg, "rankmixer_tokens_split_dim", 2400),
+                rankmixer_blocks=getattr(cfg, "rankmixer_blocks", 2),
+                rankmixer_gate_num=getattr(cfg, "rankmixer_gate_num", 6),
+                rankmixer_masked_dim=getattr(cfg, "rankmixer_masked_dim", 56),
             )
             dense_module = _maybe_wrap_dense_module_for_dist(
                 dense_module=dense_module,
@@ -908,10 +936,19 @@ class RecStoreRunner(BenchmarkRunner):
                 local_rank=local_rank,
                 use_dist=use_dist,
             )
-            criterion = torch.nn.BCEWithLogitsLoss()
+            # Unwrap DDP to read model_type / task names for the dispatcher.
+            _dispatch_module = dense_module.module if isinstance(
+                dense_module, torch.nn.parallel.DistributedDataParallel) else dense_module
+            criterion = build_criterion(
+                getattr(_dispatch_module, "model_type", "dlrm"),
+                rankmixer_task_names(_dispatch_module),
+            )
             dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
             bagpipe_controller: BagPipeCacheController | None = None
             if cfg.enable_bagpipe_cache:
+                def _fused_id_extractor(sparse_features):
+                    return convert_kjt_ids_to_fused_ids(sparse_features, table_offsets)
+
                 bagpipe_controller = BagPipeCacheController(
                     embedding_module,
                     client,
@@ -924,6 +961,7 @@ class RecStoreRunner(BenchmarkRunner):
                     master_table_name=cfg.table_name,
                     device=device,
                     lr=0.01,
+                    id_extractor=_fused_id_extractor,
                 )
             if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
                 sparse_optimizer = BagPipeSparseSGD(
@@ -1141,8 +1179,9 @@ class RecStoreRunner(BenchmarkRunner):
 
                 with stage_timer(row, "dense_fwd_ms"):
                     sync_device(torch, device)
-                    logits = dense_module(dense_features, embedded_sparse)
-                    loss = criterion(logits, labels)
+                    loss, logits = compute_dense_loss(
+                        model_type, dense_module, criterion,
+                        dense_features, embedded_sparse, labels)
                     sync_device(torch, device)
                 row["loss"] = float(loss.detach().float().cpu().item())
 
