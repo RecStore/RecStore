@@ -618,22 +618,6 @@ class ShardedRecstoreClient:
             raise RuntimeError("update_gpu_cache requires client support.")
         fn(self._normalize_ids(ids, keep_device=True), self._normalize_grads(values, keep_device=True))
 
-    def invalidate_gpu_cache(self, keys: torch.Tensor) -> None:
-        fn = getattr(self._client, "invalidate_gpu_cache", None)
-        if not callable(fn):
-            raise RuntimeError("invalidate_gpu_cache requires client support.")
-        if keys.numel() == 0:
-            return
-        fn(self._normalize_ids(keys, keep_device=True))
-
-    def apply_sgd_update_gpu_cache(self, keys: torch.Tensor, grads: torch.Tensor, lr: float) -> bool:
-        fn = getattr(self._client, "apply_sgd_update_gpu_cache", None)
-        if not callable(fn):
-            raise RuntimeError("apply_sgd_update_gpu_cache requires client support.")
-        if keys.numel() == 0:
-            return True
-        return bool(fn(self._normalize_ids(keys, keep_device=True), self._normalize_grads(grads, keep_device=True), float(lr)))
-
     def get_last_gpu_cache_profile(self) -> dict[str, float]:
         getter = getattr(self._client, "get_last_gpu_cache_profile", None)
         if callable(getter):
