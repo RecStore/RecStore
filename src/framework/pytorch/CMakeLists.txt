@@ -14,6 +14,7 @@ add_library(recstore_torch_ops SHARED
 )
 
 target_compile_definitions(recstore_torch_ops PRIVATE _GLIBCXX_USE_CXX11_ABI=1)
+target_link_libraries(recstore_torch_ops PRIVATE boost_regex_cxx11)
 
 if(USE_FAKE_KVCLIENT)
     target_compile_definitions(recstore_torch_ops PRIVATE USE_FAKE_KVCLIENT)

@@ -597,6 +597,34 @@ class RecStoreClient:
             return True
         return bool(apply_sgd(keys, grads, float(lr)))
 
+    def emb_write_values(self, name: str, keys: torch.Tensor, values: torch.Tensor) -> None:
+        """Write (set) embedding values directly to the PS for a subset of
+        keys, with per-key GPU cache invalidation (no full cache clear).
+
+        Used by the BagPipe eviction writeback path to push locally-updated
+        cache values back to the PS without disturbing other cached entries.
+        """
+        if name not in self._tensor_meta:
+            raise RuntimeError(f"Tensor '{name}' has not been initialized.")
+        write_values = getattr(self.ops, "emb_write_values", None)
+        if not callable(write_values):
+            raise RuntimeError(
+                "emb_write_values requires ops library exposing emb_write_values()."
+            )
+        if keys.numel() == 0:
+            return
+        self._ensure_gpu_cache_table(name)
+        ids = self._normalize_ids(keys, preserve_device=True)
+        if ids.device.type == "cpu":
+            if torch.cuda.is_available():
+                ids = ids.to(torch.device("cuda", torch.cuda.current_device()))
+            else:
+                raise RuntimeError("emb_write_values requires CUDA ids")
+        vals = self._normalize_grads(values, preserve_device=True)
+        if vals.device.type == "cpu" and torch.cuda.is_available():
+            vals = vals.to(ids.device)
+        write_values(ids, vals)
+
     def get_last_gpu_cache_profile(self) -> Dict[str, float]:
         getter = getattr(self.ops, "get_last_gpu_cache_profile", None)
         if not callable(getter):
