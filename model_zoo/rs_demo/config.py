@@ -188,7 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--backend",
         type=str,
         default="recstore",
-        choices=["recstore", "torchrec", "hps_torch"],
+        choices=["recstore", "torchrec", "hps_torch", "quanta"],
     )
     parser.add_argument("--nproc", type=int, default=1)
     parser.add_argument("--nnodes", type=int, default=1)
@@ -562,7 +562,7 @@ def validate_torchrec_config(cfg: RunConfig) -> None:
 
 
 def validate_recstore_config(cfg: RunConfig) -> None:
-    if cfg.backend != "recstore":
+    if cfg.backend not in ("recstore", "quanta"):
         return
     resolve_num_embeddings_per_feature(cfg.num_embeddings, cfg.num_embeddings_per_feature)
 
@@ -615,7 +615,7 @@ def validate_recstore_config(cfg: RunConfig) -> None:
             raise RuntimeError(
                 "RecStore single-node distributed fast path only supports --single-node-owner-policy=hash_mod_world_size."
             )
-    if cfg.nnodes > 1 and not cfg.recstore_runtime_dir:
+    if cfg.backend == "recstore" and cfg.nnodes > 1 and not cfg.recstore_runtime_dir:
         raise RuntimeError(
             "RecStore multi-node requires --recstore-runtime-dir pointing to a shared runtime directory."
         )

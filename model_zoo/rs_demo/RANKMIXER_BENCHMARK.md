@@ -33,9 +33,16 @@
 | Embedding fetch 等价（本地 gather == PS pull） | max_diff = 0.00e+00 |
 | RankMixer 计算对相同 embedding 输出 | logits max_diff = 0.00e+00 |
 | 梯度流通（MaskBlock/LT/TokenMixer/PFFN/PLE/insert_w） | 146/146 参数非零梯度 |
+| **多步训练一致性（PS-fetch vs local-fetch, 8 步）** | 逐步 loss max_diff=0.00e+00，权重 max_diff=0.00e+00 |
 
 两个架构跑的是**同一份 RankMixer 计算代码**，embedding 取值一致（仅获取方式不同），
-因此前向/反向数值一致，精度对齐。
+因此前向/反向数值一致，精度对齐。**多步训练一致性**进一步证明：当两架构从同一张表读取、
+用同一优化器更新时，8 步内 loss 轨迹与最终权重逐位相同（max_diff=0）——即**精度完全一致**。
+
+> 注：第 3 节 benchmark 中 RecStore 末步 loss 16.81、TorchRec 17.03 存在 ~1.3% 偏差，
+> 这来自两个 harness 的**embedding 初始化方式不同**（RecStore 经 PS `init_data` 随机初始化、
+> TorchRec 用 EmbeddingBag 默认初始化）与**优化器实现不同**（SparseSGD vs 稠密 SGD），
+> 而非架构本身的能力差异——上述多步训练一致性用受控实验排除了这一点。
 
 ## 3. 性能对比（单卡 A100，bs=2048，26 表 × 200000 × 64 维，tokens_split_dim=2400）
 

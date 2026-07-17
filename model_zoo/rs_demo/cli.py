@@ -56,7 +56,7 @@ def estimate_recstore_kv_capacity_for_tables(
 
 
 def build_runner(cfg: RunConfig, runtime_dir: Path):
-    if cfg.backend == "recstore":
+    if cfg.backend in ("recstore", "quanta"):
         from .runners.recstore_runner import RecStoreRunner
 
         return RecStoreRunner(runtime_dir)
@@ -151,6 +151,13 @@ def main(argv: list[str] | None = None) -> int:
         runtime_dir = runtime_dir.resolve()
         runtime_cfg_path = runtime_dir / "recstore_config.json"
         cfg.recstore_runtime_dir = str(runtime_dir)
+
+    # QuantaRec-style backend needs a runtime dir too (worker chdir target),
+    # but no PS config — just ensure the dir exists.
+    if cfg.backend == "quanta":
+        runtime_dir = runtime_dir if runtime_dir.exists() else Path(cfg.output_root) / "runtime" / cfg.run_id
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        runtime_dir = runtime_dir.resolve()
 
     proc = None
     rdma_cluster = None
