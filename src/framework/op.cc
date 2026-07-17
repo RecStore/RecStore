@@ -4,9 +4,7 @@
 #include "framework/common/op_runtime_support.h"
 #include "framework/common/ps_client_config_adapter.h"
 #include "ps/client_factory.h"
-#ifndef RECSTORE_DISABLE_BRPC
-#  include "ps/brpc/dist_brpc_ps_client.h"
-#endif
+#include "ps/brpc/dist_brpc_ps_client.h"
 #include "ps/grpc/dist_grpc_ps_client.h"
 #include "ps/rdma/rdma_ps_client_adapter.h"
 #include "base/factory.h"
@@ -48,9 +46,7 @@ std::string NormalizeBackendName(std::string backend_name) {
 bool IsReadWriteSuccess(BasePSClient* client, int ret) {
   if (dynamic_cast<RDMAPSClientAdapter*>(client) != nullptr ||
       dynamic_cast<DistributedGRPCParameterClient*>(client) != nullptr ||
-#ifndef RECSTORE_DISABLE_BRPC
       dynamic_cast<DistributedBRPCParameterClient*>(client) != nullptr ||
-#endif
       dynamic_cast<LocalShmPSClient*>(client) != nullptr) {
     return ret == 0;
   }
