@@ -1293,6 +1293,8 @@ class RecStoreRunner(BenchmarkRunner):
             print(f"[rs_demo] emb_read latency: {summarize_us(read_lat_us)}")
             print(f"[rs_demo] emb_update latency: {summarize_us(update_lat_us)}")
             _write_rows(out_csv, rows)
+            if bagpipe_controller is not None:
+                bagpipe_controller.shutdown()
             if use_dist and dist.is_initialized():
                 dist.barrier(device_ids=[local_rank] if device.type == "cuda" else None)
                 dist.destroy_process_group()

@@ -787,6 +787,35 @@ class ShardedRecstoreClient:
             shard_grads = grads.index_select(0, index_tensor).contiguous()
             self._client.emb_update_table(table_name, shard_keys, shard_grads)
 
+    def emb_write_values(self, name: str, ids: torch.Tensor, values: torch.Tensor) -> None:
+        """Write (set) embedding values directly to the PS for a subset of
+        keys with per-key GPU cache invalidation (no full cache clear).
+
+        Used by the BagPipe eviction writeback path.  Routes through the
+        native distributed backend (single emb_write_values call) or, for
+        sharded backends, groups keys by shard and writes each shard.
+        """
+        if ids.numel() == 0:
+            return
+        if name not in self._tensor_meta:
+            raise RuntimeError(f"Tensor {name} has not been initialized.")
+        ids_n = self._normalize_ids(ids, keep_device=True)
+        vals_n = self._normalize_grads(values, keep_device=True)
+        if ids_n.size(0) != vals_n.size(0):
+            raise RuntimeError("ids and values must have the same number of rows for emb_write_values")
+        if self._uses_native_distributed_backend():
+            self._client.emb_write_values(name, ids_n, vals_n)
+            return
+        for shard, index_tensor, shard_keys in self._group_ids_by_shard(
+            ids_n, keep_key_device=True
+        ):
+            self._activate_shard(shard)
+            idx = index_tensor
+            if vals_n.device != idx.device:
+                idx = idx.to(vals_n.device)
+            shard_vals = vals_n.index_select(0, idx).contiguous()
+            self._client.emb_write_values(name, shard_keys, shard_vals)
+
     def update(self, name: str, ids: torch.Tensor, grads: torch.Tensor) -> None:
         """Push gradients to the PS and invalidate ONLY these keys from the
         GPU cache (not a full cache clear).

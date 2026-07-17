@@ -19,6 +19,21 @@ target_link_libraries(base PUBLIC protobuf::libprotobuf protobuf::libprotobuf-li
 target_link_libraries(base PUBLIC cpptrace::cpptrace)
 
 
+
+# boost regex CXX11 ABI instantiation library.  folly and recstore are built
+# with _GLIBCXX_USE_CXX11_ABI=1, but the system boost 1.69 libraries only
+# provide the old-ABI symbols for transform()/transform_primary().
+add_library(boost_regex_cxx11 OBJECT
+    ${PROJECT_SOURCE_DIR}/src/framework/pytorch/boost_regex_cxx11_inst.cc)
+target_compile_definitions(boost_regex_cxx11 PRIVATE _GLIBCXX_USE_CXX11_ABI=1)
+set_target_properties(boost_regex_cxx11 PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    POSITION_INDEPENDENT_CODE ON)
+target_include_directories(boost_regex_cxx11 PRIVATE /usr/include/boost169)
+set_source_files_properties(${PROJECT_SOURCE_DIR}/src/framework/pytorch/boost_regex_cxx11_inst.cc PROPERTIES
+    COMPILE_FLAGS "-include cstring -include cstdio -include cstdlib -include string -include algorithm -include utility -include locale")
+
 add_executable(pq_test test_pq.cc)
 target_link_libraries(pq_test PUBLIC base)
 

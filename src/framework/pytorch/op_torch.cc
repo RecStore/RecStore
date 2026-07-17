@@ -973,6 +973,61 @@ void emb_write_torch(const torch::Tensor& keys, const torch::Tensor& values) {
 #endif
 }
 
+
+void emb_write_values_torch(const torch::Tensor& keys,
+                            const torch::Tensor& values) {
+  // Direct value-set to the PS for a subset of keys, with *per-key* GPU
+  // cache invalidation (not a full clear).  Used by the BagPipe eviction
+  // writeback path to push locally-updated cache values back to the PS
+  // without disturbing other cached entries.  Mirrors emb_write_torch but
+  // replaces SafeClearGpuCacheNoThrow() with InvalidateGpuCache(keys).
+  TORCH_CHECK(keys.dim() == 1, "Keys tensor must be 1-dimensional");
+  TORCH_CHECK(keys.scalar_type() == torch::kInt64,
+              "Keys tensor must have dtype int64");
+  TORCH_CHECK(keys.is_contiguous(), "Keys tensor must be contiguous");
+  TORCH_CHECK(values.dim() == 2, "Values tensor must be 2-dimensional");
+  TORCH_CHECK(values.scalar_type() == torch::kFloat32,
+              "Values tensor must be float32");
+  TORCH_CHECK(values.is_contiguous(), "Values tensor must be contiguous");
+  TORCH_CHECK(keys.size(0) == values.size(0),
+              "Keys and Values tensors must have the same number of entries");
+
+  if (keys.size(0) == 0) {
+    return;
+  }
+
+  auto op = GetKVClientOp();
+
+  torch::Tensor cpu_keys   = keys;
+  torch::Tensor cpu_values = values;
+  if (keys.is_cuda()) {
+    cpu_keys = keys.cpu();
+  }
+  if (values.is_cuda()) {
+    cpu_values = values.cpu();
+  }
+
+  base::RecTensor rec_keys   = ToRecTensor(cpu_keys, base::DataType::UINT64);
+  base::RecTensor rec_values = ToRecTensor(cpu_values, base::DataType::FLOAT32);
+
+  op->EmbWrite(rec_keys, rec_values);
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+  if (gpu::IsGpuCacheEnabled()) {
+    int64_t embedding_dim = values.size(1);
+    if (keys.is_cuda() && gpu::CanUseGpuCache(keys, embedding_dim)) {
+      try {
+        gpu::InvalidateGpuCache(keys);
+      } catch (...) {
+        SafeClearGpuCacheNoThrow();
+      }
+    } else {
+      SafeClearGpuCacheNoThrow();
+    }
+    gpu::ResetLastGpuCacheProfile();
+  }
+#endif
+}
+
 void set_ps_config_torch(const std::string& host, int64_t port) {
   auto kv_op = GetConcreteKVClientOp();
   kv_op->SetPSConfig(host, static_cast<int>(port));
@@ -1208,6 +1263,7 @@ TORCH_LIBRARY(recstore_ops, m) {
   m.def("local_update_flat", local_update_flat_torch);
   m.def("init_embedding_table", init_embedding_table_torch);
   m.def("emb_write", emb_write_torch);
+  m.def("emb_write_values", emb_write_values_torch);
   m.def("emb_prefetch", emb_prefetch_torch);
   m.def("emb_wait_result", emb_wait_result_torch);
   m.def("set_ps_config", set_ps_config_torch);
