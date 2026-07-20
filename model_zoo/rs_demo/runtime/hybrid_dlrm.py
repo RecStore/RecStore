@@ -168,7 +168,6 @@ def prepare_hybrid_dlrm_input(
     *,
     detach_sparse: bool,
 ):
-    sync_device(torch, device)
     dense_features = dense_batch.to(device)
     embedded_sparse = embedded_sparse_source.to(device)
     if detach_sparse:
@@ -176,12 +175,10 @@ def prepare_hybrid_dlrm_input(
     labels = labels_batch.to(device).float()
     if labels.ndim == 1:
         labels = labels.view(-1, 1)
-    sync_device(torch, device)
     return dense_features, embedded_sparse, labels
 
 
 def run_hybrid_backward(loss, embedded_sparse, dense_module, torch, device):
-    sync_device(torch, device)
     dense_params = [param for param in dense_module.parameters() if param.requires_grad]
     for param in dense_params:
         param.grad = None
@@ -192,7 +189,6 @@ def run_hybrid_backward(loss, embedded_sparse, dense_module, torch, device):
     embedded_sparse_grad = embedded_sparse.grad
     if embedded_sparse_grad is None:
         raise RuntimeError("missing embedded_sparse gradient after backward")
-    sync_device(torch, device)
     return embedded_sparse_grad.detach()
 
 
