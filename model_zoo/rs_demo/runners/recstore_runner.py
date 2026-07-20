@@ -205,6 +205,59 @@ def stage_timer(row: dict[str, Any], key: str):
         row[key] = (time.perf_counter() - start) * 1e3
 
 
+class CudaStageTimer:
+    """Non-blocking per-stage GPU timing via CUDA events.
+
+    Records events on the default stream at stage boundaries (``mark``) and
+    resolves elapsed times with a single device synchronize at end of step
+    (``resolve``). This replaces the per-stage ``sync_device`` calls that
+    serialized the pipeline while preserving per-stage GPU timing accuracy.
+
+    On non-CUDA devices, falls back to wall-clock ``perf_counter`` boundaries.
+    """
+
+    def __init__(self, torch_module: Any, device: Any) -> None:
+        self._torch = torch_module
+        self._device = device
+        self._is_cuda = device.type == "cuda"
+        self._keys: list[str] = []
+        self._events: list[Any] = []
+        self._wall_starts: list[tuple[str, float]] = []
+
+    def reset(self) -> None:
+        self._keys.clear()
+        self._events.clear()
+        self._wall_starts.clear()
+
+    def mark(self, key: str) -> None:
+        """Record a stage-start boundary on the current (default) stream."""
+        if self._is_cuda:
+            event = self._torch.cuda.Event(enable_timing=True)
+            event.record()
+            self._keys.append(key)
+            self._events.append(event)
+        else:
+            self._wall_starts.append((key, time.perf_counter()))
+
+    def resolve(self, row: dict[str, Any]) -> None:
+        """Sync once and write elapsed ms for every marked stage into ``row``."""
+        if self._is_cuda:
+            if len(self._events) >= 2:
+                self._torch.cuda.synchronize(self._device)
+                for i in range(len(self._events) - 1):
+                    row[self._keys[i]] = float(
+                        self._events[i].elapsed_time(self._events[i + 1])
+                    )
+                # trailing stage gets a final mark via the last event pair only if
+                # an explicit end mark was recorded; otherwise leave it unset.
+        else:
+            for i in range(len(self._wall_starts) - 1):
+                key, ts = self._wall_starts[i]
+                _, ts_next = self._wall_starts[i + 1]
+                row[key] = (ts_next - ts) * 1e3
+        self.reset()
+
+
 def _bool_int(flag: bool) -> int:
     return 1 if flag else 0
 
@@ -1131,6 +1184,7 @@ class RecStoreRunner(BenchmarkRunner):
                     labels_batch,
                 )
 
+            stage_rec = CudaStageTimer(torch, device)
             data_iter_state = {"iter": data_iter}
             for step in range(cfg.steps):
                 if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
@@ -1168,29 +1222,28 @@ class RecStoreRunner(BenchmarkRunner):
                 row["input_pack_consume_ms"] = (
                     time.perf_counter() - input_pack_consume_start
                 ) * 1e3
+                stage_rec.reset()
 
                 _reset_perf_stats(embedding_module)
                 _reset_perf_stats(sparse_optimizer)
                 sparse_optimizer.zero_grad()
                 embeddings = None
-                with stage_timer(row, "embed_lookup_local_ms"):
-                    sync_device(torch, device)
-                    if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
-                        bagpipe_controller.prefill_cache(sparse_features, device)
-                    elif (not is_quanta
-                          and cfg.read_before_update
-                          and cfg.read_mode == "prefetch"):
-                        _attach_or_refetch_with_bagpipe_policy(
-                            prefetch_depth=cfg.prefetch_depth,
-                            bagpipe_policy=bagpipe_policy,
-                            lookahead_prefetcher=lookahead_prefetcher,
-                            embedding_module=embedding_module,
-                            sparse_features=sparse_features,
-                            row=row,
-                            step=step,
-                        )
-                    embeddings = embedding_module(sparse_features)
-                    sync_device(torch, device)
+                stage_rec.mark("embed_lookup_local_ms")
+                if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
+                    bagpipe_controller.prefill_cache(sparse_features, device)
+                elif (not is_quanta
+                      and cfg.read_before_update
+                      and cfg.read_mode == "prefetch"):
+                    _attach_or_refetch_with_bagpipe_policy(
+                        prefetch_depth=cfg.prefetch_depth,
+                        bagpipe_policy=bagpipe_policy,
+                        lookahead_prefetcher=lookahead_prefetcher,
+                        embedding_module=embedding_module,
+                        sparse_features=sparse_features,
+                        row=row,
+                        step=step,
+                    )
+                embeddings = embedding_module(sparse_features)
                 prefetch_row_stats = lookahead_prefetcher.consume_stats(reset=False)
                 for key, value in prefetch_row_stats.items():
                     row.setdefault(key, value)
@@ -1202,105 +1255,97 @@ class RecStoreRunner(BenchmarkRunner):
                 if client is not None: _merge_gpu_cache_profile(row, client, "lookup")
                 if embeddings is None:
                     raise RuntimeError("recstore embedding module returned no embeddings")
+
+                stage_rec.mark("embed_pool_local_ms")
+                embedded_sparse_source = reshape_torchrec_embeddings_for_dlrm(
+                    embeddings=embeddings,
+                    feature_names=default_cat_names,
+                    torch=torch,
+                )
+
+                stage_rec.mark("output_unpack_ms")
+                dense_features, embedded_sparse, labels = prepare_hybrid_dlrm_input(
+                    dense_batch=dense_batch,
+                    embedded_sparse_source=embedded_sparse_source,
+                    labels_batch=labels_batch,
+                    torch=torch,
+                    device=device,
+                    detach_sparse=True,
+                )
+
+                stage_rec.mark("dense_fwd_ms")
+                loss, logits = compute_dense_loss(
+                    model_type, dense_module, criterion,
+                    dense_features, embedded_sparse, labels)
+
+                stage_rec.mark("backward_ms")
+                embedded_sparse_grad = run_hybrid_backward(
+                    loss=loss,
+                    embedded_sparse=embedded_sparse,
+                    dense_module=dense_module,
+                    torch=torch,
+                    device=device,
+                )
+
+                stage_rec.mark("optimizer_ms")
+                dense_optimizer.step()
+                dense_optimizer.zero_grad(set_to_none=True)
+
+                stage_rec.mark("sparse_update_ms")
+                replay_start = time.perf_counter()
+                embedded_sparse_source.backward(
+                    embedded_sparse_grad.to(embedded_sparse_source.device)
+                )
+                row["sparse_backward_replay_ms"] = (
+                    time.perf_counter() - replay_start
+                ) * 1e3
+
+                optimizer_step_start = time.perf_counter()
+                sparse_optimizer.step()
+                row["sparse_optimizer_step_ms"] = (
+                    time.perf_counter() - optimizer_step_start
+                ) * 1e3
+
+                flush_start = time.perf_counter()
+                sparse_optimizer.flush()
+                row["sparse_optimizer_flush_ms"] = (
+                    time.perf_counter() - flush_start
+                ) * 1e3
+                if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
+                    cleanup_start = time.perf_counter()
+                    bagpipe_controller.cleanup(step)
+                    row["bagpipe_cleanup_step_ms"] = (
+                        time.perf_counter() - cleanup_start
+                    ) * 1e3
+                elif cfg.enable_gpu_cache or cfg.prefetch_depth > 0:
+                    updated_fused_ids = _safe_fused_ids(
+                        sparse_features,
+                        table_offsets,
+                    )
+                    _notify_bagpipe_sparse_update(
+                        bagpipe_policy=bagpipe_policy,
+                        sparse_optimizer=sparse_optimizer,
+                        fallback_updated_ids=updated_fused_ids,
+                        row=row,
+                        step=step,
+                    )
+                else:
+                    row["bagpipe_gpu_cache_update_ids"] = 0
+                    row["bagpipe_gpu_cache_update_attempt_ids"] = 0
+                    row["bagpipe_policy_cached_update_ids"] = 0
+                    row["bagpipe_gpu_cache_update_failures"] = 0
+                    row["bagpipe_gpu_cache_update_failure_reason"] = ""
+
+                zero_grad_start = time.perf_counter()
+                sparse_optimizer.zero_grad()
+                row["sparse_zero_grad_ms"] = (
+                    time.perf_counter() - zero_grad_start
+                ) * 1e3
+                stage_rec.mark("__step_end__")
+                stage_rec.resolve(row)
+                row["loss"] = float(loss.detach().float().cpu().item())
                 if step >= cfg.warmup_steps:
                     read_lat_us.append(row["embed_lookup_local_ms"] * 1e3)
-
-                with stage_timer(row, "embed_pool_local_ms"):
-                    embedded_sparse_source = reshape_torchrec_embeddings_for_dlrm(
-                        embeddings=embeddings,
-                        feature_names=default_cat_names,
-                        torch=torch,
-                    )
-                    sync_device(torch, device)
-
-                with stage_timer(row, "output_unpack_ms"):
-                    dense_features, embedded_sparse, labels = prepare_hybrid_dlrm_input(
-                        dense_batch=dense_batch,
-                        embedded_sparse_source=embedded_sparse_source,
-                        labels_batch=labels_batch,
-                        torch=torch,
-                        device=device,
-                        detach_sparse=True,
-                    )
-
-                with stage_timer(row, "dense_fwd_ms"):
-                    sync_device(torch, device)
-                    loss, logits = compute_dense_loss(
-                        model_type, dense_module, criterion,
-                        dense_features, embedded_sparse, labels)
-                    sync_device(torch, device)
-                row["loss"] = float(loss.detach().float().cpu().item())
-
-                with stage_timer(row, "backward_ms"):
-                    embedded_sparse_grad = run_hybrid_backward(
-                        loss=loss,
-                        embedded_sparse=embedded_sparse,
-                        dense_module=dense_module,
-                        torch=torch,
-                        device=device,
-                    )
-
-                with stage_timer(row, "optimizer_ms"):
-                    sync_device(torch, device)
-                    dense_optimizer.step()
-                    dense_optimizer.zero_grad(set_to_none=True)
-                    sync_device(torch, device)
-
-                with stage_timer(row, "sparse_update_ms"):
-                    sync_device(torch, device)
-                    replay_start = time.perf_counter()
-                    embedded_sparse_source.backward(
-                        embedded_sparse_grad.to(embedded_sparse_source.device)
-                    )
-                    sync_device(torch, device)
-                    row["sparse_backward_replay_ms"] = (
-                        time.perf_counter() - replay_start
-                    ) * 1e3
-
-                    optimizer_step_start = time.perf_counter()
-                    sparse_optimizer.step()
-                    sync_device(torch, device)
-                    row["sparse_optimizer_step_ms"] = (
-                        time.perf_counter() - optimizer_step_start
-                    ) * 1e3
-
-                    flush_start = time.perf_counter()
-                    sparse_optimizer.flush()
-                    sync_device(torch, device)
-                    row["sparse_optimizer_flush_ms"] = (
-                        time.perf_counter() - flush_start
-                    ) * 1e3
-                    if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
-                        cleanup_start = time.perf_counter()
-                        bagpipe_controller.cleanup(step)
-                        row["bagpipe_cleanup_step_ms"] = (
-                            time.perf_counter() - cleanup_start
-                        ) * 1e3
-                    elif cfg.enable_gpu_cache or cfg.prefetch_depth > 0:
-                        updated_fused_ids = _safe_fused_ids(
-                            sparse_features,
-                            table_offsets,
-                        )
-                        _notify_bagpipe_sparse_update(
-                            bagpipe_policy=bagpipe_policy,
-                            sparse_optimizer=sparse_optimizer,
-                            fallback_updated_ids=updated_fused_ids,
-                            row=row,
-                            step=step,
-                        )
-                    else:
-                        row["bagpipe_gpu_cache_update_ids"] = 0
-                        row["bagpipe_gpu_cache_update_attempt_ids"] = 0
-                        row["bagpipe_policy_cached_update_ids"] = 0
-                        row["bagpipe_gpu_cache_update_failures"] = 0
-                        row["bagpipe_gpu_cache_update_failure_reason"] = ""
-
-                    zero_grad_start = time.perf_counter()
-                    sparse_optimizer.zero_grad()
-                    row["sparse_zero_grad_ms"] = (
-                        time.perf_counter() - zero_grad_start
-                    ) * 1e3
-                    sync_device(torch, device)
                 _merge_numeric_fields(
                     row,
                     getattr(sparse_optimizer, "_last_step_profile", None),
