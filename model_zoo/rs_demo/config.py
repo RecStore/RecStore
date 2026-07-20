@@ -125,6 +125,14 @@ class RunConfig:
     fuse_k: int = 30
     dense_arch_layer_sizes: str = "512,256,128"
     over_arch_layer_sizes: str = "1024,1024,512,256,1"
+    # Dense compute model: "dlrm" (default DLRM interaction) or "rankmixer"
+    # (ported QuantaRec RankMixer blocks: MaskBlock + LT + TokenMixer/PFFN + PLE).
+    model: str = "dlrm"
+    rankmixer_tokens_split_dim: int = 2400
+    rankmixer_blocks: int = 2
+    rankmixer_gate_num: int = 6
+    rankmixer_masked_dim: int = 56
+    rankmixer_segment_dims: str = ""
     backend: str = "recstore"
     nproc: int = 1
     nnodes: int = 1
@@ -180,7 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--backend",
         type=str,
         default="recstore",
-        choices=["recstore", "torchrec", "hps_torch"],
+        choices=["recstore", "torchrec", "hps_torch", "quanta"],
     )
     parser.add_argument("--nproc", type=int, default=1)
     parser.add_argument("--nnodes", type=int, default=1)
@@ -368,6 +376,35 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default="1024,1024,512,256,1",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="dlrm",
+        choices=["dlrm", "rankmixer"],
+        help="Dense compute model. 'rankmixer' uses the ported QuantaRec RankMixer "
+             "blocks (MaskBlock + LT + TokenMixer/PFFN + PLE) instead of DLRM.",
+    )
+    parser.add_argument(
+        "--rankmixer-tokens-split-dim", type=int, default=2400,
+        help="RankMixer LT projection output dim (token dim). Production: 2400.",
+    )
+    parser.add_argument(
+        "--rankmixer-blocks", type=int, default=2,
+        help="Number of TokenMixer+PFFN blocks. Production: 2.",
+    )
+    parser.add_argument(
+        "--rankmixer-gate-num", type=int, default=6,
+        help="PLE expert (gate) count = 1 base + task groups. Production: 6.",
+    )
+    parser.add_argument(
+        "--rankmixer-masked-dim", type=int, default=56,
+        help="Mask feature dim for PLE/MMoE gate. Production: 4*(6+8)=56.",
+    )
+    parser.add_argument(
+        "--rankmixer-segment-dims", type=str, default="",
+        help="Comma-separated per-segment deep-input dims. Empty = auto-partition "
+             "num_sparse_features*embedding_dim into 5 segments.",
+    )
     parser.add_argument("--torchrec-profiler", action="store_true", default=False)
     parser.add_argument(
         "--torchrec-dist-mode",
@@ -525,7 +562,7 @@ def validate_torchrec_config(cfg: RunConfig) -> None:
 
 
 def validate_recstore_config(cfg: RunConfig) -> None:
-    if cfg.backend != "recstore":
+    if cfg.backend not in ("recstore", "quanta"):
         return
     resolve_num_embeddings_per_feature(cfg.num_embeddings, cfg.num_embeddings_per_feature)
 
@@ -578,7 +615,7 @@ def validate_recstore_config(cfg: RunConfig) -> None:
             raise RuntimeError(
                 "RecStore single-node distributed fast path only supports --single-node-owner-policy=hash_mod_world_size."
             )
-    if cfg.nnodes > 1 and not cfg.recstore_runtime_dir:
+    if cfg.backend == "recstore" and cfg.nnodes > 1 and not cfg.recstore_runtime_dir:
         raise RuntimeError(
             "RecStore multi-node requires --recstore-runtime-dir pointing to a shared runtime directory."
         )

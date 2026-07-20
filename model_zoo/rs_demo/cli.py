@@ -56,7 +56,7 @@ def estimate_recstore_kv_capacity_for_tables(
 
 
 def build_runner(cfg: RunConfig, runtime_dir: Path):
-    if cfg.backend == "recstore":
+    if cfg.backend in ("recstore", "quanta"):
         from .runners.recstore_runner import RecStoreRunner
 
         return RecStoreRunner(runtime_dir)
@@ -151,6 +151,13 @@ def main(argv: list[str] | None = None) -> int:
         runtime_dir = runtime_dir.resolve()
         runtime_cfg_path = runtime_dir / "recstore_config.json"
         cfg.recstore_runtime_dir = str(runtime_dir)
+
+    # QuantaRec-style backend needs a runtime dir too (worker chdir target),
+    # but no PS config — just ensure the dir exists.
+    if cfg.backend == "quanta":
+        runtime_dir = runtime_dir if runtime_dir.exists() else Path(cfg.output_root) / "runtime" / cfg.run_id
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        runtime_dir = runtime_dir.resolve()
 
     proc = None
     rdma_cluster = None
@@ -251,19 +258,27 @@ def main(argv: list[str] | None = None) -> int:
 
         if is_recstore_worker:
             return 0
-        print("[rs_demo] analyzing embupdate stages...")
-        extra_inputs: list[str] = []
-        server_log_path = Path(cfg.server_log)
-        if server_log_path.exists():
-            extra_inputs.append(str(server_log_path))
-        analyze_output = analyze_embupdate(
-            repo_root,
-            cfg.jsonl,
-            cfg.csv,
-            top_n=20,
-            extra_inputs=extra_inputs,
-        )
-        print(analyze_output)
+        # The analysis step needs the structured event log (jsonl).  The quanta
+        # backend (no PS) doesn't produce one, so skip gracefully.
+        if Path(cfg.jsonl).exists():
+            print("[rs_demo] analyzing embupdate stages...")
+            extra_inputs: list[str] = []
+            server_log_path = Path(cfg.server_log)
+            if server_log_path.exists():
+                extra_inputs.append(str(server_log_path))
+            try:
+                analyze_output = analyze_embupdate(
+                    repo_root,
+                    cfg.jsonl,
+                    cfg.csv,
+                    top_n=20,
+                    extra_inputs=extra_inputs,
+                )
+                print(analyze_output)
+            except Exception as exc:
+                print(f"[rs_demo] analysis skipped: {exc}")
+        else:
+            print(f"[rs_demo] no event log ({cfg.jsonl}), skipping analysis")
         if effective_ps_type == "LOCAL_SHM":
             print("[rs_demo] analyzing local_shm server stages...")
             local_shm_output = analyze_stage_table(

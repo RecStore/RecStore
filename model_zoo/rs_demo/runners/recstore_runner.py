@@ -31,15 +31,23 @@ from ..data.dlrm_source import (
     inject_project_paths,
 )
 from ..runtime.hybrid_dlrm import (
+    build_criterion,
+    build_dense_module,
     build_hybrid_dense_arch,
+    compute_dense_loss,
     parse_layer_sizes,
     prepare_hybrid_dlrm_input,
+    rankmixer_task_names,
     reshape_torchrec_embeddings_for_dlrm,
     run_hybrid_backward,
     sync_device,
 )
 from ..runtime.prefetch import LookaheadPrefetcher
 from ..runtime.bagpipe_cache import BagPipeCacheController, BagPipeSparseSGD
+from ..runtime.quanta_backend import (
+    QuantaEmbeddingBagCollection,
+    make_quanta_optimizer,
+)
 from ..runtime.recstore_distributed import ShardedRecstoreClient
 from ..runtime.report import finalize_recstore_row, summarize_us, write_stage_csv
 from .base import BenchmarkRunner
@@ -60,6 +68,9 @@ FAST_PATH_LOOKUP_PROFILE_KEYS = (
 )
 
 FAST_PATH_UPDATE_PROFILE_KEYS = (
+    "quanta_sparse_grad_sync_ms",
+    "quanta_optimizer_step_ms",
+    "quanta_lookup_local_ms",
     "trace_collect_ms",
     "trace_aggregate_ms",
     "exchange_ms",
@@ -192,6 +203,59 @@ def stage_timer(row: dict[str, Any], key: str):
         yield
     finally:
         row[key] = (time.perf_counter() - start) * 1e3
+
+
+class CudaStageTimer:
+    """Non-blocking per-stage GPU timing via CUDA events.
+
+    Records events on the default stream at stage boundaries (``mark``) and
+    resolves elapsed times with a single device synchronize at end of step
+    (``resolve``). This replaces the per-stage ``sync_device`` calls that
+    serialized the pipeline while preserving per-stage GPU timing accuracy.
+
+    On non-CUDA devices, falls back to wall-clock ``perf_counter`` boundaries.
+    """
+
+    def __init__(self, torch_module: Any, device: Any) -> None:
+        self._torch = torch_module
+        self._device = device
+        self._is_cuda = device.type == "cuda"
+        self._keys: list[str] = []
+        self._events: list[Any] = []
+        self._wall_starts: list[tuple[str, float]] = []
+
+    def reset(self) -> None:
+        self._keys.clear()
+        self._events.clear()
+        self._wall_starts.clear()
+
+    def mark(self, key: str) -> None:
+        """Record a stage-start boundary on the current (default) stream."""
+        if self._is_cuda:
+            event = self._torch.cuda.Event(enable_timing=True)
+            event.record()
+            self._keys.append(key)
+            self._events.append(event)
+        else:
+            self._wall_starts.append((key, time.perf_counter()))
+
+    def resolve(self, row: dict[str, Any]) -> None:
+        """Sync once and write elapsed ms for every marked stage into ``row``."""
+        if self._is_cuda:
+            if len(self._events) >= 2:
+                self._torch.cuda.synchronize(self._device)
+                for i in range(len(self._events) - 1):
+                    row[self._keys[i]] = float(
+                        self._events[i].elapsed_time(self._events[i + 1])
+                    )
+                # trailing stage gets a final mark via the last event pair only if
+                # an explicit end mark was recorded; otherwise leave it unset.
+        else:
+            for i in range(len(self._wall_starts) - 1):
+                key, ts = self._wall_starts[i]
+                _, ts_next = self._wall_starts[i + 1]
+                row[key] = (ts_next - ts) * 1e3
+        self.reset()
 
 
 def _bool_int(flag: bool) -> int:
@@ -570,7 +634,7 @@ class RecStoreRunner(BenchmarkRunner):
             "3",
             str(repo_root / "model_zoo/rs_demo/run_mock_stress.py"),
             "--backend",
-            "recstore",
+            str(cfg.backend),
             "--nnodes",
             str(cfg.nnodes),
             "--node-rank",
@@ -611,6 +675,8 @@ class RecStoreRunner(BenchmarkRunner):
             str(cfg.dense_arch_layer_sizes),
             "--over-arch-layer-sizes",
             str(cfg.over_arch_layer_sizes),
+            "--model",
+            str(cfg.model),
             "--seed",
             str(cfg.seed),
             "--data-dir",
@@ -672,6 +738,21 @@ class RecStoreRunner(BenchmarkRunner):
             )
         if not cfg.read_before_update:
             cmd.append("--no-read-before-update")
+        if cfg.model == "rankmixer":
+            cmd.extend(
+                [
+                    "--rankmixer-tokens-split-dim",
+                    str(cfg.rankmixer_tokens_split_dim),
+                    "--rankmixer-blocks",
+                    str(cfg.rankmixer_blocks),
+                    "--rankmixer-gate-num",
+                    str(cfg.rankmixer_gate_num),
+                    "--rankmixer-masked-dim",
+                    str(cfg.rankmixer_masked_dim),
+                    "--rankmixer-segment-dims",
+                    str(cfg.rankmixer_segment_dims),
+                ]
+            )
         return cmd
 
     def _run_single_process(self, repo_root: Path, cfg: RunConfig) -> dict[str, Any]:
@@ -716,11 +797,19 @@ class RecStoreRunner(BenchmarkRunner):
 
         world_size = cfg.nnodes * cfg.nproc_per_node
         rank_csvs = [rank_dir / f"rank{rank}.csv" for rank in range(world_size)]
-        missing = [str(path) for path in rank_csvs if not path.exists()]
-        if missing:
-            raise RuntimeError(f"missing rank csv outputs: {missing}")
-        rows = _merge_rank_outputs(rank_csvs, Path(cfg.recstore_main_csv))
-        return {"backend": "recstore", "rows": rows}
+        # For multi-node, only local ranks write to this filesystem; remote
+        # rank CSVs are collected by the external benchmark script.  Don't
+        # fail on missing remote CSVs — just merge what's available.
+        local_rank_csvs = [p for p in rank_csvs if p.exists()]
+        if cfg.nnodes == 1:
+            missing = [str(path) for path in rank_csvs if not path.exists()]
+            if missing:
+                raise RuntimeError(f"missing rank csv outputs: {missing}")
+        if local_rank_csvs:
+            rows = _merge_rank_outputs(local_rank_csvs, Path(cfg.recstore_main_csv))
+        else:
+            rows = []
+        return {"backend": str(cfg.backend), "rows": rows}
 
     def _run_local_worker(
         self,
@@ -804,18 +893,7 @@ class RecStoreRunner(BenchmarkRunner):
                     fingerprint_path=fingerprint_path,
                 )
                 _append_worker_debug(cfg, rank, f"worker_fingerprint {fingerprint}")
-            raw_client = RecstoreClient(library_path=str(library_path))
-            client = ShardedRecstoreClient(raw_client, self.runtime_dir)
-            if cfg.ps_type.upper() == "RDMA":
-                client.set_ps_backend("rdma")
-            if cfg.enable_single_node_distributed_fast_path:
-                client.set_ps_backend(cfg.single_node_ps_backend)
-                client.activate_shard(rank)
-            if cfg.read_before_update and cfg.read_mode == "prefetch":
-                print("[rs_demo] sharded recstore path uses prefetch read mode")
-            elif cfg.read_mode != "direct":
-                print("[rs_demo] unknown read mode, fallback to direct read mode")
-
+            is_quanta = cfg.backend == "quanta"
             dataset, dataloader = _build_train_dataloader_for_mode(
                 repo_root=repo_root,
                 cfg=cfg,
@@ -845,55 +923,90 @@ class RecStoreRunner(BenchmarkRunner):
                     for cfg_item in eb_configs
                 }
 
-            embedding_module = RecStoreEmbeddingBagCollection(
-                embedding_bag_configs=eb_configs,
-                enable_fusion=cfg.recstore_enable_fusion,
-                fusion_k=cfg.fuse_k,
-                kv_client=client,
-                initialize_tables=(rank == 0),
-            )
-            if cfg.enable_single_node_distributed_fast_path:
-                embedding_module.enable_single_node_distributed_fast_path = True
-                embedding_module.single_node_distributed_mode = "single_node"
-                embedding_module.single_node_ps_backend = cfg.single_node_ps_backend
-                embedding_module.single_node_owner_policy = cfg.single_node_owner_policy
-            _configure_gpu_cache(
-                embedding_module,
-                cfg,
-                embedding_dim=cfg.embedding_dim,
-            )
-            if (
-                cfg.enable_gpu_cache
-                and cfg.read_before_update
-                and cfg.read_mode == "prefetch"
-                and cfg.prefetch_depth > 0
-            ):
-                set_clear_after_cpu_update = getattr(
-                    client,
-                    "set_clear_gpu_cache_after_cpu_update",
-                    None,
+            if is_quanta:
+                # ── QuantaRec architecture: local replicated embeddings + sparse
+                # gradient all-reduce.  No central PS, no network read.
+                print("[rs_demo] backend=quanta (local dynamic embeddings + sparse grad sync)")
+                embedding_module = QuantaEmbeddingBagCollection(
+                    embedding_bag_configs=eb_configs,
+                    initialize_tables=True,
+                    device=device,
+                    fuse_k=cfg.fuse_k,
+                    enable_fusion=cfg.recstore_enable_fusion,
                 )
-                if callable(set_clear_after_cpu_update):
-                    set_clear_after_cpu_update(False)
-            _append_worker_debug(
-                cfg,
-                rank,
-                "fast_path_state "
-                f"enabled={getattr(embedding_module, 'enable_single_node_distributed_fast_path', False)} "
-                f"mode={getattr(embedding_module, 'single_node_distributed_mode', None)} "
-                f"backend={getattr(embedding_module, 'single_node_ps_backend', None)} "
-                f"owner_policy={getattr(embedding_module, 'single_node_owner_policy', None)} "
-                f"dist_initialized={dist.is_initialized()} "
-                f"dist_world_size={dist.get_world_size() if dist.is_initialized() else 'na'} "
-                f"can_use={embedding_module._can_use_single_node_distributed_fast_path()}",
-            )
-            _barrier_for_step_alignment(
-                dist=dist,
-                device=device,
-                local_rank=local_rank,
-                use_dist=use_dist,
-            )
-            dense_module = build_hybrid_dense_arch(
+                client = None
+            else:
+                raw_client = RecstoreClient(library_path=str(library_path))
+                client = ShardedRecstoreClient(raw_client, self.runtime_dir)
+                if cfg.ps_type.upper() == "RDMA":
+                    client.set_ps_backend("rdma")
+                if cfg.enable_single_node_distributed_fast_path:
+                    client.set_ps_backend(cfg.single_node_ps_backend)
+                    client.activate_shard(rank)
+                if cfg.read_before_update and cfg.read_mode == "prefetch":
+                    print("[rs_demo] sharded recstore path uses prefetch read mode")
+                elif cfg.read_mode != "direct":
+                    print("[rs_demo] unknown read mode, fallback to direct read mode")
+
+                embedding_module = RecStoreEmbeddingBagCollection(
+                    embedding_bag_configs=eb_configs,
+                    enable_fusion=cfg.recstore_enable_fusion,
+                    fusion_k=cfg.fuse_k,
+                    kv_client=client,
+                    initialize_tables=(rank == 0),
+                )
+            if not is_quanta:
+                if cfg.enable_single_node_distributed_fast_path:
+                    embedding_module.enable_single_node_distributed_fast_path = True
+                    embedding_module.single_node_distributed_mode = "single_node"
+                    embedding_module.single_node_ps_backend = cfg.single_node_ps_backend
+                    embedding_module.single_node_owner_policy = cfg.single_node_owner_policy
+                _configure_gpu_cache(
+                    embedding_module,
+                    cfg,
+                    embedding_dim=cfg.embedding_dim,
+                )
+                if (
+                    cfg.enable_gpu_cache
+                    and cfg.read_before_update
+                    and cfg.read_mode == "prefetch"
+                    and cfg.prefetch_depth > 0
+                ):
+                    set_clear_after_cpu_update = getattr(
+                        client,
+                        "set_clear_gpu_cache_after_cpu_update",
+                        None,
+                    )
+                    if callable(set_clear_after_cpu_update):
+                        set_clear_after_cpu_update(False)
+                _append_worker_debug(
+                    cfg,
+                    rank,
+                    "fast_path_state "
+                    f"enabled={getattr(embedding_module, 'enable_single_node_distributed_fast_path', False)} "
+                    f"mode={getattr(embedding_module, 'single_node_distributed_mode', None)} "
+                    f"backend={getattr(embedding_module, 'single_node_ps_backend', None)} "
+                    f"owner_policy={getattr(embedding_module, 'single_node_owner_policy', None)} "
+                    f"dist_initialized={dist.is_initialized()} "
+                    f"dist_world_size={dist.get_world_size() if dist.is_initialized() else 'na'} "
+                    f"can_use={embedding_module._can_use_single_node_distributed_fast_path()}",
+                )
+                _barrier_for_step_alignment(
+                    dist=dist,
+                    device=device,
+                    local_rank=local_rank,
+                    use_dist=use_dist,
+                )
+            else:
+                _barrier_for_step_alignment(
+                    dist=dist,
+                    device=device,
+                    local_rank=local_rank,
+                    use_dist=use_dist,
+                )
+            model_type = getattr(cfg, "model", "dlrm")
+            dense_module = build_dense_module(
+                model_type=model_type,
                 torch=torch,
                 dense_in_features=13,
                 embedding_dim=cfg.embedding_dim,
@@ -901,6 +1014,11 @@ class RecStoreRunner(BenchmarkRunner):
                 dense_arch_layer_sizes=parse_layer_sizes(cfg.dense_arch_layer_sizes),
                 over_arch_layer_sizes=parse_layer_sizes(cfg.over_arch_layer_sizes),
                 device=device,
+                rankmixer_segment_dims=getattr(cfg, "rankmixer_segment_dims", None),
+                rankmixer_tokens_split_dim=getattr(cfg, "rankmixer_tokens_split_dim", 2400),
+                rankmixer_blocks=getattr(cfg, "rankmixer_blocks", 2),
+                rankmixer_gate_num=getattr(cfg, "rankmixer_gate_num", 6),
+                rankmixer_masked_dim=getattr(cfg, "rankmixer_masked_dim", 56),
             )
             dense_module = _maybe_wrap_dense_module_for_dist(
                 dense_module=dense_module,
@@ -908,42 +1026,59 @@ class RecStoreRunner(BenchmarkRunner):
                 local_rank=local_rank,
                 use_dist=use_dist,
             )
-            criterion = torch.nn.BCEWithLogitsLoss()
+            # Unwrap DDP to read model_type / task names for the dispatcher.
+            _dispatch_module = dense_module.module if isinstance(
+                dense_module, torch.nn.parallel.DistributedDataParallel) else dense_module
+            criterion = build_criterion(
+                getattr(_dispatch_module, "model_type", "dlrm"),
+                rankmixer_task_names(_dispatch_module),
+            )
             dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
             bagpipe_controller: BagPipeCacheController | None = None
-            if cfg.enable_bagpipe_cache:
-                bagpipe_controller = BagPipeCacheController(
-                    embedding_module,
-                    client,
-                    lookahead_value=cfg.bagpipe_lookahead,
-                    cleanup_batch_proportion=cfg.bagpipe_cleanup_proportion,
-                    cache_capacity=cfg.gpu_cache_capacity,
-                    embedding_dim=cfg.embedding_dim,
-                    fuse_k=cfg.fuse_k,
-                    table_offsets=table_offsets,
-                    master_table_name=cfg.table_name,
-                    device=device,
-                    lr=0.01,
-                )
-            if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
-                sparse_optimizer = BagPipeSparseSGD(
-                    [embedding_module], lr=0.01, controller=bagpipe_controller
-                )
+            if is_quanta:
+                # QuantaRec architecture: local sparse optimizer with cross-worker
+                # sparse gradient all-reduce (no PS, no bagpipe).
+                sparse_optimizer = make_quanta_optimizer(
+                    embedding_module, lr=0.01, dist=dist, device=device)
+                fast_path_region_warmed = False
             else:
-                sparse_optimizer = SparseSGD([embedding_module], lr=0.01)
-            fast_path_region_warmed = _maybe_warmup_gpu_local_shm_fast_path(
-                cfg=cfg,
-                client=client,
-                device=device,
-            )
-            if fast_path_region_warmed:
-                print("[rs_demo] warmed local_shm lookup payload region for GPU fast path")
-                _barrier_for_step_alignment(
-                    dist=dist,
+                if cfg.enable_bagpipe_cache:
+                    def _fused_id_extractor(sparse_features):
+                        return convert_kjt_ids_to_fused_ids(sparse_features, table_offsets)
+
+                    bagpipe_controller = BagPipeCacheController(
+                        embedding_module,
+                        client,
+                        lookahead_value=cfg.bagpipe_lookahead,
+                        cleanup_batch_proportion=cfg.bagpipe_cleanup_proportion,
+                        cache_capacity=cfg.gpu_cache_capacity,
+                        embedding_dim=cfg.embedding_dim,
+                        fuse_k=cfg.fuse_k,
+                        table_offsets=table_offsets,
+                        master_table_name=cfg.table_name,
+                        device=device,
+                        lr=0.01,
+                        id_extractor=_fused_id_extractor,
+                    )
+                if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
+                    sparse_optimizer = BagPipeSparseSGD(
+                        [embedding_module], lr=0.01, controller=bagpipe_controller
+                    )
+                else:
+                    sparse_optimizer = SparseSGD([embedding_module], lr=0.01)
+                fast_path_region_warmed = _maybe_warmup_gpu_local_shm_fast_path(
+                    cfg=cfg,
+                    client=client,
                     device=device,
-                    local_rank=local_rank,
-                    use_dist=use_dist,
                 )
+                if fast_path_region_warmed:
+                    print("[rs_demo] warmed local_shm lookup payload region for GPU fast path")
+                    _barrier_for_step_alignment(
+                        dist=dist,
+                        device=device,
+                        local_rank=local_rank,
+                        use_dist=use_dist,
+                    )
 
             read_lat_us: list[float] = []
             update_lat_us: list[float] = []
@@ -985,7 +1120,7 @@ class RecStoreRunner(BenchmarkRunner):
 
             def prepare_next_batch(batch_step: int):
                 row: dict[str, Any] = {
-                    "backend": "recstore",
+                    "backend": str(cfg.backend),
                     "ps_kv_backend": cfg.ps_kv_backend,
                     "model_backend_label": f"recstore:{cfg.ps_kv_backend}",
                     "nproc": world_size,
@@ -1049,6 +1184,7 @@ class RecStoreRunner(BenchmarkRunner):
                     labels_batch,
                 )
 
+            stage_rec = CudaStageTimer(torch, device)
             data_iter_state = {"iter": data_iter}
             for step in range(cfg.steps):
                 if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
@@ -1086,27 +1222,28 @@ class RecStoreRunner(BenchmarkRunner):
                 row["input_pack_consume_ms"] = (
                     time.perf_counter() - input_pack_consume_start
                 ) * 1e3
+                stage_rec.reset()
 
                 _reset_perf_stats(embedding_module)
                 _reset_perf_stats(sparse_optimizer)
                 sparse_optimizer.zero_grad()
                 embeddings = None
-                with stage_timer(row, "embed_lookup_local_ms"):
-                    sync_device(torch, device)
-                    if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
-                        bagpipe_controller.prefill_cache(sparse_features, device)
-                    elif cfg.read_before_update and cfg.read_mode == "prefetch":
-                        _attach_or_refetch_with_bagpipe_policy(
-                            prefetch_depth=cfg.prefetch_depth,
-                            bagpipe_policy=bagpipe_policy,
-                            lookahead_prefetcher=lookahead_prefetcher,
-                            embedding_module=embedding_module,
-                            sparse_features=sparse_features,
-                            row=row,
-                            step=step,
-                        )
-                    embeddings = embedding_module(sparse_features)
-                    sync_device(torch, device)
+                stage_rec.mark("embed_lookup_local_ms")
+                if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
+                    bagpipe_controller.prefill_cache(sparse_features, device)
+                elif (not is_quanta
+                      and cfg.read_before_update
+                      and cfg.read_mode == "prefetch"):
+                    _attach_or_refetch_with_bagpipe_policy(
+                        prefetch_depth=cfg.prefetch_depth,
+                        bagpipe_policy=bagpipe_policy,
+                        lookahead_prefetcher=lookahead_prefetcher,
+                        embedding_module=embedding_module,
+                        sparse_features=sparse_features,
+                        row=row,
+                        step=step,
+                    )
+                embeddings = embedding_module(sparse_features)
                 prefetch_row_stats = lookahead_prefetcher.consume_stats(reset=False)
                 for key, value in prefetch_row_stats.items():
                     row.setdefault(key, value)
@@ -1115,113 +1252,106 @@ class RecStoreRunner(BenchmarkRunner):
                     getattr(embedding_module, "_single_node_forward_profile", None),
                     FAST_PATH_LOOKUP_PROFILE_KEYS,
                 )
-                _merge_gpu_cache_profile(row, client, "lookup")
+                if client is not None: _merge_gpu_cache_profile(row, client, "lookup")
                 if embeddings is None:
                     raise RuntimeError("recstore embedding module returned no embeddings")
+
+                stage_rec.mark("embed_pool_local_ms")
+                embedded_sparse_source = reshape_torchrec_embeddings_for_dlrm(
+                    embeddings=embeddings,
+                    feature_names=default_cat_names,
+                    torch=torch,
+                )
+
+                stage_rec.mark("output_unpack_ms")
+                dense_features, embedded_sparse, labels = prepare_hybrid_dlrm_input(
+                    dense_batch=dense_batch,
+                    embedded_sparse_source=embedded_sparse_source,
+                    labels_batch=labels_batch,
+                    torch=torch,
+                    device=device,
+                    detach_sparse=True,
+                )
+
+                stage_rec.mark("dense_fwd_ms")
+                loss, logits = compute_dense_loss(
+                    model_type, dense_module, criterion,
+                    dense_features, embedded_sparse, labels)
+
+                stage_rec.mark("backward_ms")
+                embedded_sparse_grad = run_hybrid_backward(
+                    loss=loss,
+                    embedded_sparse=embedded_sparse,
+                    dense_module=dense_module,
+                    torch=torch,
+                    device=device,
+                )
+
+                stage_rec.mark("optimizer_ms")
+                dense_optimizer.step()
+                dense_optimizer.zero_grad(set_to_none=True)
+
+                stage_rec.mark("sparse_update_ms")
+                replay_start = time.perf_counter()
+                embedded_sparse_source.backward(
+                    embedded_sparse_grad.to(embedded_sparse_source.device)
+                )
+                row["sparse_backward_replay_ms"] = (
+                    time.perf_counter() - replay_start
+                ) * 1e3
+
+                optimizer_step_start = time.perf_counter()
+                sparse_optimizer.step()
+                row["sparse_optimizer_step_ms"] = (
+                    time.perf_counter() - optimizer_step_start
+                ) * 1e3
+
+                flush_start = time.perf_counter()
+                sparse_optimizer.flush()
+                row["sparse_optimizer_flush_ms"] = (
+                    time.perf_counter() - flush_start
+                ) * 1e3
+                if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
+                    cleanup_start = time.perf_counter()
+                    bagpipe_controller.cleanup(step)
+                    row["bagpipe_cleanup_step_ms"] = (
+                        time.perf_counter() - cleanup_start
+                    ) * 1e3
+                elif cfg.enable_gpu_cache or cfg.prefetch_depth > 0:
+                    updated_fused_ids = _safe_fused_ids(
+                        sparse_features,
+                        table_offsets,
+                    )
+                    _notify_bagpipe_sparse_update(
+                        bagpipe_policy=bagpipe_policy,
+                        sparse_optimizer=sparse_optimizer,
+                        fallback_updated_ids=updated_fused_ids,
+                        row=row,
+                        step=step,
+                    )
+                else:
+                    row["bagpipe_gpu_cache_update_ids"] = 0
+                    row["bagpipe_gpu_cache_update_attempt_ids"] = 0
+                    row["bagpipe_policy_cached_update_ids"] = 0
+                    row["bagpipe_gpu_cache_update_failures"] = 0
+                    row["bagpipe_gpu_cache_update_failure_reason"] = ""
+
+                zero_grad_start = time.perf_counter()
+                sparse_optimizer.zero_grad()
+                row["sparse_zero_grad_ms"] = (
+                    time.perf_counter() - zero_grad_start
+                ) * 1e3
+                stage_rec.mark("__step_end__")
+                stage_rec.resolve(row)
+                row["loss"] = float(loss.detach().float().cpu().item())
                 if step >= cfg.warmup_steps:
                     read_lat_us.append(row["embed_lookup_local_ms"] * 1e3)
-
-                with stage_timer(row, "embed_pool_local_ms"):
-                    embedded_sparse_source = reshape_torchrec_embeddings_for_dlrm(
-                        embeddings=embeddings,
-                        feature_names=default_cat_names,
-                        torch=torch,
-                    )
-                    sync_device(torch, device)
-
-                with stage_timer(row, "output_unpack_ms"):
-                    dense_features, embedded_sparse, labels = prepare_hybrid_dlrm_input(
-                        dense_batch=dense_batch,
-                        embedded_sparse_source=embedded_sparse_source,
-                        labels_batch=labels_batch,
-                        torch=torch,
-                        device=device,
-                        detach_sparse=True,
-                    )
-
-                with stage_timer(row, "dense_fwd_ms"):
-                    sync_device(torch, device)
-                    logits = dense_module(dense_features, embedded_sparse)
-                    loss = criterion(logits, labels)
-                    sync_device(torch, device)
-                row["loss"] = float(loss.detach().float().cpu().item())
-
-                with stage_timer(row, "backward_ms"):
-                    embedded_sparse_grad = run_hybrid_backward(
-                        loss=loss,
-                        embedded_sparse=embedded_sparse,
-                        dense_module=dense_module,
-                        torch=torch,
-                        device=device,
-                    )
-
-                with stage_timer(row, "optimizer_ms"):
-                    sync_device(torch, device)
-                    dense_optimizer.step()
-                    dense_optimizer.zero_grad(set_to_none=True)
-                    sync_device(torch, device)
-
-                with stage_timer(row, "sparse_update_ms"):
-                    sync_device(torch, device)
-                    replay_start = time.perf_counter()
-                    embedded_sparse_source.backward(
-                        embedded_sparse_grad.to(embedded_sparse_source.device)
-                    )
-                    sync_device(torch, device)
-                    row["sparse_backward_replay_ms"] = (
-                        time.perf_counter() - replay_start
-                    ) * 1e3
-
-                    optimizer_step_start = time.perf_counter()
-                    sparse_optimizer.step()
-                    sync_device(torch, device)
-                    row["sparse_optimizer_step_ms"] = (
-                        time.perf_counter() - optimizer_step_start
-                    ) * 1e3
-
-                    flush_start = time.perf_counter()
-                    sparse_optimizer.flush()
-                    sync_device(torch, device)
-                    row["sparse_optimizer_flush_ms"] = (
-                        time.perf_counter() - flush_start
-                    ) * 1e3
-                    if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
-                        cleanup_start = time.perf_counter()
-                        bagpipe_controller.cleanup(step)
-                        row["bagpipe_cleanup_step_ms"] = (
-                            time.perf_counter() - cleanup_start
-                        ) * 1e3
-                    elif cfg.enable_gpu_cache or cfg.prefetch_depth > 0:
-                        updated_fused_ids = _safe_fused_ids(
-                            sparse_features,
-                            table_offsets,
-                        )
-                        _notify_bagpipe_sparse_update(
-                            bagpipe_policy=bagpipe_policy,
-                            sparse_optimizer=sparse_optimizer,
-                            fallback_updated_ids=updated_fused_ids,
-                            row=row,
-                            step=step,
-                        )
-                    else:
-                        row["bagpipe_gpu_cache_update_ids"] = 0
-                        row["bagpipe_gpu_cache_update_attempt_ids"] = 0
-                        row["bagpipe_policy_cached_update_ids"] = 0
-                        row["bagpipe_gpu_cache_update_failures"] = 0
-                        row["bagpipe_gpu_cache_update_failure_reason"] = ""
-
-                    zero_grad_start = time.perf_counter()
-                    sparse_optimizer.zero_grad()
-                    row["sparse_zero_grad_ms"] = (
-                        time.perf_counter() - zero_grad_start
-                    ) * 1e3
-                    sync_device(torch, device)
                 _merge_numeric_fields(
                     row,
                     getattr(sparse_optimizer, "_last_step_profile", None),
                     FAST_PATH_UPDATE_PROFILE_KEYS,
                 )
-                _merge_gpu_cache_profile(row, client, "update")
+                if client is not None: _merge_gpu_cache_profile(row, client, "update")
 
                 _merge_consumed_perf_stats(row, _consume_perf_stats(embedding_module))
                 _merge_consumed_perf_stats(row, _consume_perf_stats(sparse_optimizer))
@@ -1299,7 +1429,7 @@ class RecStoreRunner(BenchmarkRunner):
                 dist.barrier(device_ids=[local_rank] if device.type == "cuda" else None)
                 dist.destroy_process_group()
             return {
-                "backend": "recstore",
+                "backend": str(cfg.backend),
                 "read_lat_us": read_lat_us,
                 "update_lat_us": update_lat_us,
                 "rows": rows,
@@ -1308,8 +1438,8 @@ class RecStoreRunner(BenchmarkRunner):
             os.chdir(str(orig_cwd))
 
     def run(self, repo_root: Path, cfg: RunConfig) -> dict:
-        if cfg.backend != "recstore":
-            raise ValueError("RecStoreRunner requires cfg.backend to be 'recstore'.")
+        if cfg.backend not in ("recstore", "quanta"):
+            raise ValueError("RecStoreRunner requires cfg.backend to be 'recstore' or 'quanta'.")
         validate_recstore_config(cfg)
 
         if os.environ.get("RS_DEMO_RECSTORE_WORKER") == "1":

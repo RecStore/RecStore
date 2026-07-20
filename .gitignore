@@ -33,6 +33,11 @@ third_party/brpc/
 third_party/grpc-install/
 third_party/protobuf-install/
 third_party/libtorch/
+third_party/cpptrace-install/
+third_party/deps/
+third_party/leveldb/
+third_party/protobuf-install
+github.com/
 results/
 plan
 dockerfiles/start_sshd.sh
