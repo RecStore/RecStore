@@ -99,6 +99,10 @@ class BagPipeCacheController(
         self._batched_prefetch_ttl: Dict[int, int] = {}
         self._batched_count = 0
         self._pending_prefetch: Optional[PrefetchSlot] = None
+        # opt: per-batch prefetch handles pre-issued at enqueue time so that
+        # wait_and_get at consume is near-instant (PS had `lookahead` steps to
+        # respond while the main stream was busy with dense compute).
+        self._prefetch_handles: Dict[int, Optional[PrefetchSlot]] = {}
 
         # ---- Stats ----
         self._stats: Dict[str, float] = {}
