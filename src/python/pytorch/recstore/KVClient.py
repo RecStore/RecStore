@@ -2,7 +2,16 @@ import torch
 import os
 import time
 import ctypes
+import glob
 from typing import Optional, Tuple, List, Dict, Any, Callable
+
+# Importing the package side-effect-loads the native extension
+# (``recstore._recstore_ops`` via ``torch.classes.load_library``).  We
+# avoid a second ``torch.ops.load_library`` call here - the auto-load is
+# idempotent and covers wheel install, in-place dev build, and the legacy
+# CMake ``build/lib/lib_recstore_ops.so`` artifact.  See
+# ``recstore/__init__.py:_ensure_native_loaded`` for details.
+from . import _ensure_native_loaded, _native_ops_ready
 
 _LOCAL_FAST_PATH_BACKENDS = {"local_shm", "hierkv"}
 _GPU_CACHE_PROFILE_KEYS = (
@@ -16,11 +25,35 @@ _GPU_CACHE_PROFILE_KEYS = (
     "gpu_cache_miss_count",
 )
 
+
+def _find_reporter_so() -> Optional[str]:
+    """Locate ``libreport.so`` (optional perf-reporting library).
+
+    Search order matches the main extension: package ``native/`` dir ->
+    legacy CMake build/lib -> setuptools build/lib.*/recstore/native.
+    Returns ``None`` when not present (perf metrics are silently dropped).
+    """
+    pkg_dir = os.path.dirname(os.path.realpath(__file__))
+    repo_root = os.path.abspath(os.path.join(pkg_dir, "..", "..", "..", ".."))
+
+    candidates = [
+        os.path.join(pkg_dir, "native", "libreport.so"),
+        os.path.join(repo_root, "build", "lib", "libreport.so"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+
+    matches = sorted(glob.glob(os.path.join(
+        repo_root, "build", "lib.*", "recstore", "native", "libreport.so"
+    )))
+    return matches[0] if matches else None
+
+
 def get_reporter():
     if not hasattr(get_reporter, 'lib'):
-        script_dir = os.path.dirname(__file__)
-        lib_path = os.path.abspath(os.path.join(script_dir, '../../../../build/lib/libreport.so'))
-        if os.path.exists(lib_path):
+        lib_path = _find_reporter_so()
+        if lib_path:
             lib = ctypes.CDLL(lib_path)
             lib.report.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_double]
             lib.report.restype = ctypes.c_bool
@@ -47,22 +80,21 @@ class RecStoreClient:
     def __init__(self, library_path: Optional[str] = None, role: str = "default"):
         if self._initialized:
             return
-        
-        if library_path is None:
-            script_dir = os.path.dirname(__file__)
-            default_lib_path = os.path.abspath(os.path.join(script_dir, '../../../../build/lib/lib_recstore_ops.so'))
-            if not os.path.exists(default_lib_path):
-                 raise ImportError(
-                    f"Could not find Recstore library at default path: {default_lib_path}\n"
-                    "Please provide the correct path or ensure your project is built correctly."
-                )
-            library_path = default_lib_path
-        
-        torch.ops.load_library(library_path)
+
+        # The native extension is loaded at ``import recstore`` time.  If a
+        # caller still passes ``library_path`` (legacy API), honor it by
+        # loading that path explicitly; otherwise just verify the auto-load
+        # has happened.  This keeps the old keyword working while removing
+        # the hardcoded ``build/lib/lib_recstore_ops.so`` default path.
+        if library_path is not None:
+            torch.ops.load_library(library_path)
+        elif not _native_ops_ready():
+            _ensure_native_loaded()
+
         self.ops = torch.ops.recstore_ops
 
         self._part_policy = {}
-        
+
         self._tensor_meta = {}
         self._full_data_shape = {}
         self._data_name_list = set()
@@ -72,7 +104,6 @@ class RecStoreClient:
         self._pending_async_ops = {}
         self._gpu_cache_table_name: Optional[str] = None
         self._initialized = True
-        # print(f"RecStoreClient initialized. Loaded library from: {library_path}")
 
     @property
     def role(self) -> str:
