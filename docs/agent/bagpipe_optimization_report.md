@@ -7,8 +7,7 @@
 ## 测试环境与工作负载
 
 - 单卡 A100-SXM4-80GB，ps_type=BRPC，2 shard 本机部署
-- `batch_size=2048`，26 表 × 200000 × 64 维，RankMixer 模型
-  （`tokens_split_dim=2400`、`blocks=2`、`gate_num=6`）
+- `batch_size=2048`，26 表 × 200000 × 64 维，多任务稠密模型
 - `--enable-bagpipe-cache --bagpipe-lookahead 4 --gpu-cache-capacity 160000`
 - 30 步，warmup 5，取后 10 步统计；每项优化至少跑 2 次确认稳定
 - 数据集为确定性随机生成的 8192 样本（`day_0_*.npy`），所有分支共用同一份数据
@@ -141,15 +140,14 @@ np.save(f"{d}/day_0_labels.npy", rng.integers(0,2,(N,)).astype(np.float32))
 PY
 
 # 任一分支运行基准
-python3 model_zoo/rs_demo/run_mock_stress.py --backend recstore --model rankmixer \
+python3 model_zoo/rs_demo/run_mock_stress.py --backend recstore --model dlrm \
   --nnodes 1 --nproc-per-node 1 --steps 30 --warmup-steps 5 --batch-size 2048 \
   --num-embeddings 200000 --embedding-dim 64 \
-  --rankmixer-tokens-split-dim 2400 --rankmixer-blocks 2 --rankmixer-gate-num 6 \
   --enable-gpu-cache --gpu-cache-capacity 160000 \
   --enable-bagpipe-cache --bagpipe-lookahead 4 --server-wait-seconds 40 \
   --output-root /tmp/rs_bench --run-id bench
 ```
 
 分支顺序（每条基于上一条）：
-`feat/rankmixer-integration` → `opt/bagpipe-event-stage-timing` →
+`feat/dense-model-integration` → `opt/bagpipe-event-stage-timing` →
 `opt/bagpipe-async-prefetch-early-issue` → `opt/bagpipe-remove-runtime-syncs`

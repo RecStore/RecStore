@@ -56,3 +56,15 @@ build_release/
 tmp/
 CURRENT_STATUS_*.md
 dockerfiles/docker_config/.env
+
+# Internal model code (not for external distribution)
+model_zoo/rankmixer/*.py
+model_zoo/rankmixer/*.md
+!model_zoo/rankmixer/README.md
+model_zoo/rs_demo/runtime/local_embedding_backend.py
+
+# Internal PS adapter code (not for external distribution)
+src/external_ps_adapter/*.h
+src/external_ps_adapter/*.cc
+src/external_ps_adapter/*.txt
+!src/external_ps_adapter/README.md
