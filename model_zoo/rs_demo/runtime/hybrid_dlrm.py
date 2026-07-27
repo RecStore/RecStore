@@ -193,8 +193,7 @@ def run_hybrid_backward(loss, embedded_sparse, dense_module, torch, device):
 
 
 # --------------------------------------------------------------------------
-# Model dispatcher: DLRM (default). Additional model types may be available
-# locally — see model_zoo/rankmixer/README.md.
+# Model dispatcher: DLRM (default).
 # --------------------------------------------------------------------------
 
 def build_dense_module(
