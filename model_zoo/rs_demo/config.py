@@ -6,7 +6,9 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Dict, Sequence
+
+from python.pytorch.recstore.optim.config import OptimizationConfig
 
 
 # Model plugins that contribute their own CLI arguments (routed into
@@ -172,9 +174,7 @@ class RunConfig:
     enable_gpu_cache: bool = False
     gpu_cache_capacity: int = 0
     disable_gpu_cache_lookup_bypass: bool = False
-    enable_bagpipe_cache: bool = False
-    bagpipe_lookahead: int = 0
-    bagpipe_cleanup_proportion: float = 0.25
+    optimization: OptimizationConfig = field(default_factory=OptimizationConfig)
     master_addr: str = "127.0.0.1"
     master_port: int = 29500
     rdzv_backend: str = "c10d"
@@ -267,26 +267,31 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--enable-bagpipe-cache",
-        action="store_true",
-        default=False,
+        "--optimization-plugin",
+        type=str,
+        default="none",
         help=(
-            "Enable BagPipe-style GPU cache with TTL-based eviction, "
-            "oracle lookahead prefetch, and sync_now/sync_later gradient "
-            "split. Requires --enable-gpu-cache."
+            "Macro optimization strategy: none, bagpipe, lookahead, "
+            "or any registered plugin. Replaces --enable-bagpipe-cache."
         ),
     )
     parser.add_argument(
-        "--bagpipe-lookahead",
+        "--optimization-lookahead",
         type=int,
         default=0,
-        help="Number of future batches to analyze for oracle cache decisions.",
+        help="Prefetch depth (shared by bagpipe / lookahead plugins).",
     )
     parser.add_argument(
-        "--bagpipe-cleanup-proportion",
+        "--optimization-cleanup-proportion",
         type=float,
         default=0.25,
-        help="Proportion of lookahead batches at which to evict and write back.",
+        help="BagPipe: fraction of lookahead batches at which to evict and write back.",
+    )
+    parser.add_argument(
+        "--optimization-cache-capacity",
+        type=int,
+        default=0,
+        help="GPU cache capacity (number of embedding rows) for plugins that use it.",
     )
     parser.add_argument("--master-addr", type=str, default="127.0.0.1")
     parser.add_argument("--master-port", type=int, default=29500)
@@ -511,6 +516,39 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _migrate_legacy_optim_fields(raw: dict) -> dict:
+    """Convert old bagpipe_* / enable_bagpipe_cache fields to OptimizationConfig.
+
+    This allows older worker JSON (serialized before the optim/ migration)
+    to load under the new schema.
+    """
+    if "optimization" in raw:
+        # New-style config; just ensure all fields are present.
+        opt = raw["optimization"]
+        if isinstance(opt, dict):
+            opt.setdefault("plugin", "none")
+            opt.setdefault("lookahead", 0)
+            opt.setdefault("cleanup_proportion", 0.25)
+            opt.setdefault("cache_capacity", 0)
+            opt.setdefault("embedding_dim", raw.get("embedding_dim", 128))
+            opt.setdefault("plugin_config", {})
+        return raw
+
+    # Legacy: build OptimizationConfig from old fields.
+    enable_bagpipe = bool(raw.pop("enable_bagpipe_cache", False))
+    bagpipe_lookahead = int(raw.pop("bagpipe_lookahead", 0))
+    bagpipe_cleanup = float(raw.pop("bagpipe_cleanup_proportion", 0.25))
+    raw["optimization"] = {
+        "plugin": "bagpipe" if enable_bagpipe else "none",
+        "lookahead": bagpipe_lookahead,
+        "cleanup_proportion": bagpipe_cleanup,
+        "cache_capacity": 0,
+        "embedding_dim": raw.get("embedding_dim", 128),
+        "plugin_config": {},
+    }
+    return raw
+
+
 def parse_config(argv: list[str] | None = None) -> RunConfig:
     ns = build_parser().parse_args(argv)
     if getattr(ns, "run_config_json", ""):
@@ -519,6 +557,7 @@ def parse_config(argv: list[str] | None = None) -> RunConfig:
         # Drop removed fields so older worker JSON still loads.
         raw.pop("enable_single_node_distributed_fast_path", None)
         raw.pop("read_before_update", None)
+        raw = _migrate_legacy_optim_fields(raw)
         return RunConfig(**raw)
     cfg_kwargs = vars(ns).copy()
     cfg_kwargs.pop("run_config_json", None)
@@ -528,6 +567,17 @@ def parse_config(argv: list[str] | None = None) -> RunConfig:
     disable_recstore_fusion = bool(cfg_kwargs.pop("disable_recstore_fusion", False))
     hps_no_materialize = bool(cfg_kwargs.pop("hps_torch_no_materialize_embeddings", False))
     hps_disable_gpucache = bool(cfg_kwargs.pop("hps_torch_disable_gpucache", False))
+
+    # Build OptimizationConfig from flat CLI args.
+    optimization = OptimizationConfig(
+        plugin=str(cfg_kwargs.pop("optimization_plugin", "none")),
+        lookahead=int(cfg_kwargs.pop("optimization_lookahead", 0)),
+        cleanup_proportion=float(cfg_kwargs.pop("optimization_cleanup_proportion", 0.25)),
+        cache_capacity=int(cfg_kwargs.pop("optimization_cache_capacity", 0)),
+        embedding_dim=int(cfg_kwargs.get("embedding_dim", 128)),
+    )
+    cfg_kwargs["optimization"] = optimization
+
     # Route model-specific args (e.g. --rankmixer-*) into model_args.
     model_args = {d: cfg_kwargs.pop(d) for d in _model_arg_dests() if d in cfg_kwargs}
     if cfg_kwargs["nproc_per_node"] is None:
@@ -621,12 +671,22 @@ def validate_recstore_config(cfg: RunConfig) -> None:
     if cfg.enable_gpu_cache:
         raise RuntimeError(
             "--enable-gpu-cache is not supported by recstore_runner; "
-            "use --read-mode=bagpipe when that path is wired"
+            "use --optimization-plugin bagpipe when that path is wired"
         )
-    if cfg.enable_bagpipe_cache:
+    # Validate OptimizationConfig
+    opt = cfg.optimization
+    if opt.plugin not in {"none", "bagpipe", "lookahead"}:
+        # Accept any registered plugin; the registry itself will raise on
+        # truly unknown names at create() time.  Here we only sanity-check
+        # the built-in set.
+        pass
+    if opt.plugin != "none" and opt.lookahead <= 0:
         raise RuntimeError(
-            "--enable-bagpipe-cache is not supported; use --read-mode=bagpipe "
-            "when that path is wired"
+            f"--optimization-plugin {opt.plugin!r} requires --optimization-lookahead > 0"
+        )
+    if not (0.0 < opt.cleanup_proportion <= 1.0):
+        raise RuntimeError(
+            "--optimization-cleanup-proportion must be in (0.0, 1.0]"
         )
     if cfg.prefetch_depth < 0:
         raise RuntimeError("--prefetch-depth must be non-negative")
