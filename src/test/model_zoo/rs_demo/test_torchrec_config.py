@@ -424,6 +424,10 @@ class TestTorchRecConfig(unittest.TestCase):
                         "--steps",
                         "1",
                         "--no-start-server",
+                        "--output-root",
+                        str(tmpdir),
+                        "--run-id",
+                        "profiler-enabled",
                         "--torchrec-profiler",
                         "--torchrec-trace-dir",
                         str(trace_root),
@@ -510,6 +514,8 @@ class TestTorchRecConfig(unittest.TestCase):
                 cli, "make_runtime_dir", return_value=(Path(tmpdir), resolver_config)
             ), mock.patch.object(
                 cli, "analyze_embupdate", return_value="ok"
+            ), mock.patch.object(
+                cli, "analyze_stage_table", return_value="ok"
             ):
                 rc = cli.main(
                     [
@@ -541,6 +547,8 @@ class TestTorchRecConfig(unittest.TestCase):
                 cli, "make_runtime_dir", side_effect=AssertionError("make_runtime_dir should not be called")
             ), mock.patch.object(
                 cli, "analyze_embupdate", return_value="ok"
+            ), mock.patch.object(
+                cli, "analyze_stage_table", return_value="ok"
             ):
                 rc = cli.main(
                     [
@@ -587,6 +595,8 @@ class TestTorchRecConfig(unittest.TestCase):
                     side_effect=AssertionError("make_runtime_dir should not be called"),
                 ), mock.patch.object(
                     cli, "analyze_embupdate", return_value="ok"
+                ), mock.patch.object(
+                    cli, "analyze_stage_table", return_value="ok"
                 ):
                     rc = cli.main(
                         [
@@ -642,6 +652,8 @@ class TestTorchRecConfig(unittest.TestCase):
                 cli, "make_runtime_dir", return_value=(generated_runtime, generated_config)
             ), mock.patch.object(
                 cli, "analyze_embupdate", return_value="ok"
+            ), mock.patch.object(
+                cli, "analyze_stage_table", return_value="ok"
             ):
                 rc = cli.main(
                     [
@@ -717,6 +729,8 @@ class TestTorchRecConfig(unittest.TestCase):
                         "recstore",
                         "--ps-type",
                         "RDMA",
+                        "--single-node-ps-backend",
+                        "hierkv",
                         "--steps",
                         "1",
                         "--output-root",
