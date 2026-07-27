@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from model_zoo.rs_demo.runtime.torchrec_trace_report import (
+from python.pytorch.recstore.analysis.trace_report import (
     TRACE_CSV_FIELDS,
     summarize_trace_dir,
     summarize_trace_file,

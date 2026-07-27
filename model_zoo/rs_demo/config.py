@@ -125,8 +125,7 @@ class RunConfig:
     fuse_k: int = 30
     dense_arch_layer_sizes: str = "512,256,128"
     over_arch_layer_sizes: str = "1024,1024,512,256,1"
-    # Dense compute model: "dlrm" (default). Additional models may be available
-    # locally — see model_zoo/rankmixer/README.md.
+    # Dense compute model: "dlrm" (default).
     model: str = "dlrm"
     backend: str = "recstore"
     nproc: int = 1
@@ -376,8 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default="dlrm",
         choices=["dlrm"],
-        help="Dense compute model. Additional models may be available locally "
-             "(see model_zoo/rankmixer/README.md).",
+        help="Dense compute model.",
     )
     parser.add_argument("--torchrec-profiler", action="store_true", default=False)
     parser.add_argument(

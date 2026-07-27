@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from model_zoo.rs_demo.runtime.torchrec_aggregate import (
+from python.pytorch.recstore.analysis.aggregate import (
     aggregate_torchrec_main_csv,
     write_aggregate_csv,
 )

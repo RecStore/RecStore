@@ -17,12 +17,11 @@ from model_zoo.rs_demo.config import RunConfig
 from model_zoo.rs_demo.runners import recstore_runner
 from model_zoo.rs_demo.runners.recstore_runner import (
     RecStoreRunner,
-    _attach_or_refetch_with_bagpipe_policy,
     _build_train_dataloader_for_mode,
     _effective_prefetch_issue_depth,
     _maybe_wrap_dense_module_for_dist,
 )
-from model_zoo.rs_demo.runtime.prefetch import LookaheadPrefetcher
+from python.pytorch.recstore.benchmark.prefetch import LookaheadPrefetcher
 
 
 class _DummyDense(torch.nn.Module):
@@ -352,55 +351,6 @@ class _FakeDenseOptimizer:
         self.step_calls += 1
 
 
-class _FakeConsumeDecision:
-    def __init__(
-        self,
-        stale_ids: list[int],
-        valid_ids: list[int],
-        *,
-        stale_cached_ids: list[int] | None = None,
-        stale_refetch_ids: list[int] | None = None,
-    ) -> None:
-        self.stale_ids = torch.tensor(stale_ids, dtype=torch.int64)
-        self.valid_prefetch_ids = torch.tensor(valid_ids, dtype=torch.int64)
-        self.stale_cached_ids = torch.tensor(
-            stale_cached_ids if stale_cached_ids is not None else [],
-            dtype=torch.int64,
-        )
-        self.stale_refetch_ids = torch.tensor(
-            stale_refetch_ids if stale_refetch_ids is not None else stale_ids,
-            dtype=torch.int64,
-        )
-
-    @property
-    def requires_refetch(self) -> bool:
-        return bool(self.stale_refetch_ids.numel() > 0)
-
-
-class _FakeBagPipePolicy:
-    def __init__(self, decision: _FakeConsumeDecision) -> None:
-        self.decision = decision
-        self.consume_steps: list[int] = []
-
-    def on_consume(self, step: int) -> _FakeConsumeDecision:
-        self.consume_steps.append(int(step))
-        return self.decision
-
-
-class _FakeBagPipeUpdatePolicy:
-    def __init__(self) -> None:
-        self.update_calls: list[tuple[int, torch.Tensor, torch.Tensor]] = []
-
-    def on_update(self, step: int, ids, *, cache_updated_ids=()) -> None:
-        self.update_calls.append(
-            (
-                int(step),
-                ids.detach().cpu().clone(),
-                cache_updated_ids.detach().cpu().clone(),
-            )
-        )
-
-
 class TestRecStoreRunner(unittest.TestCase):
     def setUp(self) -> None:
         self._append_worker_debug_patch = mock.patch(
@@ -504,129 +454,6 @@ class TestRecStoreRunner(unittest.TestCase):
 
         self.assertEqual([ids.tolist() for ids in module.issued_fused_ids], [[7, 8], [9]])
         self.assertEqual(module.consumed, [(100, 2)])
-
-    def test_bagpipe_partial_stale_prefetch_attaches_with_invalid_ids(self) -> None:
-        module = _FakePrefetchModule()
-        prefetcher = LookaheadPrefetcher(module, depth=1, embedding_dim=64)
-        prefetcher.enqueue(_FakeSparseFeatures(10))
-        prefetcher.enqueue(_FakeSparseFeatures(20))
-        self.assertTrue(prefetcher.advance())
-        row: dict[str, object] = {}
-
-        _attach_or_refetch_with_bagpipe_policy(
-            prefetch_depth=1,
-            bagpipe_policy=_FakeBagPipePolicy(_FakeConsumeDecision([7], [8])),
-            lookahead_prefetcher=prefetcher,
-            embedding_module=module,
-            sparse_features=_FakeSparseFeatures(30),
-            row=row,
-            step=2,
-        )
-
-        self.assertEqual(row["bagpipe_stale_ids"], 1)
-        self.assertEqual(row["bagpipe_valid_prefetch_ids"], 1)
-        self.assertEqual(row["bagpipe_discarded_stale_handle"], 0)
-        self.assertEqual(module.consumed, [(100, 10)])
-        self.assertEqual(module.consume_kwargs[0]["invalid_fused_ids_cpu"].tolist(), [7])
-        self.assertEqual([record for _, record in module.issued], [False, False])
-
-    def test_bagpipe_stale_cached_attaches_handle_with_invalid_ids(self) -> None:
-        module = _FakePrefetchModule()
-        prefetcher = LookaheadPrefetcher(module, depth=1, embedding_dim=64)
-        prefetcher.enqueue(_FakeSparseFeatures(10))
-        prefetcher.enqueue(_FakeSparseFeatures(20))
-        self.assertTrue(prefetcher.advance())
-        row: dict[str, object] = {}
-
-        _attach_or_refetch_with_bagpipe_policy(
-            prefetch_depth=1,
-            bagpipe_policy=_FakeBagPipePolicy(
-                _FakeConsumeDecision(
-                    [7],
-                    [8],
-                    stale_cached_ids=[7],
-                    stale_refetch_ids=[],
-                )
-            ),
-            lookahead_prefetcher=prefetcher,
-            embedding_module=module,
-            sparse_features=_FakeSparseFeatures(30),
-            row=row,
-            step=2,
-        )
-
-        self.assertEqual(row["bagpipe_stale_ids"], 1)
-        self.assertEqual(row["bagpipe_stale_cached_ids"], 1)
-        self.assertEqual(row["bagpipe_stale_refetch_ids"], 0)
-        self.assertEqual(row["bagpipe_discarded_stale_handle"], 0)
-        self.assertEqual(module.consumed, [(100, 10)])
-        self.assertEqual(module.consume_kwargs[0]["invalid_fused_ids_cpu"].tolist(), [7])
-        self.assertEqual([record for _, record in module.issued], [False, False])
-
-    def test_bagpipe_valid_prefetch_attaches_ready_handle(self) -> None:
-        module = _FakePrefetchModule()
-        prefetcher = LookaheadPrefetcher(module, depth=1, embedding_dim=64)
-        prefetcher.enqueue(_FakeSparseFeatures(10))
-        prefetcher.enqueue(_FakeSparseFeatures(20))
-        self.assertTrue(prefetcher.advance())
-        row: dict[str, object] = {}
-
-        _attach_or_refetch_with_bagpipe_policy(
-            prefetch_depth=1,
-            bagpipe_policy=_FakeBagPipePolicy(_FakeConsumeDecision([], [7])),
-            lookahead_prefetcher=prefetcher,
-            embedding_module=module,
-            sparse_features=_FakeSparseFeatures(30),
-            row=row,
-            step=2,
-        )
-
-        self.assertEqual(row["bagpipe_stale_ids"], 0)
-        self.assertEqual(row["bagpipe_valid_prefetch_ids"], 1)
-        self.assertEqual(row["bagpipe_discarded_stale_handle"], 0)
-        self.assertEqual(module.consumed, [(100, 10)])
-        self.assertEqual([record for _, record in module.issued], [False, False])
-
-    def test_bagpipe_update_maintains_gpu_cache_for_optimizer_payloads(self) -> None:
-        class _Client:
-            def __init__(self) -> None:
-                self.calls = []
-
-            def apply_sgd_update_gpu_cache(self, name, ids, grads, *, learning_rate):
-                self.calls.append((name, ids.clone(), grads.clone(), float(learning_rate)))
-                return True
-
-        client = _Client()
-        module = types.SimpleNamespace(kv_client=client)
-        optimizer = types.SimpleNamespace(
-            last_update_payloads=lambda: [
-                {
-                    "module": module,
-                    "name": "table0",
-                    "ids": torch.tensor([4, 5], dtype=torch.int64),
-                    "grads": torch.ones((2, 4), dtype=torch.float32),
-                    "lr": 0.25,
-                }
-            ]
-        )
-        policy = _FakeBagPipeUpdatePolicy()
-        row: dict[str, object] = {}
-
-        recstore_runner._notify_bagpipe_sparse_update(
-            bagpipe_policy=policy,
-            sparse_optimizer=optimizer,
-            fallback_updated_ids=torch.tensor([4, 5], dtype=torch.int64),
-            row=row,
-            step=3,
-        )
-
-        self.assertEqual(len(client.calls), 1)
-        self.assertEqual(client.calls[0][0], "table0")
-        self.assertEqual(client.calls[0][3], 0.25)
-        self.assertEqual(row["bagpipe_gpu_cache_update_ids"], 2)
-        self.assertEqual(row["bagpipe_gpu_cache_update_failures"], 0)
-        self.assertEqual(policy.update_calls[0][1].tolist(), [4, 5])
-        self.assertEqual(policy.update_calls[0][2].tolist(), [4, 5])
 
     def test_finalize_step_timing_uses_visible_training_time(self) -> None:
         row = {
@@ -1896,29 +1723,8 @@ class TestRecStoreRunner(unittest.TestCase):
         self.assertEqual([row["prefetch_discarded_total_ids"] for row in captured_rows], [0.0, 0.0, 0.0])
         self.assertTrue(all(row["prefetch_issue_ms"] >= 0 for row in captured_rows))
         self.assertTrue(all(row["prefetch_issue_to_consume_ms"] >= 0 for row in captured_rows))
-        self.assertEqual([row["bagpipe_stale_ids"] for row in captured_rows], [0, 0, 0])
-        self.assertEqual(
-            [row["bagpipe_stale_cached_ids"] for row in captured_rows],
-            [0, 0, 0],
-        )
-        self.assertEqual(
-            [row["bagpipe_stale_refetch_ids"] for row in captured_rows],
-            [0, 0, 0],
-        )
-        self.assertEqual(
-            [row["bagpipe_discarded_stale_handle"] for row in captured_rows],
-            [0, 0, 0],
-        )
         self.assertEqual(
             [row["bagpipe_gpu_cache_update_ids"] for row in captured_rows],
-            [0, 0, 0],
-        )
-        self.assertEqual(
-            [row["bagpipe_cache_insert_ids"] for row in captured_rows],
-            [0, 0, 0],
-        )
-        self.assertEqual(
-            [row["bagpipe_step_end_evict_ids"] for row in captured_rows],
             [0, 0, 0],
         )
         self.assertTrue(

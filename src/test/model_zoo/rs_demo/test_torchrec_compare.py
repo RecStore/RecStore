@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from model_zoo.rs_demo.runtime.torchrec_compare import (
+from python.pytorch.recstore.analysis.compare import (
     build_exposed_gap_rows,
     build_compare_rows,
     write_compare_csv,

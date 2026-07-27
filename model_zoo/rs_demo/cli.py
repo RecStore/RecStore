@@ -17,15 +17,15 @@ from .config import (
     validate_recstore_config,
     validate_torchrec_config,
 )
-from .runtime.report import (
+from python.pytorch.recstore.benchmark.report import (
     analyze_embupdate,
     analyze_stage_table,
     setup_local_report_env,
 )
-from .runtime.torchrec_aggregate import aggregate_torchrec_main_csv, write_aggregate_csv
-from .runtime.torchrec_compare import build_compare_rows, write_compare_csv
-from .runtime.torchrec_trace_report import summarize_trace_dir, write_trace_csv
-from .runtime.server import (
+from python.pytorch.recstore.analysis.aggregate import aggregate_torchrec_main_csv, write_aggregate_csv
+from python.pytorch.recstore.analysis.compare import build_compare_rows, write_compare_csv
+from python.pytorch.recstore.analysis.trace_report import summarize_trace_dir, write_trace_csv
+from python.pytorch.recstore.benchmark.server import (
     choose_available_ports,
     make_runtime_dir,
     resolve_default_ports,
