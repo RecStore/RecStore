@@ -37,17 +37,13 @@ from ..runtime.hybrid_dlrm import (
     compute_dense_loss,
     parse_layer_sizes,
     prepare_hybrid_dlrm_input,
-    rankmixer_task_names,
+    model_task_names,
     reshape_torchrec_embeddings_for_dlrm,
     run_hybrid_backward,
     sync_device,
 )
 from ..runtime.prefetch import LookaheadPrefetcher
 from ..runtime.bagpipe_cache import BagPipeCacheController, BagPipeSparseSGD
-from ..runtime.quanta_backend import (
-    QuantaEmbeddingBagCollection,
-    make_quanta_optimizer,
-)
 from ..runtime.recstore_distributed import ShardedRecstoreClient
 from ..runtime.report import finalize_recstore_row, summarize_us, write_stage_csv
 from .base import BenchmarkRunner
@@ -68,9 +64,6 @@ FAST_PATH_LOOKUP_PROFILE_KEYS = (
 )
 
 FAST_PATH_UPDATE_PROFILE_KEYS = (
-    "quanta_sparse_grad_sync_ms",
-    "quanta_optimizer_step_ms",
-    "quanta_lookup_local_ms",
     "trace_collect_ms",
     "trace_aggregate_ms",
     "exchange_ms",
@@ -738,21 +731,6 @@ class RecStoreRunner(BenchmarkRunner):
             )
         if not cfg.read_before_update:
             cmd.append("--no-read-before-update")
-        if cfg.model == "rankmixer":
-            cmd.extend(
-                [
-                    "--rankmixer-tokens-split-dim",
-                    str(cfg.rankmixer_tokens_split_dim),
-                    "--rankmixer-blocks",
-                    str(cfg.rankmixer_blocks),
-                    "--rankmixer-gate-num",
-                    str(cfg.rankmixer_gate_num),
-                    "--rankmixer-masked-dim",
-                    str(cfg.rankmixer_masked_dim),
-                    "--rankmixer-segment-dims",
-                    str(cfg.rankmixer_segment_dims),
-                ]
-            )
         return cmd
 
     def _run_single_process(self, repo_root: Path, cfg: RunConfig) -> dict[str, Any]:
@@ -893,7 +871,6 @@ class RecStoreRunner(BenchmarkRunner):
                     fingerprint_path=fingerprint_path,
                 )
                 _append_worker_debug(cfg, rank, f"worker_fingerprint {fingerprint}")
-            is_quanta = cfg.backend == "quanta"
             dataset, dataloader = _build_train_dataloader_for_mode(
                 repo_root=repo_root,
                 cfg=cfg,
@@ -923,87 +900,66 @@ class RecStoreRunner(BenchmarkRunner):
                     for cfg_item in eb_configs
                 }
 
-            if is_quanta:
-                # ── QuantaRec architecture: local replicated embeddings + sparse
-                # gradient all-reduce.  No central PS, no network read.
-                print("[rs_demo] backend=quanta (local dynamic embeddings + sparse grad sync)")
-                embedding_module = QuantaEmbeddingBagCollection(
-                    embedding_bag_configs=eb_configs,
-                    initialize_tables=True,
-                    device=device,
-                    fuse_k=cfg.fuse_k,
-                    enable_fusion=cfg.recstore_enable_fusion,
-                )
-                client = None
-            else:
-                raw_client = RecstoreClient(library_path=str(library_path))
-                client = ShardedRecstoreClient(raw_client, self.runtime_dir)
-                if cfg.ps_type.upper() == "RDMA":
-                    client.set_ps_backend("rdma")
-                if cfg.enable_single_node_distributed_fast_path:
-                    client.set_ps_backend(cfg.single_node_ps_backend)
-                    client.activate_shard(rank)
-                if cfg.read_before_update and cfg.read_mode == "prefetch":
-                    print("[rs_demo] sharded recstore path uses prefetch read mode")
-                elif cfg.read_mode != "direct":
-                    print("[rs_demo] unknown read mode, fallback to direct read mode")
+            raw_client = RecstoreClient(library_path=str(library_path))
+            client = ShardedRecstoreClient(raw_client, self.runtime_dir)
+            if cfg.ps_type.upper() == "RDMA":
+                client.set_ps_backend("rdma")
+            if cfg.enable_single_node_distributed_fast_path:
+                client.set_ps_backend(cfg.single_node_ps_backend)
+                client.activate_shard(rank)
+            if cfg.read_before_update and cfg.read_mode == "prefetch":
+                print("[rs_demo] sharded recstore path uses prefetch read mode")
+            elif cfg.read_mode != "direct":
+                print("[rs_demo] unknown read mode, fallback to direct read mode")
 
-                embedding_module = RecStoreEmbeddingBagCollection(
-                    embedding_bag_configs=eb_configs,
-                    enable_fusion=cfg.recstore_enable_fusion,
-                    fusion_k=cfg.fuse_k,
-                    kv_client=client,
-                    initialize_tables=(rank == 0),
+            embedding_module = RecStoreEmbeddingBagCollection(
+                embedding_bag_configs=eb_configs,
+                enable_fusion=cfg.recstore_enable_fusion,
+                fusion_k=cfg.fuse_k,
+                kv_client=client,
+                initialize_tables=(rank == 0),
+            )
+            if cfg.enable_single_node_distributed_fast_path:
+                embedding_module.enable_single_node_distributed_fast_path = True
+                embedding_module.single_node_distributed_mode = "single_node"
+                embedding_module.single_node_ps_backend = cfg.single_node_ps_backend
+                embedding_module.single_node_owner_policy = cfg.single_node_owner_policy
+            _configure_gpu_cache(
+                embedding_module,
+                cfg,
+                embedding_dim=cfg.embedding_dim,
+            )
+            if (
+                cfg.enable_gpu_cache
+                and cfg.read_before_update
+                and cfg.read_mode == "prefetch"
+                and cfg.prefetch_depth > 0
+            ):
+                set_clear_after_cpu_update = getattr(
+                    client,
+                    "set_clear_gpu_cache_after_cpu_update",
+                    None,
                 )
-            if not is_quanta:
-                if cfg.enable_single_node_distributed_fast_path:
-                    embedding_module.enable_single_node_distributed_fast_path = True
-                    embedding_module.single_node_distributed_mode = "single_node"
-                    embedding_module.single_node_ps_backend = cfg.single_node_ps_backend
-                    embedding_module.single_node_owner_policy = cfg.single_node_owner_policy
-                _configure_gpu_cache(
-                    embedding_module,
-                    cfg,
-                    embedding_dim=cfg.embedding_dim,
-                )
-                if (
-                    cfg.enable_gpu_cache
-                    and cfg.read_before_update
-                    and cfg.read_mode == "prefetch"
-                    and cfg.prefetch_depth > 0
-                ):
-                    set_clear_after_cpu_update = getattr(
-                        client,
-                        "set_clear_gpu_cache_after_cpu_update",
-                        None,
-                    )
-                    if callable(set_clear_after_cpu_update):
-                        set_clear_after_cpu_update(False)
-                _append_worker_debug(
-                    cfg,
-                    rank,
-                    "fast_path_state "
-                    f"enabled={getattr(embedding_module, 'enable_single_node_distributed_fast_path', False)} "
-                    f"mode={getattr(embedding_module, 'single_node_distributed_mode', None)} "
-                    f"backend={getattr(embedding_module, 'single_node_ps_backend', None)} "
-                    f"owner_policy={getattr(embedding_module, 'single_node_owner_policy', None)} "
-                    f"dist_initialized={dist.is_initialized()} "
-                    f"dist_world_size={dist.get_world_size() if dist.is_initialized() else 'na'} "
-                    f"can_use={embedding_module._can_use_single_node_distributed_fast_path()}",
-                )
-                _barrier_for_step_alignment(
-                    dist=dist,
-                    device=device,
-                    local_rank=local_rank,
-                    use_dist=use_dist,
-                )
-            else:
-                _barrier_for_step_alignment(
-                    dist=dist,
-                    device=device,
-                    local_rank=local_rank,
-                    use_dist=use_dist,
-                )
+                if callable(set_clear_after_cpu_update):
+                    set_clear_after_cpu_update(False)
+            _append_worker_debug(
+                cfg,
+                rank,
+                "fast_path_state "
+                f"enabled={getattr(embedding_module, 'enable_single_node_distributed_fast_path', False)} "
+                f"mode={getattr(embedding_module, 'single_node_distributed_mode', None)} "
+                f"backend={getattr(embedding_module, 'single_node_ps_backend', None)} "
+                f"owner_policy={getattr(embedding_module, 'single_node_owner_policy', None)} "
+                f"dist_initialized={dist.is_initialized()} "
+                f"dist_world_size={dist.get_world_size() if dist.is_initialized() else 'na'} "
+                f"can_use={embedding_module._can_use_single_node_distributed_fast_path()}",
+            )
+            _barrier_for_step_alignment(
+                dist=dist,
+                device=device,
+                local_rank=local_rank,
+                use_dist=use_dist,
+            )
             model_type = getattr(cfg, "model", "dlrm")
             dense_module = build_dense_module(
                 model_type=model_type,
@@ -1014,11 +970,6 @@ class RecStoreRunner(BenchmarkRunner):
                 dense_arch_layer_sizes=parse_layer_sizes(cfg.dense_arch_layer_sizes),
                 over_arch_layer_sizes=parse_layer_sizes(cfg.over_arch_layer_sizes),
                 device=device,
-                rankmixer_segment_dims=getattr(cfg, "rankmixer_segment_dims", None),
-                rankmixer_tokens_split_dim=getattr(cfg, "rankmixer_tokens_split_dim", 2400),
-                rankmixer_blocks=getattr(cfg, "rankmixer_blocks", 2),
-                rankmixer_gate_num=getattr(cfg, "rankmixer_gate_num", 6),
-                rankmixer_masked_dim=getattr(cfg, "rankmixer_masked_dim", 56),
             )
             dense_module = _maybe_wrap_dense_module_for_dist(
                 dense_module=dense_module,
@@ -1031,54 +982,47 @@ class RecStoreRunner(BenchmarkRunner):
                 dense_module, torch.nn.parallel.DistributedDataParallel) else dense_module
             criterion = build_criterion(
                 getattr(_dispatch_module, "model_type", "dlrm"),
-                rankmixer_task_names(_dispatch_module),
+                model_task_names(_dispatch_module),
             )
             dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
             bagpipe_controller: BagPipeCacheController | None = None
-            if is_quanta:
-                # QuantaRec architecture: local sparse optimizer with cross-worker
-                # sparse gradient all-reduce (no PS, no bagpipe).
-                sparse_optimizer = make_quanta_optimizer(
-                    embedding_module, lr=0.01, dist=dist, device=device)
-                fast_path_region_warmed = False
-            else:
-                if cfg.enable_bagpipe_cache:
-                    def _fused_id_extractor(sparse_features):
-                        return convert_kjt_ids_to_fused_ids(sparse_features, table_offsets)
+            if cfg.enable_bagpipe_cache:
+                def _fused_id_extractor(sparse_features):
+                    return convert_kjt_ids_to_fused_ids(sparse_features, table_offsets)
 
-                    bagpipe_controller = BagPipeCacheController(
-                        embedding_module,
-                        client,
-                        lookahead_value=cfg.bagpipe_lookahead,
-                        cleanup_batch_proportion=cfg.bagpipe_cleanup_proportion,
-                        cache_capacity=cfg.gpu_cache_capacity,
-                        embedding_dim=cfg.embedding_dim,
-                        fuse_k=cfg.fuse_k,
-                        table_offsets=table_offsets,
-                        master_table_name=cfg.table_name,
-                        device=device,
-                        lr=0.01,
-                        id_extractor=_fused_id_extractor,
-                    )
-                if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
-                    sparse_optimizer = BagPipeSparseSGD(
-                        [embedding_module], lr=0.01, controller=bagpipe_controller
-                    )
-                else:
-                    sparse_optimizer = SparseSGD([embedding_module], lr=0.01)
-                fast_path_region_warmed = _maybe_warmup_gpu_local_shm_fast_path(
-                    cfg=cfg,
-                    client=client,
+                bagpipe_controller = BagPipeCacheController(
+                    embedding_module,
+                    client,
+                    lookahead_value=cfg.bagpipe_lookahead,
+                    cleanup_batch_proportion=cfg.bagpipe_cleanup_proportion,
+                    cache_capacity=cfg.gpu_cache_capacity,
+                    embedding_dim=cfg.embedding_dim,
+                    fuse_k=cfg.fuse_k,
+                    table_offsets=table_offsets,
+                    master_table_name=cfg.table_name,
                     device=device,
+                    lr=0.01,
+                    id_extractor=_fused_id_extractor,
                 )
-                if fast_path_region_warmed:
-                    print("[rs_demo] warmed local_shm lookup payload region for GPU fast path")
-                    _barrier_for_step_alignment(
-                        dist=dist,
-                        device=device,
-                        local_rank=local_rank,
-                        use_dist=use_dist,
-                    )
+            if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
+                sparse_optimizer = BagPipeSparseSGD(
+                    [embedding_module], lr=0.01, controller=bagpipe_controller
+                )
+            else:
+                sparse_optimizer = SparseSGD([embedding_module], lr=0.01)
+            fast_path_region_warmed = _maybe_warmup_gpu_local_shm_fast_path(
+                cfg=cfg,
+                client=client,
+                device=device,
+            )
+            if fast_path_region_warmed:
+                print("[rs_demo] warmed local_shm lookup payload region for GPU fast path")
+                _barrier_for_step_alignment(
+                    dist=dist,
+                    device=device,
+                    local_rank=local_rank,
+                    use_dist=use_dist,
+                )
 
             read_lat_us: list[float] = []
             update_lat_us: list[float] = []
@@ -1231,8 +1175,7 @@ class RecStoreRunner(BenchmarkRunner):
                 stage_rec.mark("embed_lookup_local_ms")
                 if cfg.enable_bagpipe_cache and bagpipe_controller is not None:
                     bagpipe_controller.prefill_cache(sparse_features, device)
-                elif (not is_quanta
-                      and cfg.read_before_update
+                elif (cfg.read_before_update
                       and cfg.read_mode == "prefetch"):
                     _attach_or_refetch_with_bagpipe_policy(
                         prefetch_depth=cfg.prefetch_depth,
@@ -1438,8 +1381,8 @@ class RecStoreRunner(BenchmarkRunner):
             os.chdir(str(orig_cwd))
 
     def run(self, repo_root: Path, cfg: RunConfig) -> dict:
-        if cfg.backend not in ("recstore", "quanta"):
-            raise ValueError("RecStoreRunner requires cfg.backend to be 'recstore' or 'quanta'.")
+        if cfg.backend not in ("recstore",):
+            raise ValueError("RecStoreRunner requires cfg.backend to be 'recstore'.")
         validate_recstore_config(cfg)
 
         if os.environ.get("RS_DEMO_RECSTORE_WORKER") == "1":

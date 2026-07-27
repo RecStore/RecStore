@@ -5,7 +5,7 @@
 本报告对比分析了 RecStore 当前 BagPipe 预取缓存实现与原论文的实现差异，
 重点识别了 CUDA 同步点导致的异步流水线阻断问题，并基于真实基准测试数据量化了性能影响。
 
-**测试环境**: 单卡 A100, batch_size=2048, 26 表 x 200000 x 64 维, RankMixer 模型
+**测试环境**: 单卡 A100, batch_size=2048, 26 表 x 200000 x 64 维, 多任务稠密模型
 
 ---
 
@@ -123,11 +123,11 @@
 
 ---
 
-## 4. 与 QuantaRec 的对比
+## 4. 与本地 embedding 架构的对比
 
 ### 4.1 架构差异
 
-| 方面 | RecStore+BagPipe | QuantaRec/TorchRec |
+| 方面 | RecStore+BagPipe | 本地 embedding / TorchRec |
 |------|-----------------|-------------------|
 | **Embedding 存储** | 远程 PS (Parameter Server) | 本地 GPU/CPU 内存 |
 | **Lookup 方式** | 网络请求 + GPU 缓存 | 本地内存直接访问 |
@@ -267,8 +267,8 @@
    - 尽管有同步问题，BagPipe 仍将 lookup 从 47ms 降至 19ms
    - 稀疏更新效率使 RecStore 总体性能优于 TorchRec
 
-3. **与 QuantaRec 的对比**:
-   - Lookup: QuantaRec 快 10x (本地 vs 网络)
+3. **与本地 embedding 架构的对比**:
+   - Lookup: 本地 embedding 快 10x (本地 vs 网络)
    - Sparse Update: RecStore 更高效 (稀疏 vs 稠密)
    - 总体: RecStore+BagPipe 快 14.5%
 
@@ -292,5 +292,5 @@
 
 - BagPipe 原论文代码: /home/hadoop-quanta/github.com/uw-mad-dash/bagpipe.git/BagPipe/
 - 当前实现: /home/hadoop-quanta/VSCodeProjects/recstore_shanhongqi/src/python/pytorch/recstore/bagpipe_cache/
-- 基准测试数据: /tmp/rs_rankmixer_bench/
+- 基准测试数据: /tmp/rs_dense_bench/
 - 测试环境: 单卡 A100, batch_size=2048, 26 表 x 200000 x 64 维
