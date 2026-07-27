@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from ..config import RunConfig
+from model_zoo.rs_demo.config import RunConfig
 
 
 def build_torchrec_profiler(

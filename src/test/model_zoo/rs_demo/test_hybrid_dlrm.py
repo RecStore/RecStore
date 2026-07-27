@@ -4,8 +4,8 @@ import unittest
 
 import torch
 
-from model_zoo.rs_demo.runtime.hybrid_dlrm import (
-    build_hybrid_dense_arch,
+from model_zoo.rs_demo.models.dlrm import build_hybrid_dense_arch
+from model_zoo.rs_demo.models.utils import (
     flatten_embedded_sparse_grad_for_recstore,
     prepare_hybrid_dlrm_input,
     reshape_recstore_embeddings_for_dlrm,

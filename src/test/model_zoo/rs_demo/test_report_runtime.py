@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from model_zoo.rs_demo.runtime.report import (
+from python.pytorch.recstore.benchmark.report import (
     analyze_embupdate,
     analyze_stage_table,
     setup_local_report_env,
@@ -12,9 +12,9 @@ from model_zoo.rs_demo.runtime.report import (
 
 class ReportRuntimeTest(unittest.TestCase):
     def test_setup_local_report_env_uses_jsonl_only_by_default(self) -> None:
-        with mock.patch("model_zoo.rs_demo.runtime.report.Path.mkdir"), mock.patch(
+        with mock.patch("python.pytorch.recstore.benchmark.report.Path.mkdir"), mock.patch(
             "builtins.open", mock.mock_open()
-        ), mock.patch.dict("model_zoo.rs_demo.runtime.report.os.environ", {}, clear=True):
+        ), mock.patch.dict("python.pytorch.recstore.benchmark.report.os.environ", {}, clear=True):
             setup_local_report_env("/tmp/recstore_events.jsonl")
 
             self.assertEqual("jsonl", os.environ["RECSTORE_REPORT_LOCAL_SINK"])
@@ -23,7 +23,7 @@ class ReportRuntimeTest(unittest.TestCase):
 
     def test_analyze_embupdate_includes_server_log_when_present(self) -> None:
         repo_root = Path("/repo")
-        with mock.patch("model_zoo.rs_demo.runtime.report.subprocess.run") as run_mock:
+        with mock.patch("python.pytorch.recstore.benchmark.report.subprocess.run") as run_mock:
             run_mock.return_value = mock.Mock(
                 returncode=0,
                 stdout="ok",
@@ -61,7 +61,7 @@ class ReportRuntimeTest(unittest.TestCase):
 
     def test_analyze_stage_table_passes_requested_table_name(self) -> None:
         repo_root = Path("/repo")
-        with mock.patch("model_zoo.rs_demo.runtime.report.subprocess.run") as run_mock:
+        with mock.patch("python.pytorch.recstore.benchmark.report.subprocess.run") as run_mock:
             run_mock.return_value = mock.Mock(returncode=0, stdout="ok", stderr="")
 
             result = analyze_stage_table(

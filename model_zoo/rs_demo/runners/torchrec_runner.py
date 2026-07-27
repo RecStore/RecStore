@@ -20,20 +20,22 @@ from ..config import (
     resolve_num_embeddings_per_feature,
     validate_torchrec_config,
 )
-from ..runtime.hybrid_dlrm import (
-    build_criterion,
-    build_dense_module,
-    build_hybrid_dense_arch,
-    compute_dense_loss,
+from ..models.dlrm import build_hybrid_dense_arch
+from ..models.utils import (
+    sync_device,
     parse_layer_sizes,
     prepare_hybrid_dlrm_input,
-    model_task_names,
-    reshape_torchrec_embeddings_for_dlrm,
     run_hybrid_backward,
-    sync_device,
+    reshape_torchrec_embeddings_for_dlrm,
 )
-from ..runtime.report import finalize_torchrec_row, write_stage_csv
-from ..runtime.torchrec_profile import build_torchrec_profiler
+from ..runtime.dispatch import (
+    build_dense_module,
+    build_criterion,
+    compute_dense_loss,
+    model_task_names,
+)
+from python.pytorch.recstore.benchmark.report import finalize_torchrec_row, write_stage_csv
+from python.pytorch.recstore.analysis.profiler import build_torchrec_profiler
 from .base import BenchmarkRunner
 
 

@@ -11,7 +11,7 @@ import torch
 
 from model_zoo.rs_demo.cli import build_runner
 from model_zoo.rs_demo.config import RunConfig
-from model_zoo.rs_demo.runtime.report import write_stage_csv
+from python.pytorch.recstore.benchmark.report import write_stage_csv
 from model_zoo.rs_demo.runners.torchrec_runner import (
     TorchRecRunner,
     _barrier_for_step_alignment,
