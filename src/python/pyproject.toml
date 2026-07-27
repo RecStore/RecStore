@@ -18,10 +18,10 @@ classifiers = [
 ]
 
 [tool.setuptools]
-package-dir = {"" = "src/python/pytorch"}
+package-dir = {"" = "pytorch"}
 
 [tool.setuptools.packages.find]
-where = ["src/python/pytorch"]
+where = ["pytorch"]
 
 [tool.setuptools.package-data]
 recstore = ["native/*.so", "native/*.a"]
