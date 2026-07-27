@@ -9,7 +9,7 @@ from pathlib import Path
 
 import torch
 
-from model_zoo.rs_demo.runtime.recstore_distributed import (
+from python.pytorch.recstore.sharded_client import (
     ShardedRecstoreClient,
     _city_hash64_of_uint64,
 )

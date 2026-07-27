@@ -20,20 +20,22 @@ from ..config import (
     resolve_num_embeddings_per_feature,
     validate_torchrec_config,
 )
-from ..runtime.hybrid_dlrm import (
-    build_criterion,
-    build_dense_module,
-    build_hybrid_dense_arch,
-    compute_dense_loss,
+from ..models.dlrm import build_hybrid_dense_arch
+from ..models.utils import (
+    sync_device,
     parse_layer_sizes,
     prepare_hybrid_dlrm_input,
-    rankmixer_task_names,
-    reshape_torchrec_embeddings_for_dlrm,
     run_hybrid_backward,
-    sync_device,
+    reshape_torchrec_embeddings_for_dlrm,
 )
-from ..runtime.report import finalize_torchrec_row, write_stage_csv
-from ..runtime.torchrec_profile import build_torchrec_profiler
+from ..runtime.dispatch import (
+    build_dense_module,
+    build_criterion,
+    compute_dense_loss,
+    model_task_names,
+)
+from python.pytorch.recstore.benchmark.report import finalize_torchrec_row, write_stage_csv
+from python.pytorch.recstore.analysis.profiler import build_torchrec_profiler, ProfilerConfig
 from .base import BenchmarkRunner
 
 
@@ -536,11 +538,6 @@ def _run_single_or_dist_worker(
         dense_arch_layer_sizes=parse_layer_sizes(cfg.dense_arch_layer_sizes),
         over_arch_layer_sizes=parse_layer_sizes(cfg.over_arch_layer_sizes),
         device=device,
-        rankmixer_segment_dims=getattr(cfg, "rankmixer_segment_dims", None),
-        rankmixer_tokens_split_dim=getattr(cfg, "rankmixer_tokens_split_dim", 2400),
-        rankmixer_blocks=getattr(cfg, "rankmixer_blocks", 2),
-        rankmixer_gate_num=getattr(cfg, "rankmixer_gate_num", 6),
-        rankmixer_masked_dim=getattr(cfg, "rankmixer_masked_dim", 56),
     )
     dense_module = _maybe_wrap_dense_module_for_dist(
         dense_module=dense_module,
@@ -557,7 +554,7 @@ def _run_single_or_dist_worker(
         dense_module, torch.nn.parallel.DistributedDataParallel) else dense_module
     criterion = build_criterion(
         getattr(_dispatch_module, "model_type", "dlrm"),
-        rankmixer_task_names(_dispatch_module),
+        model_task_names(_dispatch_module),
     )
     _append_worker_debug(cfg, rank, "after_criterion")
     _append_worker_debug(cfg, rank, "before_optimizer_init")
@@ -566,7 +563,13 @@ def _run_single_or_dist_worker(
     _append_worker_debug(cfg, rank, "after_optimizer_init")
 
     profiler = build_torchrec_profiler(
-        cfg,
+        ProfilerConfig(
+            enabled=cfg.torchrec_profiler,
+            trace_dir=cfg.torchrec_trace_dir,
+            warmup=cfg.torchrec_profiler_warmup,
+            active=cfg.torchrec_profiler_active,
+            repeat=cfg.torchrec_profiler_repeat,
+        ),
         on_trace_ready=_make_trace_handler(cfg, rank) if cfg.torchrec_profiler else None,
     )
     profiler_context = profiler or nullcontext()
@@ -843,21 +846,6 @@ class TorchRecRunner(BenchmarkRunner):
                     str(cfg.torchrec_profiler_active),
                     "--torchrec-profiler-repeat",
                     str(cfg.torchrec_profiler_repeat),
-                ]
-            )
-        if cfg.model == "rankmixer":
-            cmd.extend(
-                [
-                    "--rankmixer-tokens-split-dim",
-                    str(cfg.rankmixer_tokens_split_dim),
-                    "--rankmixer-blocks",
-                    str(cfg.rankmixer_blocks),
-                    "--rankmixer-gate-num",
-                    str(cfg.rankmixer_gate_num),
-                    "--rankmixer-masked-dim",
-                    str(cfg.rankmixer_masked_dim),
-                    "--rankmixer-segment-dims",
-                    str(cfg.rankmixer_segment_dims),
                 ]
             )
         return cmd

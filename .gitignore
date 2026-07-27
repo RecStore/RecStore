@@ -62,3 +62,8 @@ src/python/pytorch/recstore/version_info.py
 src/python/pytorch/recstore.egg-info/
 src/python/pytorch/recstore/native/
 
+# Internal model code (not for external distribution)
+model_zoo/rankmixer/
+model_zoo/rs_demo/runtime/local_embedding_backend.py
+src/external_ps_adapter/
+run_3node_bench.sh
