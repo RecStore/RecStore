@@ -35,7 +35,7 @@ from ..runtime.dispatch import (
     model_task_names,
 )
 from python.pytorch.recstore.benchmark.report import finalize_torchrec_row, write_stage_csv
-from python.pytorch.recstore.analysis.profiler import build_torchrec_profiler
+from python.pytorch.recstore.analysis.profiler import build_torchrec_profiler, ProfilerConfig
 from .base import BenchmarkRunner
 
 
@@ -563,7 +563,13 @@ def _run_single_or_dist_worker(
     _append_worker_debug(cfg, rank, "after_optimizer_init")
 
     profiler = build_torchrec_profiler(
-        cfg,
+        ProfilerConfig(
+            enabled=cfg.torchrec_profiler,
+            trace_dir=cfg.torchrec_trace_dir,
+            warmup=cfg.torchrec_profiler_warmup,
+            active=cfg.torchrec_profiler_active,
+            repeat=cfg.torchrec_profiler_repeat,
+        ),
         on_trace_ready=_make_trace_handler(cfg, rank) if cfg.torchrec_profiler else None,
     )
     profiler_context = profiler or nullcontext()

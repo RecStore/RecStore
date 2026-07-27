@@ -1,16 +1,26 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from model_zoo.rs_demo.config import RunConfig
+
+@dataclass(frozen=True)
+class ProfilerConfig:
+    """Profiler configuration, decoupled from model_zoo.RunConfig."""
+
+    enabled: bool
+    trace_dir: str
+    warmup: int = 0
+    active: int = 2
+    repeat: int = 1
 
 
 def build_torchrec_profiler(
-    cfg: RunConfig,
+    cfg: ProfilerConfig,
     on_trace_ready: Callable[[object], None] | None = None,
 ):
-    if not cfg.torchrec_profiler:
+    if not cfg.enabled:
         return None
     try:
         import torch
@@ -25,7 +35,7 @@ def build_torchrec_profiler(
         activities.append(torch.profiler.ProfilerActivity.CUDA)
     activities.append(torch.profiler.ProfilerActivity.CPU)
 
-    trace_dir = Path(cfg.torchrec_trace_dir)
+    trace_dir = Path(cfg.trace_dir)
     trace_dir.mkdir(parents=True, exist_ok=True)
     handler = on_trace_ready or torch.profiler.tensorboard_trace_handler(
         str(trace_dir)
@@ -34,10 +44,10 @@ def build_torchrec_profiler(
     return torch.profiler.profile(
         activities=activities,
         schedule=torch.profiler.schedule(
-            wait=cfg.torchrec_profiler_warmup,
+            wait=cfg.warmup,
             warmup=0,
-            active=cfg.torchrec_profiler_active,
-            repeat=cfg.torchrec_profiler_repeat,
+            active=cfg.active,
+            repeat=cfg.repeat,
         ),
         on_trace_ready=handler,
         record_shapes=False,
