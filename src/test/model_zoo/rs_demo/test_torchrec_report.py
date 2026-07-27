@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from model_zoo.rs_demo.runtime.report import (
+from python.pytorch.recstore.benchmark.report import (
     finalize_recstore_row,
     finalize_torchrec_row,
     write_stage_csv,

@@ -140,6 +140,17 @@ class TestTorchRecConfig(unittest.TestCase):
                 cfg = parse_config(["--backend", "torchrec", *args])
                 self.assertEqual(getattr(cfg, field), expected)
 
+    def test_torchrec_align_recstore_init_parses(self) -> None:
+        cfg = parse_config(
+            [
+                "--backend",
+                "torchrec",
+                "--torchrec-align-recstore-init",
+            ]
+        )
+
+        self.assertTrue(cfg.torchrec_align_recstore_init)
+
     def test_recstore_ps_type_accepts_rdma(self) -> None:
         cfg = parse_config(
             [

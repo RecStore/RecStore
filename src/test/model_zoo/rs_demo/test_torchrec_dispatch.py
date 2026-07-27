@@ -11,7 +11,7 @@ import torch
 
 from model_zoo.rs_demo.cli import build_runner
 from model_zoo.rs_demo.config import RunConfig, dump_run_config, parse_config
-from model_zoo.rs_demo.runtime.report import write_stage_csv
+from python.pytorch.recstore.benchmark.report import write_stage_csv
 from model_zoo.rs_demo.runners.torchrec_runner import (
     TorchRecRunner,
     _barrier_for_step_alignment,
@@ -343,6 +343,32 @@ class TestTorchRecDispatch(unittest.TestCase):
         self.assertTrue(loaded.torchrec_align_recstore_init)
         self.assertEqual(loaded.dense_arch_layer_sizes, "64,32,16")
         self.assertEqual(loaded.over_arch_layer_sizes, "128,64,1")
+
+    def test_runner_forwards_torchrec_align_recstore_init_to_worker(self) -> None:
+        cfg = RunConfig(
+            backend="torchrec",
+            steps=1,
+            nnodes=2,
+            node_rank=0,
+            nproc=1,
+            nproc_per_node=1,
+            master_addr="10.0.2.196",
+            master_port=29611,
+            rdzv_backend="c10d",
+            rdzv_id="loss-case",
+            output_root="/tmp/rs_demo",
+            run_id="loss-case",
+            torchrec_main_csv="/tmp/rs_demo/out.csv",
+            torchrec_main_agg_csv="/tmp/rs_demo/out_agg.csv",
+            torchrec_trace_dir="/tmp/rs_demo/traces",
+            torchrec_trace_csv="/tmp/rs_demo/trace.csv",
+            torchrec_align_recstore_init=True,
+        )
+        runner = TorchRecRunner(Path("/tmp/runtime"))
+        cmd = runner._build_torchrun_cmd(Path("/app/RecStore"), cfg, Path("/tmp/worker_config.json"))
+
+        self.assertIn("--run-config-json", cmd)
+        self.assertIn("/tmp/worker_config.json", cmd)
 
     def test_build_uvm_caching_constraints_uses_all_table_names(self) -> None:
         constraints = _build_uvm_caching_constraints(

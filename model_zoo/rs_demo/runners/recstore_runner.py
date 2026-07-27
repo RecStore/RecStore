@@ -27,14 +27,14 @@ from ..data.dlrm_source import (
     get_default_cat_names,
     inject_project_paths,
 )
-from ..runtime.hybrid_dlrm import (
+from ..models.dlrm import (
     build_criterion,
     build_dense_module,
     compute_dense_loss,
     prepare_hybrid_dlrm_input,
     reshape_torchrec_embeddings_for_dlrm,
 )
-from ..runtime.report import finalize_recstore_row, summarize_us
+from python.pytorch.recstore.benchmark.report import finalize_recstore_row, summarize_us
 from ..runtime.timing import StepTimer
 from ..runtime.worker_common import (
     barrier_for_step_alignment as _barrier_for_step_alignment,

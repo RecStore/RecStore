@@ -17,15 +17,15 @@ from .config import (
     validate_recstore_config,
     validate_torchrec_config,
 )
-from .runtime.report import (
+from python.pytorch.recstore.benchmark.report import (
     analyze_embupdate,
     analyze_stage_table,
     setup_local_report_env,
 )
-from .runtime.torchrec_aggregate import aggregate_torchrec_main_csv, write_aggregate_csv
-from .runtime.torchrec_compare import build_compare_rows, write_compare_csv
-from .runtime.torchrec_trace_report import summarize_trace_dir, write_trace_csv
-from .runtime.server import (
+from python.pytorch.recstore.analysis.aggregate import aggregate_torchrec_main_csv, write_aggregate_csv
+from python.pytorch.recstore.analysis.compare import build_compare_rows, write_compare_csv
+from python.pytorch.recstore.analysis.trace_report import summarize_trace_dir, write_trace_csv
+from python.pytorch.recstore.benchmark.server import (
     choose_available_ports,
     make_runtime_dir,
     resolve_default_ports,
@@ -56,7 +56,7 @@ def estimate_recstore_kv_capacity_for_tables(
 
 
 def build_runner(cfg: RunConfig, runtime_dir: Path):
-    if cfg.backend == "recstore":
+    if cfg.backend in ("recstore",):
         from .runners.recstore_runner import RecStoreRunner
 
         return RecStoreRunner(runtime_dir)
@@ -251,19 +251,27 @@ def main(argv: list[str] | None = None) -> int:
 
         if is_recstore_worker:
             return 0
-        print("[rs_demo] analyzing embupdate stages...")
-        extra_inputs: list[str] = []
-        server_log_path = Path(cfg.server_log)
-        if server_log_path.exists():
-            extra_inputs.append(str(server_log_path))
-        analyze_output = analyze_embupdate(
-            repo_root,
-            cfg.jsonl,
-            cfg.csv,
-            top_n=20,
-            extra_inputs=extra_inputs,
-        )
-        print(analyze_output)
+        # The analysis step needs the structured event log (jsonl).
+        # Backends without a PS don't produce one, so skip gracefully.
+        if Path(cfg.jsonl).exists():
+            print("[rs_demo] analyzing embupdate stages...")
+            extra_inputs: list[str] = []
+            server_log_path = Path(cfg.server_log)
+            if server_log_path.exists():
+                extra_inputs.append(str(server_log_path))
+            try:
+                analyze_output = analyze_embupdate(
+                    repo_root,
+                    cfg.jsonl,
+                    cfg.csv,
+                    top_n=20,
+                    extra_inputs=extra_inputs,
+                )
+                print(analyze_output)
+            except Exception as exc:
+                print(f"[rs_demo] analysis skipped: {exc}")
+        else:
+            print(f"[rs_demo] no event log ({cfg.jsonl}), skipping analysis")
         if effective_ps_type == "LOCAL_SHM":
             print("[rs_demo] analyzing local_shm server stages...")
             local_shm_output = analyze_stage_table(
