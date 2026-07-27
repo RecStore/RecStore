@@ -16,11 +16,18 @@ def load_ops_library() -> None:
 if os.environ.get("RECSTORE_DEFER_OPS_LOAD") != "1":
     load_ops_library()
 
-from .DistTensor import DistTensor
-from .DistEmb import DistEmbedding
-from .KVClient import RecStoreClient, get_kv_client
-from .optimizer import SparseSGD
-from . import bagpipe_cache
+# ---------------------------------------------------------------------------
+# Pure-Python submodules
+# ---------------------------------------------------------------------------
+from .DistTensor import DistTensor  # noqa: E402,F401
+from .DistEmb import DistEmbedding  # noqa: E402,F401
+from .KVClient import RecStoreClient, get_kv_client  # noqa: E402,F401
+from .optimizer import SparseSGD  # noqa: E402,F401
+# Import optim before bagpipe_cache: optim's _register_builtins() imports
+# bagpipe_cache.plugin, which in turn imports recstore.optim.plugin.
+# This ordering ensures optim.plugin is fully loaded when bagpipe_cache loads.
+from . import optim  # noqa: E402,F401
+from . import bagpipe_cache  # noqa: E402,F401
 
 # Lazy: importing EmbeddingBag pulls recstore.KVClient and would re-enter this
 # package while torchrec_kv.EmbeddingBag is still initializing (circular import
@@ -41,6 +48,7 @@ __all__ = [
     "get_kv_client",
     "SparseSGD",
     "bagpipe_cache",
+    "optim",
     "RecStoreEmbeddingBagCollection",
     "load_ops_library",
 ]
