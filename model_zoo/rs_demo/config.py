@@ -663,23 +663,19 @@ def validate_recstore_config(cfg: RunConfig) -> None:
             "--read-mode must be one of: direct, prefetch, bagpipe"
         )
     cfg.read_mode = read_mode
-    if read_mode == "bagpipe":
-        raise RuntimeError(
-            "read_mode=bagpipe is not wired in recstore_runner yet; "
-            "use --read-mode=direct or --read-mode=prefetch"
-        )
-    if cfg.enable_gpu_cache:
-        raise RuntimeError(
-            "--enable-gpu-cache is not supported by recstore_runner; "
-            "use --optimization-plugin bagpipe when that path is wired"
-        )
+    # When read_mode=bagpipe, auto-enable the bagpipe optimization plugin
+    # so the runner picks up the BagPipeReadPath + BagPipeSparseSGD path.
+    if read_mode == "bagpipe" and cfg.optimization.plugin == "none":
+        cfg.optimization.plugin = "bagpipe"
+        if cfg.optimization.lookahead <= 0:
+            cfg.optimization.lookahead = cfg.prefetch_depth or 4
+    # --enable-gpu-cache is a convenience alias for --optimization-plugin bagpipe.
+    if cfg.enable_gpu_cache and cfg.optimization.plugin == "none":
+        cfg.optimization.plugin = "bagpipe"
+        if cfg.optimization.lookahead <= 0:
+            cfg.optimization.lookahead = cfg.prefetch_depth or 4
     # Validate OptimizationConfig
     opt = cfg.optimization
-    if opt.plugin not in {"none", "bagpipe", "lookahead"}:
-        # Accept any registered plugin; the registry itself will raise on
-        # truly unknown names at create() time.  Here we only sanity-check
-        # the built-in set.
-        pass
     if opt.plugin != "none" and opt.lookahead <= 0:
         raise RuntimeError(
             f"--optimization-plugin {opt.plugin!r} requires --optimization-lookahead > 0"

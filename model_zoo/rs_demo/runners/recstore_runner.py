@@ -33,6 +33,7 @@ from ..runtime.hybrid_dlrm import (
     compute_dense_loss,
     prepare_hybrid_dlrm_input,
     reshape_torchrec_embeddings_for_dlrm,
+    run_hybrid_backward,
 )
 from ..runtime.report import finalize_recstore_row, summarize_us
 from ..runtime.timing import StepTimer
@@ -46,7 +47,12 @@ from ..runtime.worker_common import (
 )
 from .base import BenchmarkRunner
 
-from recstore.embedding_read_path import build_embedding_read_path
+from recstore.embedding_read_path import (
+    BagPipeReadPath,
+    PreparedTicket,
+    build_embedding_read_path,
+)
+from recstore.optim import OptimizationPluginRegistry
 
 
 def _safe_ratio(numerator: float, denominator: float) -> float:
@@ -342,6 +348,7 @@ class RecStoreRunner(BenchmarkRunner):
             )
 
         orig_cwd = Path.cwd()
+        plugin = None
         try:
             os.chdir(str(self.runtime_dir))
             torch.manual_seed(cfg.seed)
@@ -372,13 +379,40 @@ class RecStoreRunner(BenchmarkRunner):
                 kv_client=client,
                 initialize_tables=(rank == 0),
             )
-            read_path = build_embedding_read_path(
-                cfg.read_mode,
-                embedding_module=embedding_module,
-                prefetch_depth=cfg.prefetch_depth,
-                embedding_dim=cfg.embedding_dim,
-                feature_offsets=fused_id_offsets,
-            )
+            # -- optimization plugin + read path --------------------------------
+            use_bagpipe = cfg.optimization.plugin == "bagpipe" or cfg.read_mode == "bagpipe"
+
+            if use_bagpipe:
+                def _id_extractor(sparse_features):
+                    return convert_kjt_ids_to_fused_ids(sparse_features, table_offsets)
+
+                plugin = OptimizationPluginRegistry.create(
+                    "bagpipe",
+                    embedding_module=embedding_module,
+                    kv_client=client,
+                    lookahead=cfg.optimization.lookahead,
+                    cleanup_proportion=cfg.optimization.cleanup_proportion,
+                    cache_capacity=cfg.optimization.cache_capacity,
+                    embedding_dim=cfg.optimization.embedding_dim,
+                    fuse_k=cfg.fuse_k,
+                    table_offsets=table_offsets,
+                    device=device,
+                    lr=0.01,
+                    id_extractor=_id_extractor,
+                )
+                sparse_optimizer = plugin.create_sparse_optimizer(
+                    [embedding_module], lr=0.01
+                )
+                read_path = BagPipeReadPath(plugin, device=device)
+            else:
+                read_path = build_embedding_read_path(
+                    cfg.read_mode,
+                    embedding_module=embedding_module,
+                    prefetch_depth=cfg.prefetch_depth,
+                    embedding_dim=cfg.embedding_dim,
+                    feature_offsets=fused_id_offsets,
+                )
+                sparse_optimizer = recstore.SparseSGD([embedding_module], lr=0.01)
 
             _barrier_for_step_alignment(
                 dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
@@ -394,14 +428,13 @@ class RecStoreRunner(BenchmarkRunner):
                 dense_module=dense_module, device=device,
                 local_rank=local_rank, use_dist=use_dist,
             )
-            dispatch_module = (
+            unwrapped_module = (
                 dense_module.module
                 if isinstance(dense_module, torch.nn.parallel.DistributedDataParallel)
                 else dense_module
             )
-            criterion = build_criterion(cfg, dispatch_module)
+            criterion = build_criterion(cfg, unwrapped_module)
             dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
-            sparse_optimizer = recstore.SparseSGD([embedding_module], lr=0.01)
             record_pooled_grad = getattr(embedding_module, "record_pooled_grad", None)
 
             if _maybe_warmup_gpu_local_shm_fast_path(cfg=cfg, client=client, device=device):
@@ -438,17 +471,15 @@ class RecStoreRunner(BenchmarkRunner):
                 ticket = read_path.on_batch_prepared(
                     batch_step, sparse_features, sparse_batch, row
                 )
-                if (
-                    isinstance(ticket, tuple)
-                    and len(ticket) == 3
-                    and hasattr(ticket[0], "numel")
-                ):
-                    unique_ids, _, raw_count = ticket
+                if isinstance(ticket, PreparedTicket):
                     _add_sparse_id_stats(
                         row,
                         sparse_features,
                         table_offsets,
-                        precomputed=(int(unique_ids.numel()), int(raw_count)),
+                        precomputed=(
+                            int(ticket.unique_ids.numel()),
+                            ticket.raw_count,
+                        ),
                     )
                 else:
                     _add_sparse_id_stats(row, sparse_features, table_offsets)
@@ -509,66 +540,62 @@ class RecStoreRunner(BenchmarkRunner):
                     )
 
                 with timer.gpu("backward_ms"):
-                    for param in dense_module.parameters():
-                        if param.requires_grad:
-                            param.grad = None
-                    if not embedded_sparse.is_leaf:
-                        embedded_sparse.retain_grad()
-                    embedded_sparse.grad = None
-                    loss.backward()
-                    if embedded_sparse.grad is None:
-                        raise RuntimeError(
-                            "missing embedded_sparse gradient after backward"
-                        )
-                    embedded_sparse_grad = embedded_sparse.grad.detach()
+                    embedded_sparse_grad = run_hybrid_backward(
+                        loss, embedded_sparse, dense_module, torch, device
+                    )
 
                 with timer.gpu("dense_optimizer_ms"):
                     dense_optimizer.step()
                     dense_optimizer.zero_grad(set_to_none=True)
 
-                with timer.cpu("sparse_optimizer_ms"):
-                    replay_start = time.perf_counter()
-                    sparse_grad = embedded_sparse_grad.to(embedded_sparse_source.device)
-                    if callable(record_pooled_grad):
-                        prepared_ids = (
-                            ticket
-                            if isinstance(ticket, tuple) and len(ticket) == 3
-                            else None
+                with timer.cpu("sparse_update_ms"):
+                    with timer.cpu("sparse_replay_ms"):
+                        sparse_grad = embedded_sparse_grad.to(
+                            embedded_sparse_source.device
                         )
-                        record_pooled_grad(
-                            sparse_features, sparse_grad, prepared_ids=prepared_ids
-                        )
-                    else:
-                        embedded_sparse_source.backward(sparse_grad)
-                    row["sparse_backward_replay_ms"] = (time.perf_counter() - replay_start) * 1e3
+                        if callable(record_pooled_grad):
+                            prepared_ids = (
+                                ticket
+                                if isinstance(ticket, tuple) and len(ticket) == 3
+                                else None
+                            )
+                            record_pooled_grad(
+                                sparse_features,
+                                sparse_grad,
+                                prepared_ids=prepared_ids,
+                            )
+                        else:
+                            embedded_sparse_source.backward(sparse_grad)
 
-                    optimizer_step_start = time.perf_counter()
-                    sparse_optimizer.step()
-                    row["sparse_optimizer_step_ms"] = (
-                        time.perf_counter() - optimizer_step_start
-                    ) * 1e3
+                    with timer.cpu("sparse_step_ms"):
+                        sparse_optimizer.step()
 
                     # Overlap PS update latency by preparing future batches.
-                    overlap_prepare_start = time.perf_counter()
-                    while (
-                        len(prepared_batches) <= observed_depth
-                        and step + 1 + len(prepared_batches) < cfg.steps
-                    ):
-                        prepared_batches.append(
-                            prepare_next_batch(step + 1 + len(prepared_batches))
-                        )
-                    row["update_overlap_prepare_ms"] = (
-                        time.perf_counter() - overlap_prepare_start
-                    ) * 1e3
+                    with timer.cpu("prefetch_overlap_ms"):
+                        while (
+                            len(prepared_batches) <= observed_depth
+                            and step + 1 + len(prepared_batches) < cfg.steps
+                        ):
+                            prepared_batches.append(
+                                prepare_next_batch(
+                                    step + 1 + len(prepared_batches)
+                                )
+                            )
 
-                    flush_start = time.perf_counter()
-                    sparse_optimizer.flush()
-                    row["sparse_optimizer_flush_ms"] = (time.perf_counter() - flush_start) * 1e3
+                    with timer.cpu("sparse_flush_ms"):
+                        sparse_optimizer.flush()
 
                     read_path.after_sparse_update(
                         step, sparse_features, sparse_optimizer, row
                     )
                     sparse_optimizer.zero_grad()
+
+                # Backward-compatible aliases used by the benchmark reports.
+                row["sparse_optimizer_ms"] = row["sparse_update_ms"]
+                row["sparse_backward_replay_ms"] = row["sparse_replay_ms"]
+                row["sparse_optimizer_step_ms"] = row["sparse_step_ms"]
+                row["update_overlap_prepare_ms"] = row["prefetch_overlap_ms"]
+                row["sparse_optimizer_flush_ms"] = row["sparse_flush_ms"]
 
                 # Resolve the CUDA-event GPU stages after a single device drain.
                 timer.finish()
@@ -606,6 +633,8 @@ class RecStoreRunner(BenchmarkRunner):
                 "rows": rows,
             }
         finally:
+            if plugin is not None:
+                plugin.shutdown()
             os.chdir(str(orig_cwd))
 
     def run(self, repo_root: Path, cfg: RunConfig) -> dict:
