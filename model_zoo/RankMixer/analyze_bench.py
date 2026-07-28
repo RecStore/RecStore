@@ -12,7 +12,7 @@ from pathlib import Path
 
 # Columns of interest (present in both backends' CSVs).
 TIMING_COLS = [
-    ("embed_lookup_local_ms", "embedding lookup"),
+    ("embed_lookup_ms", "embedding lookup"),
     ("embed_pool_local_ms", "embedding pool/reshape"),
     ("dense_fwd_ms", "dense forward (RankMixer)"),
     ("backward_ms", "backward"),

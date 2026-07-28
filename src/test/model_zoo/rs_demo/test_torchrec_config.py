@@ -26,7 +26,7 @@ BASE_RECSTORE_CFG = {
 }
 
 RECSTORE_MAIN_CSV = (
-    "step_total_ms,input_pack_ms,embed_lookup_local_ms,embed_pool_local_ms,"
+    "step_total_ms,input_pack_ms,embed_lookup_ms,embed_pool_local_ms,"
     "output_unpack_ms,dense_fwd_ms,backward_ms,dense_optimizer_ms,"
     "sparse_optimizer_ms,emb_stage_ms\n"
     "1.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,1.0\n"
@@ -399,7 +399,7 @@ class TestTorchRecConfig(unittest.TestCase):
                             "step_total_ms": 10.0,
                             "batch_prepare_ms": 1.0,
                             "input_pack_ms": 0.5,
-                            "embed_lookup_local_ms": 2.0,
+                            "embed_lookup_ms": 2.0,
                             "embed_pool_local_ms": 1.0,
                             "collective_launch_ms": 0.0,
                             "collective_wait_ms": 0.0,

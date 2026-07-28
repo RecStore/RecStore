@@ -112,7 +112,7 @@ PyTorch EmbeddingBag:
 
 ```text
 rows_per_step = batch_size * sparse_features_per_sample
-read M rows/s = rows_per_step / (embed_lookup_local_ms / 1000) / 1e6
+read M rows/s = rows_per_step / (embed_lookup_ms / 1000) / 1e6
 write M rows/s = rows_per_step / (sparse_optimizer_ms / 1000) / 1e6
 ```
 

@@ -21,7 +21,7 @@ MAIN_METRICS = (
 
 EMBED_METRICS = (
     MetricSpec("input_pack_ms", "main_csv", "input_pack_ms"),
-    MetricSpec("embed_lookup_local_ms", "main_csv", "embed_lookup_local_ms"),
+    MetricSpec("embed_lookup_ms", "main_csv", "embed_lookup_ms"),
     MetricSpec("embed_pool_local_ms", "main_csv", "embed_pool_local_ms"),
     MetricSpec("lookup_local_lookup_ms", "main_csv", "lookup_local_lookup_ms"),
     MetricSpec("lookup_wait_ms", "main_csv", "lookup_wait_ms"),
