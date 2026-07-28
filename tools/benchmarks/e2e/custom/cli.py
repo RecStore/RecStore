@@ -68,7 +68,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--torchrec-baselines", default="hbm")
     parser.add_argument("--no-torchrec", action="store_true")
-    parser.add_argument("--read-mode", choices=["prefetch", "direct"], default="prefetch")
+    parser.add_argument(
+        "--read-mode",
+        choices=["direct", "prefetch", "bagpipe"],
+        default="prefetch",
+    )
     parser.add_argument("--prefetch-depth", type=int, default=0)
     parser.add_argument(
         "--index-type",

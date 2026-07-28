@@ -10,7 +10,7 @@ dry_run=0
 [[ "${1:-}" == "--dry-run" ]] && dry_run=1
 
 # Binary / runner names from benchmark-e2e, benchmark-kvengine, benchmark-ps.
-pattern='(^|/)(ps_server|petps_server|benchmark_kv_engine|ps_transport_benchmark)( |$)|run_mock_stress\.py|run_benchmark_ps\.py|run_kvengine_compare\.py|run_bench_e2e\.py|test_kvengine'
+pattern='(^|/)(ps_server|petps_server|benchmark_kv_engine|ps_transport_benchmark)( |$)|run_mock_stress\.py|run_benchmark_ps\.py|run_kvengine_compare\.py|tools\.benchmarks\.e2e\.custom|test_kvengine'
 
 self=$$
 mapfile -t lines < <(pgrep -af -- "$pattern" 2>/dev/null || true)

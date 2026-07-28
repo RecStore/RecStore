@@ -551,7 +551,7 @@ def _run_single_or_dist_worker(
                 sparse_features = sparse_features.to(device, non_blocking=True)
 
             _append_worker_debug(cfg, rank, f"before_embedding step={step}")
-            with timer.gpu("embed_lookup_local_ms"):
+            with timer.gpu("embed_lookup_ms"):
                 embeddings = embedding_module(sparse_features)
 
             _append_worker_debug(cfg, rank, f"before_pool step={step}")
@@ -624,7 +624,7 @@ def _run_single_or_dist_worker(
             row["step_total_ms"] = (time.perf_counter() - step_start) * 1e3
             row["collective_launch_ms"] = 0.0
             row["collective_wait_ms"] = (
-                row["embed_lookup_local_ms"] if use_dist else 0.0
+                row["embed_lookup_ms"] if use_dist else 0.0
             )
             rows.append(finalize_torchrec_row(row))
             _append_worker_debug(cfg, rank, f"before_step_barrier step={step}")

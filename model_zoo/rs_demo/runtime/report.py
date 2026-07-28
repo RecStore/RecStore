@@ -102,10 +102,10 @@ def finalize_torchrec_row(row: dict) -> dict:
     row["collective_total_ms"] = row["collective_launch_ms"] + row["collective_wait_ms"]
     row["embed_transport_ms"] = row["collective_total_ms"]
     row["network_proxy_torchrec_ms"] = row["collective_total_ms"]
-    row["kv_local_only_ms"] = row["embed_lookup_local_ms"] + row["embed_pool_local_ms"]
+    row["kv_local_only_ms"] = row["embed_lookup_ms"] + row["embed_pool_local_ms"]
     row["kv_extended_ms"] = (
         row["input_pack_ms"]
-        + row["embed_lookup_local_ms"]
+        + row["embed_lookup_ms"]
         + row["embed_pool_local_ms"]
         + row["output_unpack_ms"]
     )
@@ -131,7 +131,7 @@ def finalize_recstore_row(row: dict) -> dict:
         row["local_update_backend_call_ms"] = row["local_update_shm_call_ms"]
     row["emb_stage_ms"] = (
         _row_float(row, "input_pack_ms")
-        + _row_float(row, "embed_lookup_local_ms")
+        + _row_float(row, "embed_lookup_ms")
         + _row_float(row, "embed_pool_local_ms")
         + _row_float(row, "output_unpack_ms")
     )

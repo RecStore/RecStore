@@ -451,7 +451,10 @@ bool RDMAPSClientAdapter::QueryRPCFinished(int rpc_id) {
     }
   }
 
-  return shard_routing::FinalizeBatchIfNeeded(&it->second, FLAGS_value_size);
+  // A query must not finalize the batch: with async prefetch the per-chunk
+  // recv copies only happen inside WaitRPCFinish, so assembling here would
+  // merge unfilled buffers and mark the batch assembled prematurely.
+  return true;
 }
 
 void RDMAPSClientAdapter::WaitRPCFinish(int rpc_id) {
@@ -601,7 +604,19 @@ int RDMAPSClientAdapter::SubmitGetParameter(
       }
     }
     if (!window.empty()) {
-      drain_and_release_window();
+      if (isAsync) {
+        // ponytail: async prefetch keeps the tail window in flight so submit
+        // never blocks on the network; the chunks are waited/copied/revoked
+        // by WaitRPCFinish/RevokeRPCResource(batch_id) at consume time.
+        // Ceiling: mid-loop drains still apply slot-pool backpressure, so a
+        // batch with more chunks than MaxInFlightGetRpcs() stalls at submit.
+        for (const auto& pending : window) {
+          batch.shard_rpcs.push_back(pending);
+        }
+        window.clear();
+      } else {
+        drain_and_release_window();
+      }
     }
   } else {
     const std::size_t max_in_flight = MaxInFlightGetRpcs();
@@ -639,7 +654,15 @@ int RDMAPSClientAdapter::SubmitGetParameter(
       }
     }
     if (!window.empty()) {
-      drain_and_release_window();
+      if (isAsync) {
+        // See the single-shard branch above: deferred wait/revoke for async.
+        for (const auto& pending : window) {
+          batch.shard_rpcs.push_back(pending);
+        }
+        window.clear();
+      } else {
+        drain_and_release_window();
+      }
     }
   }
 

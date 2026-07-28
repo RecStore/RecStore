@@ -327,7 +327,7 @@ class HpsTorchRunner(BenchmarkRunner):
                 )
                 sync_device(torch, device)
 
-            with stage_timer(row, "embed_lookup_local_ms"):
+            with stage_timer(row, "embed_lookup_ms"):
                 embeddings = embedding_module(sparse_features)
                 sync_device(torch, device)
 

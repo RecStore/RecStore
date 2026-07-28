@@ -10,6 +10,8 @@ description: Use when setting up RecStore end-to-end DLRM/TorchRec benchmarks wi
 Use this skill from a RecStore checkout. Do not run helper scripts from this
 skill directory; call project scripts directly.
 
+特别注意：除了输出日志目录和报告外，不允许修改任何代码文件！！！如果非要修改，请提示我确认。
+
 1. Confirm the current directory is the RecStore repo root, or pass `--repo`.
 2. Prompt only for P0 inputs unless the user already provided them:
    - client list, each entry as
@@ -68,7 +70,9 @@ skill directory; call project scripts directly.
      - `RecStore-<PS_TYPE>-预取N`: add only for lookahead prefetch experiments;
        `--read-mode prefetch --prefetch-depth N` with `N > 0`, fused path
        enabled.
-5. Run:
+5. Run (prefer the automated custom runner; fall back to manual commands only
+   when diagnosing a bring-up failure or when `e2e/custom` cannot express the
+   topology):
    - Always compile in Release mode for E2E benchmarks:
      `cmake -S . -B build_release -DCMAKE_BUILD_TYPE=Release`
    - `cmake --build build_release --target ps_server -j`
@@ -76,9 +80,13 @@ skill directory; call project scripts directly.
      use `ctest --test-dir build_release -R 'brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_server_launcher|test_ps_client_factory|test_allshards_ps_client' --output-on-failure`;
      for GRPC, LOCAL_SHM/SHM, RDMA, or other PS types, use the corresponding
      targeted tests before E2E.
-   - start one `ps_server` per PS entry from `build_release`
-   - run `model_zoo/rs_demo/run_mock_stress.py` for each RecStore E2E client
-   - run matched TorchRec-HBM client commands with the same workload
+   - Preferred: `python3 -m tools.benchmarks.e2e.custom.cli` with `--client` /
+     `--ps` / `--transports` / `--output-dir` matching the P0 inputs. The runner
+     builds runtime config, starts PS, launches RecStore and TorchRec clients,
+     and writes `summary_e2e.csv` / `summary.md`.
+   - Manual fallback: start one `ps_server` per PS entry from `build_release`,
+     then run `model_zoo/rs_demo/run_mock_stress.py` for each RecStore E2E
+     client and matched TorchRec-HBM commands with the same workload.
    - for multi-host runs, verify the runner files and CLI options are present
      on every host before launching. If local code changed, sync the relevant
      files or compare fingerprints; otherwise remote workers may fail with
@@ -98,16 +106,28 @@ Ask the user for P0 inputs only: `client_list`, `ps_server_list`, and
 `output_dir`. Use P1 defaults for everything else unless the user explicitly
 overrides them.
 
+Preferred automated entry (`tools/benchmarks/e2e/custom/`):
+
 ```bash
 cmake -S . -B build_release -DCMAKE_BUILD_TYPE=Release
 cmake --build build_release --target ps_server -j
 # Example for BRPC. Replace with the targeted tests for the requested PS type.
 ctest --test-dir build_release -R 'brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_server_launcher|test_ps_client_factory|test_allshards_ps_client' --output-on-failure
+
+python3 -m tools.benchmarks.e2e.custom.cli \
+  --client 'ssh_host=local,ssh_port=22,repo=/app/RecStore,ip=127.0.0.1,gpu=0,node_rank=0,nproc_per_node=1' \
+  --ps 'ssh_host=local,ssh_port=22,repo=/app/RecStore,ip=127.0.0.1,ps_port=15000,shard_id=0' \
+  --transports brpc \
+  --output-dir results/e2e_local \
+  --skip-build
 ```
 
-Create `<runtime_dir>/recstore_config.json` with the requested PS type and
-shard layout. This example uses BRPC; replace `ps_type`, startup requirements,
-and environment variables as needed for GRPC, LOCAL_SHM/SHM, RDMA, or other
+Two-node RDMA helper (optional): `tools/benchmarks/e2e/run_two_node_rdma_compare.sh`.
+
+Manual fallback below when the custom runner cannot be used. Create
+`<runtime_dir>/recstore_config.json` with the requested PS type and shard
+layout. This example uses BRPC; replace `ps_type`, startup requirements, and
+environment variables as needed for GRPC, LOCAL_SHM/SHM, RDMA, or other
 available PS backends:
 
 ```json
@@ -239,8 +259,10 @@ output: <output_dir>
 ## Summary Format
 
 Generate `<output_dir>/summary.md` from `recstore_main.csv`,
-`recstore_main_agg.csv`, or the matrix runner's `summary_e2e.csv` after the E2E
-benchmark finishes. The first two lines of `summary.md` must be the current
+`recstore_main_agg.csv`, or the custom runner's `summary_e2e.csv` after the E2E
+benchmark finishes. Prefer the `summary.md` written by
+`tools.benchmarks.e2e.custom` when that runner was used; otherwise assemble the
+three sections manually from the CSVs. The first two lines of `summary.md` must be the current
 git commit hash and hostname from the RecStore checkout / host used for the
 run (`git rev-parse HEAD` on line 1, `hostname` on line 2), then a blank line,
 then the report body. Keep only these three sections after that header:
@@ -257,11 +279,14 @@ embedding dimension, num embeddings, steps, warmup steps, repeat, read mode,
 prefetch depth, RecStore index type, and GPU placement.
 
 Use `M` for values >= 1,000,000 and `K` for values >= 1,000. Include repeat
-mean and CV columns only when repeat >= 3.
+mean and CV columns only when repeat >= 3. In the E2E throughput table, also
+include one row `samples/s 各次` listing each repeat's job samples/s in
+`repeat_index` order as a comma-separated cell (same `K`/`M` formatting as the
+mean row), for example `55.9K, 62.4K, 68.8K`.
 
 For any RecStore vs TorchRec comparison, include an E2E latency breakdown, not
 only throughput. At minimum report `batch_prepare_ms`, `input_pack_ms`,
-`embed_lookup_local_ms`, `dense_fwd_ms`, `backward_ms`, `dense_optimizer_ms`,
+`embed_lookup_ms`, `dense_fwd_ms`, `backward_ms`, `dense_optimizer_ms`,
 `sparse_optimizer_ms`, and `step_total_ms` where available. This breakdown is
 required even when the throughput ordering looks reasonable, because RecStore
 and TorchRec runner paths can differ in sparse update, ID deduplication, and

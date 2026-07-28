@@ -245,17 +245,17 @@ def build_exposed_gap_rows(
     tr_step = _mean_or_zero(tr_rows, "step_total_ms")
     rec_emb = _first_non_none(
         _mean(rec_rows, "emb_stage_ms"),
-        _mean(rec_rows, "embed_lookup_local_ms"),
+        _mean(rec_rows, "embed_lookup_ms"),
     ) or 0.0
     tr_emb = _first_non_none(
         _mean(tr_rows, "emb_stage_ms"),
-        _mean(tr_rows, "embed_lookup_local_ms"),
+        _mean(tr_rows, "embed_lookup_ms"),
     ) or 0.0
     rec_lookup = _first_non_none(
         _mean(rec_rows, "lookup_total_ms"),
-        _mean(rec_rows, "embed_lookup_local_ms"),
+        _mean(rec_rows, "embed_lookup_ms"),
     ) or 0.0
-    tr_lookup = _mean_or_zero(tr_rows, "embed_lookup_local_ms")
+    tr_lookup = _mean_or_zero(tr_rows, "embed_lookup_ms")
     rec_dense = _first_non_none(
         _mean(rec_rows, "dense_compute_ms"),
         sum(

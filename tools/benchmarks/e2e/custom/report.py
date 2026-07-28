@@ -24,7 +24,7 @@ LATENCY_BREAKDOWN_COLUMNS = (
     "batch_prepare_ms",
     "input_pack_ms",
     "lookup_ids_build_ms",
-    "embed_lookup_local_ms",
+    "embed_lookup_ms",
     "dense_fwd_ms",
     "backward_ms",
     "dense_optimizer_ms",
@@ -106,7 +106,7 @@ def collect_summary_rows(manifest: list[dict[str, Any]]) -> list[dict[str, Any]]
                 **item,
                 "p95_step_total_ms": _p95(warm, "step_total_ms"),
                 "samples_per_sec": _job_samples_per_sec(warm, batch_size),
-                "lookup_mrows_per_sec": _job_rows_per_sec(warm, batch_size, "embed_lookup_local_ms"),
+                "lookup_mrows_per_sec": _job_rows_per_sec(warm, batch_size, "embed_lookup_ms"),
                 "update_mrows_per_sec": _job_rows_per_sec(warm, batch_size, "sparse_optimizer_ms"),
                 **{f"mean_{column}": value for column, value in latency_means.items()},
             }
@@ -129,6 +129,15 @@ def _repeat_stats(rows: list[dict[str, Any]], metric: str) -> tuple[float, float
     mean = statistics.fmean(vals)
     cv = statistics.pstdev(vals) / mean if len(vals) >= 2 and mean > 0.0 else 0.0
     return mean, cv, len(vals)
+
+
+def _per_repeat_samples(rows: list[dict[str, Any]]) -> str:
+    ordered = sorted(rows, key=lambda row: int(row.get("repeat_index", 0)))
+    parts = []
+    for row in ordered:
+        value = float(row.get("samples_per_sec", 0.0) or 0.0)
+        parts.append(_unit(value) if value > 0.0 else "-")
+    return ", ".join(parts) if parts else "-"
 
 
 def _git_commit_hash() -> str:
@@ -168,8 +177,6 @@ def render_summary_md(cfg: BenchmarkConfig, rows: list[dict[str, Any]]) -> str:
 
     lines = [
         *header,
-        "# Benchmark E2E Summary",
-        "",
         "## Workload 说明",
         "",
         (
@@ -204,6 +211,7 @@ def render_summary_md(cfg: BenchmarkConfig, rows: list[dict[str, Any]]) -> str:
     }
     lines.extend(table([
         ("repeat_n", [str(repeat_stats[name][2]) if name in grouped else "0" for name in systems]),
+        ("samples/s 各次", [_per_repeat_samples(grouped[name]) if name in grouped else "-" for name in systems]),
         ("samples/s 均值", [_unit(repeat_stats[name][0]) if name in grouped else "0.000" for name in systems]),
         ("CV", [f"{repeat_stats[name][1] * 100:.2f}%" if name in grouped else "0.00%" for name in systems]),
         ("lookup M rows/s", [f"{_mean(grouped[name], 'lookup_mrows_per_sec'):.3f}" if name in grouped else "0.000" for name in systems]),

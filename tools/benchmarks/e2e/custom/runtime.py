@@ -166,7 +166,7 @@ def start_rdma_ps_cluster(
         rdma_server_coroutines_per_thread=1,
         rdma_server_get_workers=0,
         rdma_profile_interval_ms=int(
-            os.getenv("RECSTORE_E2E_RDMA_PROFILE_INTERVAL_MS", "1000")
+            os.getenv("RECSTORE_E2E_RDMA_PROFILE_INTERVAL_MS", "0")
         ),
         server_command_wrapper=wrap_server_command if has_remote_server else None,
     )

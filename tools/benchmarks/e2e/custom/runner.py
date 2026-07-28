@@ -255,6 +255,17 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
                         "log_path": str(log_path),
                     }
                     client_entries.append({"cmd": client_cmd, "cwd": client.repo_root, "row": row})
+                print("=========================")
+                print(f"[benchmark-e2e] RecStore-{transport.upper()} repeat_{repeat_index}")
+                print(f"[benchmark-e2e] run_id={group_run_id}")
+                if transport.upper() == "RDMA":
+                    print(
+                        f"[benchmark-e2e] server_log="
+                        f"{logs_dir / f'{transport_lower}_server_shard0_r{repeat_index}.log'}"
+                    )
+                for entry in client_entries:
+                    print(f"[benchmark-e2e] log={entry['row']['log_path']}")
+                print("=========================")
                 _run_client_group(
                     client_entries,
                     dry_run=dry_run,
@@ -300,6 +311,12 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
                     "log_path": str(log_path),
                 }
                 client_entries.append({"cmd": client_cmd, "cwd": client.repo_root, "row": row})
+            print("=========================")
+            print(f"[benchmark-e2e] {lane} repeat_{repeat_index}")
+            print(f"[benchmark-e2e] run_id={group_run_id}")
+            for entry in client_entries:
+                print(f"[benchmark-e2e] log={entry['row']['log_path']}")
+            print("=========================")
             _run_client_group(
                 client_entries,
                 dry_run=dry_run,

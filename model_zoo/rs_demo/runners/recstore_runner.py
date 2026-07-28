@@ -480,7 +480,7 @@ class RecStoreRunner(BenchmarkRunner):
                 # embed_lookup and sparse_update hit the PS over the network (host
                 # + network work) so they stay on the wall clock; the pure-GPU
                 # dense stages use CUDA events via timer.gpu().
-                with timer.cpu("embed_lookup_local_ms"):
+                with timer.cpu("embed_lookup_ms"):
                     read_path.before_lookup(step, sparse_features, ticket, row)
                     embeddings = embedding_module(sparse_features)
 
