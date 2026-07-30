@@ -74,15 +74,15 @@
     <div role="rowheader" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2 sortable">Blocks</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l193">GRPCParameterClient::Initialize() (src/ps/grpc/grpc_ps_client.h:193)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="40">called 40 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l198">GRPCParameterClient::Initialize() (src/ps/grpc/grpc_ps_client.h:198)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="36">called 36 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l128">GRPCParameterClient::~GRPCParameterClient() (src/ps/grpc/grpc_ps_client.h:128)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="78">called 78 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="70">called 70 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
@@ -1134,7 +1134,7 @@
         <td class="lineno"><a id="l128" href="#l128">128</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">78</td>
+        <td class="linecount coveredLine show_coveredLine">70</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="o">~</span><span class="n">GRPCParameterClient</span><span class="p">()</span><span class="w"> </span><span class="p">{}</span></td>
       </tr>
       <tr class="source-line">
@@ -1366,416 +1366,451 @@
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="nf">PutParameter</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">bool</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l162" href="#l162">162</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                    </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">);</span></td>
+        <td class="src "><span class="w">  </span><span class="nf">SaveCheckpoint</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">metadata</span><span class="p">)</span><span class="w"> </span><span class="n">override</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l163" href="#l163">163</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="w">  </span><span class="kt">bool</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l164" href="#l164">164</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">UpdateParameter</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span></td>
+        <td class="src "><span class="w">  </span><span class="nf">LoadCheckpoint</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">metadata</span><span class="p">)</span><span class="w"> </span><span class="n">override</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l165" href="#l165">165</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                      </span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l166" href="#l166">166</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                      </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;*</span><span class="w"> </span><span class="n">grads</span><span class="p">);</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="nf">PutParameter</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l167" href="#l167">167</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">UpdateParameterFlat</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span></td>
+        <td class="src "><span class="w">                    </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l168" href="#l168">168</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                          </span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l169" href="#l169">169</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                          </span><span class="k">const</span><span class="w"> </span><span class="kt">float</span><span class="o">*</span><span class="w"> </span><span class="n">grads</span><span class="p">,</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">UpdateParameter</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l170" href="#l170">170</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                          </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">num_rows</span><span class="p">,</span></td>
+        <td class="src "><span class="w">                      </span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l171" href="#l171">171</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                          </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">embedding_dim</span><span class="p">)</span><span class="w"> </span><span class="n">override</span><span class="p">;</span></td>
+        <td class="src "><span class="w">                      </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;*</span><span class="w"> </span><span class="n">grads</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l172" href="#l172">172</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">UpdateParameterFlat</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l173" href="#l173">173</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">InitEmbeddingTable</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span></td>
+        <td class="src "><span class="w">                          </span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l174" href="#l174">174</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                         </span><span class="k">const</span><span class="w"> </span><span class="n">recstore</span><span class="o">::</span><span class="n">EmbeddingTableConfig</span><span class="o">&amp;</span><span class="w"> </span><span class="n">config</span><span class="p">);</span></td>
+        <td class="src "><span class="w">                          </span><span class="k">const</span><span class="w"> </span><span class="kt">float</span><span class="o">*</span><span class="w"> </span><span class="n">grads</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l175" href="#l175">175</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="w">                          </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">num_rows</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l176" href="#l176">176</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">uint64_t</span><span class="w"> </span><span class="nf">PrefetchParameter</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">);</span></td>
+        <td class="src "><span class="w">                          </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">embedding_dim</span><span class="p">)</span><span class="w"> </span><span class="n">override</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l177" href="#l177">177</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="nf">IsPrefetchDone</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">);</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l178" href="#l178">178</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">WaitForPrefetch</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">);</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">InitEmbeddingTable</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l179" href="#l179">179</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="nf">GetPrefetchResult</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">,</span></td>
+        <td class="src "><span class="w">                         </span><span class="k">const</span><span class="w"> </span><span class="n">recstore</span><span class="o">::</span><span class="n">EmbeddingTableConfig</span><span class="o">&amp;</span><span class="w"> </span><span class="n">config</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l180" href="#l180">180</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                         </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;*</span><span class="w"> </span><span class="n">values</span><span class="p">);</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l181" href="#l181">181</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="nf">GetPrefetchResultFlat</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">,</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">uint64_t</span><span class="w"> </span><span class="nf">PrefetchParameter</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l182" href="#l182">182</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                             </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;*</span><span class="w"> </span><span class="n">values</span><span class="p">,</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="nf">IsPrefetchDone</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l183" href="#l183">183</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                             </span><span class="kt">int64_t</span><span class="o">*</span><span class="w"> </span><span class="n">num_rows</span><span class="p">,</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">WaitForPrefetch</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l184" href="#l184">184</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                             </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">embedding_dim</span><span class="p">)</span><span class="w"> </span><span class="n">override</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="nf">GetPrefetchResult</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l185" href="#l185">185</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="c1">// Embeddings are vectors here; Get(float*) uses a flat buffer for legacy</span></td>
+        <td class="src "><span class="w">                         </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;*</span><span class="w"> </span><span class="n">values</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l186" href="#l186">186</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="c1">// callers</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="nf">GetPrefetchResultFlat</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l187" href="#l187">187</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">EmbWriteAsync</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
+        <td class="src "><span class="w">                             </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;*</span><span class="w"> </span><span class="n">values</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l188" href="#l188">188</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">                                 </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">);</span></td>
+        <td class="src "><span class="w">                             </span><span class="kt">int64_t</span><span class="o">*</span><span class="w"> </span><span class="n">num_rows</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l189" href="#l189">189</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">IsWriteDone</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">write_id</span><span class="p">);</span></td>
+        <td class="src "><span class="w">                             </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">embedding_dim</span><span class="p">)</span><span class="w"> </span><span class="n">override</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l190" href="#l190">190</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">WaitForWrite</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">write_id</span><span class="p">);</span></td>
+        <td class="src "><span class="w">  </span><span class="c1">// Embeddings are vectors here; Get(float*) uses a flat buffer for legacy</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l191" href="#l191">191</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="w">  </span><span class="c1">// callers</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l192" href="#l192">192</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="n">protected</span><span class="o">:</span></td>
+        <td class="src "><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">EmbWriteAsync</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l193" href="#l193">193</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount coveredLine show_coveredLine">40</td>
-        <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="n">Initialize</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">                                 </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&gt;&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l194" href="#l194">194</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">host_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">IsWriteDone</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">write_id</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l195" href="#l195">195</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">port_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">WaitForWrite</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">write_id</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l196" href="#l196">196</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">shard_</span><span class="p">;</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l197" href="#l197">197</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">nr_clients_</span><span class="p">;</span></td>
+        <td class="src "><span class="n">protected</span><span class="o">:</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l198" href="#l198">198</a></td>
         <td class="linebranch">
         </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cache_</span><span class="p">;</span></td>
+        <td class="linecount coveredLine show_coveredLine">36</td>
+        <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="n">Initialize</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l199" href="#l199">199</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int32_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">offset_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">host_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l200" href="#l200">200</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">get_param_key_sizes_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">port_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l201" href="#l201">201</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Status</span><span class="o">&gt;</span><span class="w"> </span><span class="n">get_param_status_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">shard_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l202" href="#l202">202</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">GetParameterRequest</span><span class="o">&gt;</span><span class="w"> </span><span class="n">get_param_requests_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">nr_clients_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l203" href="#l203">203</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">GetParameterResponse</span><span class="o">&gt;</span><span class="w"> </span><span class="n">get_param_responses_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cache_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l204" href="#l204">204</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">grpc</span><span class="o">::</span><span class="n">ClientContext</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">get_param_contexts_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int32_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">offset_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l205" href="#l205">205</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">get_param_key_sizes_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l206" href="#l206">206</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">grpc</span><span class="o">::</span><span class="n">ClientAsyncResponseReader</span><span class="o">&lt;</span><span class="n">GetParameterResponse</span><span class="o">&gt;&gt;&gt;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Status</span><span class="o">&gt;</span><span class="w"> </span><span class="n">get_param_status_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l207" href="#l207">207</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">      </span><span class="n">get_param_resonse_readers_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">GetParameterRequest</span><span class="o">&gt;</span><span class="w"> </span><span class="n">get_param_requests_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l208" href="#l208">208</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Channel</span><span class="o">&gt;</span><span class="w"> </span><span class="n">channel_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">GetParameterResponse</span><span class="o">&gt;</span><span class="w"> </span><span class="n">get_param_responses_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l209" href="#l209">209</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">recstoreps</span><span class="o">::</span><span class="n">ParameterService</span><span class="o">::</span><span class="n">Stub</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">stubs_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">grpc</span><span class="o">::</span><span class="n">ClientContext</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">get_param_contexts_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l210" href="#l210">210</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">grpc</span><span class="o">::</span><span class="n">CompletionQueue</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cq_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l211" href="#l211">211</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "></td>
+        <td class="src "><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">grpc</span><span class="o">::</span><span class="n">ClientAsyncResponseReader</span><span class="o">&lt;</span><span class="n">GetParameterResponse</span><span class="o">&gt;&gt;&gt;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l212" href="#l212">212</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="n">private</span><span class="o">:</span></td>
+        <td class="src "><span class="w">      </span><span class="n">get_param_resonse_readers_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l213" href="#l213">213</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">mutex</span><span class="w"> </span><span class="n">prefetch_mu_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Channel</span><span class="o">&gt;</span><span class="w"> </span><span class="n">channel_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l214" href="#l214">214</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unordered_map</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="p">,</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">PrefetchBatch</span><span class="o">&gt;</span><span class="w"> </span><span class="n">prefetch_batches_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">recstoreps</span><span class="o">::</span><span class="n">ParameterService</span><span class="o">::</span><span class="n">Stub</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">stubs_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l215" href="#l215">215</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unordered_map</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="p">,</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">PrewriteBatch</span><span class="o">&gt;</span><span class="w"> </span><span class="n">prewrite_batches_</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">grpc</span><span class="o">::</span><span class="n">CompletionQueue</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cq_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l216" href="#l216">216</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="c1">// start from 1</span></td>
+        <td class="src "></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l217" href="#l217">217</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">next_prefetch_id_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span></td>
+        <td class="src "><span class="n">private</span><span class="o">:</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l218" href="#l218">218</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="w">  </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">next_prewrite_id_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">mutex</span><span class="w"> </span><span class="n">prefetch_mu_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l219" href="#l219">219</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
-        <td class="src "><span class="p">};</span></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unordered_map</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="p">,</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">PrefetchBatch</span><span class="o">&gt;</span><span class="w"> </span><span class="n">prefetch_batches_</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l220" href="#l220">220</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unordered_map</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="p">,</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">PrewriteBatch</span><span class="o">&gt;</span><span class="w"> </span><span class="n">prewrite_batches_</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l221" href="#l221">221</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">  </span><span class="c1">// start from 1</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l222" href="#l222">222</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">  </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">next_prefetch_id_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l223" href="#l223">223</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="w">  </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">next_prewrite_id_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l224" href="#l224">224</a></td>
+        <td class="linebranch">
+        </td>
+        <td class="linecount"></td>
+        <td class="src "><span class="p">};</span></td>
+      </tr>
+      <tr class="source-line">
+        <td class="lineno"><a id="l225" href="#l225">225</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
@@ -1788,7 +1823,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.6">GCOVR (Version 8.6)</a>
-          at 2026-06-30 23:39:26
+          at 2026-07-30 17:23:06
         </footer>
       </div>
     </div>
