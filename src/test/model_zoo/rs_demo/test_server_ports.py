@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from model_zoo.rs_demo.runtime.server import (
+from python.pytorch.recstore.benchmark.server import (
     choose_available_ports,
     make_runtime_dir,
     resolve_kv_data_path,

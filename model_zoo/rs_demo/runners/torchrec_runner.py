@@ -20,7 +20,7 @@ from ..config import (
     resolve_num_embeddings_per_feature,
     validate_torchrec_config,
 )
-from ..runtime.hybrid_dlrm import (
+from ..models.dlrm import (
     build_criterion,
     build_dense_module,
     compute_dense_loss,
@@ -29,7 +29,7 @@ from ..runtime.hybrid_dlrm import (
     reshape_torchrec_embeddings_for_dlrm,
     run_hybrid_backward,
 )
-from ..runtime.report import finalize_torchrec_row
+from python.pytorch.recstore.benchmark.report import finalize_torchrec_row
 from ..runtime.timing import StepTimer
 from ..runtime.worker_common import (
     barrier_for_step_alignment as _barrier_for_step_alignment,
@@ -39,7 +39,7 @@ from ..runtime.worker_common import (
     pick_socket_ifname as _pick_socket_ifname,
     write_rows as _write_rows,
 )
-from ..runtime.torchrec_profile import build_torchrec_profiler
+from python.pytorch.recstore.analysis.profiler import build_torchrec_profiler
 from .base import BenchmarkRunner
 
 

@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .report import write_stage_csv
+from python.pytorch.recstore.benchmark.report import write_stage_csv
 
 
 def bool_int(flag: bool) -> int:

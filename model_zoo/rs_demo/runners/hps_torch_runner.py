@@ -26,15 +26,15 @@ from ..runtime.hps_torch_embedding import (
     import_hps_torch_module,
     prepare_hps_torch_model_files,
 )
-from ..runtime.hybrid_dlrm import (
-    build_hybrid_dense_arch,
+from ..models.dlrm import build_hybrid_dense_arch
+from ..models.utils import (
+    sync_device,
     parse_layer_sizes,
     prepare_hybrid_dlrm_input,
     reshape_torchrec_embeddings_for_dlrm,
     run_hybrid_backward,
-    sync_device,
 )
-from ..runtime.report import finalize_torchrec_row, write_stage_csv
+from python.pytorch.recstore.benchmark.report import finalize_torchrec_row, write_stage_csv
 from .base import BenchmarkRunner
 from ..runtime.timing import stage_timer
 from .torchrec_runner import (
