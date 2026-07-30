@@ -531,7 +531,7 @@ def _run_single_or_dist_worker(
                 "torchrec_is_trainer": _bool_int(is_trainer_rank),
             }
             step_start = time.perf_counter()
-            timer = StepTimer(row, torch, device)
+            timer = StepTimer(row, torch, device, mode=cfg.torchrec_timing_sync_mode)
 
             _append_worker_debug(cfg, rank, f"before_batch_prepare step={step}")
             with timer.cpu("batch_prepare_ms"):
