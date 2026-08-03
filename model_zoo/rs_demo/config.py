@@ -686,6 +686,13 @@ def validate_recstore_config(cfg: RunConfig) -> None:
         raise RuntimeError(
             "--optimization-cleanup-proportion must be in (0.0, 1.0]"
         )
+    # BagPipe requires GPU cache — warn if cache_capacity is not set.
+    if opt.plugin == "bagpipe" and opt.cache_capacity == 0 and cfg.gpu_cache_capacity == 0:
+        print(
+            "[rs_demo] WARNING: BagPipe with cache_capacity=0; "
+            "GPU cache will default to 160000 entries. "
+            "Use --optimization-cache-capacity to set explicitly."
+        )
     if cfg.prefetch_depth < 0:
         raise RuntimeError("--prefetch-depth must be non-negative")
     if cfg.prefetch_issue_depth < 0:

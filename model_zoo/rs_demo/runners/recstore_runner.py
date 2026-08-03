@@ -358,10 +358,10 @@ class RecStoreRunner(BenchmarkRunner):
 
             recstore.load_ops_library()
             client = recstore.RecStoreClient()
-            if cfg.nnodes == 1:
-                client.set_ps_backend(cfg.single_node_ps_backend)
-            elif cfg.ps_type.upper() == "RDMA":
+            if cfg.ps_type.upper() == "RDMA":
                 client.set_ps_backend("rdma")
+            elif cfg.nnodes == 1:
+                client.set_ps_backend(cfg.single_node_ps_backend)
 
             dataset, dataloader = _build_train_dataloader_for_mode(repo_root, cfg, rank)
 
@@ -386,16 +386,32 @@ class RecStoreRunner(BenchmarkRunner):
                 def _id_extractor(sparse_features):
                     return convert_kjt_ids_to_fused_ids(sparse_features, table_offsets)
 
+                # GPU cache is mandatory for BagPipe — without it every lookup
+                # and sparse update falls back to the PS-direct path, making
+                # BagPipe slower than the plain prefetch path.
+                cache_cap = cfg.optimization.cache_capacity or cfg.gpu_cache_capacity or 160000
+                if not client.is_gpu_cache_enabled():
+                    ok = client.enable_gpu_cache(cache_cap, cfg.embedding_dim)
+                    if not ok:
+                        raise RuntimeError(
+                            f"BagPipe requires GPU cache but enable_gpu_cache("
+                            f"capacity={cache_cap}, dim={cfg.embedding_dim}) "
+                            f"returned False. Cannot continue without GPU cache."
+                        )
+                    print(f"[rs_demo] BagPipe GPU cache enabled: capacity={cache_cap}, dim={cfg.embedding_dim}")
+
+                master_table_name = eb_configs[0]["name"] if eb_configs else ""
                 plugin = OptimizationPluginRegistry.create(
                     "bagpipe",
                     embedding_module=embedding_module,
                     kv_client=client,
                     lookahead=cfg.optimization.lookahead,
                     cleanup_proportion=cfg.optimization.cleanup_proportion,
-                    cache_capacity=cfg.optimization.cache_capacity,
+                    cache_capacity=cache_cap,
                     embedding_dim=cfg.optimization.embedding_dim,
                     fuse_k=cfg.fuse_k,
                     table_offsets=table_offsets,
+                    master_table_name=master_table_name,
                     device=device,
                     lr=0.01,
                     id_extractor=_id_extractor,
