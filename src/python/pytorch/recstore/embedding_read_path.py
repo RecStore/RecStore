@@ -293,7 +293,17 @@ class PrefetchReadPath:
             return None
 
         del step
-        # Same-step async get: optionally prebuild unique fused ids on CPU.
+        # Same-step async get: deduplicate on the KJT device.  The backend
+        # still receives CPU unique IDs, while the inverse stays on GPU for
+        # the lookup and pooled-gradient paths.
+        prepare_fused_prefetch = getattr(self._module, "prepare_fused_prefetch", None)
+        if sparse_features is not None and callable(prepare_fused_prefetch):
+            fused_id_start = time.perf_counter()
+            ticket = prepare_fused_prefetch(sparse_features)
+            row["lookup_ids_build_ms"] = (time.perf_counter() - fused_id_start) * 1e3
+            return ticket
+        # Keep the old CPU helper as a compatibility fallback for lightweight
+        # embedding fakes and legacy modules that only expose issue_prepared.
         if (
             sparse_batch is not None
             and self._feature_offsets is not None

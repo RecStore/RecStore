@@ -39,11 +39,6 @@ export SSHPASS
 
 # The project runner invokes ssh directly. Keep the password out of commands and logs.
 ssh_wrapper_dir="$(mktemp -d)"
-cleanup() {
-    rm -f "$ssh_wrapper_dir/ssh"
-    rmdir "$ssh_wrapper_dir"
-}
-trap cleanup EXIT
 printf '%s\n' '#!/bin/sh' 'exec sshpass -e /usr/bin/ssh "$@"' >"$ssh_wrapper_dir/ssh"
 chmod 700 "$ssh_wrapper_dir/ssh"
 export PATH="$ssh_wrapper_dir:$PATH"
@@ -54,6 +49,19 @@ ssh_remote=(
     -o ConnectTimeout=10
     "root@${remote_host}"
 )
+
+cleanup_bench_procs() {
+    # Best-effort cleanup also runs on failed/interrupted benchmark runs.
+    ./tools/benchmarks/kill_bench_procs.sh >/dev/null 2>&1 || true
+    "${ssh_remote[@]}" 'bash -s' <tools/benchmarks/kill_bench_procs.sh \
+        >/dev/null 2>&1 || true
+}
+cleanup() {
+    cleanup_bench_procs
+    rm -f "$ssh_wrapper_dir/ssh"
+    rmdir "$ssh_wrapper_dir"
+}
+trap cleanup EXIT
 
 sep='========================='
 log_section() {
@@ -93,12 +101,15 @@ log_section "[1/4] Preflight" "$output_dir/logs/preflight.log"
 
 local_fingerprint="$(sha256sum \
     model_zoo/rs_demo/run_mock_stress.py \
+    model_zoo/rs_demo/runners/recstore_runner.py \
+    src/python/pytorch/recstore/optimizer.py \
+    src/python/pytorch/torchrec_kv/EmbeddingBag.py \
     tools/benchmarks/e2e/custom/cli.py \
     tools/benchmarks/e2e/custom/runner.py \
     tools/benchmarks/e2e/custom/runtime.py \
     tools/benchmarks/e2e/custom/report.py)"
 remote_fingerprint="$("${ssh_remote[@]}" \
-    'cd /app/RecStore && sha256sum model_zoo/rs_demo/run_mock_stress.py tools/benchmarks/e2e/custom/cli.py tools/benchmarks/e2e/custom/runner.py tools/benchmarks/e2e/custom/runtime.py tools/benchmarks/e2e/custom/report.py')"
+    'cd /app/RecStore && sha256sum model_zoo/rs_demo/run_mock_stress.py model_zoo/rs_demo/runners/recstore_runner.py src/python/pytorch/recstore/optimizer.py src/python/pytorch/torchrec_kv/EmbeddingBag.py tools/benchmarks/e2e/custom/cli.py tools/benchmarks/e2e/custom/runner.py tools/benchmarks/e2e/custom/runtime.py tools/benchmarks/e2e/custom/report.py')"
 if [[ "$local_fingerprint" != "$remote_fingerprint" ]]; then
     echo "Local and remote runner fingerprints differ" >&2
     exit 1
@@ -122,6 +133,13 @@ ctest --test-dir build \
     -R 'test_rdma_rc_protocol|test_raw_verbs_allocator|test_rdmaps_client_adapter|test_allshards_ps_client' \
     --output-on-failure 2>&1 | tee "$output_dir/logs/ctest_rdma.log"
 
+log_section "[3/4] Clean leftover bench processes" "$output_dir/logs/kill_bench_procs.log"
+{
+    # Stream local script so remote need not match checkout byte-for-byte.
+    ./tools/benchmarks/kill_bench_procs.sh
+    "${ssh_remote[@]}" 'bash -s' <tools/benchmarks/kill_bench_procs.sh
+} 2>&1 | tee "$output_dir/logs/kill_bench_procs.log"
+
 log_section "[3/4] RecStore-RDMA and TorchRec-HBM benchmark" "$output_dir/logs/runner.log"
 benchmark_args=(
     --client "ssh=root@${remote_host},ssh_port=${remote_ssh_port},repo=/app/RecStore,ip=${remote_host},gpu=${remote_gpu_id},node_rank=0,nproc=1"
@@ -134,6 +152,7 @@ benchmark_args=(
     --batch-size 1024
     --embedding-dim 128
     --num-embeddings 200000
+    --init-rows "${RECSTORE_E2E_INIT_ROWS:-200000}"
     --steps 80
     --warmup-steps 5
     --repeat 3
@@ -198,19 +217,23 @@ for log_path in "${torchrec_nccl_logs[@]}"; do
     grep -q 'mlx5_0:1/IB' "$log_path"
 done
 
-for shard in 0 1; do
-    grep -E "component=rdma_rc_server_profile shard=${shard} .*handled_get=[1-9]" \
-        "$output_dir/logs/runner.log" >/dev/null
-    grep -E "component=rdma_rc_transport_profile role=server shard=${shard} .*response_payload_bytes=[1-9]" \
-        "$output_dir/logs/runner.log" >/dev/null
-done
+rdma_verification="本轮未启用周期 profile；RDMA 正确性由定向 CTest 验证。"
+if (( ${RECSTORE_E2E_RDMA_PROFILE_INTERVAL_MS:-0} > 0 )); then
+    for shard in 0 1; do
+        grep -E "component=rdma_rc_server_profile shard=${shard} .*handled_get=[1-9]" \
+            "$output_dir/logs/runner.log" >/dev/null
+        grep -E "component=rdma_rc_transport_profile role=server shard=${shard} .*response_payload_bytes=[1-9]" \
+            "$output_dir/logs/runner.log" >/dev/null
+    done
+    rdma_verification="shard 0 和 shard 1 均确认存在非零 RDMA GET 流量与响应字节。"
+fi
 
 {
-    echo "RecStore-RDMA：shard 0 和 shard 1 均确认存在非零 GET 流量与响应字节。"
+    echo "RecStore-RDMA：${rdma_verification}"
     echo "TorchRec-HBM：全部 6 份 rank/repeat NCCL 日志均确认通过 mlx5_0 使用 NET/IB。"
     echo "Job throughput：每个 step 使用最慢 rank 的延迟反推任务吞吐。"
 } >"$output_dir/rdma_verification.txt"
-sed -i '/本次测试模型为 /a\通信验证：RecStore 双 shard 已观察到非零 RDMA GET 与响应字节；TorchRec 全部 rank/repeat 均观察到 mlx5_0 NET/IB。' \
+sed -i "/本次测试模型为 /a\\通信验证：RecStore-RDMA ${rdma_verification} TorchRec 全部 rank/repeat 均观察到 mlx5_0 NET/IB。" \
     "$output_dir/summary.md"
 echo "$sep"
 echo "[4/4] done"

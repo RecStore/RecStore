@@ -174,6 +174,138 @@ class TestFusedPrefetch(unittest.TestCase):
         self.assertTrue(used)
         self.assertEqual(embeddings.shape, (3, 4))
 
+    def test_record_pooled_grad_expands_bags_without_autograd(self):
+        configs = [
+            dict(name="t0", embedding_dim=4, num_embeddings=16, feature_names=["f1"]),
+            dict(name="t1", embedding_dim=4, num_embeddings=16, feature_names=["f2"]),
+        ]
+        ebc = RecStoreEmbeddingBagCollection(
+            configs,
+            enable_fusion=True,
+            fusion_k=30,
+            kv_client=_FakeKVClient(_FakeOps()),
+        )
+        features = self._build_features()
+        grad = torch.arange(16, dtype=torch.float32).view(2, 2, 4)
+
+        ebc.record_pooled_grad(features, grad)
+
+        trace = ebc._trace[0]
+        expected_ids = torch.tensor(
+            [1, 2, 3, 1 << 30, (1 << 30) + 4, (1 << 30) + 2]
+        )
+        expected_grads = torch.stack(
+            [grad[0, 0], grad[0, 0], grad[1, 0], grad[0, 1], grad[1, 1], grad[1, 1]]
+        )
+        self.assertTrue(torch.equal(trace["ids"], expected_ids))
+        self.assertTrue(torch.equal(trace["grads"], expected_grads))
+
+    def test_record_pooled_grad_reuses_prepared_fused_ids(self):
+        configs = [
+            dict(name="t0", embedding_dim=4, num_embeddings=16, feature_names=["f1"]),
+            dict(name="t1", embedding_dim=4, num_embeddings=16, feature_names=["f2"]),
+        ]
+        ebc = RecStoreEmbeddingBagCollection(
+            configs,
+            enable_fusion=True,
+            fusion_k=30,
+            kv_client=_FakeKVClient(_FakeOps()),
+        )
+        features = build_sparse_features(
+            keys=["f1", "f2"],
+            values=torch.tensor([1, 3, 0, 4], dtype=torch.int64),
+            lengths=torch.ones(4, dtype=torch.int32),
+        )
+        grad = torch.arange(16, dtype=torch.float32).view(2, 2, 4)
+        fused_ids = torch.tensor(
+            [1, 3, 1 << 30, (1 << 30) + 4]
+        )
+        unique_ids, inverse = torch.unique(fused_ids, return_inverse=True)
+
+        with mock.patch.object(
+            torch,
+            "unique",
+            side_effect=AssertionError("gradient path must reuse prepared IDs"),
+        ):
+            ebc.record_pooled_grad(
+                features,
+                grad,
+                prepared_ids=(unique_ids, inverse, fused_ids.numel()),
+            )
+
+        trace = ebc._trace[0]
+        expected_grads = torch.zeros((unique_ids.numel(), 4))
+        raw_grads = torch.stack(
+            [grad[0, 0], grad[1, 0], grad[0, 1], grad[1, 1]]
+        )
+        expected_grads.index_add_(0, inverse, raw_grads)
+        self.assertTrue(torch.equal(trace["ids"], unique_ids))
+        self.assertTrue(torch.equal(trace["grads"], expected_grads))
+
+    def test_prepare_prefetch_keeps_inverse_on_source_device(self):
+        configs = [
+            dict(name="t0", embedding_dim=4, num_embeddings=16, feature_names=["f1"]),
+            dict(name="t1", embedding_dim=4, num_embeddings=16, feature_names=["f2"]),
+        ]
+        ebc = RecStoreEmbeddingBagCollection(
+            configs,
+            enable_fusion=True,
+            fusion_k=30,
+            kv_client=_FakeKVClient(_FakeOps()),
+        )
+        features = build_sparse_features(
+            keys=["f1", "f2"],
+            values=torch.tensor([1, 3, 1, 4], dtype=torch.int64),
+            lengths=torch.ones(4, dtype=torch.int32),
+        )
+        unique_ids, inverse, raw_count = ebc.prepare_fused_prefetch(features)
+        expected = torch.tensor([1, 3, (1 << 30) + 1, (1 << 30) + 4])
+        expected_unique, expected_inverse = torch.unique(
+            expected, return_inverse=True
+        )
+        self.assertEqual(raw_count, expected.numel())
+        self.assertTrue(torch.equal(unique_ids, expected_unique))
+        self.assertTrue(torch.equal(inverse, expected_inverse))
+        self.assertEqual(inverse.device, features.device())
+        if torch.cuda.is_available():
+            features_cuda = build_sparse_features(
+                keys=["f1", "f2"],
+                values=torch.tensor(
+                    [1, 3, 1, 4], dtype=torch.int64, device="cuda"
+                ),
+                lengths=torch.ones(4, dtype=torch.int32, device="cuda"),
+            )
+            gpu_unique, gpu_inverse, gpu_raw_count = ebc.prepare_fused_prefetch(
+                features_cuda
+            )
+            self.assertEqual(gpu_raw_count, raw_count)
+            self.assertTrue(torch.equal(gpu_unique, expected_unique))
+            self.assertTrue(torch.equal(gpu_inverse.cpu(), expected_inverse))
+            self.assertEqual(gpu_inverse.device.type, "cuda")
+
+    def test_record_pooled_grad_falls_back_without_prepared_inverse(self):
+        configs = [
+            dict(name="t0", embedding_dim=4, num_embeddings=16, feature_names=["f1"]),
+            dict(name="t1", embedding_dim=4, num_embeddings=16, feature_names=["f2"]),
+        ]
+        ebc = RecStoreEmbeddingBagCollection(
+            configs,
+            enable_fusion=True,
+            fusion_k=30,
+            kv_client=_FakeKVClient(_FakeOps()),
+        )
+        features = self._build_features()
+        grad = torch.arange(16, dtype=torch.float32).view(2, 2, 4)
+        ebc.record_pooled_grad(
+            features,
+            grad,
+            prepared_ids=(torch.tensor([], dtype=torch.int64), None, 0),
+        )
+        self.assertEqual(len(ebc._trace), 1)
+        trace = ebc._trace[0]
+        self.assertEqual(trace["ids"].numel(), 6)
+        self.assertEqual(trace["grads"].shape, (6, 4))
+
     def test_fused_prefetch_rejects_mismatched_slot(self):
         configs = [
             dict(name="t0", embedding_dim=4, num_embeddings=16, feature_names=["f1"]),

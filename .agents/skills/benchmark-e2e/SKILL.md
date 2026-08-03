@@ -80,6 +80,16 @@ skill directory; call project scripts directly.
      use `ctest --test-dir build_release -R 'brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_server_launcher|test_ps_client_factory|test_allshards_ps_client' --output-on-failure`;
      for GRPC, LOCAL_SHM/SHM, RDMA, or other PS types, use the corresponding
      targeted tests before E2E.
+   - Immediately before starting PS / clients, clean leftover RecStore/TorchRec
+     processes on **every unique host** in the client list and PS list. Use
+     `tools/benchmarks/kill_bench_procs.sh` only — do not hand-roll `pkill -f`.
+     Deduplicate by `(ssh_host, ssh_port, repo_root)`:
+     - `ssh_host=local`: `./tools/benchmarks/kill_bench_procs.sh`
+     - remote: prefer streaming the local script so hosts need not be in sync:
+       `ssh -p <ssh_port> <ssh_host> 'bash -s' < tools/benchmarks/kill_bench_procs.sh`
+       If the remote already runs inside the RecStore checkout,
+       `ssh -p <ssh_port> <ssh_host> "cd <repo_root> && ./tools/benchmarks/kill_bench_procs.sh"`
+       is also fine. Fail the run if cleanup exits nonzero.
    - Preferred: `python3 -m tools.benchmarks.e2e.custom.cli` with `--client` /
      `--ps` / `--transports` / `--output-dir` matching the P0 inputs. The runner
      builds runtime config, starts PS, launches RecStore and TorchRec clients,
@@ -113,6 +123,9 @@ cmake -S . -B build_release -DCMAKE_BUILD_TYPE=Release
 cmake --build build_release --target ps_server -j
 # Example for BRPC. Replace with the targeted tests for the requested PS type.
 ctest --test-dir build_release -R 'brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_server_launcher|test_ps_client_factory|test_allshards_ps_client' --output-on-failure
+
+# Clean every unique client/PS host (local example; remote: ssh ... 'bash -s' < tools/benchmarks/kill_bench_procs.sh).
+./tools/benchmarks/kill_bench_procs.sh
 
 python3 -m tools.benchmarks.e2e.custom.cli \
   --client 'ssh_host=local,ssh_port=22,repo=/app/RecStore,ip=127.0.0.1,gpu=0,node_rank=0,nproc_per_node=1' \

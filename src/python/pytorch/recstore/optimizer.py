@@ -61,21 +61,32 @@ def _process_generic_module_with_trace(mod: Any, lr: float, kv_client: Any):
         traces_by_name.setdefault(name, []).append((ids, grads))
 
     module_kv_client = getattr(mod, "kv_client", None) or kv_client
+    current_ps_backend = getattr(module_kv_client, "current_ps_backend", None)
+    try:
+        direct_sgd = callable(current_ps_backend) and current_ps_backend() == "rdma"
+    except Exception:
+        direct_sgd = False
     handles = []
     for name, entries in traces_by_name.items():
-        all_ids = torch.cat([ids for ids, _ in entries], dim=0)
-        all_grads = torch.cat([grads for _, grads in entries], dim=0)
-
-        unique_ids, inverse_indices = torch.unique(all_ids, return_inverse=True)
-        summed_grads = torch.zeros(
-            (len(unique_ids), all_grads.size(1)),
-            device=all_grads.device,
-            dtype=all_grads.dtype,
-        )
-        summed_grads.index_add_(0, inverse_indices, all_grads)
+        if len(entries) == 1:
+            all_ids, all_grads = entries[0]
+        else:
+            all_ids = torch.cat([ids for ids, _ in entries], dim=0)
+            all_grads = torch.cat([grads for _, grads in entries], dim=0)
+        if direct_sgd:
+            update_ids, update_grads = all_ids, all_grads
+        else:
+            unique_ids, inverse_indices = torch.unique(all_ids, return_inverse=True)
+            update_grads = torch.zeros(
+                (len(unique_ids), all_grads.size(1)),
+                device=all_grads.device,
+                dtype=all_grads.dtype,
+            )
+            update_grads.index_add_(0, inverse_indices, all_grads)
+            update_ids = unique_ids
 
         # Backend sparse optimizers own learning-rate application for these modules.
-        handle = module_kv_client.update_async(name=name, ids=unique_ids, grads=summed_grads)
+        handle = module_kv_client.update_async(name=name, ids=update_ids, grads=update_grads)
         handles.append(
             (
                 module_kv_client,
@@ -83,8 +94,8 @@ def _process_generic_module_with_trace(mod: Any, lr: float, kv_client: Any):
                 {
                     "module": mod,
                     "name": name,
-                    "ids": unique_ids.detach(),
-                    "grads": summed_grads.detach(),
+                    "ids": update_ids.detach(),
+                    "grads": update_grads.detach(),
                     "lr": float(lr),
                 },
             )

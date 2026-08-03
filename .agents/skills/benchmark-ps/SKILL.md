@@ -35,10 +35,18 @@ directory; call project scripts directly.
 4. Validate the runner and relevant tests before non-trivial benchmark work.
 5. Generate one command per compatible transport group. Split RDMA and RPC when
    their safe concurrency settings differ.
-6. Run `tools/benchmarks/run_benchmark_ps.py`.
-7. Save generated configs, logs, `summary.csv`, and Chinese `summary.md` under
+6. Immediately before `run_benchmark_ps.py`, clean leftover RecStore/PS
+   processes on **every unique host** that will participate (local
+   client/server, and for cross-host every SSH target / container). Use
+   `tools/benchmarks/kill_bench_procs.sh` only — do not hand-roll `pkill -f`.
+   - local: `./tools/benchmarks/kill_bench_procs.sh`
+   - cross-host container: stream the local script into the remote container:
+     `ssh <ssh_target> "docker exec -i <container> bash -s" < tools/benchmarks/kill_bench_procs.sh`
+   Fail the run if cleanup exits nonzero.
+7. Run `tools/benchmarks/run_benchmark_ps.py`.
+8. Save generated configs, logs, `summary.csv`, and Chinese `summary.md` under
    the chosen output directory.
-8. Report success, skipped rows, failures, and exact commands in Chinese.
+9. Report success, skipped rows, failures, and exact commands in Chinese.
 
 ## Configuration Defaults
 
@@ -135,6 +143,7 @@ cmake -S . -B build_release -DCMAKE_BUILD_TYPE=Release
 cmake --build build_release --target ps_transport_benchmark ps_server petps_server -j
 python3 -m unittest src/test/scripts/test_run_benchmark_ps.py
 ctest --test-dir build_release -R 'grpc_ps_client_test|dist_grpc_ps_client_test|brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_transport_benchmark|test_ps_server_launcher|test_ps_client_factory|test_allshards_ps_client' --output-on-failure
+./tools/benchmarks/kill_bench_procs.sh
 ```
 
 RDMA verbs check:
@@ -154,12 +163,12 @@ ssh <server_ssh> "docker exec <container> bash -lc 'cd <remote_repo> && pwd'"
 ssh <client_ssh> "docker exec <container> bash -lc 'cd <remote_repo> && pwd'"
 ssh <server_ssh> "docker exec <container> bash -lc 'ls -l /dev/infiniband'"
 ssh <client_ssh> "docker exec <container> bash -lc 'ls -l /dev/infiniband'"
-ssh <server_ssh> "docker exec <container> bash -lc 'pgrep -af \"petps_server|ps_server|ps_transport_benchmark\" || true'"
-ssh <client_ssh> "docker exec <container> bash -lc 'pgrep -af \"petps_server|ps_server|ps_transport_benchmark\" || true'"
+ssh <server_ssh> "docker exec -i <container> bash -s" < tools/benchmarks/kill_bench_procs.sh
+ssh <client_ssh> "docker exec -i <container> bash -s" < tools/benchmarks/kill_bench_procs.sh
 ```
 
-If residual benchmark processes exist, kill exact PIDs when possible. Avoid
-broad `pkill -f` commands that can match the current shell command.
+Do not hand-roll broad `pkill -f`. Always use `tools/benchmarks/kill_bench_procs.sh`
+on every involved host/container before the PS experiment.
 
 ## RDMA Correctness
 
