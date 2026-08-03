@@ -402,6 +402,7 @@ class RecStoreRunner(BenchmarkRunner):
             criterion = build_criterion(cfg, dispatch_module)
             dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
             sparse_optimizer = recstore.SparseSGD([embedding_module], lr=0.01)
+            record_pooled_grad = getattr(embedding_module, "record_pooled_grad", None)
 
             if _maybe_warmup_gpu_local_shm_fast_path(cfg=cfg, client=client, device=device):
                 print("[rs_demo] warmed local_shm lookup payload region for GPU fast path")
@@ -482,7 +483,11 @@ class RecStoreRunner(BenchmarkRunner):
                 # dense stages use CUDA events via timer.gpu().
                 with timer.cpu("embed_lookup_ms"):
                     read_path.before_lookup(step, sparse_features, ticket, row)
-                    embeddings = embedding_module(sparse_features)
+                    if callable(record_pooled_grad):
+                        with torch.no_grad():
+                            embeddings = embedding_module(sparse_features)
+                    else:
+                        embeddings = embedding_module(sparse_features)
 
                 if embeddings is None:
                     raise RuntimeError("recstore embedding module returned no embeddings")
@@ -523,9 +528,18 @@ class RecStoreRunner(BenchmarkRunner):
 
                 with timer.cpu("sparse_optimizer_ms"):
                     replay_start = time.perf_counter()
-                    embedded_sparse_source.backward(
-                        embedded_sparse_grad.to(embedded_sparse_source.device)
-                    )
+                    sparse_grad = embedded_sparse_grad.to(embedded_sparse_source.device)
+                    if callable(record_pooled_grad):
+                        prepared_ids = (
+                            ticket
+                            if isinstance(ticket, tuple) and len(ticket) == 3
+                            else None
+                        )
+                        record_pooled_grad(
+                            sparse_features, sparse_grad, prepared_ids=prepared_ids
+                        )
+                    else:
+                        embedded_sparse_source.backward(sparse_grad)
                     row["sparse_backward_replay_ms"] = (time.perf_counter() - replay_start) * 1e3
 
                     optimizer_step_start = time.perf_counter()
@@ -566,14 +580,14 @@ class RecStoreRunner(BenchmarkRunner):
                     + row["backward_ms"]
                     + row["dense_optimizer_ms"]
                 )
-                _barrier_for_step_alignment(
-                    dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
-                )
                 _finalize_step_timing(
                     row, consume_start=consume_step_start, wall_start=step_wall_start
                 )
 
                 rows.append(finalize_recstore_row(row))
+                _barrier_for_step_alignment(
+                    dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
+                )
 
                 if (step + 1) % 10 == 0:
                     print(
