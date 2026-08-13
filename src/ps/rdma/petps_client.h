@@ -38,6 +38,10 @@ public:
   std::size_t ResponseBufferBytes(std::size_t key_count) const;
 
   void* GetReceiveBuffer(size_t size) override;
+  // Return a GetReceiveBuffer() result to the pool once the owning batch has
+  // fully consumed it (after FinalizeBatchIfNeeded). Buffers not registered in
+  // the pool (user-provided direct write targets) are ignored.
+  void ReturnGetReceiveBuffer(const float* buffer);
   const float* BorrowGetResultPayload(
       int rpc_id,
       std::size_t* key_count,
@@ -169,7 +173,16 @@ private:
   std::unique_ptr<RcShardClientTransport> transport_; // Slot transport owner.
   std::vector<QpContext> qps_; // One context per client-side QP lane.
   std::vector<std::vector<char>>
-      receive_buffers_; // Heap-backed response buffers.
+      receive_buffers_; // All heap-backed response buffers ever allocated.
+                       // Element data() pointers stay stable for the buffer
+                       // lifetime, so they can be pooled by index.
+  std::vector<std::size_t>
+      receive_buffer_free_; // Indices into receive_buffers_ idle for reuse
+                            // (LIFO). Avoids a fresh mmap + zero-fill +
+                            // page-fault every batch on the submit path.
+  std::unordered_map<const char*, std::size_t>
+      receive_buffer_index_; // data() pointer -> receive_buffers_ index, used
+                             // to return a buffer to the pool at revoke time.
   std::unordered_map<int, PendingRpc> pending_rpcs_; // In-flight RPC table.
   std::mutex mu_; // Guards transport setup and pending RPC state.
   std::atomic<int> next_rpc_id_{1}; // Monotonic RPC handle generator.

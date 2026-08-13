@@ -127,6 +127,11 @@ private:
   std::unordered_map<int, BatchRequest> batches_;
   std::unordered_map<std::string, TableState> tables_;
   std::unordered_map<uint64_t, PrefetchState> prefetches_;
+  // Reusable prefetch response buffers. A prefetch allocates ~MBs of host
+  // memory (mmap + zero-fill + page faults) every batch on the submit path;
+  // pooling the buffer across batches removes that from before_lookup. The
+  // result is copied out at consume time so the adapter keeps ownership.
+  std::vector<std::shared_ptr<std::vector<float>>> prefetch_buffer_pool_;
   uint64_t next_prefetch_id_ = 1;
   std::unordered_map<uint64_t, PendingUpdate> pending_updates_;
   uint64_t next_update_id_ = 1;

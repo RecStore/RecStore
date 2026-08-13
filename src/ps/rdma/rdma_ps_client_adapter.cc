@@ -432,7 +432,15 @@ RDMAPSClientAdapter::GetPrefetchState(uint64_t prefetch_id) {
 
 void RDMAPSClientAdapter::MarkPrefetchConsumed(uint64_t prefetch_id) {
   std::lock_guard<std::mutex> guard(state_mu_);
-  prefetches_.erase(prefetch_id);
+  const auto it = prefetches_.find(prefetch_id);
+  if (it != prefetches_.end()) {
+    // Return the response buffer to the pool so the next prefetch reuses it
+    // instead of mmap+zeroing ~MBs of host memory on the submit path.
+    if (it->second.buffer != nullptr) {
+      prefetch_buffer_pool_.push_back(std::move(it->second.buffer));
+    }
+    prefetches_.erase(it);
+  }
 }
 
 bool RDMAPSClientAdapter::QueryRPCFinished(int rpc_id) {
@@ -501,6 +509,13 @@ void RDMAPSClientAdapter::RevokeRPCResource(int rpc_id) {
   for (const auto& pending : it->second.shard_rpcs) {
     shard_clients_[static_cast<std::size_t>(pending.client_index)]
         ->RevokeRPCResource(pending.rpc_id);
+    // The batch is being destroyed and FinalizeBatchIfNeeded has already
+    // copied the chunk responses into the user buffer (or the batch is being
+    // abandoned on error), so the chunk staging buffer is now safe to reuse.
+    // Return it to the client's pool to avoid a fresh mmap per batch.
+    shard_clients_[static_cast<std::size_t>(pending.client_index)]
+        ->ReturnGetReceiveBuffer(
+            static_cast<const float*>(pending.recv_buffer));
   }
 
   batches_.erase(it);
@@ -1078,8 +1093,24 @@ RDMAPSClientAdapter::PrefetchParameter(const base::ConstArray<uint64_t>& keys) {
   const bool borrow_single_shard_response =
       num_shards_ <= 1 && keys.Size() <= MaxGetKeysPerRpc();
   const bool batch_response = !borrow_single_shard_response;
-  auto buffer = std::make_shared<std::vector<float>>(
-      response_bytes / sizeof(float));
+  std::shared_ptr<std::vector<float>> buffer;
+  {
+    std::lock_guard<std::mutex> guard(state_mu_);
+    if (!prefetch_buffer_pool_.empty()) {
+      buffer = std::move(prefetch_buffer_pool_.back());
+      prefetch_buffer_pool_.pop_back();
+    }
+  }
+  if (!buffer) {
+    buffer = std::make_shared<std::vector<float>>();
+  }
+  const std::size_t needed_floats = response_bytes / sizeof(float);
+  if (buffer->size() < needed_floats) {
+    buffer->resize(needed_floats);
+  }
+  // A pooled buffer is reused without zero-fill: the batch finalize writes the
+  // full response and status word before the consumer reads it, so stale bytes
+  // are never observed.
   auto* status_word = petps::FixedSlotStatusWord(
       buffer->data(), static_cast<std::size_t>(keys.Size()), FLAGS_value_size);
   *status_word = static_cast<std::int32_t>(petps::RpcStatus::kPending);
@@ -1188,8 +1219,12 @@ bool RDMAPSClientAdapter::GetPrefetchResultFlat(
   } else if (response_bytes == 0) {
     values->clear();
   } else if (result_payload == state.buffer->data()) {
-    state.buffer->resize(value_count);
-    values->swap(*state.buffer);
+    // Copy out of the pooled response buffer: the adapter retains ownership so
+    // MarkPrefetchConsumed can return it to prefetch_buffer_pool_ and the next
+    // before_lookup avoids a fresh ~MB allocation. The copy cost lands on the
+    // consume path (already waiting on RDMA), not the submit critical path.
+    values->assign(state.buffer->begin(),
+                   state.buffer->begin() + static_cast<std::ptrdiff_t>(value_count));
   } else {
     values->resize(value_count);
     if (value_count > 0) {
