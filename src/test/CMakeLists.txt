@@ -243,6 +243,13 @@ set(RECSTORE_EXTERNAL_KV_ENGINE_TEST_LIBS
     pthread
 )
 set(RECSTORE_EXTERNAL_KV_ENGINE_TEST_DEFS)
+if(TARGET detable_plugin_api)
+    add_library(test_dynamic_kv_plugin MODULE test_dynamic_kv_plugin.cc)
+    target_link_libraries(test_dynamic_kv_plugin PRIVATE detable_plugin_api)
+    set(RECSTORE_EXTERNAL_KV_ENGINE_TEST_ENABLED ON)
+    list(APPEND RECSTORE_EXTERNAL_KV_ENGINE_TEST_DEFS
+        RECSTORE_TEST_ENABLE_DETABLE_ENGINE)
+endif()
 if(TARGET fasterkv_backend)
     set(RECSTORE_EXTERNAL_KV_ENGINE_TEST_ENABLED ON)
     list(APPEND RECSTORE_EXTERNAL_KV_ENGINE_TEST_DEFS
@@ -258,6 +265,12 @@ if(RECSTORE_EXTERNAL_KV_ENGINE_TEST_ENABLED)
     target_compile_definitions(test_external_kv_engine PRIVATE
         ${RECSTORE_EXTERNAL_KV_ENGINE_TEST_DEFS}
     )
+    if(TARGET test_dynamic_kv_plugin)
+        add_dependencies(test_external_kv_engine test_dynamic_kv_plugin)
+        target_compile_definitions(test_external_kv_engine PRIVATE
+            RECSTORE_TEST_DYNAMIC_KV_PLUGIN_PATH="$<TARGET_FILE:test_dynamic_kv_plugin>"
+        )
+    endif()
     target_link_libraries(test_external_kv_engine PUBLIC
         ${RECSTORE_EXTERNAL_KV_ENGINE_TEST_LIBS}
     )

@@ -30,6 +30,20 @@ BaseKVConfig MakeExternalEngineConfig(const std::string& engine_type,
   return config;
 }
 
+void AddEngineSpecificConfig(BaseKVConfig* config,
+                             const std::string& engine_type) {
+#ifdef RECSTORE_TEST_ENABLE_DETABLE_ENGINE
+  if (engine_type == "KVEngineDETable") {
+    config->json_config_["detable"] = {
+        {"library_path", RECSTORE_TEST_DYNAMIC_KV_PLUGIN_PATH},
+        {"block_size", 64}};
+  }
+#else
+  (void)config;
+  (void)engine_type;
+#endif
+}
+
 std::unique_ptr<BaseKV> CreateEngine(const std::string& engine_type) {
   const std::string path = "/tmp/test_external_kv_engine_" + engine_type + "_" +
                            std::to_string(static_cast<long long>(getpid()));
@@ -37,6 +51,7 @@ std::unique_ptr<BaseKV> CreateEngine(const std::string& engine_type) {
   std::filesystem::create_directories(path);
 
   BaseKVConfig config = MakeExternalEngineConfig(engine_type, path);
+  AddEngineSpecificConfig(&config, engine_type);
   base::EngineResolved resolved;
   EXPECT_NO_THROW(resolved = base::ResolveEngine(config));
   EXPECT_EQ(resolved.engine, engine_type);
@@ -86,6 +101,14 @@ CreateEngineFromRecstoreConfigFile(const std::string& engine_type) {
           {"value_size", kValueSize},
           {"max_batch_size", 16},
           {"table_name", "default"}}}}}};
+
+  if (engine_type == "KVEngineDETable") {
+#ifdef RECSTORE_TEST_ENABLE_DETABLE_ENGINE
+    recstore_config["cache_ps"]["base_kv_config"]["detable"] = {
+        {"library_path", RECSTORE_TEST_DYNAMIC_KV_PLUGIN_PATH},
+        {"block_size", 64}};
+#endif
+  }
 
   {
     std::ofstream out(config_path);
@@ -187,6 +210,54 @@ TEST(ExternalKVEngineSelectorTest, RejectsUnknownEngineType) {
   config.json_config_["engine_type"] = "KVEngineUnknown";
   EXPECT_THROW(base::ResolveEngine(config), std::invalid_argument);
 }
+
+#ifdef RECSTORE_TEST_ENABLE_DETABLE_ENGINE
+TEST(ExternalKVEngineFactoryTest, DETableEngineUsesBaseKVInterface) {
+  AssertFactoryEngine("KVEngineDETable");
+}
+
+TEST(ExternalKVEngineFactoryTest, DETableEngineCanBeSelectedByConfigFile) {
+  AssertConfigFileEngine("KVEngineDETable");
+}
+
+TEST(ExternalKVEngineFactoryTest, DETableEngineSupportsFlatBatchAndClear) {
+  auto kv = CreateEngine("KVEngineDETable");
+  constexpr int kDim = static_cast<int>(kValueSize / sizeof(float));
+  std::vector<uint64_t> keys = {1, 2};
+  std::vector<float> first(kDim, 1.0F);
+  std::vector<float> second(kDim, 2.0F);
+  std::vector<base::ConstArray<float>> rows;
+  rows.emplace_back(first.data(), first.size());
+  rows.emplace_back(second.data(), second.size());
+  kv->BatchPut(base::ConstArray<uint64_t>(keys), &rows, 0);
+
+  std::vector<uint64_t> lookup = {2, 3};
+  std::vector<float> output(lookup.size() * kDim, -1.0F);
+  BaseKV::BatchGetFlatStats stats;
+  ASSERT_TRUE(kv->BatchGetFlat(base::ConstArray<uint64_t>(lookup),
+                               output.data(),
+                               lookup.size(),
+                               kDim,
+                               0,
+                               &stats));
+  EXPECT_EQ(stats.missing_rows, 1);
+  EXPECT_FLOAT_EQ(output[0], 2.0F);
+  EXPECT_FLOAT_EQ(output[kDim], 0.0F);
+
+  kv->clear();
+  EXPECT_FALSE(kv->Exists(1, 0));
+}
+
+TEST(ExternalKVEngineFactoryTest, DETableEngineRequiresLibraryPath) {
+  BaseKVConfig config = MakeExternalEngineConfig("KVEngineDETable", "/tmp/x");
+  config.json_config_["detable"] = {{"library_path", ""}};
+  auto resolved = base::ResolveEngine(config);
+  EXPECT_THROW(std::unique_ptr<BaseKV>(
+                   base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
+                       resolved.engine, resolved.cfg)),
+               std::invalid_argument);
+}
+#endif
 
 #ifdef RECSTORE_TEST_ENABLE_FASTERKV_ENGINE
 TEST(ExternalKVEngineFactoryTest, FasterKVEngineUsesBaseKVInterface) {
