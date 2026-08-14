@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 import torch
 
@@ -54,10 +55,16 @@ class TestSparseOptimizerStaging(KVClientIsolationMixin, unittest.TestCase):
 
         optimizer.zero_grad()
         ebc(features).values().sum().backward()
-        optimizer.step()
+        with mock.patch.object(
+            torch,
+            "unique",
+            side_effect=AssertionError("RDMA SGD applies duplicate rows directly"),
+        ):
+            optimizer.step()
 
         self.assertIn(77, submitted)
         self.assertEqual(fake.update_calls, [])
+        self.assertTrue(torch.equal(submitted[77][1], torch.tensor([1, 1, 3])))
 
         optimizer.flush()
 
