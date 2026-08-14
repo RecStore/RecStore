@@ -27,20 +27,22 @@ find_library(CUSTOM_PROTOBUF_LIB
     NO_DEFAULT_PATH
 )
 
-# Find system libraries (OpenSSL, ZLIB)
+# Find OpenSSL. Prefer OPENSSL_ROOT_DIR (e.g. a user-built 1.1.1 on CentOS 7,
+# where the system openssl is 1.0.2k and too old for folly/brpc); fall back to
+# the system locations used upstream.
 find_path(SYSTEM_OPENSSL_INCLUDE
     NAMES openssl/ssl.h
-    PATHS /usr/include
+    PATHS ${OPENSSL_ROOT_DIR}/include /usr/include
     NO_DEFAULT_PATH
 )
 find_library(SYSTEM_OPENSSL_SSL_LIB
     NAMES ssl
-    PATHS /usr/lib /usr/lib64 /usr/lib/x86_64-linux-gnu
+    PATHS ${OPENSSL_ROOT_DIR}/lib64 ${OPENSSL_ROOT_DIR}/lib /usr/lib /usr/lib64 /usr/lib/x86_64-linux-gnu
     NO_DEFAULT_PATH
 )
 find_library(SYSTEM_OPENSSL_CRYPTO_LIB
     NAMES crypto
-    PATHS /usr/lib /usr/lib64 /usr/lib/x86_64-linux-gnu
+    PATHS ${OPENSSL_ROOT_DIR}/lib64 ${OPENSSL_ROOT_DIR}/lib /usr/lib /usr/lib64 /usr/lib/x86_64-linux-gnu
     NO_DEFAULT_PATH
 )
 find_package(ZLIB REQUIRED)
