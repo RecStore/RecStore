@@ -14,14 +14,58 @@
 
 namespace petps {
 
-inline int SelectRawVerbsDeviceIndex(int numa_id, int device_count) {
-  if (device_count <= 0 || numa_id <= 0) {
-    return 0;
+inline int SelectRawVerbsDeviceIndex(int numa_id,
+                                     const std::vector<int>& device_numa_nodes,
+                                     const std::vector<bool>& usable_devices) {
+  if (device_numa_nodes.size() != usable_devices.size()) {
+    return -1;
   }
-  if (numa_id >= device_count) {
-    return device_count - 1;
+  int fallback = -1;
+  for (std::size_t i = 0; i < usable_devices.size(); ++i) {
+    if (!usable_devices[i]) {
+      continue;
+    }
+    if (fallback < 0) {
+      fallback = static_cast<int>(i);
+    }
+    if (numa_id >= 0 && device_numa_nodes[i] == numa_id) {
+      return static_cast<int>(i);
+    }
   }
-  return numa_id;
+  return fallback;
+}
+
+inline int SelectRawVerbsGidIndex(const std::vector<ibv_gid>& gids,
+                                  const std::vector<bool>& roce_v2_gids) {
+  if (!roce_v2_gids.empty() && gids.size() != roce_v2_gids.size()) {
+    return -1;
+  }
+  int fallback = -1;
+  int ipv4_mapped_index = -1;
+  for (std::size_t i = 0; i < gids.size(); ++i) {
+    const auto* bytes = gids[i].raw;
+    bool nonzero      = false;
+    for (int j = 0; j < 16; ++j) {
+      nonzero = nonzero || bytes[j] != 0;
+    }
+    if (!nonzero) {
+      continue;
+    }
+    if (fallback < 0) {
+      fallback = static_cast<int>(i);
+    }
+    bool ipv4_mapped = true;
+    for (int j = 0; j < 10; ++j) {
+      ipv4_mapped = ipv4_mapped && bytes[j] == 0;
+    }
+    if (ipv4_mapped && bytes[10] == 0xff && bytes[11] == 0xff) {
+      ipv4_mapped_index = static_cast<int>(i);
+      if (!roce_v2_gids.empty() && roce_v2_gids[i]) {
+        return static_cast<int>(i);
+      }
+    }
+  }
+  return ipv4_mapped_index >= 0 ? ipv4_mapped_index : fallback;
 }
 
 struct RawVerbsConfig {
@@ -234,6 +278,8 @@ public:
   GlobalAddress LocalAddress(void* ptr) const;
   void* LocalPointer(GlobalAddress address) const;
 
+  void Publish();
+  void Connect();
   void PublishAndConnect();
   RawVerbsNodeMeta LocalMeta() const;
 
