@@ -981,6 +981,7 @@ def make_base_result_row(
         "mode": mode,
         "ops_per_sec": "",
         "key_ops_per_sec": "",
+        "payload_gbps": "",
         "mean_us": "",
         "p50_us": "",
         "p95_us": "",
@@ -1031,6 +1032,10 @@ def result_rows_from_client_output(
         )
         result["ops_per_sec"] = row.get("throughput_batches_sec", "")
         result["key_ops_per_sec"] = row.get("throughput_keys_sec", "")
+        if result["key_ops_per_sec"] not in ("", None):
+            result["payload_gbps"] = (
+                float(result["key_ops_per_sec"]) * value_size / 1e9
+            )
         if phase_summary is not None:
             result["mean_us"] = phase_summary.get("mean", "")
             result["p50_us"] = phase_summary.get("p50", "")
@@ -1061,6 +1066,7 @@ def write_summary_csv(rows: list[dict[str, str | int | float]], csv_path: Path) 
         "mode",
         "ops_per_sec",
         "key_ops_per_sec",
+        "payload_gbps",
         "mean_us",
         "p50_us",
         "p95_us",
@@ -1096,6 +1102,27 @@ def _format_mkeys(value: str | int | float) -> str:
     except (TypeError, ValueError):
         return str(value)
     return f"{numeric / 1e6:,.3f}"
+
+
+def aggregate_transport_payload_gbps(
+    rows: list[dict[str, str | int | float]],
+) -> dict[str, float]:
+    per_repeat: dict[tuple[str, int], float] = {}
+    for row in rows:
+        if row.get("status") != SUCCESS_STATUS or row.get("phase") != "run":
+            continue
+        payload_gbps = row.get("payload_gbps", "")
+        if payload_gbps in ("", None):
+            continue
+        key = (str(row["transport"]), int(row["repeat_index"]))
+        per_repeat[key] = per_repeat.get(key, 0.0) + float(payload_gbps)
+    by_transport: dict[str, list[float]] = {}
+    for (transport, _), payload_gbps in per_repeat.items():
+        by_transport.setdefault(transport, []).append(payload_gbps)
+    return {
+        transport: sum(values) / len(values)
+        for transport, values in by_transport.items()
+    }
 
 
 def write_summary_markdown(
@@ -1134,6 +1161,7 @@ def write_summary_markdown(
             f"runtime_seconds={args.runtime_seconds}，repeat={args.repeat}，"
             f"distribution={args.distribution}，mode={args.mode}。"
         ),
+        "payload GB/s = key_ops/s × value_size，仅表示有效 value payload，不含协议头、key 请求、索引查询、staging 或拷贝开销。",
         f"运行配置见 `{run_config['run_config_path']}`，原始结果见 `{run_config['summary_csv_path']}`。",
         "",
         "## 成功结果",
@@ -1142,8 +1170,8 @@ def write_summary_markdown(
     if success_rows:
         lines.extend(
             [
-                "| transport | repeat | phase | client | M keys/s | mean_us | log_path |",
-                "|-|-|-|-|-|-|-|",
+                "| transport | repeat | phase | client | M keys/s | payload GB/s | mean_us | log_path |",
+                "|-|-|-|-|-|-|-|-|",
             ]
         )
         for row in success_rows:
@@ -1156,6 +1184,7 @@ def write_summary_markdown(
                         str(row["phase"]),
                         str(row["client_index"]),
                         _format_mkeys(row["key_ops_per_sec"]),
+                        _format_metric(row["payload_gbps"]),
                         _format_metric(row["mean_us"]),
                         str(row["log_path"]),
                     ]
@@ -1164,6 +1193,26 @@ def write_summary_markdown(
             )
     else:
         lines.append("无成功结果。")
+
+    payload_summary = aggregate_transport_payload_gbps(success_rows)
+    if payload_summary:
+        brpc_payload = payload_summary.get("BRPC")
+        lines.extend(
+            [
+                "",
+                "## Transport 对比",
+                "| transport | 有效 value payload GB/s | 相对 BRPC |",
+                "|-|-:|-:|",
+            ]
+        )
+        for transport in sorted(payload_summary):
+            payload_gbps = payload_summary[transport]
+            ratio = (
+                f"{payload_gbps / brpc_payload:.2f}x"
+                if brpc_payload is not None and brpc_payload > 0
+                else "-"
+            )
+            lines.append(f"| {transport} | {payload_gbps:.3f} | {ratio} |")
 
     lines.extend(["", "## Skip / Failure"])
     if issue_rows:
@@ -1336,6 +1385,7 @@ def build_rdma_runner(
         rdma_namespace=rdma_namespace,
         rdma_control_plane_host=rdma_control_plane_host,
         rdma_control_plane_port=rdma_control_plane_port,
+        rdma_control_plane_timeout_ms=max(args.cluster_timeout * 1000, 30000),
         rdma_wait_timeout_ms=args.rdma_wait_timeout_ms,
         rdma_rc_qps_per_client_per_shard=args.rdma_rc_qps_per_client_per_shard,
         rdma_rc_slots_per_qp=args.rdma_rc_slots_per_qp,
@@ -1382,6 +1432,9 @@ def run_local_rpc_case(
     client_log_dir = args.output_dir / "logs" / transport.lower() / f"repeat_{repeat_index}"
     server_log_dir = client_log_dir / "server"
     runner = PSServerRunner(
+        launcher_cli=str(
+            (resolve_local_build_dir(args) / "bin" / "ps_server_launcher_cli").resolve()
+        ),
         server_path=str(
             (
                 resolve_local_build_dir(args)
@@ -2216,11 +2269,8 @@ def parse_args() -> argparse.Namespace:
     if "RDMA" in transports and args.execution_backend == "local":
         if args.rdma_rc_server_numa_id is None:
             args.rdma_rc_server_numa_id = 0
-        if (
-            args.rdma_rc_client_numa_id is None
-            and local_numa_node_count() > 1
-        ):
-            args.rdma_rc_client_numa_id = 1
+        if args.rdma_rc_client_numa_id is None:
+            args.rdma_rc_client_numa_id = args.rdma_rc_server_numa_id
         server_shards = (
             len(parse_server_plan(args.server_plan, "RDMA"))
             if args.server_plan
@@ -2241,8 +2291,8 @@ def parse_args() -> argparse.Namespace:
                 )
         if args.rdma_client_bind_core_stride is None:
             args.rdma_client_bind_core_stride = max(
-                args.client_threads_per_process
-                + args.client_load_threads_per_process,
+                args.client_threads_per_process,
+                args.client_load_threads_per_process,
                 1,
             )
     return args

@@ -10,7 +10,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUTPUT_ROOT = Path("/tmp/rs_demo/bench_e2e")
-DEFAULT_DAY0 = Path("/tmp/RecStore/model_zoo/torchrec_dlrm/partial_data/day_0.bak")
+DEFAULT_DAY0 = Path("/tmp/RecStore_/model_zoo/torchrec_dlrm/partial_data/day_0.bak")
 SPARSE_FEATURES_PER_SAMPLE = 26
 
 @dataclass(frozen=True)

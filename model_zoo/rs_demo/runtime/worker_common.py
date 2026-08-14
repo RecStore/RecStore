@@ -111,3 +111,19 @@ def merge_rank_outputs(paths: list[Path], out_path: Path) -> list[dict[str, Any]
     merged.sort(key=lambda row: (int(row.get("rank", 0)), int(row.get("step", 0))))
     write_rows(out_path, merged)
     return merged
+
+
+def parse_nccl_transport_log(log_path: Path | None) -> str:
+    """Extract NCCL transport info (NET/IB HCA, interface) from a log file."""
+    if log_path is None or not log_path.exists():
+        return ""
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    import re
+    # Look for NET/IB lines
+    for line in text.splitlines():
+        if "NET/IB" in line or "NCCL INFO" in line and ("mlx" in line or "ens" in line or "eth" in line):
+            return line.strip()
+    return ""

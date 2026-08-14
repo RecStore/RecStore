@@ -91,9 +91,27 @@ void bind_core_by_index(int raw_core_idx) {
                  << global_socket_id << " numa_nodes=" << core_table.size();
     return;
   }
-  const auto& cores = core_table[global_socket_id];
-  if (cores.empty()) {
+  const auto& numa_cores = core_table[global_socket_id];
+  if (numa_cores.empty()) {
     LOG(WARNING) << "skip core binding: empty core list for socket "
+                 << global_socket_id;
+    return;
+  }
+  cpu_set_t allowed_mask;
+  CPU_ZERO(&allowed_mask);
+  if (sched_getaffinity(0, sizeof(allowed_mask), &allowed_mask) != 0) {
+    LOG(WARNING) << "skip core binding: sched_getaffinity failed";
+    return;
+  }
+  std::vector<int> cores;
+  cores.reserve(numa_cores.size());
+  for (int cpu : numa_cores) {
+    if (CPU_ISSET(cpu, &allowed_mask)) {
+      cores.push_back(cpu);
+    }
+  }
+  if (cores.empty()) {
+    LOG(WARNING) << "skip core binding: no allowed CPUs for socket "
                  << global_socket_id;
     return;
   }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -37,9 +38,8 @@ from .base import BenchmarkRunner
 from ..runtime.timing import stage_timer
 from ..runtime.worker_common import (
     barrier_for_step_alignment as _barrier_for_step_alignment,
-    build_worker_env as _build_worker_env,
     merge_rank_outputs as _merge_rank_outputs,
-    read_worker_context as _read_worker_context,
+    pick_socket_ifname as _pick_socket_ifname,
 )
 
 
@@ -402,7 +402,7 @@ class HpsTorchRunner(BenchmarkRunner):
             cfg=cfg,
             rank=0,
             world_size=1,
-            local_rank=0,
+            local_rank=int(os.environ.get("LOCAL_RANK", "0")),
             out_csv=Path(cfg.hps_torch_main_csv),
         )
 
@@ -418,8 +418,16 @@ class HpsTorchRunner(BenchmarkRunner):
             pass
 
         cmd = self._build_torchrun_cmd(repo_root, cfg)
-        env = _build_worker_env("hps_torch", rank_dir)
+        env = os.environ.copy()
+        env["RS_DEMO_HPS_TORCH_WORKER"] = "1"
+        env["RS_DEMO_HPS_TORCH_WORKER_DIR"] = str(rank_dir)
+        socket_ifname = _pick_socket_ifname()
+        if socket_ifname:
+            env.setdefault("NCCL_SOCKET_IFNAME", socket_ifname)
+            env.setdefault("GLOO_SOCKET_IFNAME", socket_ifname)
         env.setdefault("NCCL_IB_DISABLE", "1")
+        env.setdefault("NCCL_SOCKET_FAMILY", "AF_INET")
+        env.setdefault("NCCL_DEBUG", "WARN")
         res = subprocess.run(
             cmd,
             cwd=str(repo_root),
@@ -448,16 +456,19 @@ class HpsTorchRunner(BenchmarkRunner):
         validate_hps_torch_config(cfg)
         if not torch.cuda.is_available():
             raise RuntimeError("hps_torch.LookupLayer requires CUDA.")
-        worker = _read_worker_context("hps_torch", default_world_size=cfg.nproc_per_node)
-        if worker is not None:
-            ensure_shared_dir(worker.output_dir)
-            out_csv = worker.output_dir / f"rank{worker.rank}.csv"
+        if os.environ.get("RS_DEMO_HPS_TORCH_WORKER") == "1":
+            rank = int(os.environ.get("RANK", "0"))
+            local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+            world_size = int(os.environ.get("WORLD_SIZE", str(cfg.nproc_per_node)))
+            worker_dir = Path(os.environ["RS_DEMO_HPS_TORCH_WORKER_DIR"])
+            ensure_shared_dir(worker_dir)
+            out_csv = worker_dir / f"rank{rank}.csv"
             return self._run_worker(
                 repo_root=repo_root,
                 cfg=cfg,
-                rank=worker.rank,
-                world_size=worker.world_size,
-                local_rank=worker.local_rank,
+                rank=rank,
+                world_size=world_size,
+                local_rank=local_rank,
                 out_csv=out_csv,
             )
         if cfg.nproc_per_node <= 1:
