@@ -14,6 +14,8 @@ _repo_root = Path(__file__).resolve().parents[3]
 _pytorch_src = str(_repo_root / "src" / "python" / "pytorch")
 if _pytorch_src not in sys.path:
     sys.path.insert(0, _pytorch_src)
+os.environ.setdefault("RECSTORE_DEFER_OPS_LOAD", "1")
+import recstore
 
 from ..config import (
     RunConfig,
@@ -39,14 +41,14 @@ from ..models.utils import (
     reshape_torchrec_embeddings_for_dlrm,
     run_hybrid_backward,
 )
-from python.pytorch.recstore.benchmark.report import finalize_recstore_row
+from python.pytorch.recstore.benchmark.report import finalize_recstore_row, summarize_us
 from ..runtime.timing import StepTimer
 from ..runtime.worker_common import (
     barrier_for_step_alignment as _barrier_for_step_alignment,
     bool_int as _bool_int,
-    build_worker_env as _build_worker_env,
-    merge_rank_outputs as _merge_rank_outputs,
-    read_worker_context as _read_worker_context,
+    load_rows as _load_rows,
+    parse_nccl_transport_log as _parse_nccl_transport_log,
+    pick_socket_ifname as _pick_socket_ifname,
     write_rows as _write_rows,
 )
 from .base import BenchmarkRunner
@@ -57,12 +59,6 @@ from recstore.embedding_read_path import (
     build_embedding_read_path,
 )
 from recstore.optim import OptimizationPluginRegistry
-
-
-_RECSTORE_DEFER_OPS_LOAD = "RECSTORE_DEFER_OPS_LOAD"
-
-os.environ.setdefault(_RECSTORE_DEFER_OPS_LOAD, "1")
-import recstore
 
 
 def _safe_ratio(numerator: float, denominator: float) -> float:
@@ -96,7 +92,9 @@ def _add_sparse_id_stats(
     row["batch_dedup_ratio"] = _safe_ratio(raw_count - unique_count, raw_count)
 
 
-def _finalize_step_timing(row: dict[str, Any], *, wall_start: float) -> None:
+def _finalize_step_timing(
+    row: dict[str, Any], *, consume_start: float, wall_start: float
+) -> None:
     total_ms = (time.perf_counter() - wall_start) * 1e3
     row["step_total_ms"] = total_ms
     row["step_end_to_end_ms"] = total_ms
@@ -153,6 +151,39 @@ def _maybe_warmup_gpu_local_shm_fast_path(
     if client.current_ps_backend() != "local_shm":
         client.set_ps_backend("local_shm")
     return bool(client.warmup_local_lookup_flat_cuda_region())
+
+
+def _debug_log_path(cfg: RunConfig, rank: int) -> Path:
+    return Path(cfg.output_root) / "outputs" / cfg.run_id / f"recstore_worker_rank{rank}.log"
+
+
+def _append_worker_debug(cfg: RunConfig, rank: int, message: str) -> None:
+    debug_path = _debug_log_path(cfg, rank)
+    debug_path.parent.mkdir(parents=True, exist_ok=True)
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    with debug_path.open("a", encoding="utf-8") as f:
+        f.write(f"{timestamp} rank={rank} {message}\n")
+
+
+def _merge_rank_outputs(paths: list[Path], out_path: Path) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    for path in paths:
+        for row in _load_rows(path):
+            normalized: dict[str, Any] = {}
+            for key, value in row.items():
+                if value is None:
+                    normalized[key] = ""
+                elif key in {"backend", "dist_mode"}:
+                    normalized[key] = value
+                else:
+                    try:
+                        normalized[key] = float(value) if "." in value else int(value)
+                    except (TypeError, ValueError):
+                        normalized[key] = value
+            merged.append(normalized)
+    merged.sort(key=lambda row: (int(row.get("rank", 0)), int(row.get("step", 0))))
+    _write_rows(out_path, merged)
+    return merged
 
 
 def _build_train_dataloader_for_mode(repo_root: Path, cfg: RunConfig, rank: int):
@@ -228,7 +259,15 @@ class RecStoreRunner(BenchmarkRunner):
         config_json = dump_run_config(worker_cfg, rank_dir / "worker_config.json")
 
         cmd = self._build_torchrun_cmd(repo_root, cfg, config_json)
-        env = _build_worker_env("recstore", rank_dir)
+        env = os.environ.copy()
+        env["RS_DEMO_RECSTORE_WORKER"] = "1"
+        env["RS_DEMO_RECSTORE_WORKER_DIR"] = str(rank_dir)
+        socket_ifname = _pick_socket_ifname()
+        if socket_ifname:
+            env.setdefault("NCCL_SOCKET_IFNAME", socket_ifname)
+            env.setdefault("GLOO_SOCKET_IFNAME", socket_ifname)
+        env.setdefault("NCCL_SOCKET_FAMILY", "AF_INET")
+        env.setdefault("NCCL_DEBUG", "WARN")
         res = subprocess.run(
             cmd, cwd=str(repo_root), env=env, check=False, text=True, capture_output=True
         )
@@ -248,19 +287,37 @@ class RecStoreRunner(BenchmarkRunner):
 
     # -- worker setup ------------------------------------------------------
 
-    def _init_process_group(self, world_size, local_rank, dist):
+    def _init_process_group(self, cfg, rank, world_size, local_rank, dist):
         """Set up the CUDA device and (if distributed) the process group."""
         use_dist = world_size > 1
         backend = "nccl"
         if torch.cuda.is_available():
             torch.cuda.set_device(local_rank)
         device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
+        _append_worker_debug(
+            cfg, rank,
+            f"worker_start world_size={world_size} local_rank={local_rank} backend={backend}",
+        )
         if use_dist and not dist.is_initialized():
+            nccl_log_path = Path(
+                os.environ.get(
+                    "NCCL_DEBUG_FILE",
+                    str(Path(cfg.output_root) / "outputs" / cfg.run_id
+                        / f"recstore_nccl_rank{rank}.log"),
+                )
+            )
+            nccl_log_path.parent.mkdir(parents=True, exist_ok=True)
+            os.environ["NCCL_DEBUG_FILE"] = str(nccl_log_path)
+            os.environ.setdefault("NCCL_DEBUG", "INFO")
+            os.environ.setdefault("NCCL_DEBUG_SUBSYS", "NET")
             dist.init_process_group(
                 backend=backend,
                 device_id=device if device.type == "cuda" else None,
             )
             dist.barrier()
+            _append_worker_debug(
+                cfg, rank, f"nccl_transport={_parse_nccl_transport_log(nccl_log_path)}"
+            )
         return device, use_dist
 
     def _build_embedding_module(self, cfg, client, default_cat_names):
@@ -313,15 +370,15 @@ class RecStoreRunner(BenchmarkRunner):
             os.chdir(str(self.runtime_dir))
             torch.manual_seed(cfg.seed)
             device, use_dist = self._init_process_group(
-                world_size, local_rank, dist
+                cfg, rank, world_size, local_rank, dist
             )
 
             recstore.load_ops_library()
             client = recstore.RecStoreClient()
-            if cfg.nnodes == 1:
-                client.set_ps_backend(cfg.single_node_ps_backend)
-            elif cfg.ps_type.upper() == "RDMA":
+            if cfg.ps_type.upper() == "RDMA":
                 client.set_ps_backend("rdma")
+            elif cfg.nnodes == 1:
+                client.set_ps_backend(cfg.single_node_ps_backend)
 
             dataset, dataloader = _build_train_dataloader_for_mode(repo_root, cfg, rank)
 
@@ -443,7 +500,7 @@ class RecStoreRunner(BenchmarkRunner):
                 else:
                     _add_sparse_id_stats(row, sparse_features, table_offsets)
                 return (
-                    batch_step, row,
+                    batch_step, row, time.perf_counter(),
                     dense_batch, sparse_features, labels_batch, ticket,
                 )
 
@@ -458,9 +515,10 @@ class RecStoreRunner(BenchmarkRunner):
                     read_path.advance_all()
 
                 (
-                    _, row, dense_batch, sparse_features, labels_batch,
+                    _, row, _, dense_batch, sparse_features, labels_batch,
                     ticket,
                 ) = prepared_batches.popleft()
+                consume_step_start = time.perf_counter()
 
                 _reset_perf_stats(embedding_module)
                 sparse_optimizer.zero_grad()
@@ -539,7 +597,7 @@ class RecStoreRunner(BenchmarkRunner):
                     dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
                 )
                 _finalize_step_timing(
-                    row, wall_start=step_wall_start
+                    row, consume_start=consume_step_start, wall_start=step_wall_start
                 )
 
                 rows.append(finalize_recstore_row(row))
@@ -553,17 +611,6 @@ class RecStoreRunner(BenchmarkRunner):
             print("[rs_demo] workload finished")
 
             _write_rows(out_csv, rows)
-            if cfg.save_checkpoint:
-                from ..checkpoint import export_checkpoint
-                export_checkpoint(
-                    Path(cfg.checkpoint_path),
-                    cfg=cfg, step=cfg.steps,
-                    dense_module=unwrapped_module,
-                    embedding_module=embedding_module,
-                    dense_optimizer=dense_optimizer,
-                    sparse_optimizer=sparse_optimizer,
-                    rank=rank,
-                )
             if use_dist and dist.is_initialized():
                 dist.barrier(device_ids=[local_rank] if device.type == "cuda" else None)
                 dist.destroy_process_group()
@@ -581,15 +628,17 @@ class RecStoreRunner(BenchmarkRunner):
             raise ValueError("RecStoreRunner requires cfg.backend to be 'recstore'.")
         validate_recstore_config(cfg)
 
-        worker = _read_worker_context(
-            "recstore", default_world_size=cfg.nnodes * cfg.nproc_per_node
-        )
-        if worker is not None:
-            ensure_shared_dir(worker.output_dir)
+        if os.environ.get("RS_DEMO_RECSTORE_WORKER") == "1":
+            rank = int(os.environ.get("RANK", "0"))
+            local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+            world_size = int(
+                os.environ.get("WORLD_SIZE", str(cfg.nnodes * cfg.nproc_per_node))
+            )
+            worker_dir = Path(os.environ["RS_DEMO_RECSTORE_WORKER_DIR"])
+            ensure_shared_dir(worker_dir)
             return self._run_local_worker(
-                repo_root=repo_root, cfg=cfg, rank=worker.rank,
-                world_size=worker.world_size, local_rank=worker.local_rank,
-                out_csv=worker.output_dir / f"rank{worker.rank}.csv",
+                repo_root=repo_root, cfg=cfg, rank=rank, world_size=world_size,
+                local_rank=local_rank, out_csv=worker_dir / f"rank{rank}.csv",
             )
 
         if cfg.nnodes * cfg.nproc_per_node <= 1:

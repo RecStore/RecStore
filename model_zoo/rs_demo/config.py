@@ -14,17 +14,7 @@ _src_dir = str(_repo_root / "src")
 if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
-try:
-    from python.pytorch.recstore.optim.config import OptimizationConfig
-except ImportError:
-    @dataclass
-    class OptimizationConfig:  # pragma: no cover - fallback when optim/ pkg not present
-        plugin: str = "none"
-        lookahead: int = 0
-        cleanup_proportion: float = 0.25
-        cache_capacity: int = 0
-        embedding_dim: int = 128
-        plugin_config: Dict[str, Any] = field(default_factory=dict)
+from python.pytorch.recstore.optim.config import OptimizationConfig
 
 
 # Model plugins that contribute their own CLI arguments (routed into
@@ -221,9 +211,6 @@ class RunConfig:
     hps_torch_force_materialize: bool = False
     hps_torch_gpucache: bool = True
     hps_torch_gpucacheper: float = 1.0
-    save_checkpoint: bool = False
-    checkpoint_path: str = ""
-    checkpoint_all_ranks: bool = False
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -525,24 +512,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
     )
     parser.add_argument("--hps-torch-gpucacheper", type=float, default=1.0)
-    parser.add_argument(
-        "--save-checkpoint",
-        action="store_true",
-        default=False,
-        help="Export model checkpoint after training completes.",
-    )
-    parser.add_argument(
-        "--checkpoint-path",
-        type=str,
-        default="",
-        help="Checkpoint output path (.pt). Defaults to <output_root>/outputs/<run_id>/checkpoint.pt",
-    )
-    parser.add_argument(
-        "--checkpoint-all-ranks",
-        action="store_true",
-        default=False,
-        help="Save per-rank checkpoint files (rank0.pt, rank1.pt, ...) in distributed mode.",
-    )
     return parser
 
 
@@ -588,8 +557,6 @@ def parse_config(argv: list[str] | None = None) -> RunConfig:
         raw.pop("enable_single_node_distributed_fast_path", None)
         raw.pop("read_before_update", None)
         raw = _migrate_legacy_optim_fields(raw)
-        if isinstance(raw.get("optimization"), dict):
-            raw["optimization"] = OptimizationConfig(**raw["optimization"])
         return RunConfig(**raw)
     cfg_kwargs = vars(ns).copy()
     cfg_kwargs.pop("run_config_json", None)
@@ -779,8 +746,6 @@ def populate_default_paths(cfg: RunConfig) -> None:
         cfg.hps_torch_main_csv = str(outputs_base / "hps_torch_main.csv")
     if not cfg.hps_torch_main_agg_csv:
         cfg.hps_torch_main_agg_csv = str(outputs_base / "hps_torch_main_agg.csv")
-    if not cfg.checkpoint_path:
-        cfg.checkpoint_path = str(outputs_base / "checkpoint.pt")
 
     cfg.recstore_main_csv = str(Path(cfg.recstore_main_csv).resolve())
     cfg.recstore_main_agg_csv = str(Path(cfg.recstore_main_agg_csv).resolve())

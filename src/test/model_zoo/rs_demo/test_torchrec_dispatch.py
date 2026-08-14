@@ -10,8 +10,7 @@ import unittest
 import torch
 
 from model_zoo.rs_demo.cli import build_runner
-from model_zoo.rs_demo.config import RunConfig, dump_run_config, parse_config, validate_recstore_config
-from python.pytorch.recstore.optim.config import OptimizationConfig
+from model_zoo.rs_demo.config import RunConfig, dump_run_config, parse_config
 from python.pytorch.recstore.benchmark.report import write_stage_csv
 from model_zoo.rs_demo.runners.torchrec_runner import (
     TorchRecRunner,
@@ -19,9 +18,12 @@ from model_zoo.rs_demo.runners.torchrec_runner import (
     _build_worker_fingerprint,
     _build_uvm_caching_constraints,
     _merge_rank_outputs,
+    _debug_log_path,
     _maybe_wrap_dense_module_for_dist,
+    _parse_nccl_transport_log,
     _write_or_verify_worker_fingerprint,
     _compute_or_load_shared_sharding_plan,
+    _summarize_sharding_plan,
     _build_train_dataloader_for_mode,
 )
 
@@ -81,6 +83,16 @@ def _make_cfg(base, **kwargs) -> RunConfig:
 
 
 class TestTorchRecDispatch(unittest.TestCase):
+    def test_debug_log_path_is_rank_scoped(self) -> None:
+        cfg = RunConfig(output_root="/tmp/rs_demo", run_id="case-debug")
+
+        path = _debug_log_path(cfg, rank=7)
+
+        self.assertEqual(
+            path,
+            Path("/tmp/rs_demo/outputs/case-debug/torchrec_worker_rank7.log"),
+        )
+
     def test_build_worker_fingerprint_includes_critical_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_root = Path(tmpdir)
@@ -177,6 +189,22 @@ class TestTorchRecDispatch(unittest.TestCase):
         _barrier_for_step_alignment(fake_dist, device, local_rank=0, use_dist=False)
 
         self.assertEqual(fake_dist.barrier_calls, 0)
+
+    def test_plan_summary_formats_table_entries(self) -> None:
+        summary = _summarize_sharding_plan(
+            _FakePlan(
+                {
+                    "": {
+                        "t_cat_0": _FakeParameterSharding("table_wise", "dense", [0]),
+                        "t_cat_1": _FakeParameterSharding("row_wise", "fused", [1]),
+                    }
+                }
+            )
+        )
+
+        self.assertIn("module=<root>", summary)
+        self.assertIn("t_cat_0:table_wise:dense:ranks=[0]", summary)
+        self.assertIn("t_cat_1:row_wise:fused:ranks=[1]", summary)
 
     def test_rank0_computes_and_persists_shared_sharding_plan(self) -> None:
         fake_dist = _FakeDist()
@@ -316,34 +344,6 @@ class TestTorchRecDispatch(unittest.TestCase):
         self.assertEqual(loaded.dense_arch_layer_sizes, "64,32,16")
         self.assertEqual(loaded.over_arch_layer_sizes, "128,64,1")
 
-    def test_worker_config_json_round_trips_optimization(self) -> None:
-        # dump_run_config serializes OptimizationConfig to a plain dict via
-        # asdict(); parse_config must reconstruct it as an OptimizationConfig
-        # so validate_recstore_config can access .optimization.plugin etc.
-        cfg = RunConfig(
-            backend="recstore",
-            optimization=OptimizationConfig(
-                plugin="bagpipe",
-                lookahead=4,
-                cleanup_proportion=0.5,
-                cache_capacity=1024,
-                embedding_dim=64,
-                plugin_config={"key": "val"},
-            ),
-        )
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = dump_run_config(cfg, Path(tmpdir) / "worker_config.json")
-            loaded = parse_config(["--run-config-json", str(path)])
-
-        self.assertIsInstance(loaded.optimization, OptimizationConfig)
-        self.assertEqual(loaded.optimization.plugin, "bagpipe")
-        self.assertEqual(loaded.optimization.lookahead, 4)
-        self.assertEqual(loaded.optimization.cleanup_proportion, 0.5)
-        self.assertEqual(loaded.optimization.cache_capacity, 1024)
-        self.assertEqual(loaded.optimization.embedding_dim, 64)
-        # Must not crash — this is the P0 bug that affected all recstore workers.
-        validate_recstore_config(loaded)
-
     def test_runner_forwards_torchrec_align_recstore_init_to_worker(self) -> None:
         cfg = RunConfig(
             backend="torchrec",
@@ -445,6 +445,25 @@ class TestTorchRecDispatch(unittest.TestCase):
         dist_run.assert_called_once()
         single_run.assert_not_called()
 
+    def test_parse_nccl_transport_log(self) -> None:
+        cases = [
+            (
+                "node:1:2 [0] NCCL INFO NET/IB : Using [0]mlx5_0:1/IB [RO]; "
+                "OOB enp3s0f0:10.0.2.192<0>\n",
+                "RDMA",
+            ),
+            (
+                "node:1:2 [0] NCCL INFO NET/Socket : Using [0]enp3s0f0:10.0.2.192<0>\n",
+                "TCP",
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for idx, (sample, expected) in enumerate(cases):
+                with self.subTest(expected=expected):
+                    path = Path(tmpdir) / f"nccl_{idx}.log"
+                    path.write_text(sample, encoding="utf-8")
+                    self.assertEqual(_parse_nccl_transport_log(path), expected)
+
     def test_runner_sets_explicit_socket_env_for_multi_node(self) -> None:
         cfg = _make_cfg(
             "/tmp/rs_demo",
@@ -472,7 +491,7 @@ class TestTorchRecDispatch(unittest.TestCase):
             "model_zoo.rs_demo.runners.torchrec_runner.ensure_torchrec_available",
             return_value=None,
         ), mock.patch(
-            "model_zoo.rs_demo.runtime.worker_common.pick_socket_ifname",
+            "model_zoo.rs_demo.runners.torchrec_runner._pick_socket_ifname",
             return_value="eno1",
         ), mock.patch(
             "model_zoo.rs_demo.runners.torchrec_runner.subprocess.run",
@@ -541,7 +560,7 @@ class TestTorchRecDispatch(unittest.TestCase):
                 return mock.Mock(returncode=0, stdout="", stderr="")
 
             with mock.patch(
-                "model_zoo.rs_demo.runtime.worker_common.pick_socket_ifname",
+                "model_zoo.rs_demo.runners.torchrec_runner._pick_socket_ifname",
                 return_value=None,
             ), mock.patch(
                 "model_zoo.rs_demo.runners.torchrec_runner.subprocess.run",

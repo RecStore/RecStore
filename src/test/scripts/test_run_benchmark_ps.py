@@ -9,6 +9,11 @@ from pathlib import Path
 from unittest import mock
 
 from tools.benchmarks.run_benchmark_ps import (  # noqa: E402
+    ClientPlan,
+    ClientProcessResult,
+    ServerPlan,
+    TopologyPlan,
+    aggregate_transport_payload_gbps,
     apply_interactive_prompts,
     build_benchmark_cmd,
     build_rdma_runner,
@@ -23,8 +28,10 @@ from tools.benchmarks.run_benchmark_ps import (  # noqa: E402
     parse_csv_list,
     parse_client_plan,
     parse_server_plan,
+    run_local_rpc_case,
     recommended_dram_capacity_bytes,
     recommended_ssd_capacity_bytes,
+    result_rows_from_client_output,
     replace_config_path_arg,
     resolve_base_port,
     resolve_rdma_get_response_mode,
@@ -426,9 +433,9 @@ class TestRunBenchmarkPS(unittest.TestCase):
 
         self.assertEqual(args.rdma_server_bind_core_offset, 0)
         self.assertEqual(args.rdma_rc_server_numa_id, 0)
-        self.assertEqual(args.rdma_rc_client_numa_id, 1)
-        self.assertEqual(args.rdma_client_bind_core_offset, 0)
-        self.assertEqual(args.rdma_client_bind_core_stride, 2)
+        self.assertEqual(args.rdma_rc_client_numa_id, 0)
+        self.assertEqual(args.rdma_client_bind_core_offset, 16)
+        self.assertEqual(args.rdma_client_bind_core_stride, 1)
 
     def test_build_rdma_runner_forwards_profile_interval(self):
         args = argparse.Namespace(
@@ -465,6 +472,7 @@ class TestRunBenchmarkPS(unittest.TestCase):
             rdma_control_plane_port=25000,
         )
         self.assertEqual(runner.rdma_rc_profile_interval_ms, 250)
+        self.assertEqual(runner.rdma_control_plane_timeout_ms, 45000)
         self.assertIn(
             "--rdma_rc_profile_interval_ms=250",
             runner.build_server_cmd(0),
@@ -517,6 +525,80 @@ class TestRunBenchmarkPS(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["phase"], "measure")
         self.assertEqual(rows[0]["mean"], 100.0)
+
+    def test_result_rows_include_effective_payload_bandwidth(self):
+        topology = TopologyPlan(
+            transport="RDMA",
+            server_plan=[
+                ServerPlan(0, "127.0.0.1", "127.0.0.1", 0, "RDMA", 25000)
+            ],
+            client_plan=[
+                ClientPlan(0, "127.0.0.1", "127.0.0.1", "RDMA")
+            ],
+        )
+        client_result = ClientProcessResult(
+            client_index=0,
+            host="127.0.0.1",
+            returncode=0,
+            stdout=(
+                "PS_BENCHMARK_RESULT phase=run transport=RDMA mode=fetch "
+                "distribution=uniform zipfian_alpha=0.9 threads=1 batch_size=64 "
+                "records=1000 runtime_s=1.0 batches=10 key_ops=640 "
+                "throughput_batches_sec=10 throughput_keys_sec=2000000\n"
+            ),
+            stderr="",
+            stdout_log_path=Path("stdout.log"),
+            stderr_log_path=Path("stderr.log"),
+        )
+        rows = result_rows_from_client_output(
+            transport="RDMA",
+            repeat_index=0,
+            topology=topology,
+            record_count=1000,
+            value_size=512,
+            batch_keys=64,
+            client_threads_per_process=1,
+            runtime_seconds=1,
+            distribution="uniform",
+            mode="fetch",
+            client_result=client_result,
+        )
+        self.assertEqual(rows[0]["payload_gbps"], 1.024)
+
+    def test_aggregate_transport_payload_sums_clients_then_means_repeats(self):
+        rows = [
+            {
+                "transport": "RDMA",
+                "status": "success",
+                "phase": "run",
+                "repeat_index": 0,
+                "payload_gbps": 4.0,
+            },
+            {
+                "transport": "RDMA",
+                "status": "success",
+                "phase": "run",
+                "repeat_index": 0,
+                "payload_gbps": 6.0,
+            },
+            {
+                "transport": "RDMA",
+                "status": "success",
+                "phase": "run",
+                "repeat_index": 1,
+                "payload_gbps": 8.0,
+            },
+            {
+                "transport": "BRPC",
+                "status": "success",
+                "phase": "run",
+                "repeat_index": 0,
+                "payload_gbps": 1.0,
+            },
+        ]
+        self.assertEqual(
+            aggregate_transport_payload_gbps(rows), {"RDMA": 9.0, "BRPC": 1.0}
+        )
 
     def test_build_remote_exec_cmd_wraps_container_when_present(self):
         cmd = build_remote_exec_cmd(
