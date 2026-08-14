@@ -27,6 +27,7 @@ inline EngineResolved ResolveEngine(BaseKVConfig cfg) {
   static const std::set<std::string> kKnownEngines = {
       "KVEngineComposite",
       "KVEnginePetKV",
+      "KVEngineDETable",
       "KVEngineFasterKV",
       "KVEngineHPSHashMap",
       "KVEngineHPSRocksDB",

@@ -36,6 +36,14 @@ if(TARGET fasterkv_backend)
   target_compile_definitions(kv_engine PRIVATE RECSTORE_ENABLE_FASTERKV_ENGINE)
 endif()
 
+if(TARGET detable_plugin_api)
+  target_sources(
+    kv_engine PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/storage/external/detable/detable_engine.cc)
+  target_link_libraries(kv_engine PUBLIC detable_plugin_api)
+  target_compile_definitions(kv_engine PRIVATE RECSTORE_ENABLE_DETABLE_ENGINE)
+endif()
+
 if(TARGET hps_native_support)
   target_sources(
     kv_engine PRIVATE
