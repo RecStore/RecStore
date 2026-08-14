@@ -115,7 +115,7 @@ FixedSlotResponseBytes(std::size_t key_count, std::size_t value_size) {
   return GetResponseBytes(key_count, value_size) + sizeof(std::int32_t);
 }
 
-inline std::size_t InitTablePayloadBytes() { return sizeof(std::uint64_t) * 2; }
+inline std::size_t InitTablePayloadBytes() { return sizeof(std::uint64_t) * 3; }
 
 inline std::size_t PutPayloadBudget(std::size_t request_slot_bytes) {
   if (request_slot_bytes <=

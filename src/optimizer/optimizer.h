@@ -23,9 +23,10 @@ public:
     }
   }
 
-  virtual void Init(const std::vector<std::string> table_name,
-                    const EmbeddingTableConfig& config,
-                    BaseKV* base_kv) = 0;
+  virtual int Init(const std::vector<std::string> table_name,
+                   const EmbeddingTableConfig& config,
+                   BaseKV* base_kv) = 0;
+  virtual int TensorsPerTable() const = 0;
 
   virtual void Update(std::string table,
                       const ParameterCompressReader* reader,
@@ -46,9 +47,10 @@ private:
 public:
   explicit SGD(float lr = 0.01) : learning_rate_(lr) {}
 
-  void Init(const std::vector<std::string> table_name,
-            const EmbeddingTableConfig& config,
-            BaseKV* base_kv) override;
+  int Init(const std::vector<std::string> table_name,
+           const EmbeddingTableConfig& config,
+           BaseKV* base_kv) override;
+  int TensorsPerTable() const override { return 1; }
   void Update(std::string table,
               const ParameterCompressReader* reader,
               unsigned tid) override;
@@ -69,9 +71,10 @@ public:
   explicit AdaGrad(float lr = 0.01, float epsilon = 1e-10)
       : learning_rate_(lr), epsilon_(epsilon) {}
 
-  void Init(const std::vector<std::string> table_name,
-            const EmbeddingTableConfig& config,
-            BaseKV* base_kv) override;
+  int Init(const std::vector<std::string> table_name,
+           const EmbeddingTableConfig& config,
+           BaseKV* base_kv) override;
+  int TensorsPerTable() const override { return 2; }
   void Update(std::string table,
               const ParameterCompressReader* reader,
               unsigned tid) override;
@@ -92,9 +95,10 @@ public:
   explicit RowWiseAdaGrad(float lr = 0.01, float epsilon = 1e-10)
       : learning_rate_(lr), epsilon_(epsilon) {}
 
-  void Init(const std::vector<std::string> table_name,
-            const EmbeddingTableConfig& config,
-            BaseKV* base_kv) override;
+  int Init(const std::vector<std::string> table_name,
+           const EmbeddingTableConfig& config,
+           BaseKV* base_kv) override;
+  int TensorsPerTable() const override { return 2; }
   void Update(std::string table,
               const ParameterCompressReader* reader,
               unsigned tid) override;

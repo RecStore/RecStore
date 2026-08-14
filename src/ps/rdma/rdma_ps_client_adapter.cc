@@ -10,6 +10,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <string>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -18,7 +19,9 @@
 #include <folly/init/Init.h>
 
 #include "framework/common/ps_client_config_adapter.h"
+#include "optimizer/sparse_tensor.h"
 #include "ps/base/config.h"
+#include "ps/base/parameters.h"
 #include "ps/rdma/rdma_common.h"
 #include "ps/rdma/rc_options.h"
 
@@ -186,13 +189,14 @@ EmbeddedRdmaClientIdentity ResolveEmbeddedRdmaClientIdentity(int num_shards) {
 }
 
 std::vector<RDMAPSClientAdapter::ShardChunk>
-RDMAPSClientAdapter::BuildChunks(base::ConstArray<uint64_t> keys) const {
+RDMAPSClientAdapter::BuildChunks(base::ConstArray<uint64_t> keys,
+                                 std::size_t max_keys_per_rpc) const {
   return shard_routing::BuildChunks(
       keys,
       num_shards_,
       hash_method_,
       shard_to_client_index_,
-      MaxGetKeysPerRpc());
+      max_keys_per_rpc);
 }
 
 void RDMAPSClientAdapter::WaitShardRpcsCooperatively(
@@ -366,6 +370,7 @@ void RDMAPSClientAdapter::EnsureTableReady(const std::string& table_name,
 }
 
 int64_t RDMAPSClientAdapter::DefaultEmbeddingDimOrThrow() const {
+  std::lock_guard<std::mutex> guard(state_mu_);
   if (tables_.empty()) {
     throw std::runtime_error(
         "RDMA table metadata is empty; call InitEmbeddingTable first");
@@ -373,9 +378,25 @@ int64_t RDMAPSClientAdapter::DefaultEmbeddingDimOrThrow() const {
   return static_cast<int64_t>(tables_.begin()->second.config.embedding_dim);
 }
 
-std::size_t RDMAPSClientAdapter::MaxGetKeysPerRpc() const {
+int64_t RDMAPSClientAdapter::EmbeddingDimForKeys(
+    base::ConstArray<uint64_t> keys) const {
+  if (keys.Size() == 0) {
+    return DefaultEmbeddingDimOrThrow();
+  }
+  const int tag = static_cast<int>(ExtractKeyTag(keys[0]));
+  std::lock_guard<std::mutex> guard(state_mu_);
+  const auto it = tag_to_dim_.find(tag);
+  if (it == tag_to_dim_.end()) {
+    throw std::runtime_error("unknown RDMA key tag: " + std::to_string(tag));
+  }
+  return it->second;
+}
+
+std::size_t RDMAPSClientAdapter::MaxGetKeysPerRpc(int64_t embedding_dim) const {
+  const std::size_t value_size =
+      static_cast<std::size_t>(embedding_dim) * sizeof(float);
   const std::size_t response_limited = petps::GetKeysPerRpcByResponseBudget(
-      static_cast<std::size_t>(FLAGS_value_size),
+      value_size,
       static_cast<std::size_t>(FLAGS_rdma_rc_mtu_bytes),
       static_cast<std::size_t>(FLAGS_rdma_rc_target_response_mtu));
   const std::size_t request_limited =
@@ -392,14 +413,12 @@ std::size_t RDMAPSClientAdapter::MaxGetKeysPerRpc() const {
   return std::max<std::size_t>(limit, 1);
 }
 
-std::size_t RDMAPSClientAdapter::MaxPutKeysPerRpc() const {
+std::size_t RDMAPSClientAdapter::MaxPutKeysPerRpc(int64_t embedding_dim) const {
   const std::size_t payload_budget = petps::PutPayloadBudget(
       static_cast<std::size_t>(FLAGS_rdma_rc_request_slot_bytes));
-  const std::size_t embedding_dim =
-      static_cast<std::size_t>(DefaultEmbeddingDimOrThrow());
   const std::size_t bytes_per_row =
-      sizeof(ParameterCompressItem) + embedding_dim * sizeof(float) +
-      sizeof(int);
+      sizeof(ParameterCompressItem) +
+      static_cast<std::size_t>(embedding_dim) * sizeof(float) + sizeof(int);
   std::size_t limit = static_cast<std::size_t>(FLAGS_max_kv_num_per_request);
   if (payload_budget > sizeof(int) && bytes_per_row > 0) {
     const std::size_t request_limited =
@@ -490,7 +509,9 @@ void RDMAPSClientAdapter::WaitRPCFinish(int rpc_id) {
     std::lock_guard<std::mutex> guard(batches_mu_);
     auto it = batches_.find(rpc_id);
     CHECK(it != batches_.end());
-    shard_routing::FinalizeBatchIfNeeded(&it->second, FLAGS_value_size);
+    shard_routing::FinalizeBatchIfNeeded(
+        &it->second,
+        it->second.value_size > 0 ? it->second.value_size : FLAGS_value_size);
   }
 }
 
@@ -546,7 +567,8 @@ int RDMAPSClientAdapter::SubmitGetParameter(
     base::ConstArray<uint64_t> keys,
     float* values,
     bool isAsync,
-    int async_req_id) {
+    int async_req_id,
+    int64_t embedding_dim) {
   EnsureThreadInitialized();
   if (keys.Size() == 0) {
     auto* status =
@@ -554,23 +576,31 @@ int RDMAPSClientAdapter::SubmitGetParameter(
     *status = static_cast<std::int32_t>(petps::RpcStatus::kOk);
     return 0;
   }
+  const int value_size =
+      static_cast<int>(static_cast<std::size_t>(embedding_dim) * sizeof(float));
 
   BatchRequest batch;
   batch.user_buffer     = values;
   batch.total_key_count = keys.Size();
+  batch.value_size      = value_size;
   auto* batch_status_word =
-      petps::FixedSlotStatusWord(values, keys.Size(), FLAGS_value_size);
+      petps::FixedSlotStatusWord(values, keys.Size(), value_size);
   *batch_status_word = static_cast<std::int32_t>(petps::RpcStatus::kPending);
 
   if (num_shards_ <= 1) {
     if (client_ == nullptr) {
       return -1;
     }
-    const std::size_t max_keys_per_rpc = MaxGetKeysPerRpc();
+    const std::size_t max_keys_per_rpc = MaxGetKeysPerRpc(embedding_dim);
     const std::size_t max_in_flight    = MaxInFlightGetRpcs();
     const std::size_t total_keys       = keys.Size();
     if (total_keys <= max_keys_per_rpc) {
-      return client_->GetParameter(keys, values, isAsync, async_req_id);
+      return client_->GetParameter(
+          keys,
+          values,
+          isAsync,
+          async_req_id,
+          static_cast<int>(embedding_dim));
     }
     std::vector<PendingShardRpc> window;
     window.reserve(max_in_flight);
@@ -599,13 +629,14 @@ int RDMAPSClientAdapter::SubmitGetParameter(
         positions.push_back(i);
       }
       void* recv = client_->GetReceiveBuffer(
-          key_slice.size() * static_cast<std::size_t>(FLAGS_value_size) +
+          key_slice.size() * static_cast<std::size_t>(value_size) +
           sizeof(std::int32_t));
       const int rpc_id = client_->GetParameter(
           base::ConstArray<uint64_t>(key_slice),
           static_cast<float*>(recv),
           isAsync,
-          async_req_id);
+          async_req_id,
+          static_cast<int>(embedding_dim));
       window.push_back(PendingShardRpc{
           0,
           0,
@@ -646,16 +677,17 @@ int RDMAPSClientAdapter::SubmitGetParameter(
       }
       window.clear();
     };
-    for (const auto& chunk : BuildChunks(keys)) {
+    for (const auto& chunk : BuildChunks(keys, MaxGetKeysPerRpc(embedding_dim))) {
       BaseParameterClient* client = shard_clients_[chunk.client_index].get();
       void* recv                  = client->GetReceiveBuffer(
-          chunk.keys.size() * static_cast<std::size_t>(FLAGS_value_size) +
+          chunk.keys.size() * static_cast<std::size_t>(value_size) +
           sizeof(std::int32_t));
       const int rpc_id = client->GetParameter(
           base::ConstArray<uint64_t>(chunk.keys),
           static_cast<float*>(recv),
           isAsync,
-          async_req_id);
+          async_req_id,
+          static_cast<int>(embedding_dim));
       window.push_back(PendingShardRpc{
           chunk.shard_id,
           chunk.client_index,
@@ -702,9 +734,12 @@ int RDMAPSClientAdapter::GetParameter(const base::ConstArray<uint64_t>& keys,
   if (keys.Size() == 0) {
     return 0;
   }
+  const int64_t embedding_dim = EmbeddingDimForKeys(keys);
+  const int value_size =
+      static_cast<int>(static_cast<std::size_t>(embedding_dim) * sizeof(float));
 
   const std::size_t response_bytes =
-      petps::FixedSlotResponseBytes(keys.Size(), FLAGS_value_size);
+      petps::FixedSlotResponseBytes(keys.Size(), value_size);
   float* recv = nullptr;
   if (num_shards_ > 1) {
     if (shard_clients_.empty()) {
@@ -716,17 +751,18 @@ int RDMAPSClientAdapter::GetParameter(const base::ConstArray<uint64_t>& keys,
     recv = static_cast<float*>(client_->GetReceiveBuffer(response_bytes));
   }
 
-  const int rpc_id = SubmitGetParameter(keys, recv, false, 0);
+  const int rpc_id =
+      SubmitGetParameter(keys, recv, false, 0, embedding_dim);
   WaitRPCFinish(rpc_id);
   const auto* status_word =
-      petps::FixedSlotStatusWord(recv, keys.Size(), FLAGS_value_size);
+      petps::FixedSlotStatusWord(recv, keys.Size(), value_size);
   if (*status_word != static_cast<std::int32_t>(petps::RpcStatus::kOk)) {
     RevokeRPCResource(rpc_id);
     return -1;
   }
 
   std::memcpy(
-      values, recv, keys.Size() * static_cast<std::size_t>(FLAGS_value_size));
+      values, recv, keys.Size() * static_cast<std::size_t>(value_size));
   RevokeRPCResource(rpc_id);
   return 0;
 }
@@ -738,7 +774,9 @@ int RDMAPSClientAdapter::PutParameter(
   if (keys.Size() != values.size()) {
     return -1;
   }
-  const std::size_t max_keys_per_rpc = MaxPutKeysPerRpc();
+  const std::size_t max_keys_per_rpc = MaxPutKeysPerRpc(
+      values.empty() ? DefaultEmbeddingDimOrThrow()
+                     : static_cast<int64_t>(values[0].size()));
   if (num_shards_ <= 1) {
     if (client_ == nullptr) {
       return -1;
@@ -808,16 +846,19 @@ int RDMAPSClientAdapter::UpdateParameter(
   if (grads == nullptr) {
     return -1;
   }
-  if (grads->empty()) {
+  if (keys.Size() != grads->size()) {
+    return -1;
+  }
+  if (keys.Size() == 0) {
     return 0;
   }
-  EnsureThreadInitialized();
-  const std::size_t max_keys_per_rpc = MaxPutKeysPerRpc();
+  const std::size_t max_keys_per_rpc = MaxPutKeysPerRpc(
+      static_cast<int64_t>((*grads)[0].size()));
   if (num_shards_ <= 1) {
     if (client_ == nullptr) {
       return -1;
     }
-    const std::size_t key_count = static_cast<std::size_t>(keys.Size());
+    const std::size_t key_count = keys.Size();
     for (std::size_t offset = 0; offset < key_count;
          offset += max_keys_per_rpc) {
       const std::size_t end = std::min(offset + max_keys_per_rpc, key_count);
@@ -835,12 +876,6 @@ int RDMAPSClientAdapter::UpdateParameter(
         return rc;
       }
     }
-    return 0;
-  }
-  if (keys.Size() != grads->size()) {
-    return -1;
-  }
-  if (keys.Size() == 0) {
     return 0;
   }
 
@@ -909,7 +944,7 @@ uint64_t RDMAPSClientAdapter::SubmitUpdateParameterFlatAsync(
     throw std::invalid_argument("RDMA update key and gradient rows differ");
   }
   EnsureThreadInitialized();
-  const std::size_t max_keys_per_rpc = MaxPutKeysPerRpc();
+  const std::size_t max_keys_per_rpc = MaxPutKeysPerRpc(embedding_dim);
   const std::size_t dim              = static_cast<std::size_t>(embedding_dim);
   std::vector<std::pair<int, int>> pending;
 
@@ -1029,34 +1064,49 @@ int RDMAPSClientAdapter::WaitUpdateParameterFlat(uint64_t update_id) {
 int RDMAPSClientAdapter::InitEmbeddingTable(
     const std::string& table_name, const EmbeddingTableConfig& config) {
   EnsureThreadInitialized();
+  int tag = -1;
   if (num_shards_ <= 1) {
     if (client_ == nullptr) {
       return -1;
     }
-    const int init_rc = client_->InitEmbeddingTable(
-        table_name, config.num_embeddings, config.embedding_dim);
-    if (init_rc != 0) {
-      return init_rc;
+    tag = client_->InitEmbeddingTable(
+        table_name,
+        config.num_embeddings,
+        config.embedding_dim,
+        config.table_id);
+    if (tag < 0) {
+      return tag;
     }
   } else {
     for (auto& shard_client : shard_clients_) {
       const int rc = shard_client->InitEmbeddingTable(
-          table_name, config.num_embeddings, config.embedding_dim);
-      if (rc != 0) {
+          table_name,
+          config.num_embeddings,
+          config.embedding_dim,
+          config.table_id);
+      if (rc < 0) {
         return rc;
+      }
+      if (tag < 0) {
+        tag = rc;
+      } else if (tag != rc) {
+        return -1;
       }
     }
   }
 
   std::lock_guard<std::mutex> guard(state_mu_);
-  const auto [it, inserted] = tables_.emplace(table_name, TableState{config});
+  const auto [it, inserted] =
+      tables_.emplace(table_name, TableState{config, tag});
   if (!inserted) {
     if (it->second.config.embedding_dim != config.embedding_dim ||
-        it->second.config.num_embeddings != config.num_embeddings) {
+        it->second.config.num_embeddings != config.num_embeddings ||
+        it->second.tag != tag) {
       return -1;
     }
   }
-  return 0;
+  tag_to_dim_[tag] = static_cast<int64_t>(config.embedding_dim);
+  return tag;
 }
 
 int RDMAPSClientAdapter::AsyncGetParameter(const base::ConstArray<uint64_t>&,
@@ -1087,11 +1137,13 @@ RDMAPSClientAdapter::PrefetchParameter(const base::ConstArray<uint64_t>& keys) {
     throw std::invalid_argument("RDMA prefetch requires at least one key");
   }
 
-  const int64_t embedding_dim = DefaultEmbeddingDimOrThrow();
+  const int64_t embedding_dim = EmbeddingDimForKeys(keys);
+  const int value_size =
+      static_cast<int>(static_cast<std::size_t>(embedding_dim) * sizeof(float));
   const std::size_t response_bytes =
-      petps::FixedSlotResponseBytes(keys.Size(), FLAGS_value_size);
+      petps::FixedSlotResponseBytes(keys.Size(), value_size);
   const bool borrow_single_shard_response =
-      num_shards_ <= 1 && keys.Size() <= MaxGetKeysPerRpc();
+      num_shards_ <= 1 && keys.Size() <= MaxGetKeysPerRpc(embedding_dim);
   const bool batch_response = !borrow_single_shard_response;
   std::shared_ptr<std::vector<float>> buffer;
   {
@@ -1112,10 +1164,11 @@ RDMAPSClientAdapter::PrefetchParameter(const base::ConstArray<uint64_t>& keys) {
   // full response and status word before the consumer reads it, so stale bytes
   // are never observed.
   auto* status_word = petps::FixedSlotStatusWord(
-      buffer->data(), static_cast<std::size_t>(keys.Size()), FLAGS_value_size);
+      buffer->data(), static_cast<std::size_t>(keys.Size()), value_size);
   *status_word = static_cast<std::int32_t>(petps::RpcStatus::kPending);
 
-  const int rpc_id = SubmitGetParameter(keys, buffer->data(), true, 0);
+  const int rpc_id =
+      SubmitGetParameter(keys, buffer->data(), true, 0, embedding_dim);
 
   std::lock_guard<std::mutex> guard(state_mu_);
   const uint64_t prefetch_id = next_prefetch_id_++;
@@ -1194,13 +1247,15 @@ bool RDMAPSClientAdapter::GetPrefetchResultFlat(
       BorrowPrefetchResult(state, &status_code, &response_bytes);
   if (result_payload == nullptr) {
     WaitForPrefetch(prefetch_id);
+    const int value_size =
+        static_cast<int>(state.embedding_dim * static_cast<int64_t>(sizeof(float)));
     const auto* status_word = petps::FixedSlotStatusWord(
         state.buffer->data(),
         static_cast<std::size_t>(state.key_count),
-        FLAGS_value_size);
+        value_size);
     status_code    = *status_word;
     response_bytes = static_cast<std::size_t>(state.key_count) *
-                     static_cast<std::size_t>(FLAGS_value_size);
+                     static_cast<std::size_t>(value_size);
     result_payload = state.buffer->data();
   }
   const auto wait_end = std::chrono::steady_clock::now();

@@ -886,14 +886,20 @@ private:
 
     std::uint64_t num_embeddings = 0;
     std::uint64_t embedding_dim  = 0;
+    std::uint64_t table_id       = 0;
     std::memcpy(&num_embeddings, payload, sizeof(num_embeddings));
     std::memcpy(&embedding_dim,
                 payload + sizeof(num_embeddings),
                 sizeof(embedding_dim));
-    const bool ok = cache_ps_->InitTable(
-        std::string(table_name), num_embeddings, embedding_dim);
+    std::memcpy(&table_id,
+                payload + sizeof(num_embeddings) + sizeof(embedding_dim),
+                sizeof(table_id));
+    const int tag = cache_ps_->InitTable(
+        std::string(table_name), num_embeddings, embedding_dim, table_id);
     response->status->status = static_cast<std::int32_t>(
-        ok ? petps::RpcStatus::kOk : petps::RpcStatus::kInvalidPayload);
+        tag >= 0 ? petps::RpcStatus::kOk : petps::RpcStatus::kInvalidPayload);
+    response->status->reserved =
+        tag >= 0 ? static_cast<std::uint32_t>(tag) : 0;
     response->status->response_bytes = 0;
   }
 

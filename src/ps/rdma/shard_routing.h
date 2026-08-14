@@ -41,6 +41,7 @@ struct BatchRequest {
   float* user_buffer          = nullptr; // Final output buffer owned by caller.
   bool assembled              = false;   // True once shard RPCs are merged.
   std::size_t total_key_count = 0;       // Total keys across all shards.
+  int value_size              = 0;       // Row bytes for this batch.
   std::int32_t status_code =
       static_cast<std::int32_t>(petps::RpcStatus::kPending);
   std::vector<PendingShardRpc> shard_rpcs; // One pending RPC per shard chunk.

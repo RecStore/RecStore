@@ -992,7 +992,7 @@ int GRPCParameterClient::InitEmbeddingTable(
     LOG(ERROR) << "InitEmbeddingTable RPC failed: " << status.error_message();
     return -1;
   }
-  return response.success() ? 0 : -1;
+  return response.success() ? response.tag() : -1;
 }
 
 // BasePSClient pure virtual implementations

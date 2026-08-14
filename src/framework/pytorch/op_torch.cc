@@ -836,25 +836,28 @@ bool warmup_local_lookup_flat_cuda_region_torch() {
   return EnsurePinnedLocalShmPayload(payload_base, payload_bytes);
 }
 
-bool init_embedding_table_torch(const std::string& table_name,
-                                int64_t num_embeddings,
-                                int64_t embedding_dim) {
+int64_t init_embedding_table_torch(const std::string& table_name,
+                                   int64_t num_embeddings,
+                                   int64_t embedding_dim,
+                                   int64_t table_id = 0) {
   TORCH_CHECK(!table_name.empty(), "table_name must be non-empty");
   TORCH_CHECK(num_embeddings > 0, "num_embeddings must be positive");
   TORCH_CHECK(embedding_dim > 0, "embedding_dim must be positive");
+  TORCH_CHECK(table_id >= 0, "table_id must be non-negative");
 
   EmbeddingTableConfig cfg{};
   cfg.num_embeddings = static_cast<uint64_t>(num_embeddings);
   cfg.embedding_dim  = static_cast<uint64_t>(embedding_dim);
+  cfg.table_id       = static_cast<uint64_t>(table_id);
 
-  auto op       = GetKVClientOp();
-  const bool ok = op->InitEmbeddingTable(table_name, cfg);
+  auto kv_op      = GetConcreteKVClientOp();
+  const int64_t tag = kv_op->InitEmbeddingTable(table_name, cfg);
 #ifdef RECSTORE_ENABLE_GPU_CACHE
-  if (ok && gpu::IsGpuCacheEnabled()) {
+  if (tag >= 0 && gpu::IsGpuCacheEnabled()) {
     SafeClearGpuCacheNoThrow();
   }
 #endif
-  return ok;
+  return tag;
 }
 
 void emb_write_torch(const torch::Tensor& keys, const torch::Tensor& values) {

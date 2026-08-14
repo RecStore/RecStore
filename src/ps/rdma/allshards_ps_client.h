@@ -27,7 +27,8 @@ public:
   int GetParameter(base::ConstArray<uint64_t> keys,
                    float* values,
                    bool isAsync,
-                   int async_req_id = 0) override;
+                   int async_req_id  = 0,
+                   int embedding_dim = 0) override;
 
   void InitThread() override;
   void Barrier(const std::string& ss, int k) override;
@@ -39,7 +40,8 @@ public:
                    const std::vector<std::vector<float>>& values) override;
   int InitEmbeddingTable(const std::string& table_name,
                          std::uint64_t num_embeddings,
-                         std::uint64_t embedding_dim) override;
+                         std::uint64_t embedding_dim,
+                         std::uint64_t table_id = 0) override;
   int UpdateParameter(const std::string& table_name,
                       base::ConstArray<uint64_t> keys,
                       const std::vector<std::vector<float>>* grads) override;

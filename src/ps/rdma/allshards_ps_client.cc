@@ -113,23 +113,29 @@ int AllShardsParameterClientWrapper::GetParameter(
     base::ConstArray<uint64_t> keys,
     float* values,
     bool isAsync,
-    int async_req_id) {
+    int async_req_id,
+    int embedding_dim) {
+  const int value_size =
+      embedding_dim > 0 ? embedding_dim * static_cast<int>(sizeof(float))
+                        : FLAGS_value_size;
   BatchRequest batch;
   batch.user_buffer     = values;
   batch.total_key_count = keys.Size();
+  batch.value_size      = value_size;
   auto* batch_status_word =
-      petps::FixedSlotStatusWord(values, keys.Size(), FLAGS_value_size);
+      petps::FixedSlotStatusWord(values, keys.Size(), value_size);
   *batch_status_word = static_cast<std::int32_t>(petps::RpcStatus::kPending);
 
   for (const auto& chunk : BuildChunks(keys)) {
     void* recv = clients_[chunk.client_index]->GetReceiveBuffer(
-        chunk.keys.size() * static_cast<std::size_t>(FLAGS_value_size) +
+        chunk.keys.size() * static_cast<std::size_t>(value_size) +
         sizeof(std::int32_t));
     int rpc_id = clients_[chunk.client_index]->GetParameter(
         base::ConstArray<uint64_t>(chunk.keys),
         static_cast<float*>(recv),
         isAsync,
-        async_req_id);
+        async_req_id,
+        embedding_dim);
     batch.shard_rpcs.push_back(PendingShardRpc{
         chunk.shard_id,
         chunk.client_index,
@@ -183,8 +189,9 @@ bool AllShardsParameterClientWrapper::QueryRPCFinished(int rpc_id) {
     }
   }
 
-  return recstore::shard_routing::FinalizeBatchIfNeeded(&it->second,
-                                                        FLAGS_value_size);
+  return recstore::shard_routing::FinalizeBatchIfNeeded(
+      &it->second,
+      it->second.value_size > 0 ? it->second.value_size : FLAGS_value_size);
 }
 
 void AllShardsParameterClientWrapper::WaitRPCFinish(int rpc_id) {
@@ -205,8 +212,9 @@ void AllShardsParameterClientWrapper::WaitRPCFinish(int rpc_id) {
     std::lock_guard<std::mutex> guard(batches_mu_);
     auto it = batches_.find(rpc_id);
     CHECK(it != batches_.end());
-    recstore::shard_routing::FinalizeBatchIfNeeded(&it->second,
-                                                   FLAGS_value_size);
+    recstore::shard_routing::FinalizeBatchIfNeeded(
+        &it->second,
+        it->second.value_size > 0 ? it->second.value_size : FLAGS_value_size);
   }
 }
 
@@ -264,15 +272,23 @@ int AllShardsParameterClientWrapper::PutParameter(
 int AllShardsParameterClientWrapper::InitEmbeddingTable(
     const std::string& table_name,
     std::uint64_t num_embeddings,
-    std::uint64_t embedding_dim) {
+    std::uint64_t embedding_dim,
+    std::uint64_t table_id) {
+  int tag = -1;
   for (auto* client : clients_) {
-    const int rc =
-        client->InitEmbeddingTable(table_name, num_embeddings, embedding_dim);
-    if (rc != 0) {
+    const int rc = client->InitEmbeddingTable(
+        table_name, num_embeddings, embedding_dim, table_id);
+    if (rc < 0) {
       return rc;
     }
+    if (tag < 0) {
+      tag = rc;
+    } else if (tag != rc) {
+      LOG(ERROR) << "InitEmbeddingTable tag mismatch across shards";
+      return -1;
+    }
   }
-  return 0;
+  return tag;
 }
 
 int AllShardsParameterClientWrapper::UpdateParameter(

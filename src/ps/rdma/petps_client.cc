@@ -29,9 +29,9 @@ using petps::Exchange;
 using petps::NamespaceToken;
 using petps::NowNs;
 
-std::size_t ComputeMaxGetKeysPerRpc() {
+std::size_t ComputeMaxGetKeysPerRpc(std::size_t value_size) {
   return GetKeysPerRpcByResponseBudget(
-      static_cast<std::size_t>(FLAGS_value_size),
+      value_size,
       static_cast<std::size_t>(FLAGS_rdma_rc_mtu_bytes),
       static_cast<std::size_t>(FLAGS_rdma_rc_target_response_mtu));
 }
@@ -65,16 +65,20 @@ void FillBaseDescriptor(
     std::size_t key_count,
     const RcClientQpView& view,
     std::uint32_t shard_id,
-    std::uint32_t client_id) {
+    std::uint32_t client_id,
+    std::size_t value_size) {
+  if (value_size == 0) {
+    value_size = static_cast<std::size_t>(FLAGS_value_size);
+  }
   *descriptor            = RequestDescriptor{};
   descriptor->seq        = seq;
   descriptor->shard_id   = shard_id;
   descriptor->client_id  = client_id;
   descriptor->qp_index   = static_cast<std::uint32_t>(view.qp_index);
   descriptor->key_count  = static_cast<std::uint32_t>(key_count);
-  descriptor->value_size = static_cast<std::uint32_t>(FLAGS_value_size);
+  descriptor->value_size = static_cast<std::uint32_t>(value_size);
   descriptor->embedding_dim =
-      static_cast<std::uint32_t>(FLAGS_value_size / sizeof(float));
+      static_cast<std::uint32_t>(value_size / sizeof(float));
   descriptor->payload_offset =
       static_cast<std::uint32_t>(Align64(sizeof(RequestDescriptor)));
   descriptor->client_response_addr =
@@ -239,8 +243,12 @@ const float* PetPSClient::BorrowGetResultPayload(
     *status_code = rc_status;
   }
   if (pending.recv_buffer != nullptr) {
+    const int value_size =
+        pending.key_count == 0
+            ? FLAGS_value_size
+            : static_cast<int>(pending.response_bytes / pending.key_count);
     auto* user_status = FixedSlotStatusWord(
-        pending.recv_buffer, pending.key_count, FLAGS_value_size);
+        pending.recv_buffer, pending.key_count, value_size);
     *user_status = rc_status;
   }
   MaybeReportProfile();
@@ -365,6 +373,7 @@ void PetPSClient::FillGetDescriptor(
     std::uint64_t seq,
     std::size_t key_count,
     std::size_t response_bytes,
+    std::size_t value_size,
     const RcClientQpView& view) const {
   FillBaseDescriptor(
       descriptor,
@@ -372,7 +381,8 @@ void PetPSClient::FillGetDescriptor(
       key_count,
       view,
       static_cast<std::uint32_t>(shard_),
-      static_cast<std::uint32_t>(client_id_));
+      static_cast<std::uint32_t>(client_id_),
+      value_size);
   descriptor->op = static_cast<std::uint16_t>(RcOp::kGet);
   descriptor->payload_bytes =
       static_cast<std::uint32_t>(GetRequestBytes(key_count));
@@ -397,7 +407,8 @@ void PetPSClient::FillPutDescriptor(
       key_count,
       view,
       static_cast<std::uint32_t>(shard_),
-      static_cast<std::uint32_t>(client_id_));
+      static_cast<std::uint32_t>(client_id_),
+      0);
   descriptor->op             = static_cast<std::uint16_t>(RcOp::kPut);
   descriptor->payload_bytes  = static_cast<std::uint32_t>(payload_bytes);
   descriptor->response_bytes = 0;
@@ -511,7 +522,7 @@ int PetPSClient::GetParameter(base::ConstArray<uint64_t> keys,
   }
   const int embedding_dim = FLAGS_value_size / sizeof(float);
   std::vector<float> flat(keys.Size() * embedding_dim + 1, 0.0f);
-  const int rpc_id = GetParameter(keys, flat.data(), false, 0);
+  const int rpc_id = GetParameter(keys, flat.data(), false, 0, embedding_dim);
   const auto* status =
       FixedSlotStatusWord(flat.data(), keys.Size(), FLAGS_value_size);
   if (*status != static_cast<std::int32_t>(RpcStatus::kOk)) {
@@ -528,18 +539,25 @@ int PetPSClient::GetParameter(base::ConstArray<uint64_t> keys,
 }
 
 int PetPSClient::GetParameter(
-    base::ConstArray<uint64_t> keys, float* values, bool isAsync, int) {
+    base::ConstArray<uint64_t> keys,
+    float* values,
+    bool isAsync,
+    int,
+    int embedding_dim) {
   if (keys.Size() == 0) {
     auto* status =
         reinterpret_cast<std::int32_t*>(reinterpret_cast<char*>(values));
     *status = static_cast<std::int32_t>(RpcStatus::kOk);
     return 0;
   }
+  const std::size_t value_size =
+      embedding_dim > 0 ? static_cast<std::size_t>(embedding_dim) * sizeof(float)
+                        : static_cast<std::size_t>(FLAGS_value_size);
   int rpc_id = 0;
   {
     std::lock_guard<std::mutex> guard(mu_);
     EnsureThreadInitializedLocked();
-    if (keys.Size() > ComputeMaxGetKeysPerRpc()) {
+    if (keys.Size() > ComputeMaxGetKeysPerRpc(value_size)) {
       throw std::runtime_error(
           "single-shard GET batch exceeds RC response budget");
     }
@@ -547,10 +565,15 @@ int PetPSClient::GetParameter(
     const SlotHandle slot_handle = AcquireIdleSlot();
     auto& slot = SlotAt(slot_handle.qp_index, slot_handle.slot_in_qp);
     RequestDescriptor descriptor;
-    const std::size_t response_bytes = GetResponseBytes(
-        keys.Size(), static_cast<std::size_t>(FLAGS_value_size));
+    const std::size_t response_bytes =
+        GetResponseBytes(keys.Size(), value_size);
     FillGetDescriptor(
-        &descriptor, slot.next_seq++, keys.Size(), response_bytes, slot.view);
+        &descriptor,
+        slot.next_seq++,
+        keys.Size(),
+        response_bytes,
+        value_size,
+        slot.view);
     if (descriptor.payload_bytes >
         PutPayloadBudget(config_.request_slot_bytes)) {
       slot.busy = false;
@@ -618,8 +641,12 @@ void PetPSClient::WaitRPCFinish(int rpc_id) {
           actual_response_bytes, std::memory_order_relaxed);
     }
   }
+  const int value_size =
+      pending.key_count == 0
+          ? FLAGS_value_size
+          : static_cast<int>(pending.response_bytes / pending.key_count);
   auto* user_status = FixedSlotStatusWord(
-      pending.recv_buffer, pending.key_count, FLAGS_value_size);
+      pending.recv_buffer, pending.key_count, value_size);
   *user_status = status_code;
   MaybeReportProfile();
 }
@@ -716,10 +743,12 @@ int PetPSClient::PutParameter(const std::vector<uint64_t>& keys,
 
 int PetPSClient::InitEmbeddingTable(const std::string& table_name,
                                     std::uint64_t num_embeddings,
-                                    std::uint64_t embedding_dim) {
-  const std::array<std::uint64_t, 2> payload_words = {
+                                    std::uint64_t embedding_dim,
+                                    std::uint64_t table_id) {
+  const std::array<std::uint64_t, 3> payload_words = {
       num_embeddings,
       embedding_dim,
+      table_id,
   };
 
   float* recv = nullptr;
@@ -749,9 +778,22 @@ int PetPSClient::InitEmbeddingTable(const std::string& table_name,
   }
 
   WaitRPCFinish(rpc_id);
-  const auto* status = reinterpret_cast<const std::int32_t*>(recv);
+  PendingRpc pending;
+  std::int32_t rpc_status = static_cast<std::int32_t>(RpcStatus::kInvalidPayload);
+  std::uint32_t tag_word  = 0;
+  {
+    std::lock_guard<std::mutex> guard(mu_);
+    if (PendingRpcLocked(rpc_id, &pending)) {
+      const auto& slot = SlotAt(pending.qp_index, pending.slot_in_qp);
+      rpc_status       = slot.view.status->status;
+      tag_word         = slot.view.status->reserved;
+    }
+  }
   RevokeRPCResource(rpc_id);
-  return (*status == static_cast<std::int32_t>(RpcStatus::kOk)) ? 0 : -1;
+  if (rpc_status != static_cast<std::int32_t>(RpcStatus::kOk)) {
+    return -1;
+  }
+  return static_cast<int>(tag_word);
 }
 
 int PetPSClient::UpdateParameter(const std::string& table_name,

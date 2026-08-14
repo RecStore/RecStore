@@ -1213,7 +1213,7 @@ int BRPCParameterClient::InitEmbeddingTable(
          static_cast<double>(duration));
 #endif
 
-  return response.success() ? 0 : -1;
+  return response.success() ? response.tag() : -1;
 }
 
 uint64_t BRPCParameterClient::EmbWriteAsync(const base::RecTensor& keys,

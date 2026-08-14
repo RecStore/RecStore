@@ -39,29 +39,11 @@ void ValidateEmbeddings(const base::RecTensor& embeddings,
 
 struct HierKVLocalRuntime::Impl {
   std::mutex mu;
-  int64_t default_embedding_dim = -1;
   std::unordered_map<std::string, EmbeddingTableConfig> table_configs;
   std::unordered_map<uint64_t, std::vector<float>> store;
   std::unordered_map<uint64_t, std::vector<std::vector<float>>>
       prefetch_results;
   uint64_t next_prefetch_id = 1;
-
-  void ValidateOrSetEmbeddingDim(int64_t embedding_dim, const char* api_name) {
-    if (embedding_dim <= 0) {
-      throw std::invalid_argument(
-          std::string(api_name) + " requires positive embedding dim.");
-    }
-    if (default_embedding_dim == -1) {
-      default_embedding_dim = embedding_dim;
-      return;
-    }
-    if (default_embedding_dim != embedding_dim) {
-      throw std::runtime_error(
-          std::string(api_name) + " embedding dim mismatch: expected " +
-          std::to_string(default_embedding_dim) + ", got " +
-          std::to_string(embedding_dim));
-    }
-  }
 };
 
 bool IsHierKVBackendName(const std::string& backend_name) {
@@ -73,16 +55,10 @@ HierKVLocalRuntime::Impl& HierKVLocalRuntime::impl() {
   return runtime;
 }
 
-const HierKVLocalRuntime::Impl& HierKVLocalRuntime::impl() const {
-  return const_cast<HierKVLocalRuntime*>(this)->impl();
-}
-
 bool HierKVLocalRuntime::InitEmbeddingTable(
     const std::string& table_name, const EmbeddingTableConfig& config) {
   auto& state = impl();
   std::lock_guard<std::mutex> lock(state.mu);
-  state.ValidateOrSetEmbeddingDim(
-      static_cast<int64_t>(config.embedding_dim), "InitEmbeddingTable");
   auto it = state.table_configs.find(table_name);
   if (it != state.table_configs.end()) {
     if (it->second.embedding_dim != config.embedding_dim ||
@@ -107,7 +83,6 @@ void HierKVLocalRuntime::Write(const base::RecTensor& keys,
   const int64_t embedding_dim = values.shape(1);
   auto& state                 = impl();
   std::lock_guard<std::mutex> lock(state.mu);
-  state.ValidateOrSetEmbeddingDim(embedding_dim, "EmbWrite");
 
   const uint64_t* key_data = keys.data_as<uint64_t>();
   const float* value_data  = values.data_as<float>();
@@ -128,7 +103,6 @@ void HierKVLocalRuntime::Read(const base::RecTensor& keys,
   const int64_t embedding_dim = values.shape(1);
   auto& state                 = impl();
   std::lock_guard<std::mutex> lock(state.mu);
-  state.ValidateOrSetEmbeddingDim(embedding_dim, "EmbRead");
 
   const uint64_t* key_data = keys.data_as<uint64_t>();
   float* out_data          = values.data_as<float>();
@@ -161,7 +135,6 @@ void HierKVLocalRuntime::Update(const std::string& table_name,
   const int64_t embedding_dim = grads.shape(1);
   auto& state                 = impl();
   std::lock_guard<std::mutex> lock(state.mu);
-  state.ValidateOrSetEmbeddingDim(embedding_dim, "EmbUpdate");
   if (!table_name.empty()) {
     auto table_it = state.table_configs.find(table_name);
     if (table_it != state.table_configs.end() &&
@@ -193,7 +166,6 @@ uint64_t HierKVLocalRuntime::Prefetch(const base::RecTensor& keys,
   ValidateKeys(keys);
   auto& state = impl();
   std::lock_guard<std::mutex> lock(state.mu);
-  state.ValidateOrSetEmbeddingDim(embedding_dim, "EmbPrefetch");
   const uint64_t prefetch_id = state.next_prefetch_id++;
   auto& rows                 = state.prefetch_results[prefetch_id];
   const uint64_t* key_data   = keys.data_as<uint64_t>();
@@ -203,7 +175,9 @@ uint64_t HierKVLocalRuntime::Prefetch(const base::RecTensor& keys,
     auto it = state.store.find(key_data[row]);
     if (it == state.store.end()) {
       rows[static_cast<size_t>(row)] =
-          std::vector<float>(static_cast<size_t>(embedding_dim), 0.0f);
+          embedding_dim > 0
+              ? std::vector<float>(static_cast<size_t>(embedding_dim), 0.0f)
+              : std::vector<float>{};
     } else {
       rows[static_cast<size_t>(row)] = it->second;
     }
@@ -263,12 +237,6 @@ void HierKVLocalRuntime::ConsumePrefetchFlat(
                 src.data(),
                 static_cast<size_t>(copy_dim) * sizeof(float));
   }
-}
-
-int64_t HierKVLocalRuntime::DefaultEmbeddingDim() const {
-  auto& state = const_cast<HierKVLocalRuntime*>(this)->impl();
-  std::lock_guard<std::mutex> lock(state.mu);
-  return state.default_embedding_dim;
 }
 
 HierKVLocalRuntime& GetHierKVLocalRuntime() {

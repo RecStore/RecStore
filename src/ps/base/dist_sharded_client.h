@@ -505,13 +505,21 @@ public:
           }));
     }
 
+    int tag = -1;
     for (auto& future : futures) {
-      if (future.get() != 0) {
+      const int rc = future.get();
+      if (rc < 0) {
         LOG(ERROR) << "InitEmbeddingTable failed on one of the shards";
         return -1;
       }
+      if (tag < 0) {
+        tag = rc;
+      } else if (tag != rc) {
+        LOG(ERROR) << "InitEmbeddingTable tag mismatch across shards";
+        return -1;
+      }
     }
-    return 0;
+    return tag;
   }
 
   uint64_t

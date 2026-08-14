@@ -53,6 +53,7 @@ message InitEmbeddingTableRequest{
 
 message InitEmbeddingTableResponse{
   optional bool success = 1;
+  optional int32 tag = 2;
 };
 
 service ParameterService {

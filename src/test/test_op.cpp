@@ -323,8 +323,8 @@ TEST_F(OpTest, InitEmbeddingTableSucceedsForMatchingHierKVTable) {
       .embedding_dim  = 3,
   };
 
-  EXPECT_TRUE(op_.InitEmbeddingTable("table_for_op_test", config));
-  EXPECT_TRUE(op_.InitEmbeddingTable("table_for_op_test", config));
+  EXPECT_EQ(op_.InitEmbeddingTable("table_for_op_test", config), 0);
+  EXPECT_EQ(op_.InitEmbeddingTable("table_for_op_test", config), 0);
 }
 
 TEST_F(OpTest, PrefetchVectorAndFlatResultsConsumeCachedRows) {
@@ -351,6 +351,16 @@ TEST_F(OpTest, PrefetchVectorAndFlatResultsConsumeCachedRows) {
   op_.GetPretchResultFlat(flat_id, &flat_result, &num_rows, 3);
   EXPECT_EQ(num_rows, 2);
   EXPECT_EQ(flat_result, values);
+
+  std::vector<uint64_t> missing_keys{88001, 88002};
+  std::vector<float> dummy;
+  const uint64_t missing_id =
+      op_.EmbPrefetch(UInt64Tensor(&missing_keys), FloatTensor(&dummy, 0, 0));
+  std::vector<float> missing_flat;
+  int64_t missing_rows = 0;
+  op_.GetPretchResultFlat(missing_id, &missing_flat, &missing_rows, 3);
+  EXPECT_EQ(missing_rows, 2);
+  EXPECT_EQ(missing_flat, (std::vector<float>(6, 0.0f)));
 }
 
 TEST_F(OpTest, TensorValidationRejectsInvalidInputsBeforeBackendMutation) {
@@ -449,14 +459,14 @@ TEST_F(InjectedClientOpTest, NonHierKVInitEmbeddingTableReturnsClientStatus) {
       .embedding_dim  = 3,
   };
 
-  EXPECT_TRUE(op_->InitEmbeddingTable("table_init", config));
+  EXPECT_EQ(op_->InitEmbeddingTable("table_init", config), 0);
   EXPECT_EQ(client_->init_table_calls, 1);
   EXPECT_EQ(client_->last_init_table, "table_init");
   EXPECT_EQ(client_->last_init_config.num_embeddings, 64);
   EXPECT_EQ(client_->last_init_config.embedding_dim, 3);
 
-  client_->init_table_return = 1;
-  EXPECT_FALSE(op_->InitEmbeddingTable("table_init", config));
+  client_->init_table_return = -1;
+  EXPECT_EQ(op_->InitEmbeddingTable("table_init", config), -1);
 }
 
 TEST_F(InjectedClientOpTest, NonHierKVPrefetchDelegatesStatusAndResults) {

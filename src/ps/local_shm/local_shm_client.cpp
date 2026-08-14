@@ -15,7 +15,7 @@ namespace recstore {
 namespace {
 
 std::size_t InitTablePayloadBytes(const std::string& table_name) {
-  return table_name.size() + sizeof(uint64_t) * 2;
+  return table_name.size() + sizeof(uint64_t) * 3;
 }
 
 std::size_t GetPayloadBytes(std::size_t key_count) {
@@ -675,6 +675,8 @@ int LocalShmPSClient::InitEmbeddingTable(const std::string& table_name,
   std::memcpy(cursor, &config.num_embeddings, sizeof(config.num_embeddings));
   cursor += sizeof(config.num_embeddings);
   std::memcpy(cursor, &config.embedding_dim, sizeof(config.embedding_dim));
+  cursor += sizeof(config.embedding_dim);
+  std::memcpy(cursor, &config.table_id, sizeof(config.table_id));
   header->state.store(static_cast<uint32_t>(LocalSlotState::kReady));
   const uint32_t ready_queue_id       = CurrentReadyQueueId();
   const auto enqueue_start            = std::chrono::steady_clock::now();
@@ -698,11 +700,12 @@ int LocalShmPSClient::InitEmbeddingTable(const std::string& table_name,
           std::chrono::steady_clock::now() - wait_start)
           .count();
   FinalizeActiveRequestProfile(header, g_active_request_profile.request_start);
+  const int tag = ok ? static_cast<int>(header->user_tag) : -1;
   ReleaseSlot(static_cast<uint32_t>(slot));
   if (ok) {
     table_embedding_dims_[table_name] = config.embedding_dim;
   }
-  return ok ? 0 : -1;
+  return tag;
 }
 
 int LocalShmPSClient::AsyncGetParameter(const base::ConstArray<uint64_t>& keys,

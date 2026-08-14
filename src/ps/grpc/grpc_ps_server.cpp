@@ -484,14 +484,19 @@ private:
         nlohmann::json cfg      = nlohmann::json::parse(payload);
         uint64_t num_embeddings = cfg.value("num_embeddings", 0);
         uint64_t embedding_dim  = cfg.value("embedding_dim", 0);
+        uint64_t table_id       = cfg.value("table_id", 0);
         RECSTORE_LOG_EVERY_MS(INFO, 2000)
             << "InitEmbeddingTable: table=" << request->table_name()
             << ", num_embeddings=" << num_embeddings
-            << ", embedding_dim=" << embedding_dim;
+            << ", embedding_dim=" << embedding_dim
+            << ", table_id=" << table_id;
 
-        bool init_success = cache_ps_->InitTable(
-            request->table_name(), num_embeddings, embedding_dim);
-        reply->set_success(init_success);
+        const int tag = cache_ps_->InitTable(
+            request->table_name(), num_embeddings, embedding_dim, table_id);
+        reply->set_success(tag >= 0);
+        if (tag >= 0) {
+          reply->set_tag(tag);
+        }
       } else {
         LOG(WARNING) << "InitEmbeddingTable called without config_payload";
         reply->set_success(false);

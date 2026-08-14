@@ -75,8 +75,8 @@ public:
                          const RecTensor& keys,
                          const RecTensor& grads)           = 0;
 
-  virtual bool InitEmbeddingTable(const std::string& table_name,
-                                  const EmbeddingTableConfig& config) = 0;
+  virtual int InitEmbeddingTable(const std::string& table_name,
+                                 const EmbeddingTableConfig& config) = 0;
 
   // Prefetch & write (async)
   virtual uint64_t
@@ -135,8 +135,8 @@ public:
                           const base::RecTensor& keys,
                           const base::RecTensor& grads);
   void WaitForEmbUpdate(uint64_t update_id);
-  bool InitEmbeddingTable(const std::string& table_name,
-                          const EmbeddingTableConfig& config) override;
+  int InitEmbeddingTable(const std::string& table_name,
+                         const EmbeddingTableConfig& config) override;
   bool EmbExists(const base::RecTensor& keys) override;
   void EmbDelete(const base::RecTensor& keys) override;
   uint64_t EmbPrefetch(const base::RecTensor& keys,

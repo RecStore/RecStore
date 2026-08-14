@@ -505,10 +505,13 @@ void KVClientOp::WaitForEmbUpdate(uint64_t update_id) {
   }
 }
 
-bool KVClientOp::InitEmbeddingTable(const std::string& table_name,
-                                    const EmbeddingTableConfig& config) {
+int KVClientOp::InitEmbeddingTable(const std::string& table_name,
+                                   const EmbeddingTableConfig& config) {
   if (IsHierKVBackendName(ps_backend_name_)) {
-    return GetHierKVLocalRuntime().InitEmbeddingTable(table_name, config);
+    if (!GetHierKVLocalRuntime().InitEmbeddingTable(table_name, config)) {
+      return -1;
+    }
+    return static_cast<int>(config.table_id);
   }
   if (ps_client_ == nullptr) {
     throw std::runtime_error("PS client is not initialized. Please call "
@@ -537,7 +540,7 @@ bool KVClientOp::InitEmbeddingTable(const std::string& table_name,
          "recstore_us",
          static_cast<double>(duration));
 #  endif
-  return ret == 0;
+  return ret;
 }
 
 void KVClientOp::EmbWrite(const RecTensor& keys, const RecTensor& values) {
@@ -652,10 +655,8 @@ void KVClientOp::EmbInit(const base::RecTensor& keys,
 uint64_t
 KVClientOp::EmbPrefetch(const base::RecTensor& keys, const RecTensor& values) {
   if (IsHierKVBackendName(ps_backend_name_)) {
-    int64_t embedding_dim = values.dim() == 2 ? values.shape(1) : -1;
-    if (embedding_dim <= 0) {
-      embedding_dim = GetHierKVLocalRuntime().DefaultEmbeddingDim();
-    }
+    const int64_t embedding_dim =
+        values.dim() == 2 ? values.shape(1) : 0;
     return GetHierKVLocalRuntime().Prefetch(keys, embedding_dim);
   }
   const uint64_t* keys_data = keys.data_as<uint64_t>();

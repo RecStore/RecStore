@@ -35,19 +35,23 @@ public:
   int GetParameter(base::ConstArray<uint64_t> keys,
                    float* values,
                    bool isAsync,
-                   int async_req_id = 0) override {
+                   int async_req_id  = 0,
+                   int embedding_dim = 0) override {
     (void)isAsync;
     (void)async_req_id;
     request_sizes_.push_back(keys.Size());
 
-    const int dim = FLAGS_value_size / sizeof(float);
+    const int value_size =
+        embedding_dim > 0 ? embedding_dim * static_cast<int>(sizeof(float))
+                          : FLAGS_value_size;
+    const int dim = value_size / static_cast<int>(sizeof(float));
     for (int i = 0; i < keys.Size(); ++i) {
       const auto& row = storage_[keys[i]];
-      std::memcpy(values + i * dim, row.data(), FLAGS_value_size);
+      std::memcpy(values + i * dim, row.data(), value_size);
     }
 
     auto* status = reinterpret_cast<std::int32_t*>(
-        reinterpret_cast<char*>(values) + keys.Size() * FLAGS_value_size);
+        reinterpret_cast<char*>(values) + keys.Size() * value_size);
     *status = forced_status_;
     return next_rpc_id_++;
   }

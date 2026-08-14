@@ -5,6 +5,7 @@
 #include <boost/coroutine2/all.hpp>
 #include <cstring>
 #include <cstdint>
+#include <exception>
 #include <experimental/filesystem>
 #include <random>
 #include <vector>
@@ -418,17 +419,22 @@ public:
 
   /// optimizer interface
 
-  bool InitTable(const std::string& table_name,
-                 uint64_t num_embeddings,
-                 uint64_t embedding_dim) {
-    if (!optimizer_) {
-      // TODO: optimizer type from config
-      optimizer_ = std::make_unique<SGD>(0.01);
-    }
+  int InitTable(const std::string& table_name,
+                uint64_t num_embeddings,
+                uint64_t embedding_dim,
+                uint64_t table_id = 0) {
+    try {
+      if (!optimizer_) {
+        // TODO: optimizer type from config
+        optimizer_ = std::make_unique<SGD>(0.01);
+      }
 
-    EmbeddingTableConfig config{num_embeddings, embedding_dim};
-    optimizer_->Init({table_name}, config, base_kv_.get());
-    return true;
+      EmbeddingTableConfig config{num_embeddings, embedding_dim, table_id};
+      return optimizer_->Init({table_name}, config, base_kv_.get());
+    } catch (const std::exception& e) {
+      LOG(ERROR) << "InitTable failed: " << e.what();
+      return -1;
+    }
   }
 
   bool UpdateParameter(const std::string& table_name,

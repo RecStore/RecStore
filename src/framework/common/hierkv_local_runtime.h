@@ -31,12 +31,10 @@ public:
                            std::vector<float>* values,
                            int64_t* num_rows,
                            int64_t embedding_dim);
-  int64_t DefaultEmbeddingDim() const;
 
 private:
   struct Impl;
   Impl& impl();
-  const Impl& impl() const;
 };
 
 HierKVLocalRuntime& GetHierKVLocalRuntime();

@@ -482,6 +482,7 @@ if(TARGET recstore_torch_ops)
     add_python_unittest(
         test_hierkv_python_ops_with_torch_ops_py
         src.python.pytorch.recstore.unittest.test_hierkv_integration
+        src.python.pytorch.recstore.unittest.test_multi_table_dims
     )
     set_tests_properties(
         test_hierkv_python_ops_with_torch_ops_py

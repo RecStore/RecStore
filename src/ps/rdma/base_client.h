@@ -17,7 +17,8 @@ public:
   virtual int GetParameter(base::ConstArray<uint64_t> keys,
                            float* values,
                            bool isAsync,
-                           int async_req_id = 0) = 0;
+                           int async_req_id  = 0,
+                           int embedding_dim = 0) = 0;
 
   virtual void InitThread() = 0;
 
@@ -39,7 +40,8 @@ public:
 
   virtual int InitEmbeddingTable(const std::string& table_name,
                                  std::uint64_t num_embeddings,
-                                 std::uint64_t embedding_dim) {
+                                 std::uint64_t embedding_dim,
+                                 std::uint64_t table_id = 0) {
     LOG(FATAL) << "not Implement";
     return -1;
   }

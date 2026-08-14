@@ -33,7 +33,8 @@ public:
   int GetParameter(base::ConstArray<uint64_t> keys,
                    float* values,
                    bool isAsync,
-                   int async_req_id = 0) override;
+                   int async_req_id  = 0,
+                   int embedding_dim = 0) override;
 
   std::size_t ResponseBufferBytes(std::size_t key_count) const;
 
@@ -55,7 +56,8 @@ public:
                    const std::vector<std::vector<float>>& values) override;
   int InitEmbeddingTable(const std::string& table_name,
                          std::uint64_t num_embeddings,
-                         std::uint64_t embedding_dim) override;
+                         std::uint64_t embedding_dim,
+                         std::uint64_t table_id = 0) override;
   int UpdateParameter(const std::string& table_name,
                       base::ConstArray<uint64_t> keys,
                       const std::vector<std::vector<float>>* grads) override;
@@ -131,6 +133,7 @@ private:
                          std::uint64_t seq,
                          std::size_t key_count,
                          std::size_t response_bytes,
+                         std::size_t value_size,
                          const RcClientQpView& view) const;
   void FillPutDescriptor(RequestDescriptor* descriptor,
                          std::uint64_t seq,

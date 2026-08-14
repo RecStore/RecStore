@@ -4,6 +4,7 @@ import time
 import ctypes
 from typing import Optional, Tuple, List, Dict, Any, Callable
 
+_KEY_TAG_SHIFT = 56
 _LOCAL_FAST_PATH_BACKENDS = {"local_shm", "hierkv"}
 
 def get_reporter():
@@ -54,6 +55,7 @@ class RecStoreClient:
         self._gpu_cache_clear_count = 0
         self._clear_gpu_cache_after_cpu_update = True
         self._prefetch_table_name: Optional[str] = None
+        self._next_table_id = 0
         self._initialized = True
     @property
     def role(self) -> str:
@@ -113,6 +115,8 @@ class RecStoreClient:
             "shape": normalized_shape,
             "dtype": dtype,
             "base_offset": int(base_offset),
+            "tag": 0,
+            "table_id": 0,
         }
         self._full_data_shape[name] = normalized_shape
         self._data_name_list.add(name)
@@ -123,14 +127,28 @@ class RecStoreClient:
         table_name: str,
         num_embeddings: int,
         embedding_dim: int,
-    ) -> bool:
-        return bool(
+        table_id: Optional[int] = None,
+    ) -> int:
+        if table_id is None:
+            table_id = self._next_table_id
+        table_id = int(table_id)
+        if table_id < 0:
+            raise ValueError("table_id must be non-negative")
+        self._next_table_id = max(self._next_table_id, table_id + 1)
+        tag = int(
             self.ops.init_embedding_table(
                 table_name,
                 int(num_embeddings),
                 int(embedding_dim),
+                table_id,
             )
         )
+        if tag < 0:
+            return -1
+        if table_name in self._tensor_meta:
+            self._tensor_meta[table_name]["tag"] = tag
+            self._tensor_meta[table_name]["table_id"] = table_id
+        return tag
 
     def init_data(self, name: str, shape: Tuple[int, int], dtype: torch.dtype, part_policy: Any = None, init_func: Optional[Callable] = None, is_gdata: bool = True, base_offset: int = 0):
         """Send message to kvserver to initialize new data tensor and mapping this
@@ -158,11 +176,12 @@ class RecStoreClient:
         # print(f"Initializing tensor '{name}' with shape {shape} and dtype {dtype} (base_offset={base_offset}).")
         
         num_embeddings, embedding_dim = shape
-        # print(f"[DEBUG] Calling init_embedding_table for '{name}' with num_embeddings={num_embeddings}, embedding_dim={embedding_dim}")
-        success = self.init_embedding_table(name, num_embeddings, embedding_dim)
+        table_id = self._next_table_id
+        tag = self.init_embedding_table(
+            name, num_embeddings, embedding_dim, table_id
+        )
         self._clear_gpu_cache_if_available()
-        # print(f"[DEBUG] init_embedding_table returned: {success}")
-        if not success:
+        if tag < 0:
             raise RuntimeError(f"Failed to initialize embedding table '{name}' on backend.")
         
         self.register_tensor_meta(
@@ -171,6 +190,8 @@ class RecStoreClient:
             dtype=dtype,
             base_offset=base_offset,
         )
+        self._tensor_meta[name]["tag"] = tag
+        self._tensor_meta[name]["table_id"] = table_id
         if not is_gdata:
             self._gdata_name_list.discard(name)
         
@@ -184,7 +205,7 @@ class RecStoreClient:
         all_keys = torch.arange(shape[0], dtype=torch.int64)
         if base_offset != 0:
             all_keys = all_keys + int(base_offset)
-        self.ops.emb_write(all_keys, initial_data)
+        self.ops.emb_write(self._encode_ids(name, all_keys), initial_data)
         self._clear_gpu_cache_if_available()
 
 
@@ -253,18 +274,7 @@ class RecStoreClient:
         
         meta = self._tensor_meta[name]
         embedding_dim = meta['shape'][1]
-        
-        # Ensure ids are on the correct device and dtype
-        # Normalize ids: force CPU, int64, contiguous
-        if not isinstance(ids, torch.Tensor):
-            raise TypeError("ids must be a torch.Tensor")
-        if ids.dtype != torch.int64:
-            ids = ids.to(dtype=torch.int64)
-        if not ids.is_contiguous():
-            ids = ids.contiguous()
-        # Some upstream code may pass CUDA tensors; backend ops are CPU-only.
-        if ids.device.type != 'cpu':
-            ids = ids.to('cpu')
+        ids = self._normalize_ids(ids, name=name)
             
         start_t = time.time()
         res = self.ops.emb_read(ids, embedding_dim)
@@ -284,7 +294,7 @@ class RecStoreClient:
 
         meta = self._tensor_meta[name]
         embedding_dim = meta['shape'][1]
-        ids = self._normalize_ids(ids, preserve_device=True)
+        ids = self._normalize_ids(ids, preserve_device=True, name=name)
         self._reject_gpu_cache_reserved_ids(ids)
 
         start_t = time.time()
@@ -308,6 +318,7 @@ class RecStoreClient:
         ids: torch.Tensor,
         *,
         preserve_device: bool = False,
+        name: Optional[str] = None,
     ) -> torch.Tensor:
         if not isinstance(ids, torch.Tensor):
             raise TypeError("ids must be a torch.Tensor")
@@ -321,7 +332,26 @@ class RecStoreClient:
             )
         if not preserve_device and ids.device.type != 'cpu':
             ids = ids.to('cpu')
+        if name is not None:
+            ids = self._encode_ids(name, ids)
         return ids
+
+    def _encode_ids(self, name: str, ids: torch.Tensor) -> torch.Tensor:
+        meta = self._tensor_meta.get(name)
+        tag = int(meta.get("tag", 0) or 0) if meta else 0
+        if tag == 0 or ids.numel() == 0:
+            return ids
+        existing = ids.bitwise_right_shift(_KEY_TAG_SHIFT)
+        if bool((existing == tag).all().item()):
+            return ids
+        if not bool((existing == 0).all().item()):
+            raise RuntimeError(
+                f"ids for '{name}' already carry tag {existing.unique().tolist()}, expected {tag}"
+            )
+        tag_bits = torch.tensor(
+            tag << _KEY_TAG_SHIFT, dtype=ids.dtype, device=ids.device
+        )
+        return ids.bitwise_or(tag_bits)
 
     def _reject_gpu_cache_reserved_ids(self, ids: torch.Tensor) -> None:
         if ids.numel() == 0:
@@ -383,7 +413,7 @@ class RecStoreClient:
         self._ensure_gpu_cache_table(name)
         meta = self._tensor_meta[name]
         embedding_dim = meta['shape'][1]
-        ids = self._normalize_ids(ids, preserve_device=True)
+        ids = self._normalize_ids(ids, preserve_device=True, name=name)
         self._reject_gpu_cache_reserved_ids(ids)
         return self.ops.local_lookup_flat(ids, int(embedding_dim))
 
@@ -423,22 +453,21 @@ class RecStoreClient:
     def prefill_gpu_cache(self, name: str, ids: torch.Tensor, values: torch.Tensor) -> None:
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
-        self._ensure_gpu_cache_table(name)
-        ids = self._normalize_ids(ids, preserve_device=True)
-        values = self._normalize_grads(values, preserve_device=True)
+        ids = self._normalize_ids(ids, preserve_device=True, name=name)
         if values.dim() != 2:
             raise ValueError("values must be a 2-dimensional tensor")
         if ids.size(0) != values.size(0):
             raise ValueError("ids and values must have the same number of rows")
         if ids.device.type == "cpu":
             self._reject_gpu_cache_reserved_ids(ids)
+        self._ensure_gpu_cache_table(name)
         self.ops.prefill_gpu_cache(ids, values)
 
     def invalidate_gpu_cache(self, name: str, ids: torch.Tensor) -> None:
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
         self._ensure_gpu_cache_table(name)
-        ids = self._normalize_ids(ids, preserve_device=True)
+        ids = self._normalize_ids(ids, preserve_device=True, name=name)
         if ids.device.type == "cpu":
             if torch.cuda.is_available():
                 ids = ids.to(torch.device("cuda", torch.cuda.current_device()))
@@ -457,7 +486,7 @@ class RecStoreClient:
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
         self._ensure_gpu_cache_table(name)
-        ids = self._normalize_ids(ids, preserve_device=True)
+        ids = self._normalize_ids(ids, preserve_device=True, name=name)
         grads = self._normalize_grads(grads, preserve_device=True)
         if grads.dim() != 2:
             raise ValueError("grads must be a 2-dimensional tensor")
@@ -513,7 +542,9 @@ class RecStoreClient:
         cache.  Returns a [num_keys, embedding_dim] float32 tensor on the
         same device as ``keys`` (CUDA when keys are CUDA).
         """
-        keys = self._normalize_ids(keys, preserve_device=True)
+        keys = self._normalize_ids(
+            keys, preserve_device=True, name=self._gpu_cache_table_name
+        )
         if not keys.is_contiguous():
             keys = keys.contiguous()
         return self.ops.gpu_cache_lookup_flat(keys, int(embedding_dim))
@@ -529,7 +560,7 @@ class RecStoreClient:
     def update_gpu_cache(self, ids: torch.Tensor, values: torch.Tensor) -> None:
         """Update existing GPU cache entries with new values (no eviction)."""
         self._ensure_gpu_cache_table(self._gpu_cache_table_name or "")
-        ids = self._normalize_ids(ids, preserve_device=True)
+        ids = self._normalize_ids(ids, preserve_device=True, name=self._gpu_cache_table_name)
         values = self._normalize_grads(values, preserve_device=True)
         self.ops.update_gpu_cache(ids, values)
 
@@ -545,7 +576,7 @@ class RecStoreClient:
         if keys.numel() == 0:
             return
         self._ensure_gpu_cache_table(name)
-        ids = self._normalize_ids(keys, preserve_device=True)
+        ids = self._normalize_ids(keys, preserve_device=True, name=name)
         if ids.device.type == "cpu":
             if torch.cuda.is_available():
                 ids = ids.to(torch.device("cuda", torch.cuda.current_device()))
@@ -561,9 +592,8 @@ class RecStoreClient:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
 
         self._require_local_shm_backend("local_update_flat")
-        ids = self._normalize_ids(ids, preserve_device=True)
-        grads = self._normalize_grads(grads, preserve_device=True)
         self._ensure_gpu_cache_table(name)
+        ids = self._normalize_ids(ids, preserve_device=True, name=name)
         if grads.dim() != 2:
             raise ValueError("grads must be a 2-dimensional tensor")
         if ids.size(0) != grads.size(0):
@@ -590,23 +620,17 @@ class RecStoreClient:
         """
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
-        self.ops.emb_write(ids, data)
+        self.ops.emb_write(self._normalize_ids(ids, name=name), data)
         self._clear_gpu_cache_if_available()
 
     # ---- Prefetch APIs ----
-    def prefetch(self, ids: torch.Tensor) -> int:
+    def prefetch(self, ids: torch.Tensor, name: Optional[str] = None) -> int:
         """Initiate an async prefetch for given ids. Returns a handle (int).
 
         The returned handle should be consumed soon (same batch) to avoid cache pressure.
         """
-        if not isinstance(ids, torch.Tensor):
-            raise TypeError("ids must be a torch.Tensor")
-        if ids.dtype != torch.int64:
-            ids = ids.to(dtype=torch.int64)
-        if not ids.is_contiguous():
-            ids = ids.contiguous()
-        if ids.device.type != 'cpu':
-            ids = ids.to('cpu')
+        table_name = name or self._prefetch_table_name
+        ids = self._normalize_ids(ids, name=table_name)
         return int(self.ops.emb_prefetch(ids))
 
     def wait_and_get(self, prefetch_id: int, embedding_dim: int, device: torch.device = torch.device("cpu")) -> torch.Tensor:
@@ -638,7 +662,7 @@ class RecStoreClient:
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
         
-        ids = self._normalize_ids(ids)
+        ids = self._normalize_ids(ids, name=name)
         grads = self._normalize_grads(grads)
 
         handle = self._next_async_handle

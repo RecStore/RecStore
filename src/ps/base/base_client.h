@@ -9,11 +9,14 @@
 
 namespace recstore {
 struct EmbeddingTableConfig {
-  uint64_t num_embeddings, embedding_dim;
+  uint64_t num_embeddings = 0;
+  uint64_t embedding_dim  = 0;
+  uint64_t table_id       = 0;
 
   std::string Serialize() const {
-    nlohmann::json payload{
-        {"num_embeddings", num_embeddings}, {"embedding_dim", embedding_dim}};
+    nlohmann::json payload{{"num_embeddings", num_embeddings},
+                           {"embedding_dim", embedding_dim},
+                           {"table_id", table_id}};
     return payload.dump();
   }
 };
