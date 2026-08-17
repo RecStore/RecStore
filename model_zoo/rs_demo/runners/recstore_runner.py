@@ -349,6 +349,7 @@ class RecStoreRunner(BenchmarkRunner):
 
         orig_cwd = Path.cwd()
         plugin = None
+        client = None
         try:
             os.chdir(str(self.runtime_dir))
             torch.manual_seed(cfg.seed)
@@ -651,6 +652,8 @@ class RecStoreRunner(BenchmarkRunner):
         finally:
             if plugin is not None:
                 plugin.shutdown()
+            if client is not None and client.is_gpu_cache_enabled():
+                client.disable_gpu_cache()
             os.chdir(str(orig_cwd))
 
     def run(self, repo_root: Path, cfg: RunConfig) -> dict:
