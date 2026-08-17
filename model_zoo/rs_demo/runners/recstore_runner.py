@@ -615,7 +615,7 @@ class RecStoreRunner(BenchmarkRunner):
                 row["sparse_optimizer_flush_ms"] = row["sparse_flush_ms"]
 
                 # Resolve the CUDA-event GPU stages after a single device drain.
-                timer.finish()
+                row["step_sync_wait_ms"] = timer.finish()
                 row["loss"] = float(loss.detach().float().cpu().item())
                 _merge_consumed_perf_stats(row, _consume_perf_stats(embedding_module))
 

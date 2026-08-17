@@ -356,7 +356,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Embedding read strategy: direct=sync pull; prefetch=async with "
             "prefetch_depth window (may observe stale updates); bagpipe=async "
-            "with update-aware stalls (not wired yet)."
+            "with update-aware GPU-cache stalls."
         ),
     )
     parser.add_argument(
