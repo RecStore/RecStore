@@ -9,7 +9,6 @@ add_library(recstore_torch_ops SHARED
     ../common/local_shm_op_component.cc
     ../common/ps_client_config_adapter.cc
     ../../ps/client_factory.cc
-    ${PROJECT_SOURCE_DIR}/src/ps/rdma/rc_options.cc
     ${PROJECT_SOURCE_DIR}/src/ps/rdma/rdma_ps_client_adapter.cc
     boost_regex_cxx11_inst.cc
 )
