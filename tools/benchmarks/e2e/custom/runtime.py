@@ -148,7 +148,7 @@ def start_rdma_ps_cluster(
         config_path=str(config_path),
         num_servers=len(cfg.servers),
         num_clients=_rdma_client_process_count(cfg.clients),
-        thread_num=16,
+        thread_num=int(os.getenv("RECSTORE_E2E_RDMA_SERVER_THREADS", "8")),
         value_size=value_size,
         max_kv_num_per_request=max_kv_num_per_request,
         timeout=180,
@@ -224,16 +224,19 @@ def _dataloader_env() -> dict[str, str]:
 def _recstore_nccl_env() -> dict[str, str]:
     # Embedding traffic uses the RecStore PS transport; dense DDP uses NCCL-IB.
     ifnames = _nccl_socket_ifnames()
-    return {
+    env = {
         **_dataloader_env(),
         "NCCL_SOCKET_IFNAME": ifnames,
         "GLOO_SOCKET_IFNAME": ifnames,
         "NCCL_SOCKET_FAMILY": "AF_INET",
         "NCCL_IB_DISABLE": os.getenv("RECSTORE_E2E_NCCL_IB_DISABLE", "0"),
-        "NCCL_IB_HCA": os.getenv("RECSTORE_E2E_NCCL_IB_HCA", "mlx5_0"),
         "NCCL_DEBUG": "INFO",
         "NCCL_DEBUG_SUBSYS": "NET",
     }
+    hca = os.getenv("RECSTORE_E2E_NCCL_IB_HCA", "").strip()
+    if hca:
+        env["NCCL_IB_HCA"] = hca
+    return env
 
 
 def _brpc_rdma_env() -> dict[str, str]:
@@ -247,16 +250,19 @@ def _brpc_rdma_env() -> dict[str, str]:
 def _torchrec_nccl_env() -> dict[str, str]:
     # TorchRec's embedding all-reduce IS the traffic we want on the IB NIC.
     ifnames = _nccl_socket_ifnames()
-    return {
+    env = {
         **_dataloader_env(),
         "NCCL_SOCKET_IFNAME": ifnames,
         "GLOO_SOCKET_IFNAME": ifnames,
         "NCCL_SOCKET_FAMILY": "AF_INET",
         "NCCL_IB_DISABLE": os.getenv("RECSTORE_E2E_NCCL_IB_DISABLE", "0"),
-        "NCCL_IB_HCA": os.getenv("RECSTORE_E2E_NCCL_IB_HCA", "mlx5_0"),
         "NCCL_DEBUG": "INFO",
         "NCCL_DEBUG_SUBSYS": "NET",
     }
+    hca = os.getenv("RECSTORE_E2E_NCCL_IB_HCA", "").strip()
+    if hca:
+        env["NCCL_IB_HCA"] = hca
+    return env
 
 
 def build_client_command(
