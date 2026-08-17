@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -138,6 +140,30 @@ def start_rdma_ps_cluster(
             ssh_host=server.ssh_host,
             ssh_port=server.ssh_port,
             cwd=server.repo_root,
+        )
+
+    # Servers receive the same absolute --config_path, but it is written only
+    # on the local host. Copy it (and the runtime dir) to every remote server
+    # host before the cluster starts, or remote shards fatal with
+    # "Cannot open config file".
+    for server in sorted_servers:
+        if server.ssh_host in {"", "local", "localhost"}:
+            continue
+        remote = ["ssh"]
+        if server.ssh_port != 22:
+            remote.extend(["-p", str(server.ssh_port)])
+        remote.append(server.ssh_host.strip())
+        quoted_path = shlex.quote(str(config_path))
+        subprocess.run(
+            [*remote, f"mkdir -p {shlex.quote(str(config_path.parent))}"],
+            check=True,
+            timeout=60,
+        )
+        subprocess.run(
+            [*remote, f"cat > {quoted_path}"],
+            stdin=config_path.open("rb"),
+            check=True,
+            timeout=60,
         )
 
     value_size = int(cfg.embedding_dim) * 4
