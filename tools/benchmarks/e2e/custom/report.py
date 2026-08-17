@@ -37,13 +37,6 @@ LATENCY_BREAKDOWN_COLUMNS = (
 )
 
 
-def _p95(rows: Iterable[dict[str, str]], column: str) -> float:
-    vals = sorted(float(row[column]) for row in rows if row.get(column, "") not in {"", "nan", "NaN"})
-    if not vals:
-        return 0.0
-    return vals[int(round((len(vals) - 1) * 0.95))]
-
-
 def _group_by_step(rows: Iterable[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
     grouped: dict[str, list[dict[str, str]]] = {}
     for row in rows:
@@ -52,7 +45,8 @@ def _group_by_step(rows: Iterable[dict[str, str]]) -> dict[str, list[dict[str, s
 
 
 def _job_samples_per_sec(rows: list[dict[str, str]], batch_size: int) -> float:
-    per_step_totals = []
+    total_samples = 0
+    total_ms = 0.0
     for step_rows in _group_by_step(rows).values():
         latencies = [
             float(row["step_total_ms"])
@@ -60,8 +54,29 @@ def _job_samples_per_sec(rows: list[dict[str, str]], batch_size: int) -> float:
             if row.get("step_total_ms", "") not in {"", "nan", "NaN"}
         ]
         if latencies and max(latencies) > 0.0:
-            per_step_totals.append(batch_size * len(step_rows) * 1000.0 / max(latencies))
-    return statistics.fmean(per_step_totals) if per_step_totals else 0.0
+            total_samples += batch_size * len(latencies)
+            total_ms += max(latencies)
+    return total_samples * 1000.0 / total_ms if total_ms > 0.0 else 0.0
+
+
+def _job_step_latencies(rows: list[dict[str, str]]) -> list[float]:
+    latencies: list[float] = []
+    for step_rows in _group_by_step(rows).values():
+        values = [
+            float(row["step_total_ms"])
+            for row in step_rows
+            if row.get("step_total_ms", "") not in {"", "nan", "NaN"}
+        ]
+        if values:
+            latencies.append(max(values))
+    return latencies
+
+
+def _percentile(values: list[float], fraction: float) -> float:
+    ordered = sorted(values)
+    if not ordered:
+        return 0.0
+    return ordered[int(round((len(ordered) - 1) * fraction))]
 
 
 def _job_rows_per_sec(rows: list[dict[str, str]], batch_size: int, latency_column: str) -> float:
@@ -101,10 +116,14 @@ def collect_summary_rows(manifest: list[dict[str, Any]]) -> list[dict[str, Any]]
             else ""
             for column in LATENCY_BREAKDOWN_COLUMNS
         }
+        job_step_latencies = _job_step_latencies(warm)
+        latency_means["step_total_ms"] = (
+            statistics.fmean(job_step_latencies) if job_step_latencies else ""
+        )
         out.append(
             {
                 **item,
-                "p95_step_total_ms": _p95(warm, "step_total_ms"),
+                "p95_step_total_ms": _percentile(job_step_latencies, 0.95),
                 "samples_per_sec": _job_samples_per_sec(warm, batch_size),
                 "lookup_mrows_per_sec": _job_rows_per_sec(warm, batch_size, "embed_lookup_ms"),
                 "update_mrows_per_sec": _job_rows_per_sec(warm, batch_size, "sparse_optimizer_ms"),
@@ -221,7 +240,7 @@ def render_summary_md(cfg: BenchmarkConfig, rows: list[dict[str, Any]]) -> str:
     lines.extend(
         [
             "",
-            "## E2E 延迟分解（ms，warmup 已剔除，跨 rank 与 repeat 取均值）",
+            "## E2E 延迟分解（ms，warmup 已剔除；step_total 按每步跨 rank 最大值，其余指标跨 rank 取均值）",
             "",
         ]
     )
