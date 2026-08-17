@@ -201,6 +201,7 @@ class BagPipePlugin(OptimizationPlugin):
             row["bagpipe_cleanup_step_ms"] = (
                 time.perf_counter() - cleanup_start
             ) * 1e3
+            row.update(self._controller.consume_stats(reset=True))
         else:
             row.setdefault("bagpipe_gpu_cache_update_ids", 0)
             row.setdefault("bagpipe_gpu_cache_update_attempt_ids", 0)
