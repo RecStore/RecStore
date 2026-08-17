@@ -40,8 +40,8 @@ DEFINE_int32(thread_num, 1, "RC write poll thread count");
 DECLARE_int32(global_id);
 DECLARE_int32(num_server_processes);
 DECLARE_int32(num_client_processes);
-DEFINE_int32(value_size, 128, "embedding row bytes");
-DEFINE_int32(max_kv_num_per_request, 500, "max keys per request");
+DECLARE_int32(value_size);
+DECLARE_int32(max_kv_num_per_request);
 DEFINE_bool(use_dram, false, "unused compatibility flag");
 DEFINE_int32(numa_id, 0, "NUMA node id for mmap and core binding");
 
