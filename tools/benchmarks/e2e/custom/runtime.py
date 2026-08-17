@@ -142,10 +142,14 @@ def start_rdma_ps_cluster(
             cwd=server.repo_root,
         )
 
-    # Servers receive the same absolute --config_path, but it is written only
-    # on the local host. Copy it (and the runtime dir) to every remote server
-    # host before the cluster starts, or remote shards fatal with
-    # "Cannot open config file".
+    # Servers receive the same --config_path, but it is written only on the
+    # local host. Copy it to every remote server host before the cluster
+    # starts, or remote shards fatal with "Cannot open config file". The path
+    # is often relative to the local repo root; ssh lands in the remote home
+    # dir, so it MUST be made absolute here (both checkouts share the same
+    # absolute repo path).
+    sync_path = config_path if config_path.is_absolute() else Path.cwd() / config_path
+    sync_path = sync_path.resolve()
     for server in sorted_servers:
         if server.ssh_host in {"", "local", "localhost"}:
             continue
@@ -153,15 +157,14 @@ def start_rdma_ps_cluster(
         if server.ssh_port != 22:
             remote.extend(["-p", str(server.ssh_port)])
         remote.append(server.ssh_host.strip())
-        quoted_path = shlex.quote(str(config_path))
         subprocess.run(
-            [*remote, f"mkdir -p {shlex.quote(str(config_path.parent))}"],
+            [*remote, f"mkdir -p {shlex.quote(str(sync_path.parent))}"],
             check=True,
             timeout=60,
         )
         subprocess.run(
-            [*remote, f"cat > {quoted_path}"],
-            stdin=config_path.open("rb"),
+            [*remote, f"cat > {shlex.quote(str(sync_path))}"],
+            stdin=sync_path.open("rb"),
             check=True,
             timeout=60,
         )
