@@ -147,6 +147,15 @@ public:
     config.control_plane_port       = FLAGS_rdma_control_plane_port;
     config.control_plane_timeout_ms = FLAGS_rdma_control_plane_timeout_ms;
     config.namespace_token          = namespace_token;
+    // The transport constructor waits for every logical client's metadata.
+    // Publish readiness first so a launcher that gates clients on server-ready
+    // cannot deadlock with the constructor.
+    control_plane_client_.PublishServerReady(FLAGS_global_id);
+    ready_published_.store(true, std::memory_order_release);
+    LOG(INFO) << "component=rdma_control_plane event=server_ready_published"
+              << " server_id=" << FLAGS_global_id
+              << " host=" << FLAGS_rdma_control_plane_host
+              << " port=" << FLAGS_rdma_control_plane_port;
     transport_ = std::make_unique<petps::RcShardServerTransport>(config);
     const auto backing = cache_ps_->GetRDMABackingRegion();
     if (backing.data != nullptr && backing.size > 0) {
