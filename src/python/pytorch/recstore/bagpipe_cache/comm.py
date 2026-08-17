@@ -251,7 +251,9 @@ class BagPipeCommMixin:
             dtype=torch.float32, device=self.device,
         )
 
-        id_list = ids.tolist()
+        ids_dev = ids.to(self.device, dtype=torch.int64)
+        grads_dev = grads.to(self.device, dtype=torch.float32)
+        id_list = ids_dev.tolist()
         global_indices = []
         valid_mask = []
         for fid in id_list:
@@ -268,9 +270,11 @@ class BagPipeCommMixin:
             [gi for gi in global_indices if gi >= 0],
             dtype=torch.long, device=self.device,
         )
-        valid_grads = grads[
-            torch.tensor(valid_mask, dtype=torch.bool, device=self.device)
-        ].to(self.device, dtype=torch.float32).contiguous()
+        valid_mask_tensor = torch.tensor(
+            valid_mask, dtype=torch.bool, device=self.device
+        )
+        valid_ids = ids_dev[valid_mask_tensor].contiguous()
+        valid_grads = grads_dev[valid_mask_tensor].contiguous()
 
         dense_grads.index_put_((valid_indices,), valid_grads)
 
@@ -284,5 +288,7 @@ class BagPipeCommMixin:
         self._stats["bagpipe_all_reduce_ids"] += float(len(valid_indices))
         self._stats["bagpipe_all_reduce_ms"] += (time.perf_counter() - t_start) * 1e3
 
-        work_obj = _DenseWork(work, dense_grads, valid_indices, ids, dim, self.device)
-        return ids.to(self.device), grads.to(self.device), work_obj
+        work_obj = _DenseWork(
+            work, dense_grads, valid_indices, valid_ids, dim, self.device
+        )
+        return valid_ids, valid_grads, work_obj

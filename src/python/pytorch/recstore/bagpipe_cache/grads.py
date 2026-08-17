@@ -13,6 +13,7 @@ import time
 from typing import Any
 
 import torch
+import torch.distributed as dist
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,16 @@ class BagPipeGradMixin:
     #  Gradient update (sync_now / sync_later / no_sync split)
     # ------------------------------------------------------------------
 
+    def _all_ranks_cache_update_succeeded(self, local_success: bool) -> bool:
+        """Keep every rank on the same update/fallback collective path."""
+        if not self._is_distributed():
+            return bool(local_success)
+        status = torch.tensor(
+            [1 if local_success else 0], dtype=torch.int32, device=self.device
+        )
+        dist.all_reduce(status, op=dist.ReduceOp.MIN)
+        return bool(status.item())
+
     def update_grads(
         self,
         table_name: str,
@@ -135,9 +146,11 @@ class BagPipeGradMixin:
             logger.warning("[BagPipe] apply_sgd_update_gpu_cache raised: %s", exc)
             success = False
 
+        success = self._all_ranks_cache_update_succeeded(success)
+
         if not success:
             self._stats["bagpipe_sgd_cache_fallback"] += 1
-            _, _, work = self._dense_all_reduce_async(ids_cuda, grads_cuda)
+            _, _, work = self._all_gather_sparse_async(ids_cuda, grads_cuda)
             if work is not None:
                 work.wait()
                 agg_ids, agg_grads = work.result
@@ -148,11 +161,10 @@ class BagPipeGradMixin:
                     self.kv_client.update(table_name, agg_ids, agg_grads)
                 except Exception as exc:
                     logger.warning("[BagPipe] fallback push failed: %s", exc)
-            if self._is_distributed() and self._get_rank() != 0:
-                try:
-                    self.kv_client.invalidate_gpu_cache(table_name, ids_cuda)
-                except Exception:
-                    pass
+            try:
+                self.kv_client.invalidate_gpu_cache(table_name, ids_cuda)
+            except Exception:
+                pass
             for fid in ids_cuda.tolist():
                 self.cache_entries.pop(fid, None)
                 self.sync_later_grads.pop(fid, None)
