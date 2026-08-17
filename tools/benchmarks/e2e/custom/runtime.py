@@ -209,7 +209,7 @@ def _nccl_socket_ifnames() -> str:
     # NCCL/GLOO match by subnet, so listing both is safe on either host and
     # avoids picking a docker/flannel interface (which crashed earlier runs
     # with "socketFinalizeAccept: wrong type 4 != 3").
-    return "enp3s0f0,eno8303"
+    return os.getenv("RECSTORE_E2E_NCCL_SOCKET_IFNAME", "enp3s0f0,eno8303")
 
 
 def _dataloader_env() -> dict[str, str]:
@@ -229,8 +229,8 @@ def _recstore_nccl_env() -> dict[str, str]:
         "NCCL_SOCKET_IFNAME": ifnames,
         "GLOO_SOCKET_IFNAME": ifnames,
         "NCCL_SOCKET_FAMILY": "AF_INET",
-        "NCCL_IB_DISABLE": "0",
-        "NCCL_IB_HCA": "mlx5_0",
+        "NCCL_IB_DISABLE": os.getenv("RECSTORE_E2E_NCCL_IB_DISABLE", "0"),
+        "NCCL_IB_HCA": os.getenv("RECSTORE_E2E_NCCL_IB_HCA", "mlx5_0"),
         "NCCL_DEBUG": "INFO",
         "NCCL_DEBUG_SUBSYS": "NET",
     }
@@ -252,8 +252,8 @@ def _torchrec_nccl_env() -> dict[str, str]:
         "NCCL_SOCKET_IFNAME": ifnames,
         "GLOO_SOCKET_IFNAME": ifnames,
         "NCCL_SOCKET_FAMILY": "AF_INET",
-        "NCCL_IB_DISABLE": "0",
-        "NCCL_IB_HCA": "mlx5_0",
+        "NCCL_IB_DISABLE": os.getenv("RECSTORE_E2E_NCCL_IB_DISABLE", "0"),
+        "NCCL_IB_HCA": os.getenv("RECSTORE_E2E_NCCL_IB_HCA", "mlx5_0"),
         "NCCL_DEBUG": "INFO",
         "NCCL_DEBUG_SUBSYS": "NET",
     }
