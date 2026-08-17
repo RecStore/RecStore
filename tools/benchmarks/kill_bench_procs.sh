@@ -19,9 +19,10 @@ self=$$
 
 collect_pids() {
   local line pid
+  local -a lines=()
   pids=()
   mapfile -t lines < <(pgrep -af -- "$pattern" 2>/dev/null || true)
-  for line in "${lines[@]}"; do
+  for line in "${lines[@]-}"; do
     pid=${line%% *}
     [[ "$pid" =~ ^[0-9]+$ ]] || continue
     [[ "$pid" -eq "$self" ]] && continue
@@ -38,7 +39,7 @@ collect_pids() {
 pids=()
 collect_pids
 
-if ((${#pids[@]} == 0)); then
+if [[ -z "${pids[*]-}" ]]; then
   echo "no matching RecStore/TorchRec processes"
   exit 0
 fi
@@ -51,7 +52,7 @@ fi
 deadline=$((SECONDS + 60))
 signaled=0
 rounds=0
-while ((${#pids[@]} > 0)); do
+while [[ -n "${pids[*]-}" ]]; do
   rounds=$((rounds + 1))
   for pid in "${pids[@]}"; do
     kill -KILL "$pid" 2>/dev/null || true
