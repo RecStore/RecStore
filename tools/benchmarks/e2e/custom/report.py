@@ -3,6 +3,7 @@ from __future__ import annotations
 import socket
 import statistics
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -11,7 +12,19 @@ from .config import BenchmarkConfig, infer_client_deployment, infer_ps_deploymen
 
 
 def _warm_rows(path: Path) -> list[dict[str, str]]:
-    rows = _read_csv(path)
+    # Shared-FS (beegfs) runs: the last lane's main csv is written by a remote
+    # node; attribute visibility on the local fuse mount can lag by a moment
+    # after the client process already exited, so retry briefly instead of
+    # failing the whole aggregation with FileNotFoundError.
+    rows: list[dict[str, str]] = []
+    for attempt in range(6):
+        try:
+            rows = _read_csv(path)
+            break
+        except FileNotFoundError:
+            if attempt == 5:
+                raise
+            time.sleep(1.0)
     return [row for row in rows if str(row.get("warmup_excluded", "0")) not in {"1", "true", "True"}]
 
 
