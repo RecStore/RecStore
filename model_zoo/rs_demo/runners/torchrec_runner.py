@@ -39,7 +39,10 @@ from ..runtime.worker_common import (
     pick_socket_ifname as _pick_socket_ifname,
     write_rows as _write_rows,
 )
-from python.pytorch.recstore.analysis.profiler import build_torchrec_profiler
+# benchmark-side profiler (RunConfig signature); the upstream copy at
+# python/pytorch/recstore/analysis/profiler.py expects its own
+# ProfilerConfig dataclass and is not wired into this runner.
+from ..runtime.torchrec_profile import build_torchrec_profiler
 from .base import BenchmarkRunner
 
 
