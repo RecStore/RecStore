@@ -103,17 +103,32 @@ json ResolveFrameworkPSClientTransportConfig(const json& config) {
 PSClientCreateOptions
 ResolvePSClientOptionsFromFrameworkConfig(const json& config) {
   json raw_config = config;
-  const json distributed_client =
-      ResolveFrameworkDistributedClientConfig(config);
+  const PSClientType type = ResolveFrameworkPSClientType(config);
+  const json transport_config = ResolveFrameworkPSClientTransportConfig(config);
+
+  json distributed_client = ResolveFrameworkDistributedClientConfig(config);
+  const bool has_servers = distributed_client.contains("servers") &&
+                           distributed_client["servers"].is_array() &&
+                           !distributed_client["servers"].empty();
+  if (!has_servers &&
+      (type == PSClientType::kGrpc || type == PSClientType::kBrpc)) {
+    // Single-server deployment: synthesize a one-shard distributed_client so
+    // grpc/brpc always route through the sharded client (num_shards == 1).
+    distributed_client = {
+        {"servers",
+         json::array({{{"host", transport_config.value("host", "127.0.0.1")},
+                       {"port", transport_config.value("port", 15000)},
+                       {"shard", transport_config.value("shard", 0)}}})},
+        {"num_shards", 1},
+    };
+  }
   if (!distributed_client.empty()) {
     raw_config["distributed_client"] = distributed_client;
   }
 
-  return PSClientCreateOptions{
-      .type             = ResolveFrameworkPSClientType(config),
-      .transport_config = ResolveFrameworkPSClientTransportConfig(config),
-      .raw_config       = raw_config,
-  };
+  return PSClientCreateOptions{.type             = type,
+                               .transport_config = transport_config,
+                               .raw_config       = raw_config};
 }
 
 } // namespace recstore

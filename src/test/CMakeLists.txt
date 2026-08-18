@@ -108,6 +108,15 @@ target_link_libraries(test_config PUBLIC
 )
 add_test(NAME test_config COMMAND test_config)
 
+add_executable(test_rectensor test_rectensor.cpp)
+target_link_libraries(test_rectensor PUBLIC
+    base
+    gtest
+    gtest_main
+    pthread
+)
+add_test(NAME test_rectensor COMMAND test_rectensor)
+
 add_executable(test_shm_file test_shm_file.cpp)
 target_link_libraries(test_shm_file PUBLIC
     base
@@ -279,7 +288,6 @@ target_sources(test_rdmaps_client_adapter PRIVATE
     ${PROJECT_SOURCE_DIR}/src/framework/common/ps_client_config_adapter.cc
     ${PROJECT_SOURCE_DIR}/src/ps/client_factory.cc
     ${PROJECT_SOURCE_DIR}/src/ps/rdma/rdma_ps_client_adapter.cc
-    ${PROJECT_SOURCE_DIR}/src/ps/rdma/allshards_ps_client.cc
     ${PROJECT_SOURCE_DIR}/src/ps/rdma/petps_client.cc
     ${PROJECT_SOURCE_DIR}/src/ps/rdma/rc_transport.cc
     ${PROJECT_SOURCE_DIR}/src/ps/rdma/rc_options.cc
@@ -600,16 +608,6 @@ target_link_libraries(brpc_ps_server_unit_test PUBLIC
 )
 add_test(NAME brpc_ps_server_unit_test COMMAND brpc_ps_server_unit_test)
 set_tests_properties(brpc_ps_server_unit_test PROPERTIES LABELS "ps_unit")
-
-add_executable(test_allshards_ps_client test_allshards_ps_client.cpp)
-target_link_libraries(test_allshards_ps_client PUBLIC
-    base
-    wq_ps_client
-    gtest
-    gtest_main
-    pthread
-)
-add_test(NAME test_allshards_ps_client COMMAND test_allshards_ps_client)
 
 add_executable(test_rdma_rc_protocol test_rdma_rc_protocol.cpp)
 target_sources(test_rdma_rc_protocol PRIVATE

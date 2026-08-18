@@ -2,11 +2,10 @@
 
 // Shared shard-routing primitives for RDMA parameter clients.
 //
-// Both AllShardsParameterClientWrapper (allshards_ps_client.h) and
-// RDMAPSClientAdapter (rdma_ps_client_adapter.h) fan a batch of keys out to
-// per-shard RPCs and reassemble the responses into a single caller buffer.
-// The structs and the partition/finalize logic below are identical between the
-// two, so they live here instead of being copy-pasted.
+// RDMAPSClientAdapter (rdma_ps_client_adapter.h) fans a batch of keys out to
+// per-shard RPCs and reassembles the responses into a single caller buffer.
+// These structs and the partition/finalize logic are shared by the adapter's
+// sync and raw-async paths, so they live here instead of being copy-pasted.
 
 #include <algorithm>
 #include <cstddef>

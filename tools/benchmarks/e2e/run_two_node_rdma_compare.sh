@@ -124,13 +124,13 @@ log_section "[2/4] Release build" "$output_dir/logs/build.log"
 cmake --build build --target \
     ps_server recstore_torch_ops petps_server \
     test_rdma_rc_protocol test_raw_verbs_allocator \
-    test_rdmaps_client_adapter test_allshards_ps_client \
+    test_rdmaps_client_adapter \
     -j "$jobs" 2>&1 | tee "$output_dir/logs/build.log"
 grep -q '^CMAKE_BUILD_TYPE:STRING=Release$' build/CMakeCache.txt
 
 log_section "[2/4] RDMA correctness tests" "$output_dir/logs/ctest_rdma.log"
 ctest --test-dir build \
-    -R 'test_rdma_rc_protocol|test_raw_verbs_allocator|test_rdmaps_client_adapter|test_allshards_ps_client' \
+    -R 'test_rdma_rc_protocol|test_raw_verbs_allocator|test_rdmaps_client_adapter' \
     --output-on-failure 2>&1 | tee "$output_dir/logs/ctest_rdma.log"
 
 log_section "[3/4] Clean leftover bench processes" "$output_dir/logs/kill_bench_procs.log"

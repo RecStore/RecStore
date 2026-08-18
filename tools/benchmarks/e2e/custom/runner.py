@@ -158,7 +158,7 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
                 [
                     "ctest",
                     "-R",
-                    "test_rdma_rc_protocol|test_raw_verbs_allocator|test_rdmaps_client_adapter|test_allshards_ps_client",
+                    "test_rdma_rc_protocol|test_raw_verbs_allocator|test_rdmaps_client_adapter",
                     "--output-on-failure",
                 ],
                 cwd=ROOT,
@@ -168,7 +168,7 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
                 [
                     "ctest",
                     "-R",
-                    "brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_server_launcher|test_ps_client_factory|test_allshards_ps_client",
+                    "brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_server_launcher|test_ps_client_factory",
                     "--output-on-failure",
                 ],
                 cwd=ROOT,

@@ -24,7 +24,11 @@ target_link_libraries(dataset_renumber_id_helper PUBLIC pthread base Folly::foll
 target_link_libraries(dataset_renumber_id_helper PUBLIC OpenMP::OpenMP_CXX)
 target_link_libraries(dataset_renumber_id_helper PUBLIC TBB::tbb)
 
-add_executable(benchmark_client ps/benchmark_client.cc)
+add_executable(benchmark_client
+    ps/benchmark_client.cc
+    ${PROJECT_SOURCE_DIR}/src/framework/common/ps_client_config_adapter.cc
+    ${PROJECT_SOURCE_DIR}/src/ps/rdma/rdma_ps_client_adapter.cc
+)
 target_link_libraries(benchmark_client PUBLIC ${warp_wq_ps_client} base Folly::folly)
 target_link_libraries(benchmark_client PUBLIC OpenMP::OpenMP_CXX)
 
@@ -48,6 +52,8 @@ target_link_libraries(ps_transport_benchmark PUBLIC
 
 add_executable(rdma_rc_transport_benchmark
     ps/rdma_rc_transport_benchmark.cc
+    ${PROJECT_SOURCE_DIR}/src/framework/common/ps_client_config_adapter.cc
+    ${PROJECT_SOURCE_DIR}/src/ps/rdma/rdma_ps_client_adapter.cc
 )
 target_link_libraries(rdma_rc_transport_benchmark PUBLIC
     base

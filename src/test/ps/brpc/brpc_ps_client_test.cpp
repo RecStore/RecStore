@@ -1,8 +1,14 @@
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <iostream>
 #include <random>
+#include <vector>
 
 #include "base/array.h"
 #include "base/factory.h"
 #include "base/init.h"
+#include "base/tensor.h"
 #include "base/thread.h"
 #include "base/timer.h"
 #include "ps/base/base_client.h"
@@ -12,85 +18,62 @@
 namespace {
 constexpr int kBrpcTestPort0 = 16123;
 constexpr int kBrpcTestPort1 = 16124;
-} // namespace
 
-static bool
-check_eq_1d(const std::vector<float>& a, const std::vector<float>& b) {
-  std::cout << "a: ";
-  for (auto& v : a) {
-    std::cout << v << " ";
+base::RecTensor OwnedEmbedding(int64_t n, int64_t d, const std::vector<float>& flat) {
+  base::RecTensor t({n, d}, base::DataType::FLOAT32);
+  if (t.data() != nullptr && !flat.empty()) {
+    std::memcpy(t.data(),
+                flat.data(),
+                sizeof(float) * std::min(flat.size(),
+                                         static_cast<size_t>(t.num_elements())));
   }
-  std::cout << std::endl;
-  std::cout << "b: ";
-  for (auto& v : b) {
-    std::cout << v << " ";
-  }
-  std::cout << std::endl;
-  if (a.size() < b.size())
-    return false;
-
-  for (int i = 0; i < b.size(); i++) {
-    if (std::abs(a[i] - b[i]) > 1e-6)
-      return false;
-  }
-  return true;
+  return t;
 }
 
-static bool check_eq_2d(std::vector<std::vector<float>>& a,
-                        const std::vector<std::vector<float>>& b) {
-  a.resize(b.size());
+bool TensorEq(const base::RecTensor& a, const std::vector<float>& b) {
+  if (static_cast<size_t>(a.num_elements()) != b.size()) {
+    return false;
+  }
+  if (b.empty()) {
+    return true;
+  }
+  const float* p = a.data_as<float>();
   for (size_t i = 0; i < b.size(); ++i) {
-    a[i].resize(b[i].size());
-  }
-  if (a.size() != b.size())
-    return false;
-  for (int i = 0; i < a.size(); i++) {
-    if (check_eq_1d(a[i], b[i]) == false)
+    if (std::abs(p[i] - b[i]) > 1e-6f) {
       return false;
+    }
   }
   return true;
 }
+} // namespace
 
 void TestFactoryClient() {
   std::cout << "=== Testing Factory Pattern (bRPC) ===" << std::endl;
 
   json config = {{"host", "127.0.0.1"}, {"port", kBrpcTestPort0}, {"shard", 1}};
 
-  std::unique_ptr<recstore::BasePSClient> client(
-      base::Factory<recstore::BasePSClient, json>::NewInstance("brpc", config));
+  BRPCParameterClient client(config);
+  std::vector<uint64_t> keys = {1, 2, 3};
+  auto rightvalues           = OwnedEmbedding(3, 3, {1, 0, 0, 2, 2, 0, 3, 3, 3});
+  auto values                = OwnedEmbedding(3, 3, std::vector<float>(9, -1.0f));
+  base::ConstArray<uint64_t> keys_array(keys);
 
-  if (!client) {
-    std::cerr << "Failed to create bRPC PS client via factory!" << std::endl;
-    return;
-  }
+  CHECK(client.PutParameter(keys, rightvalues));
+  std::cout << "put parameter done" << std::endl;
+  CHECK(client.GetParameter(keys_array, values) == 0);
+  CHECK(TensorEq(values, {1, 0, 0, 2, 2, 0, 3, 3, 3}));
 
-  std::cout << "Successfully created bRPC PS client via factory" << std::endl;
+  client.ClearPS();
+  CHECK(client.GetParameter(keys_array, values) == 0);
 
-  auto brpc_client = dynamic_cast<BRPCParameterClient*>(client.get());
-  if (brpc_client) {
-    std::vector<uint64_t> keys = {1, 2, 3};
-    std::vector<std::vector<float>> emptyvalues(keys.size());
-    std::vector<std::vector<float>> rightvalues = {{1}, {2, 2}, {3, 3, 3}};
-    std::vector<std::vector<float>> values;
+  std::cout << "load fake data" << std::endl;
+  CHECK(client.LoadFakeData(100));
+  std::cout << "load fake data done" << std::endl;
+  std::cout << "dump fake data" << std::endl;
+  CHECK(client.DumpFakeData(100));
+  std::cout << "dump fake data done" << std::endl;
 
-    brpc_client->PutParameter(keys, rightvalues);
-    std::cout << "put parameter done" << std::endl;
-    brpc_client->GetParameter(keys, &values);
-    CHECK(check_eq_2d(values, rightvalues));
-
-    brpc_client->ClearPS();
-    brpc_client->GetParameter(keys, &values);
-    CHECK(check_eq_2d(values, emptyvalues));
-
-    std::cout << "load fake data" << std::endl;
-    CHECK(brpc_client->LoadFakeData(100));
-    std::cout << "load fake data done" << std::endl;
-    std::cout << "dump fake data" << std::endl;
-    CHECK(brpc_client->DumpFakeData(100));
-    std::cout << "dump fake data done" << std::endl;
-
-    std::cout << "All bRPC operations passed!" << std::endl;
-  }
+  std::cout << "All bRPC operations passed!" << std::endl;
 }
 
 void TestDirectClient() {
@@ -100,21 +83,18 @@ void TestDirectClient() {
 
   client.ClearPS();
   std::vector<uint64_t> keys = {1, 2, 3};
-  std::vector<std::vector<float>> emptyvalues(keys.size());
-  std::vector<std::vector<float>> rightvalues = {{1}, {2, 2}, {3, 3, 3}};
-  std::vector<std::vector<float>> values;
-
+  auto rightvalues           = OwnedEmbedding(3, 3, {1, 0, 0, 2, 2, 0, 3, 3, 3});
+  auto values                = OwnedEmbedding(3, 3, std::vector<float>(9, -1.0f));
   base::ConstArray<uint64_t> keys_array(keys);
-  client.GetParameter(keys_array, &values);
-  CHECK(check_eq_2d(values, emptyvalues));
 
-  client.PutParameter(keys, rightvalues);
-  client.GetParameter(keys_array, &values);
-  CHECK(check_eq_2d(values, rightvalues));
+  CHECK(client.GetParameter(keys_array, values) == 0);
+
+  CHECK(client.PutParameter(keys, rightvalues));
+  CHECK(client.GetParameter(keys_array, values) == 0);
+  CHECK(TensorEq(values, {1, 0, 0, 2, 2, 0, 3, 3, 3}));
 
   client.ClearPS();
-  client.GetParameter(keys_array, &values);
-  CHECK(check_eq_2d(values, emptyvalues));
+  CHECK(client.GetParameter(keys_array, values) == 0);
 
   std::cout << "All direct bRPC client operations passed!" << std::endl;
 }
@@ -123,23 +103,21 @@ void TestPrefetch() {
   std::cout << "\n=== Testing bRPC Prefetch ===" << std::endl;
 
   BRPCParameterClient client("127.0.0.1", kBrpcTestPort0, 1);
-
   client.ClearPS();
 
-  std::vector<uint64_t> keys             = {100, 101, 102, 103, 104};
-  std::vector<std::vector<float>> values = {
-      {1.0f, 2.0f}, {3.0f, 4.0f}, {5.0f, 6.0f}, {7.0f, 8.0f}, {9.0f, 10.0f}};
+  std::vector<uint64_t> keys = {100, 101, 102, 103, 104};
+  auto values =
+      OwnedEmbedding(5, 2, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f});
 
-  client.PutParameter(keys, values);
+  CHECK(client.PutParameter(keys, values));
   base::ConstArray<uint64_t> keys_array(keys);
   uint64_t prefetch_id = client.PrefetchParameter(keys_array);
 
   if (prefetch_id != 0) {
     client.WaitForPrefetch(prefetch_id);
-
-    std::vector<std::vector<float>> fetched_values;
-    if (client.GetPrefetchResult(prefetch_id, &fetched_values)) {
-      CHECK(check_eq_2d(fetched_values, values));
+    base::RecTensor fetched({0, 2}, base::DataType::FLOAT32);
+    if (client.GetPrefetchResult(prefetch_id, fetched)) {
+      CHECK(TensorEq(fetched, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f}));
       std::cout << "Prefetch test passed!" << std::endl;
     } else {
       std::cout << "Failed to get prefetch result" << std::endl;
@@ -160,8 +138,7 @@ void TestAsyncReadWriteConcurrency() {
 
   struct CaseData {
     std::vector<uint64_t> keys;
-    std::vector<std::vector<float>> values;
-    std::vector<float> flat_values;
+    base::RecTensor values;
   };
 
   constexpr int kCaseNum     = 4;
@@ -172,36 +149,21 @@ void TestAsyncReadWriteConcurrency() {
   for (int c = 0; c < kCaseNum; ++c) {
     auto& cs = cases[c];
     cs.keys.reserve(kRowsPerCase);
-    cs.values.reserve(kRowsPerCase);
-    cs.flat_values.reserve(kRowsPerCase * kDim);
+    std::vector<float> flat;
+    flat.reserve(kRowsPerCase * kDim);
     for (int i = 0; i < kRowsPerCase; ++i) {
       uint64_t key = 20000 + static_cast<uint64_t>(c * 100 + i);
       cs.keys.push_back(key);
-      std::vector<float> embedding = {
-          static_cast<float>(key),
-          static_cast<float>(key + 1),
-          static_cast<float>(key + 2),
-          static_cast<float>(key + 3)};
-      cs.values.push_back(embedding);
-      cs.flat_values.insert(
-          cs.flat_values.end(), embedding.begin(), embedding.end());
+      flat.push_back(static_cast<float>(key));
+      flat.push_back(static_cast<float>(key + 1));
+      flat.push_back(static_cast<float>(key + 2));
+      flat.push_back(static_cast<float>(key + 3));
     }
+    cs.values = OwnedEmbedding(kRowsPerCase, kDim, flat);
   }
 
-  std::vector<uint64_t> write_ids;
-  write_ids.reserve(cases.size());
   for (auto& cs : cases) {
-    base::RecTensor key_tensor(
-        cs.keys.data(), {static_cast<int64_t>(cs.keys.size())});
-    base::RecTensor value_tensor(
-        cs.flat_values.data(),
-        {static_cast<int64_t>(cs.keys.size()), static_cast<int64_t>(kDim)});
-    uint64_t write_id = client.EmbWriteAsync(key_tensor, value_tensor);
-    CHECK(write_id != 0);
-    write_ids.push_back(write_id);
-  }
-  for (uint64_t write_id : write_ids) {
-    client.WaitForWrite(write_id);
+    CHECK(client.PutParameter(cs.keys, cs.values));
   }
 
   std::vector<uint64_t> prefetch_ids;
@@ -215,13 +177,14 @@ void TestAsyncReadWriteConcurrency() {
 
   for (size_t i = 0; i < cases.size(); ++i) {
     client.WaitForPrefetch(prefetch_ids[i]);
-    std::vector<std::vector<float>> fetched_values;
-    CHECK(client.GetPrefetchResult(prefetch_ids[i], &fetched_values));
-    CHECK(check_eq_2d(fetched_values, cases[i].values));
-    CHECK(static_cast<int>(fetched_values.size()) == kRowsPerCase);
-    for (const auto& row : fetched_values) {
-      CHECK(static_cast<int>(row.size()) == kDim);
-    }
+    base::RecTensor fetched({0, kDim}, base::DataType::FLOAT32);
+    CHECK(client.GetPrefetchResult(prefetch_ids[i], fetched));
+    CHECK(fetched.shape(0) == kRowsPerCase);
+    CHECK(fetched.shape(1) == kDim);
+    CHECK(TensorEq(fetched,
+                   {cases[i].values.data_as<float>(),
+                    cases[i].values.data_as<float>() +
+                        cases[i].values.num_elements()}));
   }
 
   CHECK(client.ClearPS());

@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <unordered_map>
 
+#include "ps/base/base_client.h"
+
 namespace recstore {
 
 namespace {
@@ -203,7 +205,7 @@ void HierKVLocalRuntime::WaitForPrefetch(uint64_t prefetch_id) {
 }
 
 void HierKVLocalRuntime::ConsumePrefetch(
-    uint64_t prefetch_id, std::vector<std::vector<float>>* values) {
+    uint64_t prefetch_id, base::RecTensor& values) {
   auto& state = impl();
   std::lock_guard<std::mutex> lock(state.mu);
   auto it = state.prefetch_results.find(prefetch_id);
@@ -211,32 +213,29 @@ void HierKVLocalRuntime::ConsumePrefetch(
     throw std::runtime_error(
         "unknown HierKV prefetch_id: " + std::to_string(prefetch_id));
   }
-  *values = it->second;
-  state.prefetch_results.erase(it);
-}
-
-void HierKVLocalRuntime::ConsumePrefetchFlat(
-    uint64_t prefetch_id,
-    std::vector<float>* values,
-    int64_t* num_rows,
-    int64_t embedding_dim) {
-  std::vector<std::vector<float>> rows;
-  ConsumePrefetch(prefetch_id, &rows);
-  *num_rows = static_cast<int64_t>(rows.size());
-  values->assign(
-      static_cast<size_t>(*num_rows) * static_cast<size_t>(embedding_dim),
-      0.0f);
-  for (int64_t row = 0; row < *num_rows; ++row) {
-    const auto& src = rows[static_cast<size_t>(row)];
-    const int64_t copy_dim =
-        std::min<int64_t>(embedding_dim, static_cast<int64_t>(src.size()));
-    if (copy_dim <= 0) {
+  const auto& rows = it->second;
+  if (!EnsureEmbeddingOutput(values, static_cast<int64_t>(rows.size()))) {
+    throw std::runtime_error("HierKV prefetch output tensor has invalid shape");
+  }
+  const int64_t D = values.shape(1);
+  float* dst      = values.data_as<float>();
+  if (dst != nullptr && !rows.empty()) {
+    std::memset(dst,
+                0,
+                static_cast<size_t>(rows.size()) * static_cast<size_t>(D) *
+                    sizeof(float));
+  }
+  for (size_t i = 0; i < rows.size(); ++i) {
+    if (rows[i].empty()) {
       continue;
     }
-    std::memcpy(values->data() + row * embedding_dim,
-                src.data(),
-                static_cast<size_t>(copy_dim) * sizeof(float));
+    const int64_t copy_d =
+        std::min<int64_t>(D, static_cast<int64_t>(rows[i].size()));
+    std::memcpy(dst + i * static_cast<size_t>(D),
+                rows[i].data(),
+                static_cast<size_t>(copy_d) * sizeof(float));
   }
+  state.prefetch_results.erase(it);
 }
 
 HierKVLocalRuntime& GetHierKVLocalRuntime() {

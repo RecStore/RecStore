@@ -11,10 +11,10 @@
 #include <vector>
 
 #include "base/array.h"
+#include "base/tensor.h"
 #include "benchmark/ps/ps_transport_benchmark_config.h"
 #include "framework/common/ps_client_config_adapter.h"
 #include "ps/client_factory.h"
-#include "ps/brpc/brpc_ps_client.h"
 
 DEFINE_string(transport, "grpc", "grpc|brpc|rdma|local_shm");
 DEFINE_string(host, "127.0.0.1", "server host");
@@ -57,10 +57,6 @@ nlohmann::json BuildMixedBenchmarkConfig(
             {"region_name", "recstore_local_ps"}};
   }
   return BuildRpcBenchmarkConfig(normalized, host, port);
-}
-
-bool BenchmarkUsesVectorGetForMixed(const std::string& transport) {
-  return NormalizeMixedTransport(transport) == "BRPC";
 }
 
 bool ShouldPrintPerRound(const std::string& mode) {
@@ -161,14 +157,17 @@ MakeBatchKeys(int64_t num_embeddings, int batch_keys, int64_t batch_offset) {
   return keys;
 }
 
-std::vector<std::vector<float>>
+base::RecTensor
 MakeValues(const std::vector<uint64_t>& keys, int embedding_dim) {
-  std::vector<std::vector<float>> values;
-  values.reserve(keys.size());
-  for (auto key : keys) {
-    std::vector<float> row(
-        static_cast<std::size_t>(embedding_dim), static_cast<float>(key));
-    values.push_back(std::move(row));
+  base::RecTensor values(
+      {static_cast<int64_t>(keys.size()), embedding_dim},
+      base::DataType::FLOAT32);
+  float* dst = values.data_as<float>();
+  for (size_t row = 0; row < keys.size(); ++row) {
+    for (int col = 0; col < embedding_dim; ++col) {
+      dst[row * static_cast<size_t>(embedding_dim) + static_cast<size_t>(col)] =
+          static_cast<float>(keys[row]);
+    }
   }
   return values;
 }
@@ -257,28 +256,17 @@ int main(int argc, char** argv) {
       const auto grads =
           MakeFlatGradients(keys, FLAGS_embedding_dim, FLAGS_update_scale);
       const auto key_array = base::ConstArray<uint64_t>(keys);
-      if (BenchmarkUsesVectorGetForMixed(transport)) {
-        auto* brpc_client = dynamic_cast<BRPCParameterClient*>(client.get());
-        CHECK_NE(brpc_client, nullptr);
-        std::vector<std::vector<float>> output;
-        CHECK(BenchmarkReadSucceeded(
-            transport, brpc_client->GetParameter(key_array, &output)))
-            << transport << " GetParameter failed at iteration=" << i;
-      } else {
-        std::vector<float> output(
-            keys.size() * static_cast<std::size_t>(FLAGS_embedding_dim), 0.0f);
-        CHECK(BenchmarkReadSucceeded(
-            transport, client->GetParameter(key_array, output.data())))
-            << transport << " GetParameter failed at iteration=" << i;
-      }
-      CHECK_EQ(client->UpdateParameterFlat(
-                   FLAGS_table_name,
-                   key_array,
-                   grads.data(),
-                   static_cast<int64_t>(keys.size()),
-                   FLAGS_embedding_dim),
-               0)
-          << transport << " UpdateParameterFlat failed at iteration=" << i;
+      base::RecTensor output(
+          {static_cast<int64_t>(keys.size()), FLAGS_embedding_dim},
+          base::DataType::FLOAT32);
+      CHECK(BenchmarkReadSucceeded(
+          transport, client->GetParameter(key_array, output)))
+          << transport << " GetParameter failed at iteration=" << i;
+      base::RecTensor grads_t(
+          const_cast<float*>(grads.data()),
+          {static_cast<int64_t>(keys.size()), FLAGS_embedding_dim});
+      CHECK_EQ(client->UpdateParameter(FLAGS_table_name, key_array, grads_t), 0)
+          << transport << " UpdateParameter failed at iteration=" << i;
     }
     auto end = std::chrono::steady_clock::now();
     const int64_t elapsed_us =

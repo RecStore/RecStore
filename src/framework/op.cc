@@ -4,10 +4,7 @@
 #include "framework/common/op_runtime_support.h"
 #include "framework/common/ps_client_config_adapter.h"
 #include "ps/client_factory.h"
-#include "ps/brpc/dist_brpc_ps_client.h"
-#include "ps/grpc/dist_grpc_ps_client.h"
 #include "ps/rdma/rdma_ps_client_adapter.h"
-#include "base/factory.h"
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -44,14 +41,8 @@ std::string NormalizeBackendName(std::string backend_name) {
 }
 
 bool IsReadWriteSuccess(BasePSClient* client, int ret) {
-  if (dynamic_cast<RDMAPSClientAdapter*>(client) != nullptr ||
-      dynamic_cast<DistributedGRPCParameterClient*>(client) != nullptr ||
-      dynamic_cast<DistributedBRPCParameterClient*>(client) != nullptr ||
-      dynamic_cast<LocalShmPSClient*>(client) != nullptr) {
-    return ret == 0;
-  }
-  // Legacy GRPC/BRPC read/write methods return bool-like int values.
-  return ret != 0;
+  (void)client;
+  return ret == 0;
 }
 
 std::string ResolveBackendNameWithHierKV(const json& config) {
@@ -324,7 +315,7 @@ void KVClientOp::EmbRead(const RecTensor& keys, RecTensor& values) {
   const size_t total = static_cast<size_t>(L) * static_cast<size_t>(D);
   std::fill_n(values_data, total, 0.0f);
 
-  int ret = ps_client_->GetParameter(keys_array, values_data);
+  int ret = ps_client_->GetParameter(keys_array, values);
   if (!IsReadWriteSuccess(ps_client_, ret)) {
     throw std::runtime_error("Failed to read embeddings from PS client.");
   }
@@ -423,9 +414,7 @@ void KVClientOp::EmbUpdate(const std::string& table_name,
   const uint64_t* keys_data = keys.data_as<uint64_t>();
   base::ConstArray<uint64_t> keys_array(keys_data, L);
 
-  const float* grads_data = grads.data_as<float>();
-  int ret =
-      ps_client_->UpdateParameterFlat(table_name, keys_array, grads_data, L, D);
+  int ret = ps_client_->UpdateParameter(table_name, keys_array, grads);
   if (ret != 0) {
     throw std::runtime_error("Failed to update embeddings via PS client.");
   }
@@ -474,33 +463,23 @@ uint64_t KVClientOp::EmbUpdateAsync(const std::string& table_name,
   if (ps_client_ == nullptr) {
     throw std::runtime_error("PS client is not initialized");
   }
-  auto* rdma_client = dynamic_cast<RDMAPSClientAdapter*>(ps_client_);
-  if (rdma_client == nullptr) {
-    throw std::runtime_error(
-        "Asynchronous embedding updates require the RDMA backend");
-  }
   validate_keys(keys);
   validate_embeddings(grads, "Grads");
   if (keys.shape(0) != grads.shape(0) || grads.shape(1) <= 0) {
     throw std::invalid_argument("Invalid asynchronous embedding update shape");
   }
   const int64_t rows = keys.shape(0);
-  const int64_t dim  = grads.shape(1);
-  return rdma_client->SubmitUpdateParameterFlatAsync(
+  return ps_client_->SubmitUpdateParameterAsync(
       table_name,
       base::ConstArray<uint64_t>(keys.data_as<uint64_t>(), rows),
-      grads.data_as<float>(),
-      rows,
-      dim);
+      grads);
 }
 
 void KVClientOp::WaitForEmbUpdate(uint64_t update_id) {
-  auto* rdma_client = dynamic_cast<RDMAPSClientAdapter*>(ps_client_);
-  if (rdma_client == nullptr) {
-    throw std::runtime_error(
-        "Asynchronous embedding updates require the RDMA backend");
+  if (ps_client_ == nullptr) {
+    throw std::runtime_error("PS client is not initialized");
   }
-  if (rdma_client->WaitUpdateParameterFlat(update_id) != 0) {
+  if (ps_client_->WaitUpdateParameter(update_id) != 0) {
     throw std::runtime_error("Failed to complete asynchronous RDMA update");
   }
 }
@@ -571,7 +550,6 @@ void KVClientOp::EmbWrite(const RecTensor& keys, const RecTensor& values) {
 
   const uint64_t* keys_data = keys.data_as<uint64_t>();
   base::ConstArray<uint64_t> keys_array(keys_data, L);
-  const float* values_data = values.data_as<float>();
 
   const int64_t total_values = L * D;
   if (values_shape[0] * values_shape[1] != total_values) {
@@ -586,44 +564,7 @@ void KVClientOp::EmbWrite(const RecTensor& keys, const RecTensor& values) {
         "Invalid embedding dimension D: " + std::to_string(D));
   }
 
-  std::vector<std::vector<float>> values_vector;
-  values_vector.reserve(L);
-  for (int64_t i = 0; i < L; ++i) {
-    std::vector<float> row(D);
-    std::memcpy(row.data(), values_data + i * D, D * sizeof(float));
-    asm volatile("" ::: "memory");
-    _mm_mfence();
-    values_vector.push_back(std::move(row));
-  }
-
-  LOG(INFO) << "=== Keys Array Info ===";
-  LOG(INFO) << "Keys size: " << L;
-  if (L > 0) {
-    std::ostringstream keys_stream;
-    keys_stream << "First 3 keys: ";
-    for (int64_t i = 0; i < std::min(L, static_cast<int64_t>(3)); ++i) {
-      keys_stream << keys_array[i] << " ";
-    }
-    LOG(INFO) << keys_stream.str();
-  }
-
-  LOG(INFO) << "=== Values Vector Info ===";
-  LOG(INFO) << "Values total elements: " << total_values;
-  LOG(INFO) << "Embedding dimension D: " << D;
-  if (L > 0 && D > 0) {
-    std::ostringstream values_stream;
-    values_stream << "First 3 embeddings (each first 3 items): ";
-    for (int64_t i = 0; i < std::min(L, static_cast<int64_t>(3)); ++i) {
-      values_stream << "[";
-      for (int64_t j = 0; j < std::min(D, static_cast<int64_t>(3)); ++j) {
-        values_stream << values_vector[i][j] << " ";
-      }
-      values_stream << "] ";
-    }
-    LOG(INFO) << values_stream.str();
-  }
-
-  int ret = ps_client_->PutParameter(keys_array, values_vector);
+  int ret = ps_client_->PutParameter(keys_array, values);
   if (!IsReadWriteSuccess(ps_client_, ret)) {
     throw std::runtime_error("Failed to write embeddings to PS client.");
   }
@@ -680,27 +621,14 @@ void KVClientOp::WaitForPrefetch(uint64_t prefetch_id) {
   ps_client_->WaitForPrefetch(prefetch_id);
 }
 
-void KVClientOp::GetPretchResult(uint64_t prefetch_id,
-                                 std::vector<std::vector<float>>* values) {
+void KVClientOp::GetPretchResult(uint64_t prefetch_id, RecTensor& values) {
   if (IsHierKVBackendName(ps_backend_name_)) {
     GetHierKVLocalRuntime().ConsumePrefetch(prefetch_id, values);
     return;
   }
-  ps_client_->GetPrefetchResult(prefetch_id, values);
-}
-
-void KVClientOp::GetPretchResultFlat(
-    uint64_t prefetch_id,
-    std::vector<float>* values,
-    int64_t* num_rows,
-    int64_t embedding_dim) {
-  if (IsHierKVBackendName(ps_backend_name_)) {
-    GetHierKVLocalRuntime().ConsumePrefetchFlat(
-        prefetch_id, values, num_rows, embedding_dim);
-    return;
+  if (!ps_client_->GetPrefetchResult(prefetch_id, values)) {
+    throw std::runtime_error("Failed to get prefetch result from PS client.");
   }
-  ps_client_->GetPrefetchResultFlat(
-      prefetch_id, values, num_rows, embedding_dim);
 }
 
 bool KVClientOp::IsWriteDone(uint64_t write_id) {

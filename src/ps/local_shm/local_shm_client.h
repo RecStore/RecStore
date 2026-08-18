@@ -52,7 +52,7 @@ public:
   ~LocalShmPSClient() override = default;
 
   int GetParameter(const base::ConstArray<uint64_t>& keys,
-                   float* values) override;
+                   base::RecTensor& values) override;
   int GetParameterFlat(const base::ConstArray<uint64_t>& keys,
                        float* values,
                        int64_t num_rows,
@@ -64,19 +64,21 @@ public:
   int WaitGetParameterFlat(LocalShmFlatGetHandle* handle);
   void ReleaseGetParameterFlat(LocalShmFlatGetHandle* handle);
   int PutParameter(const base::ConstArray<uint64_t>& keys,
-                   const std::vector<std::vector<float>>& values) override;
+                   const base::RecTensor& values) override;
+  int PutParameterFlat(const base::ConstArray<uint64_t>& keys,
+                       const float* values,
+                       int64_t num_rows,
+                       int64_t embedding_dim);
   int UpdateParameter(const std::string& table_name,
                       const base::ConstArray<uint64_t>& keys,
-                      const std::vector<std::vector<float>>* grads) override;
+                      const base::RecTensor& grads) override;
   int UpdateParameterFlat(const std::string& table_name,
                           const base::ConstArray<uint64_t>& keys,
                           const float* grads,
                           int64_t num_rows,
-                          int64_t embedding_dim) override;
+                          int64_t embedding_dim);
   int InitEmbeddingTable(const std::string& table_name,
                          const EmbeddingTableConfig& config) override;
-  int AsyncGetParameter(const base::ConstArray<uint64_t>& keys,
-                        float* values) override;
   bool GetSlotPayloadRegion(const void** base, std::size_t* bytes) const;
   uint32_t CurrentReadyQueueId() const;
   LocalShmRequestProfile GetLastRequestProfile() const;
@@ -87,11 +89,7 @@ public:
   bool IsPrefetchDone(uint64_t prefetch_id) override;
   void WaitForPrefetch(uint64_t prefetch_id) override;
   bool GetPrefetchResult(uint64_t prefetch_id,
-                         std::vector<std::vector<float>>* values) override;
-  bool GetPrefetchResultFlat(uint64_t prefetch_id,
-                             std::vector<float>* values,
-                             int64_t* num_rows,
-                             int64_t embedding_dim) override;
+                         base::RecTensor& values) override;
 
 private:
   int AcquireSlot();

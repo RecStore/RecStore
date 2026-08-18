@@ -110,9 +110,10 @@ TEST_F(LocalShmOpComponentTest, LookupFlatReadsValuesFromLocalShmClient) {
   recstore::LocalShmPSClient client(config["local_shm"]);
   ASSERT_EQ(client.InitEmbeddingTable("table_component", {128, 4}), 0);
 
-  std::vector<uint64_t> key_storage             = {3, 8};
-  std::vector<std::vector<float>> value_storage = {
-      {3.0f, 4.0f, 5.0f, 6.0f}, {8.0f, 9.0f, 10.0f, 11.0f}};
+  std::vector<uint64_t> key_storage = {3, 8};
+  std::vector<float> value_flat     = {
+      3.0f, 4.0f, 5.0f, 6.0f, 8.0f, 9.0f, 10.0f, 11.0f};
+  base::RecTensor value_storage(value_flat.data(), {2, 4});
   base::ConstArray<uint64_t> key_array(key_storage);
   ASSERT_EQ(client.PutParameter(key_array, value_storage), 0);
 

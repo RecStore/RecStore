@@ -9,36 +9,35 @@
 #include <vector>
 
 #include "base/array.h"
-#include "base/factory.h"
 #include "base/log.h"
-#include "ps/rdma/base_client.h"
+#include "ps/base/shard_client.h"
 #include "ps/rdma/rc_transport.h"
 #include "ps/rdma/rdma_protocol.h"
 #include "ps/rdma/rdma_status.h"
 
 namespace petps {
 
-class PetPSClient : public BaseParameterClient {
+class PetPSClient : public recstore::ShardClient {
 public:
   explicit PetPSClient(const std::string& host, int port, int shard);
   PetPSClient(
       const std::string& host, int port, int shard, int logical_client_id);
   ~PetPSClient() override;
 
-  void Barrier(const std::string& ss, int k) override;
-  void InitThread() override;
+  void Barrier(const std::string& ss, int k);
+  void InitThread();
 
-  int GetParameter(base::ConstArray<uint64_t> keys,
-                   std::vector<std::vector<float>>* values) override;
+  int GetParameter(const base::ConstArray<uint64_t>& keys,
+                   base::RecTensor& values) override;
   int GetParameter(base::ConstArray<uint64_t> keys,
                    float* values,
                    bool isAsync,
                    int async_req_id  = 0,
-                   int embedding_dim = 0) override;
+                   int embedding_dim = 0);
 
   std::size_t ResponseBufferBytes(std::size_t key_count) const;
 
-  void* GetReceiveBuffer(size_t size) override;
+  void* GetReceiveBuffer(size_t size);
   // Return a GetReceiveBuffer() result to the pool once the owning batch has
   // fully consumed it (after FinalizeBatchIfNeeded). Buffers not registered in
   // the pool (user-provided direct write targets) are ignored.
@@ -48,19 +47,29 @@ public:
       std::size_t* key_count,
       std::size_t* response_bytes,
       std::int32_t* status_code);
-  bool QueryRPCFinished(int rpc_id) override;
-  void WaitRPCFinish(int rpc_id) override;
-  void RevokeRPCResource(int rpc_id) override;
+  bool QueryRPCFinished(int rpc_id);
+  void WaitRPCFinish(int rpc_id);
+  void RevokeRPCResource(int rpc_id);
 
   int PutParameter(const std::vector<uint64_t>& keys,
-                   const std::vector<std::vector<float>>& values) override;
+                   const base::RecTensor& values);
+  int PutParameter(const base::ConstArray<uint64_t>& keys,
+                   const base::RecTensor& values) override;
   int InitEmbeddingTable(const std::string& table_name,
                          std::uint64_t num_embeddings,
                          std::uint64_t embedding_dim,
-                         std::uint64_t table_id = 0) override;
+                         std::uint64_t table_id = 0);
+  int InitEmbeddingTable(const std::string& table_name,
+                         const recstore::EmbeddingTableConfig& config) override;
   int UpdateParameter(const std::string& table_name,
-                      base::ConstArray<uint64_t> keys,
-                      const std::vector<std::vector<float>>* grads) override;
+                      const base::ConstArray<uint64_t>& keys,
+                      const base::RecTensor& grads) override;
+  void Command(recstore::PSCommand command) override;
+  uint64_t PrefetchParameter(const base::ConstArray<uint64_t>& keys) override;
+  bool IsPrefetchDone(uint64_t prefetch_id) override;
+  void WaitForPrefetch(uint64_t prefetch_id) override;
+  bool GetPrefetchResult(uint64_t prefetch_id,
+                         base::RecTensor& values) override;
   int SubmitUpdateParameterFlat(const std::string& table_name,
                                 base::ConstArray<uint64_t> keys,
                                 const float* grads,
@@ -74,7 +83,7 @@ public:
       const std::size_t* row_indices,
       std::size_t row_count);
   int WaitUpdateParameter(int rpc_id);
-  int FakePutParameter(base::ConstArray<uint64_t> keys, float* values) override;
+  int FakePutParameter(base::ConstArray<uint64_t> keys, float* values);
 
 private:
   struct SlotContext {
@@ -169,7 +178,15 @@ private:
       std::size_t response_bytes,
       bool is_async);
 
+  struct PrefetchState {
+    int rpc_id             = -1; // In-flight async GET handle.
+    float* recv_buffer     = nullptr; // Response buffer for the async GET.
+    std::size_t key_count  = 0;
+    int64_t embedding_dim  = 0;
+  };
+
   std::string namespace_token_; // Shared-memory namespace token.
+  int shard_ = 0;
   int explicit_client_id_ = -1; // Optional logical client id override.
   int client_id_          = -1; // Logical client id derived from global id.
   RcTransportConfig config_;    // Transport slot sizing and shard config.
@@ -189,15 +206,11 @@ private:
   std::unordered_map<int, PendingRpc> pending_rpcs_; // In-flight RPC table.
   std::mutex mu_; // Guards transport setup and pending RPC state.
   std::atomic<int> next_rpc_id_{1}; // Monotonic RPC handle generator.
+  std::mutex prefetch_mu_; // Guards the prefetch handle table.
+  std::unordered_map<uint64_t, PrefetchState> prefetches_;
+  uint64_t next_prefetch_id_ = 1;
   ProfileCounters profile_;
   bool thread_initialized_ = false; // Set after InitThread has run.
 };
-
-FACTORY_REGISTER(BaseParameterClient,
-                 PetPSClient,
-                 PetPSClient,
-                 const std::string&,
-                 int,
-                 int);
 
 } // namespace petps

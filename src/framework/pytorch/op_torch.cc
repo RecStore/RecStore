@@ -623,24 +623,17 @@ emb_wait_result_torch(int64_t prefetch_id, int64_t embedding_dim) {
   TORCH_CHECK(embedding_dim > 0, "Embedding dimension must be positive");
   auto op = GetKVClientOp();
   op->WaitForPrefetch(static_cast<uint64_t>(prefetch_id));
-  auto flat_values = std::make_shared<std::vector<float>>();
-  int64_t L = 0;
-  op->GetPretchResultFlat(
-      static_cast<uint64_t>(prefetch_id), flat_values.get(), &L, embedding_dim);
+  auto owned = std::make_shared<base::RecTensor>(
+      std::vector<int64_t>{0, embedding_dim}, base::DataType::FLOAT32);
+  op->GetPretchResult(static_cast<uint64_t>(prefetch_id), *owned);
   auto options =
       torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU);
+  const int64_t L = owned->dim() == 2 ? owned->shape(0) : 0;
   if (L == 0) {
     return torch::empty({0, embedding_dim}, options);
   }
-  TORCH_CHECK(flat_values->size() ==
-                  static_cast<size_t>(L) *
-                      static_cast<size_t>(embedding_dim),
-              "Prefetch result size does not match its tensor shape");
   return torch::from_blob(
-      flat_values->data(),
-      {L, embedding_dim},
-      [flat_values](void*) {},
-      options);
+      owned->data(), {L, embedding_dim}, [owned](void*) {}, options);
 }
 
 void emb_update_torch(const torch::Tensor& keys, const torch::Tensor& grads) {

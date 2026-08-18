@@ -25,12 +25,7 @@ public:
   uint64_t Prefetch(const base::RecTensor& keys, int64_t embedding_dim);
   bool IsPrefetchDone(uint64_t prefetch_id);
   void WaitForPrefetch(uint64_t prefetch_id);
-  void ConsumePrefetch(uint64_t prefetch_id,
-                       std::vector<std::vector<float>>* values);
-  void ConsumePrefetchFlat(uint64_t prefetch_id,
-                           std::vector<float>* values,
-                           int64_t* num_rows,
-                           int64_t embedding_dim);
+  void ConsumePrefetch(uint64_t prefetch_id, base::RecTensor& values);
 
 private:
   struct Impl;

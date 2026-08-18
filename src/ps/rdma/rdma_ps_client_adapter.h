@@ -27,43 +27,35 @@ EmbeddedRdmaClientIdentity ResolveEmbeddedRdmaClientIdentity(int num_shards);
 void InitializeRdmaProcessRuntime();
 
 class RDMAPSClientAdapter : public BasePSClient {
+  // RdmaRawAccess exposes the raw async RPC lifecycle (submit → poll → wait →
+  // revoke) to the low-level RDMA benchmarks without widening the production
+  // BasePSClient surface.
+  friend class RdmaRawAccess;
+
 public:
   explicit RDMAPSClientAdapter(json config);
   ~RDMAPSClientAdapter() override = default;
 
   int GetParameter(const base::ConstArray<uint64_t>& keys,
-                   float* values) override;
+                   base::RecTensor& values) override;
   int PutParameter(const base::ConstArray<uint64_t>& keys,
-                   const std::vector<std::vector<float>>& values) override;
+                   const base::RecTensor& values) override;
   int UpdateParameter(const std::string& table_name,
                       const base::ConstArray<uint64_t>& keys,
-                      const std::vector<std::vector<float>>* grads) override;
-  int UpdateParameterFlat(const std::string& table_name,
-                          const base::ConstArray<uint64_t>& keys,
-                          const float* grads,
-                          int64_t num_rows,
-                          int64_t embedding_dim) override;
-  uint64_t SubmitUpdateParameterFlatAsync(
+                      const base::RecTensor& grads) override;
+  uint64_t SubmitUpdateParameterAsync(
       const std::string& table_name,
       const base::ConstArray<uint64_t>& keys,
-      const float* grads,
-      int64_t num_rows,
-      int64_t embedding_dim);
-  int WaitUpdateParameterFlat(uint64_t update_id);
+      const base::RecTensor& grads) override;
+  int WaitUpdateParameter(uint64_t update_id) override;
   int InitEmbeddingTable(const std::string& table_name,
                          const EmbeddingTableConfig& config) override;
-  int AsyncGetParameter(const base::ConstArray<uint64_t>& keys,
-                        float* values) override;
   void Command(PSCommand command) override;
   uint64_t PrefetchParameter(const base::ConstArray<uint64_t>& keys) override;
   bool IsPrefetchDone(uint64_t prefetch_id) override;
   void WaitForPrefetch(uint64_t prefetch_id) override;
   bool GetPrefetchResult(uint64_t prefetch_id,
-                         std::vector<std::vector<float>>* values) override;
-  bool GetPrefetchResultFlat(uint64_t prefetch_id,
-                             std::vector<float>* values,
-                             int64_t* num_rows,
-                             int64_t embedding_dim) override;
+                         base::RecTensor& values) override;
 
 private:
   struct TableState {
@@ -122,7 +114,7 @@ private:
   bool initialized_ = false;
   std::unordered_set<std::thread::id> initialized_threads_;
   std::vector<std::unique_ptr<petps::PetPSClient>> shard_clients_;
-  BaseParameterClient* client_ = nullptr;
+  petps::PetPSClient* client_ = nullptr;
   int num_shards_              = 1;
   std::string hash_method_     = "city_hash";
   std::unordered_map<int, int> shard_to_client_index_;
@@ -140,6 +132,32 @@ private:
   uint64_t next_prefetch_id_ = 1;
   std::unordered_map<uint64_t, PendingUpdate> pending_updates_;
   uint64_t next_update_id_ = 1;
+};
+
+// Friend accessor for the low-level RDMA benchmarks. Forwards the adapter's
+// private raw-async RPC lifecycle so a benchmark can drive multi-shard async
+// GETs (submit → poll → wait → revoke) directly, without the benchmark
+// reimplementing routing/batch bookkeeping.
+class RdmaRawAccess {
+public:
+  explicit RdmaRawAccess(RDMAPSClientAdapter* adapter) : adapter_(adapter) {}
+
+  int SubmitGetParameter(base::ConstArray<uint64_t> keys,
+                         float* values,
+                         bool isAsync,
+                         int async_req_id,
+                         int64_t embedding_dim) {
+    return adapter_->SubmitGetParameter(
+        keys, values, isAsync, async_req_id, embedding_dim);
+  }
+  bool QueryRPCFinished(int rpc_id) {
+    return adapter_->QueryRPCFinished(rpc_id);
+  }
+  void WaitRPCFinish(int rpc_id) { adapter_->WaitRPCFinish(rpc_id); }
+  void RevokeRPCResource(int rpc_id) { adapter_->RevokeRPCResource(rpc_id); }
+
+private:
+  RDMAPSClientAdapter* adapter_;
 };
 
 } // namespace recstore

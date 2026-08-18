@@ -2,7 +2,6 @@
 
 #include "framework/common/ps_client_config_adapter.h"
 #include "ps/client_factory.h"
-#include "ps/brpc/brpc_ps_client.h"
 #include "ps/brpc/dist_brpc_ps_client.h"
 #include "ps/grpc/dist_grpc_ps_client.h"
 #include "ps/local_shm/local_shm_client.h"
@@ -143,7 +142,7 @@ TEST(PSClientFactoryTest, CreatesDistributedBrpcClientWhenConfigured) {
             nullptr);
 }
 
-TEST(PSClientFactoryTest, CreatesBrpcClientWithoutFactoryRegistration) {
+TEST(PSClientFactoryTest, CreatesDistributedBrpcClientForSingleServer) {
   json config = {
       {"cache_ps", {{"ps_type", "BRPC"}}},
       {"client", {{"host", "127.0.0.1"}, {"port", 25000}, {"shard", 0}}},
@@ -152,7 +151,8 @@ TEST(PSClientFactoryTest, CreatesBrpcClientWithoutFactoryRegistration) {
   std::unique_ptr<BasePSClient> client =
       CreatePSClient(ResolvePSClientOptionsFromFrameworkConfig(config));
   ASSERT_NE(client, nullptr);
-  EXPECT_NE(dynamic_cast<BRPCParameterClient*>(client.get()), nullptr);
+  EXPECT_NE(dynamic_cast<DistributedBRPCParameterClient*>(client.get()),
+            nullptr);
 }
 
 TEST(PSClientFactoryTest, CreatesLocalShmClientFromConfig) {

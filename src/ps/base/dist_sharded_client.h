@@ -23,6 +23,7 @@
 #include "base/log.h"
 #include "base/timer.h"
 #include "ps/base/base_client.h"
+#include "ps/base/shard_client.h"
 
 #ifdef ENABLE_PERF_REPORT
 #  include <chrono>
@@ -39,6 +40,9 @@ namespace recstore {
 // InitEmbeddingTable and the Prefetch* family.
 template <typename ClientT>
 class DistributedShardedClient : public BasePSClient {
+  static_assert(std::is_base_of<ShardClient, ClientT>::value,
+                "ClientT must derive from ShardClient");
+
 public:
   explicit DistributedShardedClient(json config, const char* transport_name)
       : BasePSClient(config), transport_name_(transport_name) {
@@ -116,98 +120,6 @@ public:
 
   // ---- Extended (non-virtual) API ----------------------------------------
 
-  bool GetParameter(const base::ConstArray<uint64_t>& keys,
-                    std::vector<std::vector<float>>* values) {
-#ifdef ENABLE_PERF_REPORT
-    auto start_time = std::chrono::high_resolution_clock::now();
-#endif
-
-    if (keys.Size() == 0) {
-      values->clear();
-      return true;
-    }
-
-    xmh::Timer timer(std::string("Distributed") + transport_name_ +
-                     "ParameterClient::GetParameter");
-
-    std::vector<std::vector<uint64_t>> partitioned_keys;
-    PartitionKeys(keys, partitioned_keys);
-
-    std::vector<std::future<int>> futures;
-    std::vector<std::vector<std::vector<float>>> partitioned_results(
-        num_shards_);
-
-    for (int shard_id = 0; shard_id < num_shards_; ++shard_id) {
-      if (partitioned_keys[shard_id].empty()) {
-        continue;
-      }
-
-      auto it = shard_to_client_index_.find(shard_id);
-      if (it == shard_to_client_index_.end()) {
-        LOG(ERROR) << "No client found for shard " << shard_id;
-        return false;
-      }
-
-      int client_index = it->second;
-      auto* client     = clients_[client_index].get();
-
-      futures.push_back(std::async(
-          std::launch::async, [=, &partitioned_keys, &partitioned_results]() {
-            const auto& shard_keys_vec = partitioned_keys[shard_id];
-            auto& shard_result_vec     = partitioned_results[shard_id];
-            shard_result_vec.clear();
-            shard_result_vec.reserve(shard_keys_vec.size());
-
-            for (size_t start = 0; start < shard_keys_vec.size();
-                 start += static_cast<size_t>(max_keys_per_request_)) {
-              size_t end =
-                  std::min(start + static_cast<size_t>(max_keys_per_request_),
-                           shard_keys_vec.size());
-              base::ConstArray<uint64_t> shard_chunk(
-                  shard_keys_vec.data() + start, static_cast<int>(end - start));
-              std::vector<std::vector<float>> chunk_result;
-              if (!client->GetParameter(shard_chunk, &chunk_result)) {
-                return 0;
-              }
-              shard_result_vec.insert(shard_result_vec.end(),
-                                      chunk_result.begin(),
-                                      chunk_result.end());
-            }
-            return 1;
-          }));
-    }
-
-    for (auto& future : futures) {
-      if (!future.get()) {
-        LOG(ERROR) << "Failed to get parameters from one of the shards";
-        return false;
-      }
-    }
-
-    MergeResults(keys, partitioned_results, values);
-
-#ifdef ENABLE_PERF_REPORT
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
-                        end_time - start_time)
-                        .count();
-    double start_us = std::chrono::duration_cast<std::chrono::microseconds>(
-                          start_time.time_since_epoch())
-                          .count();
-    FlameGraphData fg_data = {
-        "dist_client::GetParameter",
-        start_us,
-        1, // level
-        static_cast<double>(duration),
-        static_cast<double>(duration)};
-    std::string unique_id =
-        "embread_debug" + std::to_string(recstore::g_trace_id);
-    report_flame_graph("emb_read_flame_map", unique_id.c_str(), fg_data);
-#endif
-
-    return true;
-  }
-
   bool ClearPS() {
     std::vector<std::future<bool>> futures;
     for (auto& client : clients_) {
@@ -276,62 +188,128 @@ public:
   // ---- BasePSClient virtual overrides ------------------------------------
 
   int GetParameter(const base::ConstArray<uint64_t>& keys,
-                   float* values) override {
-    std::vector<std::vector<float>> result_vectors;
-    bool success = GetParameter(keys, &result_vectors);
-
-    if (!success) {
+                   base::RecTensor& values) override {
+#ifdef ENABLE_PERF_REPORT
+    auto start_time = std::chrono::high_resolution_clock::now();
+#endif
+    if (!IsFloatEmbeddingValues(values, static_cast<int64_t>(keys.Size()))) {
       return -1;
     }
-
     if (keys.Size() == 0) {
       return 0;
     }
-    int emb_dim = 0;
-    for (const auto& row : result_vectors) {
-      if (!row.empty()) {
-        emb_dim = static_cast<int>(row.size());
-        break;
-      }
-    }
-    if (emb_dim == 0) {
-      LOG(WARNING) << "No valid embeddings found";
-      return 0;
+
+    xmh::Timer timer(std::string("Distributed") + transport_name_ +
+                     "ParameterClient::GetParameter");
+
+    std::vector<std::vector<uint64_t>> partitioned_keys;
+    PartitionKeys(keys, partitioned_keys);
+    const int64_t D = values.shape(1);
+
+    std::vector<std::future<int>> futures;
+    std::vector<base::RecTensor> partitioned_results;
+    partitioned_results.reserve(static_cast<size_t>(num_shards_));
+    for (int shard_id = 0; shard_id < num_shards_; ++shard_id) {
+      partitioned_results.emplace_back(
+          std::vector<int64_t>{
+              static_cast<int64_t>(partitioned_keys[shard_id].size()), D},
+          base::DataType::FLOAT32);
     }
 
-    for (size_t i = 0; i < result_vectors.size(); ++i) {
-      const auto& row = result_vectors[i];
-      if (row.empty()) {
+    for (int shard_id = 0; shard_id < num_shards_; ++shard_id) {
+      if (partitioned_keys[shard_id].empty()) {
         continue;
       }
-      std::copy(row.begin(), row.end(), values + i * emb_dim);
+
+      auto it = shard_to_client_index_.find(shard_id);
+      if (it == shard_to_client_index_.end()) {
+        LOG(ERROR) << "No client found for shard " << shard_id;
+        return -1;
+      }
+
+      int client_index = it->second;
+      auto* client     = clients_[client_index].get();
+
+      futures.push_back(std::async(
+          std::launch::async,
+          [=, &partitioned_keys, &partitioned_results]() {
+            const auto& shard_keys_vec = partitioned_keys[shard_id];
+            float* shard_dst = partitioned_results[shard_id].data_as<float>();
+            for (size_t start = 0; start < shard_keys_vec.size();
+                 start += static_cast<size_t>(max_keys_per_request_)) {
+              size_t end =
+                  std::min(start + static_cast<size_t>(max_keys_per_request_),
+                           shard_keys_vec.size());
+              base::ConstArray<uint64_t> shard_chunk(
+                  shard_keys_vec.data() + start, static_cast<int>(end - start));
+              base::RecTensor chunk(
+                  shard_dst + start * static_cast<size_t>(D),
+                  {static_cast<int64_t>(end - start), D});
+              if (client->GetParameter(shard_chunk, chunk) != 0) {
+                return 0;
+              }
+            }
+            return 1;
+          }));
     }
+
+    for (auto& future : futures) {
+      if (!future.get()) {
+        LOG(ERROR) << "Failed to get parameters from one of the shards";
+        return -1;
+      }
+    }
+
+    for (int shard_id = 0; shard_id < num_shards_; ++shard_id) {
+      ScatterEmbeddingRows(
+          partitioned_results[shard_id], key_index_mapping_[shard_id], values);
+    }
+
+#ifdef ENABLE_PERF_REPORT
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                        end_time - start_time)
+                        .count();
+    double start_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                          start_time.time_since_epoch())
+                          .count();
+    FlameGraphData fg_data = {
+        "dist_client::GetParameter",
+        start_us,
+        1,
+        static_cast<double>(duration),
+        static_cast<double>(duration)};
+    std::string unique_id =
+        "embread_debug" + std::to_string(recstore::g_trace_id);
+    report_flame_graph("emb_read_flame_map", unique_id.c_str(), fg_data);
+#endif
+
     return 0;
   }
 
-  int AsyncGetParameter(const base::ConstArray<uint64_t>& keys,
-                        float* values) override {
-    return GetParameter(keys, values);
-  }
-
   int PutParameter(const base::ConstArray<uint64_t>& keys,
-                   const std::vector<std::vector<float>>& values) override {
-    if (keys.Size() != values.size()) {
-      LOG(ERROR) << "Keys and values size mismatch: " << keys.Size() << " vs "
-                 << values.size();
+                   const base::RecTensor& values) override {
+    if (!IsFloatEmbeddingValues(values, static_cast<int64_t>(keys.Size()))) {
+      LOG(ERROR) << "Keys and values size mismatch: " << keys.Size();
       return -1;
+    }
+    if (keys.Size() == 0) {
+      return 0;
     }
 
     std::vector<std::vector<uint64_t>> partitioned_keys;
     PartitionKeys(keys, partitioned_keys);
+    const int64_t D = values.shape(1);
 
-    std::vector<std::vector<std::vector<float>>> partitioned_values(
-        num_shards_);
+    std::vector<base::RecTensor> partitioned_values;
+    partitioned_values.reserve(static_cast<size_t>(num_shards_));
     for (int shard_id = 0; shard_id < num_shards_; ++shard_id) {
-      for (size_t i = 0; i < key_index_mapping_[shard_id].size(); ++i) {
-        size_t original_index = key_index_mapping_[shard_id][i];
-        partitioned_values[shard_id].push_back(values[original_index]);
-      }
+      partitioned_values.emplace_back(
+          std::vector<int64_t>{
+              static_cast<int64_t>(key_index_mapping_[shard_id].size()), D},
+          base::DataType::FLOAT32);
+      GatherEmbeddingRows(
+          values, key_index_mapping_[shard_id], partitioned_values[shard_id]);
     }
 
     std::vector<std::future<int>> futures;
@@ -350,9 +328,10 @@ public:
       auto* client     = clients_[client_index].get();
 
       futures.push_back(std::async(
-          std::launch::async, [=, &partitioned_keys, &partitioned_values]() {
+          std::launch::async,
+          [=, &partitioned_keys, &partitioned_values]() {
             const auto& shard_keys_vec = partitioned_keys[shard_id];
-            const auto& shard_vals_vec = partitioned_values[shard_id];
+            float* shard_src = partitioned_values[shard_id].data_as<float>();
             for (size_t start = 0; start < shard_keys_vec.size();
                  start += static_cast<size_t>(max_keys_per_request_)) {
               size_t end =
@@ -360,9 +339,10 @@ public:
                            shard_keys_vec.size());
               base::ConstArray<uint64_t> shard_chunk(
                   shard_keys_vec.data() + start, static_cast<int>(end - start));
-              std::vector<std::vector<float>> value_chunk(
-                  shard_vals_vec.begin() + start, shard_vals_vec.begin() + end);
-              if (client->PutParameter(shard_chunk, value_chunk) != 1) {
+              base::RecTensor value_chunk(
+                  shard_src + start * static_cast<size_t>(D),
+                  {static_cast<int64_t>(end - start), D});
+              if (client->PutParameter(shard_chunk, value_chunk) != 0) {
                 return 0;
               }
             }
@@ -394,14 +374,9 @@ public:
 
   int UpdateParameter(const std::string& table_name,
                       const base::ConstArray<uint64_t>& keys,
-                      const std::vector<std::vector<float>>* grads) override {
-    if (grads == nullptr) {
-      LOG(ERROR) << "UpdateParameter grads pointer is null";
-      return -1;
-    }
-    if (keys.Size() != grads->size()) {
-      LOG(ERROR) << "UpdateParameter keys/grads size mismatch: " << keys.Size()
-                 << " vs " << grads->size();
+                      const base::RecTensor& grads) override {
+    if (!IsFloatEmbeddingValues(grads, static_cast<int64_t>(keys.Size()))) {
+      LOG(ERROR) << "UpdateParameter keys/grads size mismatch: " << keys.Size();
       return -1;
     }
     if (keys.Size() == 0) {
@@ -410,13 +385,17 @@ public:
 
     std::vector<std::vector<uint64_t>> partitioned_keys;
     PartitionKeys(keys, partitioned_keys);
+    const int64_t D = grads.shape(1);
 
-    std::vector<std::vector<std::vector<float>>> partitioned_grads(num_shards_);
+    std::vector<base::RecTensor> partitioned_grads;
+    partitioned_grads.reserve(static_cast<size_t>(num_shards_));
     for (int shard_id = 0; shard_id < num_shards_; ++shard_id) {
-      for (size_t i = 0; i < key_index_mapping_[shard_id].size(); ++i) {
-        size_t original_index = key_index_mapping_[shard_id][i];
-        partitioned_grads[shard_id].push_back((*grads)[original_index]);
-      }
+      partitioned_grads.emplace_back(
+          std::vector<int64_t>{
+              static_cast<int64_t>(key_index_mapping_[shard_id].size()), D},
+          base::DataType::FLOAT32);
+      GatherEmbeddingRows(
+          grads, key_index_mapping_[shard_id], partitioned_grads[shard_id]);
     }
 
     std::vector<std::future<int>> futures;
@@ -434,9 +413,10 @@ public:
       auto* client     = clients_[client_index].get();
 
       futures.push_back(std::async(
-          std::launch::async, [=, &partitioned_keys, &partitioned_grads]() {
-            const auto& shard_keys_vec  = partitioned_keys[shard_id];
-            const auto& shard_grads_vec = partitioned_grads[shard_id];
+          std::launch::async,
+          [=, &partitioned_keys, &partitioned_grads]() {
+            const auto& shard_keys_vec = partitioned_keys[shard_id];
+            float* shard_src = partitioned_grads[shard_id].data_as<float>();
             for (size_t start = 0; start < shard_keys_vec.size();
                  start += static_cast<size_t>(max_keys_per_request_)) {
               size_t end =
@@ -444,11 +424,11 @@ public:
                            shard_keys_vec.size());
               base::ConstArray<uint64_t> shard_chunk(
                   shard_keys_vec.data() + start, static_cast<int>(end - start));
-              std::vector<std::vector<float>> grad_chunk(
-                  shard_grads_vec.begin() + start,
-                  shard_grads_vec.begin() + end);
+              base::RecTensor grad_chunk(
+                  shard_src + start * static_cast<size_t>(D),
+                  {static_cast<int64_t>(end - start), D});
               if (client->UpdateParameter(
-                      table_name, shard_chunk, &grad_chunk) != 0) {
+                      table_name, shard_chunk, grad_chunk) != 0) {
                 return -1;
               }
             }
@@ -464,35 +444,6 @@ public:
     }
 
     return 0;
-  }
-
-  int UpdateParameterFlat(const std::string& table_name,
-                          const base::ConstArray<uint64_t>& keys,
-                          const float* grads,
-                          int64_t num_rows,
-                          int64_t embedding_dim) override {
-    if (grads == nullptr) {
-      LOG(ERROR) << "UpdateParameterFlat grads pointer is null";
-      return -1;
-    }
-    if (num_rows < 0 || embedding_dim <= 0) {
-      LOG(ERROR) << "UpdateParameterFlat invalid shape: rows=" << num_rows
-                 << " dim=" << embedding_dim;
-      return -1;
-    }
-    if (keys.Size() != static_cast<size_t>(num_rows)) {
-      LOG(ERROR) << "UpdateParameterFlat keys/grads size mismatch: "
-                 << keys.Size() << " vs " << num_rows;
-      return -1;
-    }
-
-    std::vector<std::vector<float>> row_grads;
-    row_grads.reserve(static_cast<size_t>(num_rows));
-    for (int64_t i = 0; i < num_rows; ++i) {
-      const float* row = grads + i * embedding_dim;
-      row_grads.emplace_back(row, row + embedding_dim);
-    }
-    return UpdateParameter(table_name, keys, &row_grads);
   }
 
   int InitEmbeddingTable(const std::string& table_name,
@@ -533,8 +484,8 @@ public:
         auto* client = clients_[shard_state.client_index].get();
         for (uint64_t child_prefetch_id : shard_state.child_prefetch_ids) {
           client->WaitForPrefetch(child_prefetch_id);
-          std::vector<std::vector<float>> tmp;
-          client->GetPrefetchResult(child_prefetch_id, &tmp);
+          base::RecTensor discard;
+          client->GetPrefetchResult(child_prefetch_id, discard);
         }
       }
     };
@@ -646,12 +597,7 @@ public:
   }
 
   bool GetPrefetchResult(uint64_t prefetch_id,
-                         std::vector<std::vector<float>>* values) override {
-    if (values == nullptr) {
-      LOG(ERROR) << "GetPrefetchResult output pointer is null";
-      return false;
-    }
-
+                         base::RecTensor& values) override {
     std::shared_ptr<DistPrefetchState> state;
     {
       std::lock_guard<std::mutex> lk(prefetch_mu_);
@@ -663,41 +609,57 @@ public:
       state = it->second;
     }
 
-    // Ensure all child RPCs are completed before consuming payloads.
     WaitForPrefetch(prefetch_id);
 
-    values->clear();
-    values->resize(state->total_keys);
+    const bool discard =
+        values.data() == nullptr && values.dim() == 0;
+    if (!discard &&
+        !EnsureEmbeddingOutput(values,
+                               static_cast<int64_t>(state->total_keys))) {
+      return false;
+    }
+    const int64_t D = discard ? 0 : values.shape(1);
 
     bool ok_all = true;
     for (const auto& shard_state : state->shard_states) {
       auto* client        = clients_[shard_state.client_index].get();
       size_t shard_offset = 0;
       for (size_t i = 0; i < shard_state.child_prefetch_ids.size(); ++i) {
-        std::vector<std::vector<float>> chunk_values;
-        if (!client->GetPrefetchResult(shard_state.child_prefetch_ids[i],
-                                       &chunk_values)) {
-          ok_all = false;
-          break;
-        }
         const int expected =
             (i < shard_state.chunk_sizes.size() ? shard_state.chunk_sizes[i]
                                                 : -1);
-        if (expected >= 0 &&
-            static_cast<int>(chunk_values.size()) != expected) {
-          LOG(ERROR) << "Prefetch chunk size mismatch: got "
-                     << chunk_values.size() << ", expected " << expected;
+        base::RecTensor chunk_values;
+        if (!discard && expected > 0) {
+          chunk_values = base::RecTensor(
+              {static_cast<int64_t>(expected), D}, base::DataType::FLOAT32);
+        }
+        if (!client->GetPrefetchResult(shard_state.child_prefetch_ids[i],
+                                       chunk_values)) {
           ok_all = false;
           break;
         }
-        for (const auto& row : chunk_values) {
+        if (discard || expected <= 0) {
+          continue;
+        }
+        if (static_cast<int>(chunk_values.shape(0)) != expected) {
+          LOG(ERROR) << "Prefetch chunk size mismatch: got "
+                     << chunk_values.shape(0) << ", expected " << expected;
+          ok_all = false;
+          break;
+        }
+        const float* src = chunk_values.data_as<float>();
+        float* dst       = values.data_as<float>();
+        for (int row = 0; row < expected; ++row) {
           if (shard_offset >= shard_state.original_indices.size()) {
             LOG(ERROR) << "Prefetch result overflow in shard "
                        << shard_state.shard_id;
             ok_all = false;
             break;
           }
-          (*values)[shard_state.original_indices[shard_offset++]] = row;
+          const size_t orig = shard_state.original_indices[shard_offset++];
+          std::memcpy(dst + orig * static_cast<size_t>(D),
+                      src + row * D,
+                      static_cast<size_t>(D) * sizeof(float));
         }
         if (!ok_all) {
           break;
@@ -713,43 +675,6 @@ public:
       prefetch_states_.erase(prefetch_id);
     }
     return ok_all;
-  }
-
-  bool GetPrefetchResultFlat(uint64_t prefetch_id,
-                             std::vector<float>* values,
-                             int64_t* num_rows,
-                             int64_t embedding_dim) override {
-    if (values == nullptr || num_rows == nullptr) {
-      LOG(ERROR) << "GetPrefetchResultFlat output pointer is null";
-      return false;
-    }
-    if (embedding_dim <= 0) {
-      LOG(ERROR) << "GetPrefetchResultFlat invalid embedding_dim: "
-                 << embedding_dim;
-      return false;
-    }
-
-    std::vector<std::vector<float>> merged_values;
-    if (!GetPrefetchResult(prefetch_id, &merged_values)) {
-      return false;
-    }
-
-    *num_rows = static_cast<int64_t>(merged_values.size());
-    values->assign(
-        static_cast<size_t>(*num_rows) * static_cast<size_t>(embedding_dim),
-        0.0f);
-    for (size_t i = 0; i < merged_values.size(); ++i) {
-      const auto& row = merged_values[i];
-      if (row.empty()) {
-        continue;
-      }
-      const int64_t copy_d =
-          std::min<int64_t>(embedding_dim, static_cast<int64_t>(row.size()));
-      std::memcpy(values->data() + i * static_cast<size_t>(embedding_dim),
-                  row.data(),
-                  static_cast<size_t>(copy_d) * sizeof(float));
-    }
-    return true;
   }
 
 private:
@@ -820,23 +745,6 @@ private:
     }
 
     partitioned_keys = partitioned_key_buffer_;
-  }
-
-  void MergeResults(
-      const base::ConstArray<uint64_t>& keys,
-      const std::vector<std::vector<std::vector<float>>>& partitioned_results,
-      std::vector<std::vector<float>>* values) const {
-    values->clear();
-    values->resize(keys.Size());
-
-    for (int shard_id = 0; shard_id < num_shards_; ++shard_id) {
-      for (size_t i = 0; i < key_index_mapping_[shard_id].size(); ++i) {
-        size_t original_index = key_index_mapping_[shard_id][i];
-        if (i < partitioned_results[shard_id].size()) {
-          (*values)[original_index] = partitioned_results[shard_id][i];
-        }
-      }
-    }
   }
 
   const char* transport_name_;

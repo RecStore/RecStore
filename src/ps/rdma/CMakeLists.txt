@@ -5,7 +5,6 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_library(wq_ps_client
     control_plane.cc
     petps_client.cc
-    allshards_ps_client.cc
     rc_options.cc
     rc_transport.cc
     raw_verbs_transport.cc
@@ -103,24 +102,6 @@ add_test(
     )
     set_tests_properties(
         petps_single_shard_test
-        PROPERTIES
-            SKIP_RETURN_CODE 77
-            TIMEOUT 60
-            LABELS "rdma_integration"
-    )
-
-    add_test(
-        NAME petps_multi_shard_test
-        COMMAND ${Python3_EXECUTABLE}
-                ${PROJECT_SOURCE_DIR}/src/test/scripts/run_petps_integration.py
-                --server-count 2
-                --client-count 1
-                --config-path ${PROJECT_SOURCE_DIR}/src/test/configs/recstore_config.rdma_multishard_test.json
-                --test-binary $<TARGET_FILE:petps_integration_test>
-                --gtest-filter=PetPSIntegrationTest.PutGetRoundTripMultiShard
-    )
-    set_tests_properties(
-        petps_multi_shard_test
         PROPERTIES
             SKIP_RETURN_CODE 77
             TIMEOUT 60

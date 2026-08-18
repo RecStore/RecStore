@@ -2,6 +2,7 @@
 #include "ps/local_shm/local_shm_futex.h"
 #include "ps/local_shm/local_shm_queue.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -130,9 +131,34 @@ LocalShmPSClient::LocalShmPSClient(json config) : BasePSClient(config) {
 }
 
 int LocalShmPSClient::GetParameter(const base::ConstArray<uint64_t>& keys,
-                                   float* values) {
-  return this->GetParameterFlat(
-      keys, values, static_cast<int64_t>(keys.Size()), /*embedding_dim=*/0);
+                                   base::RecTensor& values) {
+  if (!IsFloatEmbeddingValues(values, static_cast<int64_t>(keys.Size()))) {
+    return -1;
+  }
+  const int64_t n = keys.Size();
+  if (n == 0) {
+    return 0;
+  }
+  const int64_t D = values.shape(1);
+  float* out = values.data_as<float>();
+  const std::size_t per_key =
+      sizeof(uint64_t) + sizeof(float) * static_cast<std::size_t>(D);
+  const std::size_t max_keys = region_.slot_buffer_bytes() / per_key;
+  if (max_keys == 0) {
+    return -1;
+  }
+  for (int64_t start = 0; start < n;
+       start += static_cast<int64_t>(max_keys)) {
+    const int64_t chunk =
+        std::min<int64_t>(static_cast<int64_t>(max_keys), n - start);
+    base::ConstArray<uint64_t> chunk_keys(keys.Data() + start,
+                                          static_cast<int>(chunk));
+    if (this->GetParameterFlat(
+            chunk_keys, out + start * D, chunk, D) != 0) {
+      return -1;
+    }
+  }
+  return 0;
 }
 
 bool LocalShmPSClient::GetSlotPayloadRegion(const void** base,
@@ -420,19 +446,46 @@ void LocalShmPSClient::ReleaseGetParameterFlat(LocalShmFlatGetHandle* handle) {
 }
 
 int LocalShmPSClient::PutParameter(
-    const base::ConstArray<uint64_t>& keys,
-    const std::vector<std::vector<float>>& values) {
+    const base::ConstArray<uint64_t>& keys, const base::RecTensor& values) {
   if (!region_.IsOpen()) {
     return -1;
   }
-  if (keys.Size() != values.size()) {
+  if (!IsFloatEmbeddingValues(values, static_cast<int64_t>(keys.Size()))) {
     return -1;
   }
-  const std::size_t embedding_dim = values.empty() ? 0 : values.front().size();
-  for (const auto& row : values) {
-    if (row.size() != embedding_dim) {
+  const int64_t n = keys.Size();
+  if (n == 0) {
+    return 0;
+  }
+  const int64_t D = values.shape(1);
+  const float* vals = values.data_as<float>();
+  const std::size_t per_key =
+      sizeof(uint64_t) + sizeof(float) * static_cast<std::size_t>(D);
+  const std::size_t max_keys = region_.slot_buffer_bytes() / per_key;
+  if (max_keys == 0) {
+    return -1;
+  }
+  for (int64_t start = 0; start < n;
+       start += static_cast<int64_t>(max_keys)) {
+    const int64_t chunk =
+        std::min<int64_t>(static_cast<int64_t>(max_keys), n - start);
+    base::ConstArray<uint64_t> chunk_keys(keys.Data() + start,
+                                          static_cast<int>(chunk));
+    if (PutParameterFlat(chunk_keys, vals + start * D, chunk, D) != 0) {
       return -1;
     }
+  }
+  return 0;
+}
+
+int LocalShmPSClient::PutParameterFlat(
+    const base::ConstArray<uint64_t>& keys,
+    const float* values,
+    int64_t num_rows,
+    int64_t embedding_dim) {
+  if (!region_.IsOpen() || values == nullptr || num_rows < 0 ||
+      embedding_dim <= 0 || keys.Size() != static_cast<size_t>(num_rows)) {
+    return -1;
   }
 
   const int slot = AcquireSlot();
@@ -444,7 +497,9 @@ int LocalShmPSClient::PutParameter(
   g_active_request_profile.request_start = std::chrono::steady_clock::now();
   auto* header  = region_.slot_header(static_cast<uint32_t>(slot));
   auto* payload = region_.slot_payload(static_cast<uint32_t>(slot));
-  const std::size_t input_bytes = PutPayloadBytes(keys.Size(), embedding_dim);
+  const std::size_t input_bytes =
+      PutPayloadBytes(static_cast<std::size_t>(num_rows),
+                      static_cast<std::size_t>(embedding_dim));
   if (input_bytes > region_.slot_buffer_bytes()) {
     MarkError(header, LocalStatusCode::kBufferTooSmall);
     ReleaseSlot(static_cast<uint32_t>(slot));
@@ -459,7 +514,7 @@ int LocalShmPSClient::PutParameter(
   header->request_id        = request_id;
   header->client_pid        = static_cast<int64_t>(::getpid());
   header->table_name_len    = 0;
-  header->key_count         = static_cast<uint32_t>(keys.Size());
+  header->key_count         = static_cast<uint32_t>(num_rows);
   header->embedding_dim     = static_cast<uint32_t>(embedding_dim);
   header->input_bytes       = input_bytes;
   header->output_bytes      = 0;
@@ -470,15 +525,14 @@ int LocalShmPSClient::PutParameter(
   header->server_backend_duration_us  = 0;
 
   uint8_t* cursor = payload;
-  if (keys.Size() > 0) {
-    std::memcpy(cursor, keys.Data(), sizeof(uint64_t) * keys.Size());
-    cursor += sizeof(uint64_t) * keys.Size();
-  }
-  for (const auto& row : values) {
-    if (!row.empty()) {
-      std::memcpy(cursor, row.data(), sizeof(float) * row.size());
-      cursor += sizeof(float) * row.size();
-    }
+  if (num_rows > 0) {
+    std::memcpy(cursor, keys.Data(),
+                sizeof(uint64_t) * static_cast<std::size_t>(num_rows));
+    cursor += sizeof(uint64_t) * static_cast<std::size_t>(num_rows);
+    std::memcpy(cursor,
+                values,
+                sizeof(float) * static_cast<std::size_t>(num_rows) *
+                    static_cast<std::size_t>(embedding_dim));
   }
   header->state.store(static_cast<uint32_t>(LocalSlotState::kReady));
   const uint32_t ready_queue_id       = CurrentReadyQueueId();
@@ -510,28 +564,37 @@ int LocalShmPSClient::PutParameter(
 int LocalShmPSClient::UpdateParameter(
     const std::string& table_name,
     const base::ConstArray<uint64_t>& keys,
-    const std::vector<std::vector<float>>* grads) {
-  if (grads == nullptr) {
+    const base::RecTensor& grads) {
+  if (!IsFloatEmbeddingValues(grads, static_cast<int64_t>(keys.Size()))) {
     return -1;
   }
-  if (keys.Size() != grads->size()) {
+  const int64_t n = keys.Size();
+  if (n == 0) {
+    return 0;
+  }
+  const int64_t D = grads.shape(1);
+  const float* g = grads.data_as<float>();
+  const std::size_t per_key =
+      sizeof(uint64_t) + sizeof(float) * static_cast<std::size_t>(D);
+  const std::size_t max_keys =
+      (region_.slot_buffer_bytes() >= table_name.size()
+           ? (region_.slot_buffer_bytes() - table_name.size()) / per_key
+           : 0);
+  if (max_keys == 0) {
     return -1;
   }
-  const std::size_t embedding_dim = grads->empty() ? 0 : grads->front().size();
-  std::vector<float> flat;
-  flat.reserve(grads->size() * embedding_dim);
-  for (const auto& row : *grads) {
-    if (row.size() != embedding_dim) {
+  for (int64_t start = 0; start < n;
+       start += static_cast<int64_t>(max_keys)) {
+    const int64_t chunk =
+        std::min<int64_t>(static_cast<int64_t>(max_keys), n - start);
+    base::ConstArray<uint64_t> chunk_keys(keys.Data() + start,
+                                          static_cast<int>(chunk));
+    if (UpdateParameterFlat(
+            table_name, chunk_keys, g + start * D, chunk, D) != 0) {
       return -1;
     }
-    flat.insert(flat.end(), row.begin(), row.end());
   }
-  return UpdateParameterFlat(
-      table_name,
-      keys,
-      flat.empty() ? nullptr : flat.data(),
-      static_cast<int64_t>(grads->size()),
-      static_cast<int64_t>(embedding_dim));
+  return 0;
 }
 
 int LocalShmPSClient::UpdateParameterFlat(
@@ -708,11 +771,6 @@ int LocalShmPSClient::InitEmbeddingTable(const std::string& table_name,
   return tag;
 }
 
-int LocalShmPSClient::AsyncGetParameter(const base::ConstArray<uint64_t>& keys,
-                                        float* values) {
-  return GetParameter(keys, values);
-}
-
 void LocalShmPSClient::Command(PSCommand) {}
 
 uint64_t
@@ -724,13 +782,7 @@ bool LocalShmPSClient::IsPrefetchDone(uint64_t) { return false; }
 
 void LocalShmPSClient::WaitForPrefetch(uint64_t) {}
 
-bool LocalShmPSClient::GetPrefetchResult(uint64_t,
-                                         std::vector<std::vector<float>>*) {
-  return false;
-}
-
-bool LocalShmPSClient::GetPrefetchResultFlat(
-    uint64_t, std::vector<float>*, int64_t*, int64_t) {
+bool LocalShmPSClient::GetPrefetchResult(uint64_t, base::RecTensor&) {
   return false;
 }
 
