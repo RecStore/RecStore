@@ -499,14 +499,11 @@ def _run_single_or_dist_worker(
     sparse_optimizer = torch.optim.SGD(embedding_module.parameters(), lr=0.01)
     _append_worker_debug(cfg, rank, "after_optimizer_init")
 
+    # build_torchrec_profiler reads the profiler fields straight from cfg;
+    # the old ProfilerConfig(...) wrapper referenced a class that was never
+    # defined anywhere (NameError at runtime).
     profiler = build_torchrec_profiler(
-        ProfilerConfig(
-            enabled=cfg.torchrec_profiler,
-            trace_dir=cfg.torchrec_trace_dir,
-            warmup=cfg.torchrec_profiler_warmup,
-            active=cfg.torchrec_profiler_active,
-            repeat=cfg.torchrec_profiler_repeat,
-        ),
+        cfg,
         on_trace_ready=_make_trace_handler(cfg, rank) if cfg.torchrec_profiler else None,
     )
     profiler_context = profiler or nullcontext()
