@@ -208,13 +208,45 @@ def start_rdma_ps_cluster(
             f"num_clients={runner.num_clients}\n"
         )
     runner._rs_demo_log_path = log_path  # type: ignore[attr-defined]
+    # PetPSClusterRunner.stop() only SIGTERMs the LOCAL process handles. For
+    # remote shards that handle is the ssh client; ssh does not forward the
+    # signal, so the remote petps_server is orphaned and keeps busy-polling
+    # ~5.6 cores each -- across repeats they starve the cpuset and show up as
+    # monotonically declining throughput. Record (host, port, namespace) so
+    # stop_rdma_ps_cluster can pkill them by the run-unique RDMA namespace.
+    runner._rs_demo_remote_pkill = [  # type: ignore[attr-defined]
+        (server.ssh_host, server.ssh_port, runner.rdma_namespace)
+        for server in sorted_servers
+        if server.ssh_host not in {"", "local", "localhost"}
+    ]
     runner.start()
     return runner
 
 
 def stop_rdma_ps_cluster(runner: Any) -> None:
-    if runner is not None:
-        runner.stop()
+    if runner is None:
+        return
+    runner.stop()
+    for ssh_host, ssh_port, namespace in getattr(
+        runner, "_rs_demo_remote_pkill", []
+    ):
+        remote = ["ssh"]
+        if ssh_port != 22:
+            remote.extend(["-p", str(ssh_port)])
+        remote.append(ssh_host.strip())
+        # 'petps[_]server' keeps the pattern from matching pkill's own command
+        # line (self-match would kill the pkill itself).
+        subprocess.run(
+            [
+                *remote,
+                (
+                    f"pkill -9 -f 'petps[_]server.*rdma_rc_namespace={namespace}'"
+                    " || true"
+                ),
+            ],
+            check=False,
+            timeout=60,
+        )
 
 
 def build_server_command(*, server: ServerSpec, runtime_config: Path, transport: str) -> list[str]:
