@@ -154,6 +154,11 @@ class BagPipeCacheController(
             "bagpipe_sync_now_overlap_ms": 0.0,
             "bagpipe_sync_now_ids": 0.0,
             "bagpipe_sync_later_ids": 0.0,
+            # __init__ seeds these two separately; omitting them here made
+            # reset_stats() (called every step via consume_stats) drop the
+            # keys and the next update_grads raise KeyError.
+            "bagpipe_no_sync_ids": 0.0,
+            "bagpipe_shared_ids": 0.0,
             "bagpipe_evicted_ids": 0.0,
             "bagpipe_writeback_ids": 0.0,
             "bagpipe_sgd_cache_success": 0.0,
