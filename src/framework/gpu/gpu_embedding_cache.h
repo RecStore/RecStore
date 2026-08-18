@@ -6,26 +6,6 @@
 
 namespace recstore::framework::gpu {
 
-// Profiling struct.  Upstream e4088506's op_torch.cc calls these but the
-// header (even in the upstream tree) lacks the declarations, so
-// recstore_torch_ops does not compile as committed.  Inline no-op stubs,
-// same as the e7b92423 fix: profile values stay zero unless the .cu
-// collection is restored.
-struct GpuCacheProfile {
-  double query_ms          = 0.0;
-  double backend_lookup_ms = 0.0;
-  double fill_ms           = 0.0;
-  double update_ms         = 0.0;
-  double hit_count         = 0.0;
-  double invalidate_ms     = 0.0;
-  double request_count     = 0.0;
-  double miss_count        = 0.0;
-};
-
-inline GpuCacheProfile GetLastGpuCacheProfile() { return {}; }
-inline void ResetLastGpuCacheProfile() {}
-inline void AddGpuCacheBackendLookupMs(double /*ms*/) {}
-
 bool EnableGpuCache(int64_t capacity, int64_t embedding_dim);
 void DisableGpuCache();
 void ClearGpuCache();
