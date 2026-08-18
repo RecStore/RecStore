@@ -74,6 +74,8 @@ class _DenseWork:
     """Work handle for dense all_reduce that extracts reduced grads for our IDs."""
 
     def __init__(self, work, dense_grads, valid_indices, ids, dim, device):
+        if ids.numel() != valid_indices.numel():
+            raise ValueError("dense work IDs must match valid gradient indices")
         self._work = work
         self._dense_grads = dense_grads
         self._valid_indices = valid_indices

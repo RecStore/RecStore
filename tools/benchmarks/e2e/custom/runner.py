@@ -131,7 +131,21 @@ def _run_client_group(
                 log.close()
 
 
+def _sanitize_proxy_env() -> None:
+    # gRPC (RDMA control plane) honors http_proxy-style vars; on hosts with a
+    # local proxy configured this reroutes control-plane connections into
+    # 127.0.0.1:<proxy_port> and they die with "Socket closed".  Everything in
+    # this benchmark talks to cluster-internal IPs only, so drop the proxy vars
+    # from the launcher env; every child (clients, PS, cluster runner) inherits.
+    for name in (
+        "http_proxy", "https_proxy", "all_proxy",
+        "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+    ):
+        os.environ.pop(name, None)
+
+
 def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, dry_run: bool, aggregate_only: bool) -> int:
+    _sanitize_proxy_env()
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
     logs_dir = cfg.output_dir / "logs"
     _write_deployment(cfg.output_dir / "deployment.md", cfg, transports)

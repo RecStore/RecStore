@@ -13,8 +13,8 @@
 #include "ps/rdma/rdma_protocol.h"
 #include "ps/rdma/rdma_status.h"
 
-DEFINE_int32(value_size, 16, "");
-DEFINE_int32(max_kv_num_per_request, 4, "");
+DECLARE_int32(value_size);
+DECLARE_int32(max_kv_num_per_request);
 
 namespace {
 

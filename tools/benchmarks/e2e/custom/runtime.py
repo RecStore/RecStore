@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -140,6 +142,33 @@ def start_rdma_ps_cluster(
             cwd=server.repo_root,
         )
 
+    # Servers receive the same --config_path, but it is written only on the
+    # local host. Copy it to every remote server host before the cluster
+    # starts, or remote shards fatal with "Cannot open config file". The path
+    # is often relative to the local repo root; ssh lands in the remote home
+    # dir, so it MUST be made absolute here (both checkouts share the same
+    # absolute repo path).
+    sync_path = config_path if config_path.is_absolute() else Path.cwd() / config_path
+    sync_path = sync_path.resolve()
+    for server in sorted_servers:
+        if server.ssh_host in {"", "local", "localhost"}:
+            continue
+        remote = ["ssh"]
+        if server.ssh_port != 22:
+            remote.extend(["-p", str(server.ssh_port)])
+        remote.append(server.ssh_host.strip())
+        subprocess.run(
+            [*remote, f"mkdir -p {shlex.quote(str(sync_path.parent))}"],
+            check=True,
+            timeout=60,
+        )
+        subprocess.run(
+            [*remote, f"cat > {shlex.quote(str(sync_path))}"],
+            stdin=sync_path.open("rb"),
+            check=True,
+            timeout=60,
+        )
+
     value_size = int(cfg.embedding_dim) * 4
     max_kv_num_per_request = max(1, int(cfg.batch_size) * SPARSE_FEATURES_PER_SAMPLE)
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -148,7 +177,7 @@ def start_rdma_ps_cluster(
         config_path=str(config_path),
         num_servers=len(cfg.servers),
         num_clients=_rdma_client_process_count(cfg.clients),
-        thread_num=16,
+        thread_num=int(os.getenv("RECSTORE_E2E_RDMA_SERVER_THREADS", "8")),
         value_size=value_size,
         max_kv_num_per_request=max_kv_num_per_request,
         timeout=180,
@@ -179,13 +208,45 @@ def start_rdma_ps_cluster(
             f"num_clients={runner.num_clients}\n"
         )
     runner._rs_demo_log_path = log_path  # type: ignore[attr-defined]
+    # PetPSClusterRunner.stop() only SIGTERMs the LOCAL process handles. For
+    # remote shards that handle is the ssh client; ssh does not forward the
+    # signal, so the remote petps_server is orphaned and keeps busy-polling
+    # ~5.6 cores each -- across repeats they starve the cpuset and show up as
+    # monotonically declining throughput. Record (host, port, namespace) so
+    # stop_rdma_ps_cluster can pkill them by the run-unique RDMA namespace.
+    runner._rs_demo_remote_pkill = [  # type: ignore[attr-defined]
+        (server.ssh_host, server.ssh_port, runner.rdma_namespace)
+        for server in sorted_servers
+        if server.ssh_host not in {"", "local", "localhost"}
+    ]
     runner.start()
     return runner
 
 
 def stop_rdma_ps_cluster(runner: Any) -> None:
-    if runner is not None:
-        runner.stop()
+    if runner is None:
+        return
+    runner.stop()
+    for ssh_host, ssh_port, namespace in getattr(
+        runner, "_rs_demo_remote_pkill", []
+    ):
+        remote = ["ssh"]
+        if ssh_port != 22:
+            remote.extend(["-p", str(ssh_port)])
+        remote.append(ssh_host.strip())
+        # 'petps[_]server' keeps the pattern from matching pkill's own command
+        # line (self-match would kill the pkill itself).
+        subprocess.run(
+            [
+                *remote,
+                (
+                    f"pkill -9 -f 'petps[_]server.*rdma_rc_namespace={namespace}'"
+                    " || true"
+                ),
+            ],
+            check=False,
+            timeout=60,
+        )
 
 
 def build_server_command(*, server: ServerSpec, runtime_config: Path, transport: str) -> list[str]:
@@ -209,7 +270,7 @@ def _nccl_socket_ifnames() -> str:
     # NCCL/GLOO match by subnet, so listing both is safe on either host and
     # avoids picking a docker/flannel interface (which crashed earlier runs
     # with "socketFinalizeAccept: wrong type 4 != 3").
-    return "enp3s0f0,eno8303"
+    return os.getenv("RECSTORE_E2E_NCCL_SOCKET_IFNAME", "enp3s0f0,eno8303")
 
 
 def _dataloader_env() -> dict[str, str]:
@@ -224,16 +285,19 @@ def _dataloader_env() -> dict[str, str]:
 def _recstore_nccl_env() -> dict[str, str]:
     # Embedding traffic uses the RecStore PS transport; dense DDP uses NCCL-IB.
     ifnames = _nccl_socket_ifnames()
-    return {
+    env = {
         **_dataloader_env(),
         "NCCL_SOCKET_IFNAME": ifnames,
         "GLOO_SOCKET_IFNAME": ifnames,
         "NCCL_SOCKET_FAMILY": "AF_INET",
-        "NCCL_IB_DISABLE": "0",
-        "NCCL_IB_HCA": "mlx5_0",
+        "NCCL_IB_DISABLE": os.getenv("RECSTORE_E2E_NCCL_IB_DISABLE", "0"),
         "NCCL_DEBUG": "INFO",
         "NCCL_DEBUG_SUBSYS": "NET",
     }
+    hca = os.getenv("RECSTORE_E2E_NCCL_IB_HCA", "").strip()
+    if hca:
+        env["NCCL_IB_HCA"] = hca
+    return env
 
 
 def _brpc_rdma_env() -> dict[str, str]:
@@ -247,16 +311,19 @@ def _brpc_rdma_env() -> dict[str, str]:
 def _torchrec_nccl_env() -> dict[str, str]:
     # TorchRec's embedding all-reduce IS the traffic we want on the IB NIC.
     ifnames = _nccl_socket_ifnames()
-    return {
+    env = {
         **_dataloader_env(),
         "NCCL_SOCKET_IFNAME": ifnames,
         "GLOO_SOCKET_IFNAME": ifnames,
         "NCCL_SOCKET_FAMILY": "AF_INET",
-        "NCCL_IB_DISABLE": "0",
-        "NCCL_IB_HCA": "mlx5_0",
+        "NCCL_IB_DISABLE": os.getenv("RECSTORE_E2E_NCCL_IB_DISABLE", "0"),
         "NCCL_DEBUG": "INFO",
         "NCCL_DEBUG_SUBSYS": "NET",
     }
+    hca = os.getenv("RECSTORE_E2E_NCCL_IB_HCA", "").strip()
+    if hca:
+        env["NCCL_IB_HCA"] = hca
+    return env
 
 
 def build_client_command(

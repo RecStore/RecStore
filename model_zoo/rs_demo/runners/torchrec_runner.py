@@ -60,6 +60,11 @@ def _debug_log_path(cfg: RunConfig, rank: int) -> Path:
 
 
 def _append_worker_debug(cfg: RunConfig, rank: int, message: str) -> None:
+    # Unconditional per-step appends to output_root (beegfs in multi-host runs)
+    # cost ~77ms each -- 12 calls/step polluted torchrec step_total by ~750ms
+    # and made the lane look ~10x slower than it is. Opt in via env var.
+    if os.environ.get("RS_DEMO_WORKER_DEBUG", "0") not in {"1", "true", "True"}:
+        return
     debug_path = _debug_log_path(cfg, rank)
     debug_path.parent.mkdir(parents=True, exist_ok=True)
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -499,6 +504,9 @@ def _run_single_or_dist_worker(
     sparse_optimizer = torch.optim.SGD(embedding_module.parameters(), lr=0.01)
     _append_worker_debug(cfg, rank, "after_optimizer_init")
 
+    # build_torchrec_profiler reads the profiler fields straight from cfg;
+    # the old ProfilerConfig(...) wrapper referenced a class that was never
+    # defined anywhere (NameError at runtime).
     profiler = build_torchrec_profiler(
         cfg,
         on_trace_ready=_make_trace_handler(cfg, rank) if cfg.torchrec_profiler else None,
@@ -531,7 +539,7 @@ def _run_single_or_dist_worker(
                 "torchrec_is_trainer": _bool_int(is_trainer_rank),
             }
             step_start = time.perf_counter()
-            timer = StepTimer(row, torch, device)
+            timer = StepTimer(row, torch, device, mode=cfg.torchrec_timing_sync_mode)
 
             _append_worker_debug(cfg, rank, f"before_batch_prepare step={step}")
             with timer.cpu("batch_prepare_ms"):

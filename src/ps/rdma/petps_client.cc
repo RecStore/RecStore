@@ -166,8 +166,42 @@ std::size_t PetPSClient::ResponseBufferBytes(std::size_t key_count) const {
 
 void* PetPSClient::GetReceiveBuffer(size_t size) {
   std::lock_guard<std::mutex> guard(mu_);
+  // Reuse an idle pooled buffer instead of allocating fresh heap memory every
+  // batch. Fresh mmap'd pages must be faulted in (zero-filled) on first write,
+  // which is the dominant cost on the RDMA submit critical path.
+  while (!receive_buffer_free_.empty()) {
+    const std::size_t idx = receive_buffer_free_.back();
+    receive_buffer_free_.pop_back();
+    auto& buf = receive_buffers_[idx];
+    if (buf.size() >= size) {
+      // Content is fully overwritten by the RPC completion before it is read,
+      // so a reuse needs no zero-fill here.
+      return buf.data();
+    }
+    const char* old_data = buf.data();
+    buf.assign(size, 0);
+    if (old_data != buf.data()) {
+      receive_buffer_index_.erase(old_data);
+      receive_buffer_index_.emplace(buf.data(), idx);
+    }
+    return buf.data();
+  }
   receive_buffers_.emplace_back(size, 0);
+  receive_buffer_index_.emplace(receive_buffers_.back().data(),
+                                receive_buffers_.size() - 1);
   return receive_buffers_.back().data();
+}
+
+void PetPSClient::ReturnGetReceiveBuffer(const float* buffer) {
+  if (buffer == nullptr) {
+    return;
+  }
+  std::lock_guard<std::mutex> guard(mu_);
+  const auto it = receive_buffer_index_.find(
+      reinterpret_cast<const char*>(buffer));
+  if (it != receive_buffer_index_.end()) {
+    receive_buffer_free_.push_back(it->second);
+  }
 }
 
 const float* PetPSClient::BorrowGetResultPayload(
@@ -272,6 +306,8 @@ bool PetPSClient::RequestPayloadFitsSlot(std::size_t payload_bytes) const {
 
 float* PetPSClient::AllocateStatusReceiveBufferLocked() {
   receive_buffers_.emplace_back(sizeof(std::int32_t), 0);
+  receive_buffer_index_.emplace(receive_buffers_.back().data(),
+                                receive_buffers_.size() - 1);
   return reinterpret_cast<float*>(receive_buffers_.back().data());
 }
 
@@ -599,6 +635,11 @@ void PetPSClient::RevokeRPCResource(int rpc_id) {
   auto& slot = SlotAt(it->second.qp_index, it->second.slot_in_qp);
   transport_->ClearRequestSlot(slot.view);
   slot.busy = false;
+  // NOTE: the recv_buffer is NOT returned to the pool here. In the adapter's
+  // sync chunk window the batch still references this buffer until
+  // FinalizeBatchIfNeeded consumes it; returning it early would let a later
+  // GetReceiveBuffer overwrite the response. The adapter returns chunk buffers
+  // to the pool via ReturnGetReceiveBuffer() after the batch is finalized.
   pending_rpcs_.erase(it);
   if (profile_enabled) {
     const std::uint64_t pending_size = pending_rpcs_.size();

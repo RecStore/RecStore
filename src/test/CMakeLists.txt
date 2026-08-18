@@ -279,10 +279,6 @@ target_sources(test_rdmaps_client_adapter PRIVATE
     ${PROJECT_SOURCE_DIR}/src/framework/common/ps_client_config_adapter.cc
     ${PROJECT_SOURCE_DIR}/src/ps/client_factory.cc
     ${PROJECT_SOURCE_DIR}/src/ps/rdma/rdma_ps_client_adapter.cc
-    ${PROJECT_SOURCE_DIR}/src/ps/rdma/allshards_ps_client.cc
-    ${PROJECT_SOURCE_DIR}/src/ps/rdma/petps_client.cc
-    ${PROJECT_SOURCE_DIR}/src/ps/rdma/rc_transport.cc
-    ${PROJECT_SOURCE_DIR}/src/ps/rdma/rc_options.cc
 )
 target_link_libraries(test_rdmaps_client_adapter PUBLIC
     base
@@ -299,7 +295,10 @@ target_link_libraries(test_rdmaps_client_adapter PUBLIC
     gtest_main
     pthread
 )
-target_link_options(test_rdmaps_client_adapter PUBLIC -Wl,--no-as-needed)
+target_link_options(test_rdmaps_client_adapter PUBLIC
+    -Wl,--no-as-needed
+    $<TARGET_FILE:brpc_ps_client>
+)
 add_test(NAME test_rdmaps_client_adapter COMMAND test_rdmaps_client_adapter)
 
 add_executable(test_local_shm_protocol test_local_shm_protocol.cpp)

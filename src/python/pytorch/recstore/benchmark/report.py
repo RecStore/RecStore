@@ -92,10 +92,18 @@ def write_stage_csv(path: Path, rows: list[dict]) -> None:
     if not rows:
         raise ValueError("rows must not be empty")
     fieldnames = list(rows[0].keys())
-    with path.open("w", encoding="utf-8", newline="") as f:
+    # Write to a temp file then os.replace(): on shared-FS multi-node runs both
+    # node launchers write the same merged CSV and each node's post-validation
+    # re-reads it — a plain open("w") truncates first, so a concurrent reader
+    # can see "0 rows" and spuriously fail the whole lane.
+    tmp_path = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
+    with tmp_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
 
 
 def finalize_torchrec_row(row: dict) -> dict:

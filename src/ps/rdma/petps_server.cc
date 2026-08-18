@@ -40,8 +40,8 @@ DEFINE_int32(thread_num, 1, "RC write poll thread count");
 DECLARE_int32(global_id);
 DECLARE_int32(num_server_processes);
 DECLARE_int32(num_client_processes);
-DEFINE_int32(value_size, 128, "embedding row bytes");
-DEFINE_int32(max_kv_num_per_request, 500, "max keys per request");
+DECLARE_int32(value_size);
+DECLARE_int32(max_kv_num_per_request);
 DEFINE_bool(use_dram, false, "unused compatibility flag");
 DEFINE_int32(numa_id, 0, "NUMA node id for mmap and core binding");
 
@@ -147,6 +147,39 @@ public:
     config.control_plane_port       = FLAGS_rdma_control_plane_port;
     config.control_plane_timeout_ms = FLAGS_rdma_control_plane_timeout_ms;
     config.namespace_token          = namespace_token;
+    // The transport constructor waits for every logical client's metadata.
+    // Publish readiness first so a launcher that gates clients on server-ready
+    // cannot deadlock with the constructor. The control-plane gRPC server is
+    // started before this constructor, but its first accept can still fail
+    // transiently during startup (observed "Socket closed"), so retry until
+    // the control-plane timeout instead of aborting the server.
+    {
+      const auto publish_deadline =
+          std::chrono::steady_clock::now() +
+          std::chrono::milliseconds(std::max<int>(
+              FLAGS_rdma_control_plane_timeout_ms, 30000));
+      for (int attempt = 1;; ++attempt) {
+        try {
+          control_plane_client_.PublishServerReady(FLAGS_global_id);
+          break;
+        } catch (const std::runtime_error& err) {
+          if (std::chrono::steady_clock::now() >= publish_deadline) {
+            throw;
+          }
+          if (attempt == 1) {
+            LOG(WARNING)
+                << "component=rdma_control_plane event=server_ready_retry"
+                << " error=" << err.what();
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+      }
+    }
+    ready_published_.store(true, std::memory_order_release);
+    LOG(INFO) << "component=rdma_control_plane event=server_ready_published"
+              << " server_id=" << FLAGS_global_id
+              << " host=" << FLAGS_rdma_control_plane_host
+              << " port=" << FLAGS_rdma_control_plane_port;
     transport_ = std::make_unique<petps::RcShardServerTransport>(config);
     const auto backing = cache_ps_->GetRDMABackingRegion();
     if (backing.data != nullptr && backing.size > 0) {

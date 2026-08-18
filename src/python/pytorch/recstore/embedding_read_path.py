@@ -6,7 +6,8 @@
 - ``prefetch``: async get with optional lookahead window ``prefetch_depth``.
   Does **not** wait for in-flight sparse updates; may observe stale values.
 - ``bagpipe``: async get that stalls conflicting reads until updates land
-  (same accuracy as ``direct``). Not wired yet.
+  (same accuracy as ``direct``).  Delegates lifecycle to a
+  :class:`~recstore.optim.plugin.OptimizationPlugin`.
 
 Fusion on/off only affects which module APIs are used to encode ids; it must
 not rewrite ``read_mode`` semantics.
@@ -29,6 +30,19 @@ class PrefetchSlot:
     fused_ids_cpu: Any
     fused_inverse: Any
     full_batch: bool
+
+
+@dataclass(frozen=True)
+class PreparedTicket:
+    """Ticket returned by ``PrefetchReadPath.on_batch_prepared``.
+
+    Carries pre-built unique fused ids so the runner can record id stats
+    without a second ``torch.unique`` pass, and ``PrefetchReadPath`` can
+    issue a prepared prefetch in ``before_lookup``.
+    """
+
+    unique_ids: Any  # torch.Tensor or None
+    raw_count: int
 
 
 class LookaheadPrefetcher:
@@ -256,6 +270,7 @@ class PrefetchReadPath:
             )
         self._module = embedding_module
         self._feature_offsets = feature_offsets
+        self._pending_inverse: Any = None
         self._depth = max(0, int(prefetch_depth))
         # step -> sparse_features recorded at prepare time, oldest first
         self._recorded: dict[int, Any] = {}
@@ -310,11 +325,12 @@ class PrefetchReadPath:
             and callable(getattr(self._module, "issue_prepared_fused_prefetch", None))
         ):
             fused_id_start = time.perf_counter()
-            ticket = prepare_fused_ids_from_sparse_batch(
+            unique_ids, inverse, raw_count = prepare_fused_ids_from_sparse_batch(
                 sparse_batch, self._feature_offsets
             )
             row["lookup_ids_build_ms"] = (time.perf_counter() - fused_id_start) * 1e3
-            return ticket
+            self._pending_inverse = inverse
+            return PreparedTicket(unique_ids=unique_ids, raw_count=raw_count)
         return "issue_on_lookup"
 
     def before_lookup(
@@ -347,6 +363,11 @@ class PrefetchReadPath:
             )
             return
         del step
+        if isinstance(ticket, PreparedTicket):
+            self._module.issue_prepared_fused_prefetch(
+                ticket.unique_ids, self._pending_inverse, ticket.raw_count
+            )
+            return
         # ticket = deduplicated(IDs)
         if ticket is not None and ticket != "issue_on_lookup":
             self._module.issue_prepared_fused_prefetch(*ticket)
@@ -372,13 +393,58 @@ class PrefetchReadPath:
 
 
 class BagPipeReadPath:
-    """Placeholder for update-aware async reads (not wired yet)."""
+    """BagPipe read path: async gets with update-aware cache.
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        del args, kwargs
-        raise RuntimeError(
-            "read_mode=bagpipe is not wired in recstore yet; use direct or prefetch"
-        )
+    Delegates all lifecycle hooks to a :class:`BagPipePlugin` instance.
+    The plugin manages its own internal prefetch pipeline, so this read
+    path returns ``None`` tickets and reports ``advance_all() == 0``.
+    """
+
+    def __init__(self, plugin: Any, *, device: Any) -> None:
+        self._plugin = plugin
+        self._device = device
+
+    @property
+    def depth(self) -> int:
+        return self._plugin.lookahead_depth
+
+    @property
+    def desired_buffer_size(self) -> int:
+        return self._plugin.lookahead_depth * 2
+
+    def on_batch_prepared(
+        self,
+        step: int,
+        sparse_features: Any,
+        sparse_batch: Any,
+        row: dict[str, Any],
+    ) -> Any:
+        del step, sparse_batch, row
+        self._plugin.on_prepare(sparse_features)
+        return None  # no ticket — bagpipe manages its own prefetch internally
+
+    def before_lookup(
+        self,
+        step: int,
+        sparse_features: Any,
+        ticket: Any,
+        row: dict[str, Any],
+    ) -> None:
+        del step, ticket, row
+        self._plugin.on_consume(sparse_features, self._device)
+
+    def after_sparse_update(
+        self,
+        step: int,
+        sparse_features: Any,
+        sparse_optimizer: Any,
+        row: dict[str, Any],
+    ) -> None:
+        del sparse_features, sparse_optimizer
+        self._plugin.on_step_end(step, row)
+
+    def advance_all(self) -> int:
+        return 0  # bagpipe manages its own pipeline internally
 
 
 def build_embedding_read_path(
@@ -388,6 +454,8 @@ def build_embedding_read_path(
     prefetch_depth: int = 0,
     embedding_dim: int = 0,
     feature_offsets: Any | None = None,
+    plugin: Any | None = None,
+    device: Any | None = None,
 ) -> EmbeddingReadPath:
     mode = str(read_mode).strip().lower()
     if mode == "direct":
@@ -399,7 +467,12 @@ def build_embedding_read_path(
             feature_offsets=feature_offsets,
         )
     if mode == "bagpipe":
-        return BagPipeReadPath()
+        if plugin is None:
+            raise RuntimeError(
+                "read_mode=bagpipe requires a plugin instance; "
+                "create one via OptimizationPluginRegistry.create('bagpipe', ...)"
+            )
+        return BagPipeReadPath(plugin, device=device)
     raise RuntimeError(
         f"unsupported read_mode={read_mode!r}; expected direct|prefetch|bagpipe"
     )

@@ -727,17 +727,18 @@ class TestRecStoreRunner(unittest.TestCase):
 
         self.assertEqual(cfg.prefetch_issue_depth, 12)
 
-    def test_validate_recstore_config_rejects_gpu_cache(self) -> None:
+    def test_validate_recstore_config_auto_sets_bagpipe_for_gpu_cache(self) -> None:
         cfg = RunConfig(backend="recstore", enable_gpu_cache=True, gpu_cache_capacity=1024)
 
-        with self.assertRaisesRegex(RuntimeError, "--enable-gpu-cache is not supported"):
-            config.validate_recstore_config(cfg)
+        config.validate_recstore_config(cfg)
+        self.assertEqual(cfg.optimization.plugin, "bagpipe")
 
-    def test_validate_recstore_config_rejects_bagpipe_read_mode(self) -> None:
+    def test_validate_recstore_config_auto_sets_bagpipe_plugin(self) -> None:
         cfg = RunConfig(backend="recstore", read_mode="bagpipe")
 
-        with self.assertRaisesRegex(RuntimeError, "read_mode=bagpipe is not wired"):
-            config.validate_recstore_config(cfg)
+        config.validate_recstore_config(cfg)
+        self.assertEqual(cfg.optimization.plugin, "bagpipe")
+        self.assertGreater(cfg.optimization.lookahead, 0)
 
     def test_validate_recstore_config_rejects_negative_prefetch_depth(self) -> None:
         cfg = RunConfig(backend="recstore", prefetch_depth=-1)
@@ -960,15 +961,15 @@ class TestRecStoreRunner(unittest.TestCase):
             fake_ebc = self._run_local_worker_with_fake_embedding_module(cfg)
             self.assertEqual(fake_ebc.fast_path_mode, "auto")
 
-    def test_gpu_cache_options_are_rejected_by_validate(self) -> None:
+    def test_gpu_cache_options_auto_set_bagpipe_via_validate(self) -> None:
         cfg = RunConfig(
             backend="recstore",
             enable_gpu_cache=True,
             gpu_cache_capacity=1024,
             disable_gpu_cache_lookup_bypass=True,
         )
-        with self.assertRaisesRegex(RuntimeError, "--enable-gpu-cache is not supported"):
-            config.validate_recstore_config(cfg)
+        config.validate_recstore_config(cfg)
+        self.assertEqual(cfg.optimization.plugin, "bagpipe")
 
     def test_local_worker_switches_client_backend_for_single_node_fast_path(self) -> None:
         cfg = RunConfig(
