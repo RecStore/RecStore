@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -224,7 +225,21 @@ def main(argv: list[str] | None = None) -> int:
             if is_torchrec_worker:
                 return 0
             print(f"[rs_demo] torchrec main csv: {cfg.torchrec_main_csv}")
-            agg = aggregate_torchrec_main_csv(Path(cfg.torchrec_main_csv))
+            # beegfs: the merged CSV is produced by tmp+os.replace on one node
+            # and re-read immediately on the other; metadata-cache incoherence
+            # can briefly make the just-renamed file invisible. Retry a short
+            # window before failing the whole lane.
+            agg = None
+            for attempt in range(30):
+                try:
+                    agg = aggregate_torchrec_main_csv(Path(cfg.torchrec_main_csv))
+                    break
+                except FileNotFoundError:
+                    if attempt == 0:
+                        print("[rs_demo] main csv not visible yet; retrying (beegfs rename race)")
+                    time.sleep(2.0)
+            if agg is None:
+                raise FileNotFoundError(cfg.torchrec_main_csv)
             write_aggregate_csv(Path(cfg.torchrec_main_agg_csv), agg)
             print(f"[rs_demo] torchrec main aggregate csv: {cfg.torchrec_main_agg_csv}")
             if cfg.torchrec_profiler:
