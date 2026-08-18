@@ -226,7 +226,34 @@ def start_rdma_ps_cluster(
 def stop_rdma_ps_cluster(runner: Any) -> None:
     if runner is None:
         return
-    runner.stop()
+    try:
+        runner.stop()
+    except subprocess.TimeoutExpired:
+        # petps_cluster_runner.stop() does SIGTERM->wait(5)->SIGKILL->wait(5);
+        # a busy petps_server can sit in uninterruptible RDMA memory-dereg
+        # (D-state) past BOTH windows.  The process is already SIGKILLed and
+        # will exit once the kernel call returns, but letting the exception
+        # propagate aborts the whole benchmark at a repeat boundary and loses
+        # every remaining repeat.  Log it and fall through to the namespace
+        # pkill below, which is the authoritative cleanup anyway.
+        print(
+            "[benchmark-e2e] petps stop() timed out (process already SIGKILLed); "
+            "continuing with namespace pkill",
+            flush=True,
+        )
+    namespaces = {
+        str(getattr(runner, "rdma_namespace", "")),
+        *(namespace for _, _, namespace in getattr(runner, "_rs_demo_remote_pkill", [])),
+    }
+    namespaces.discard("")
+    # Same namespace-targeted cleanup on the LOCAL host for any shard that ran
+    # here (stop() may have given up on a D-state process).
+    for namespace in namespaces:
+        subprocess.run(
+            ["pkill", "-9", "-f", f"petps[_]server.*rdma_rc_namespace={namespace}"],
+            check=False,
+            timeout=60,
+        )
     for ssh_host, ssh_port, namespace in getattr(
         runner, "_rs_demo_remote_pkill", []
     ):
