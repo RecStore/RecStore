@@ -46,7 +46,8 @@ from ..runtime.worker_common import (
 )
 from .base import BenchmarkRunner
 
-from recstore.embedding_read_path import build_embedding_read_path
+from recstore.embedding_read_path import BagPipeReadPath, build_embedding_read_path
+from recstore.optim import OptimizationPluginRegistry
 
 
 def _safe_ratio(numerator: float, denominator: float) -> float:
@@ -342,6 +343,8 @@ class RecStoreRunner(BenchmarkRunner):
             )
 
         orig_cwd = Path.cwd()
+        client = None
+        plugin = None
         try:
             os.chdir(str(self.runtime_dir))
             torch.manual_seed(cfg.seed)
@@ -372,13 +375,59 @@ class RecStoreRunner(BenchmarkRunner):
                 kv_client=client,
                 initialize_tables=(rank == 0),
             )
-            read_path = build_embedding_read_path(
-                cfg.read_mode,
-                embedding_module=embedding_module,
-                prefetch_depth=cfg.prefetch_depth,
-                embedding_dim=cfg.embedding_dim,
-                feature_offsets=fused_id_offsets,
-            )
+            # -- optimization plugin + read path --------------------------------
+            # BagPipe branch re-grafted from the benchmark branch (8ce3f9ae):
+            # the upstream merge dropped it entirely, so read_mode=bagpipe hit
+            # "requires a plugin instance" and --optimization-plugin bagpipe was
+            # silently ignored. GPU cache is mandatory for BagPipe — without it
+            # every lookup and sparse update falls back to the PS-direct path,
+            # making BagPipe slower than the plain prefetch path.
+            use_bagpipe = cfg.optimization.plugin == "bagpipe" or cfg.read_mode == "bagpipe"
+
+            if use_bagpipe:
+                def _id_extractor(sparse_features):
+                    return convert_kjt_ids_to_fused_ids(sparse_features, table_offsets)
+
+                cache_cap = cfg.optimization.cache_capacity or cfg.gpu_cache_capacity or 160000
+                if not client.is_gpu_cache_enabled():
+                    ok = client.enable_gpu_cache(cache_cap, cfg.embedding_dim)
+                    if not ok:
+                        raise RuntimeError(
+                            f"BagPipe requires GPU cache but enable_gpu_cache("
+                            f"capacity={cache_cap}, dim={cfg.embedding_dim}) "
+                            f"returned False. Cannot continue without GPU cache."
+                        )
+                    print(f"[rs_demo] BagPipe GPU cache enabled: capacity={cache_cap}, dim={cfg.embedding_dim}")
+
+                master_table_name = eb_configs[0]["name"] if eb_configs else ""
+                plugin = OptimizationPluginRegistry.create(
+                    "bagpipe",
+                    embedding_module=embedding_module,
+                    kv_client=client,
+                    lookahead=cfg.optimization.lookahead,
+                    cleanup_proportion=cfg.optimization.cleanup_proportion,
+                    cache_capacity=cache_cap,
+                    embedding_dim=cfg.optimization.embedding_dim,
+                    fuse_k=cfg.fuse_k,
+                    table_offsets=table_offsets,
+                    master_table_name=master_table_name,
+                    device=device,
+                    lr=0.01,
+                    id_extractor=_id_extractor,
+                )
+                sparse_optimizer = plugin.create_sparse_optimizer(
+                    [embedding_module], lr=0.01
+                )
+                read_path = BagPipeReadPath(plugin, device=device)
+            else:
+                read_path = build_embedding_read_path(
+                    cfg.read_mode,
+                    embedding_module=embedding_module,
+                    prefetch_depth=cfg.prefetch_depth,
+                    embedding_dim=cfg.embedding_dim,
+                    feature_offsets=fused_id_offsets,
+                )
+                sparse_optimizer = recstore.SparseSGD([embedding_module], lr=0.01)
 
             _barrier_for_step_alignment(
                 dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
@@ -401,7 +450,6 @@ class RecStoreRunner(BenchmarkRunner):
             )
             criterion = build_criterion(cfg, dispatch_module)
             dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
-            sparse_optimizer = recstore.SparseSGD([embedding_module], lr=0.01)
             record_pooled_grad = getattr(embedding_module, "record_pooled_grad", None)
 
             if _maybe_warmup_gpu_local_shm_fast_path(cfg=cfg, client=client, device=device):
@@ -606,6 +654,12 @@ class RecStoreRunner(BenchmarkRunner):
                 "rows": rows,
             }
         finally:
+            # BagPipe plugin teardown (benchmark branch 8ce3f9ae); no-op for
+            # the non-bagpipe paths where plugin stays None.
+            if plugin is not None:
+                plugin.shutdown()
+            if client is not None and client.is_gpu_cache_enabled():
+                client.disable_gpu_cache()
             os.chdir(str(orig_cwd))
 
     def run(self, repo_root: Path, cfg: RunConfig) -> dict:

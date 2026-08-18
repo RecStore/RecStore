@@ -4,9 +4,13 @@ Encapsulates :class:`BagPipeCacheController` and :class:`BagPipeSparseSGD`
 into three lifecycle hooks (``on_prepare``, ``on_consume``, ``on_step_end``)
 so that training loops can integrate BagPipe without scattered if-branches.
 
-When disabled, every method is a no-op and ``create_optimizer`` returns a
-plain ``SparseSGD``, so the caller code path is identical regardless of
-whether BagPipe is active.
+Inherits from :class:`~recstore.optim.plugin.OptimizationPlugin` so it can
+be registered with :class:`~recstore.optim.registry.OptimizationPluginRegistry`
+and created uniformly via ``OptimizationPluginRegistry.create("bagpipe", ...)``.
+
+When disabled (controller is None), every method is a no-op and
+``create_optimizer`` returns a plain ``SparseSGD``, so the caller code path
+is identical regardless of whether BagPipe is active.
 """
 
 from __future__ import annotations
@@ -16,28 +20,35 @@ from typing import Any, Callable, Dict
 
 import torch
 
+from ..optim.plugin import OptimizationPlugin
+
 from .controller import BagPipeCacheController
 from .optimizer import BagPipeSparseSGD
 
 
-class BagPipePlugin:
+class BagPipePlugin(OptimizationPlugin):
     """High-level BagPipe lifecycle wrapper.
 
     Usage::
 
-        bagpipe = BagPipePlugin.create(
-            enabled=cfg.enable_bagpipe_cache,
+        # Via registry (preferred):
+        from recstore.optim import OptimizationPluginRegistry
+        bagpipe = OptimizationPluginRegistry.create(
+            "bagpipe",
             embedding_module=embedding_module,
             kv_client=client,
             lookahead=4,
+            cleanup_proportion=0.25,
             cache_capacity=160000,
             embedding_dim=64,
+            fuse_k=30,
             table_offsets=table_offsets,
             master_table_name="table",
             device=device,
+            lr=0.01,
             id_extractor=extractor,
         )
-        sparse_optimizer = bagpipe.create_optimizer(
+        sparse_optimizer = bagpipe.create_sparse_optimizer(
             embedding_module, lr=0.01
         )
 
@@ -71,41 +82,58 @@ class BagPipePlugin:
     def create(
         cls,
         *,
-        enabled: bool,
         embedding_module: Any,
         kv_client: Any,
-        lookahead: int,
-        cleanup_batch_proportion: float,
-        cache_capacity: int,
-        embedding_dim: int,
-        fuse_k: int,
-        table_offsets: Dict[str, int],
-        master_table_name: str,
-        device: torch.device,
+        lookahead: int = 0,
+        cleanup_proportion: float | None = None,
+        cleanup_batch_proportion: float | None = None,
+        cache_capacity: int = 0,
+        embedding_dim: int = 128,
+        fuse_k: int = 30,
+        table_offsets: Dict[str, int] | None = None,
+        master_table_name: str = "",
+        device: torch.device | None = None,
         lr: float = 0.01,
-        id_extractor: Callable[[Any], torch.Tensor],
+        id_extractor: Callable[[Any], torch.Tensor] | None = None,
+        enabled: bool = True,
+        **_: Any,
     ) -> "BagPipePlugin":
         """Create a BagPipePlugin.
 
         When *enabled* is False, returns a no-op plugin whose methods are
         all safe to call.
+
+        Accepts ``**_`` to swallow extra kwargs from the registry (e.g.
+        ``plugin_config``) that BagPipe does not use.
+
+        ``cleanup_proportion`` (from :class:`OptimizationConfig`) and
+        ``cleanup_batch_proportion`` (legacy name) are aliases; if both are
+        given, ``cleanup_proportion`` wins.
         """
         if not enabled:
             return cls(None, embedding_module=embedding_module, lr=lr)
+
+        # Resolve cleanup proportion from either alias.
+        if cleanup_proportion is not None:
+            cleanup_batch = float(cleanup_proportion)
+        elif cleanup_batch_proportion is not None:
+            cleanup_batch = float(cleanup_batch_proportion)
+        else:
+            cleanup_batch = 0.25
 
         controller = BagPipeCacheController(
             embedding_module,
             kv_client,
             lookahead_value=lookahead,
-            cleanup_batch_proportion=cleanup_batch_proportion,
+            cleanup_batch_proportion=cleanup_batch,
             cache_capacity=cache_capacity,
             embedding_dim=embedding_dim,
             fuse_k=fuse_k,
-            table_offsets=table_offsets,
+            table_offsets=table_offsets or {},
             master_table_name=master_table_name,
-            device=device,
+            device=device if device is not None else torch.device("cpu"),
             lr=lr,
-            id_extractor=id_extractor,
+            id_extractor=id_extractor if id_extractor is not None else (lambda sf: sf),
         )
         return cls(controller, embedding_module=embedding_module, lr=lr)
 
@@ -118,27 +146,23 @@ class BagPipePlugin:
         """Whether BagPipe cache is active."""
         return self._controller is not None
 
-    @property
-    def lookahead_value(self) -> int:
-        """Dynamic lookahead for batch preparation depth.
-
-        Returns 0 when disabled so the caller can fall back to its own
-        prefetcher depth.
-        """
-        if self._controller is None:
-            return 0
-        return self._controller.lookahead_value
-
     # ------------------------------------------------------------------
     #  Optimizer
     # ------------------------------------------------------------------
 
-    def create_optimizer(self, modules, lr: float):
-        """Return :class:`BagPipeSparseSGD` (enabled) or ``SparseSGD`` (disabled)."""
+    def create_sparse_optimizer(self, modules, lr: float):
+        """Return :class:`BagPipeSparseSGD` (enabled) or ``SparseSGD`` (disabled).
+
+        Implements the :meth:`OptimizationPlugin.create_sparse_optimizer`
+        abstract method.
+        """
         if self._controller is not None:
             return BagPipeSparseSGD(modules, lr=lr, controller=self._controller)
-        from python.pytorch.recstore.optimizer import SparseSGD
+        from ..optimizer import SparseSGD
         return SparseSGD(modules, lr=lr)
+
+    # Backwards-compatible alias.
+    create_optimizer = create_sparse_optimizer
 
     # ------------------------------------------------------------------
     #  Lifecycle hooks
@@ -177,6 +201,7 @@ class BagPipePlugin:
             row["bagpipe_cleanup_step_ms"] = (
                 time.perf_counter() - cleanup_start
             ) * 1e3
+            row.update(self._controller.consume_stats(reset=True))
         else:
             row.setdefault("bagpipe_gpu_cache_update_ids", 0)
             row.setdefault("bagpipe_gpu_cache_update_attempt_ids", 0)
@@ -192,3 +217,25 @@ class BagPipePlugin:
         """Wait for async work and stop the background cleanup thread."""
         if self._controller is not None:
             self._controller.shutdown()
+
+    # ------------------------------------------------------------------
+    #  OptimizationPlugin optional hooks
+    # ------------------------------------------------------------------
+
+    @property
+    def lookahead_depth(self) -> int:
+        """Dynamic lookahead for batch preparation depth.
+
+        Returns 0 when disabled so the caller can fall back to its own
+        prefetcher depth.
+        """
+        if self._controller is None:
+            return 0
+        return self._controller.lookahead_value
+
+    def config_schema(self) -> Dict[str, Any]:
+        return {
+            "lookahead": {"type": "int", "range": (1, 16)},
+            "cleanup_proportion": {"type": "float", "range": (0.05, 1.0)},
+            "cache_capacity": {"type": "int", "range": (10000, 1000000)},
+        }

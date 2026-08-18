@@ -6,7 +6,7 @@ BagPipeCacheController.update_grads() instead of direct PS pushes.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 import torch
 
@@ -27,27 +27,6 @@ class BagPipeSparseSGD:
         self.param_groups = [{"params": params, "lr": float(lr)}]
         self.controller = controller
         self._batch_num = 0
-        self._last_step_profile: Dict[str, float] = {}
-        self._perf_stats: Dict[str, float] = {}
-        self.reset_perf_stats()
-
-    def reset_perf_stats(self) -> None:
-        self._perf_stats = {
-            "update_trace_merge_ms": 0.0,
-            "update_owner_exchange_ms": 0.0,
-            "update_local_apply_ms": 0.0,
-            "update_async_enqueue_ms": 0.0,
-            "update_flush_wait_ms": 0.0,
-        }
-
-    def _perf_add(self, key: str, delta_ms: float) -> None:
-        self._perf_stats[key] = self._perf_stats.get(key, 0.0) + float(delta_ms)
-
-    def consume_perf_stats(self, reset: bool = True) -> Dict[str, float]:
-        stats = dict(self._perf_stats)
-        if reset:
-            self.reset_perf_stats()
-        return stats
 
     def zero_grad(self) -> None:
         for group in self.param_groups:
@@ -56,24 +35,16 @@ class BagPipeSparseSGD:
                     mod.reset_trace()
 
     def step(self) -> None:
-        import time as _time
         from python.pytorch.recstore.optimizer import _collect_traces_by_name
 
         with torch.no_grad():
-            self._last_step_profile = {}
             for group in self.param_groups:
                 lr = group["lr"]
                 for mod in group["params"]:
                     if not hasattr(mod, "_trace") or not mod._trace:
                         continue
 
-                    t_merge_start = _time.perf_counter()
                     traces_by_name = _collect_traces_by_name(mod)
-                    self._perf_add(
-                        "update_trace_merge_ms",
-                        (_time.perf_counter() - t_merge_start) * 1e3,
-                    )
-
                     for name, entries in traces_by_name.items():
                         if not entries:
                             continue
