@@ -60,6 +60,11 @@ def _debug_log_path(cfg: RunConfig, rank: int) -> Path:
 
 
 def _append_worker_debug(cfg: RunConfig, rank: int, message: str) -> None:
+    # Unconditional per-step appends to output_root (beegfs in multi-host runs)
+    # cost ~77ms each -- 12 calls/step polluted torchrec step_total by ~750ms
+    # and made the lane look ~10x slower than it is. Opt in via env var.
+    if os.environ.get("RS_DEMO_WORKER_DEBUG", "0") not in {"1", "true", "True"}:
+        return
     debug_path = _debug_log_path(cfg, rank)
     debug_path.parent.mkdir(parents=True, exist_ok=True)
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")

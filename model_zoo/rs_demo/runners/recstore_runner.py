@@ -141,6 +141,11 @@ def _debug_log_path(cfg: RunConfig, rank: int) -> Path:
 
 
 def _append_worker_debug(cfg: RunConfig, rank: int, message: str) -> None:
+    # Same gate as torchrec_runner: appends land on beegfs in multi-host runs
+    # (~77ms each). This runner only logs at startup today, but keep the two
+    # implementations consistent so per-step use can't silently regress.
+    if os.environ.get("RS_DEMO_WORKER_DEBUG", "0") not in {"1", "true", "True"}:
+        return
     debug_path = _debug_log_path(cfg, rank)
     debug_path.parent.mkdir(parents=True, exist_ok=True)
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
