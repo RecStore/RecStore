@@ -218,6 +218,7 @@ class PetPSClusterRunner:
         self.rdma_rc_skip_client_copy = self.rdma_skip_client_copy
         self.validate_routing = validate_routing
         self.server_command_wrapper = server_command_wrapper
+        self.server_shutdown_timeout = 30
         self.processes = []
         self.process_logs = {}
         self.ready = set()
@@ -730,7 +731,7 @@ class PetPSClusterRunner:
             if process.poll() is None:
                 process.terminate()
                 try:
-                    process.wait(timeout=5)
+                    process.wait(timeout=self.server_shutdown_timeout)
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait(timeout=5)

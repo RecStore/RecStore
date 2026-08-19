@@ -416,6 +416,27 @@ class TestPetPSClusterRunner(unittest.TestCase):
         self.assertIn("timed out after 1 seconds", completed.stdout)
         fake_process.terminate.assert_called_once()
 
+    def test_stop_allows_longer_graceful_shutdown_before_kill(self):
+        runner = PetPSClusterRunner()
+        fake_process = mock.Mock()
+        fake_process.poll.return_value = None
+        fake_process.wait.side_effect = [
+            subprocess.TimeoutExpired(cmd=["petps_server"], timeout=30),
+            None,
+        ]
+        fake_thread = mock.Mock()
+        runner.processes = [(fake_process, fake_thread)]
+
+        runner.stop()
+
+        self.assertEqual(
+            fake_process.wait.call_args_list,
+            [mock.call(timeout=30), mock.call(timeout=5)],
+        )
+        fake_process.terminate.assert_called_once()
+        fake_process.kill.assert_called_once()
+        fake_thread.join.assert_called_once_with(timeout=1)
+
 
 if __name__ == "__main__":
     unittest.main()

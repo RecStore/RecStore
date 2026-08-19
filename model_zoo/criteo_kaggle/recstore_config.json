@@ -1,0 +1,39 @@
+{
+    "cache_ps": {
+        "ps_type": "RDMA",
+        "max_batch_keys_size": 65536,
+        "num_threads": 32,
+        "num_shards": 2,
+        "servers": [
+            {"host": "10.0.2.192", "port": 15000, "shard": 0},
+            {"host": "10.0.2.191", "port": 15000, "shard": 1}
+        ],
+        "base_kv_config": {
+            "capacity": 16000000,
+            "index": {"type": "DRAM_PET_HASH"},
+            "value": {
+                "type": "DRAM_VALUE_STORE",
+                "path": "/dev/shm/recstore_kv/criteo_kaggle_value",
+                "default_value_size_hint": 512,
+                "dram_allocator": {
+                    "type": "PERSIST_LOOP_SLAB",
+                    "capacity_bytes": 17179869184
+                }
+            }
+        }
+    },
+    "distributed_client": {
+        "num_shards": 2,
+        "hash_method": "city_hash",
+        "max_keys_per_request": 65536,
+        "servers": [
+            {"host": "10.0.2.192", "port": 15000, "shard": 0},
+            {"host": "10.0.2.191", "port": 15000, "shard": 1}
+        ]
+    },
+    "client": {
+        "host": "10.0.2.192",
+        "port": 15000,
+        "shard": 0
+    }
+}
