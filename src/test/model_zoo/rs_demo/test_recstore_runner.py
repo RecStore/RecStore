@@ -355,14 +355,6 @@ class _FakeDenseOptimizer:
 
 
 class TestRecStoreRunner(unittest.TestCase):
-    def setUp(self) -> None:
-        self._append_worker_debug_patch = mock.patch(
-            "model_zoo.rs_demo.runners.recstore_runner._append_worker_debug",
-            lambda *args, **kwargs: None,
-        )
-        self._append_worker_debug_patch.start()
-        self.addCleanup(self._append_worker_debug_patch.stop)
-
     def test_lookahead_prefetcher_depth_zero_never_issues_prefetch(self) -> None:
         module = _FakePrefetchModule()
         prefetcher = LookaheadPrefetcher(module, depth=0, embedding_dim=128)
@@ -427,7 +419,7 @@ class TestRecStoreRunner(unittest.TestCase):
             return_value=12.0,
         ):
             recstore_runner._finalize_step_timing(
-                row, consume_start=10.0, wall_start=9.0
+                row, wall_start=9.0
             )
 
         self.assertEqual(row["step_total_ms"], 3000.0)
@@ -608,12 +600,6 @@ class TestRecStoreRunner(unittest.TestCase):
                     lambda row: row,
                 )
             )
-            stack.enter_context(
-                mock.patch(
-                    "model_zoo.rs_demo.runners.recstore_runner.summarize_us",
-                    lambda xs: "ok",
-                )
-            )
             if captured_rows is not None:
                 stack.enter_context(
                     mock.patch(
@@ -727,17 +713,18 @@ class TestRecStoreRunner(unittest.TestCase):
 
         self.assertEqual(cfg.prefetch_issue_depth, 12)
 
-    def test_validate_recstore_config_rejects_gpu_cache(self) -> None:
+    def test_validate_recstore_config_auto_sets_bagpipe_for_gpu_cache(self) -> None:
         cfg = RunConfig(backend="recstore", enable_gpu_cache=True, gpu_cache_capacity=1024)
 
-        with self.assertRaisesRegex(RuntimeError, "--enable-gpu-cache is not supported"):
-            config.validate_recstore_config(cfg)
+        config.validate_recstore_config(cfg)
+        self.assertEqual(cfg.optimization.plugin, "bagpipe")
 
-    def test_validate_recstore_config_rejects_bagpipe_read_mode(self) -> None:
+    def test_validate_recstore_config_auto_sets_bagpipe_plugin(self) -> None:
         cfg = RunConfig(backend="recstore", read_mode="bagpipe")
 
-        with self.assertRaisesRegex(RuntimeError, "read_mode=bagpipe is not wired"):
-            config.validate_recstore_config(cfg)
+        config.validate_recstore_config(cfg)
+        self.assertEqual(cfg.optimization.plugin, "bagpipe")
+        self.assertGreater(cfg.optimization.lookahead, 0)
 
     def test_validate_recstore_config_rejects_negative_prefetch_depth(self) -> None:
         cfg = RunConfig(backend="recstore", prefetch_depth=-1)
@@ -960,15 +947,15 @@ class TestRecStoreRunner(unittest.TestCase):
             fake_ebc = self._run_local_worker_with_fake_embedding_module(cfg)
             self.assertEqual(fake_ebc.fast_path_mode, "auto")
 
-    def test_gpu_cache_options_are_rejected_by_validate(self) -> None:
+    def test_gpu_cache_options_auto_set_bagpipe_via_validate(self) -> None:
         cfg = RunConfig(
             backend="recstore",
             enable_gpu_cache=True,
             gpu_cache_capacity=1024,
             disable_gpu_cache_lookup_bypass=True,
         )
-        with self.assertRaisesRegex(RuntimeError, "--enable-gpu-cache is not supported"):
-            config.validate_recstore_config(cfg)
+        config.validate_recstore_config(cfg)
+        self.assertEqual(cfg.optimization.plugin, "bagpipe")
 
     def test_local_worker_switches_client_backend_for_single_node_fast_path(self) -> None:
         cfg = RunConfig(

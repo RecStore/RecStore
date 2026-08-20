@@ -117,8 +117,9 @@ SelectGRPCShardConfigs(const nlohmann::json& cache_ps_config,
 class ParameterServiceImpl final
     : public recstoreps::ParameterService::Service {
 public:
-  ParameterServiceImpl(CachePS* cache_ps) {
+  ParameterServiceImpl(CachePS* cache_ps, int shard_id) {
     cache_ps_   = cache_ps;
+    shard_id_   = shard_id;
     start_time_ = std::chrono::steady_clock::now();
   }
   void ResetMetrics() {
@@ -282,6 +283,39 @@ private:
       }
 
       cache_ps_->Initialize(arg1, arg2);
+    } else if (request->command() == PSCommand::SAVE_CHECKPOINT ||
+               request->command() == PSCommand::LOAD_CHECKPOINT) {
+      if (request->arg1_size() != 1 || request->arg2_size() != 1 ||
+          request->arg1(0).empty() || request->arg2(0).empty()) {
+        return Status(grpc::StatusCode::INVALID_ARGUMENT,
+                      "checkpoint command requires path and metadata");
+      }
+      try {
+        nlohmann::json metadata = nlohmann::json::parse(request->arg2(0));
+        if (!metadata.is_object() || !metadata.contains("identity") ||
+            !metadata["identity"].is_object() ||
+            !metadata.contains("checkpoint_id") ||
+            !metadata["checkpoint_id"].is_string()) {
+          return Status(grpc::StatusCode::INVALID_ARGUMENT,
+                        "invalid checkpoint metadata");
+        }
+        metadata["shard_id"]             = shard_id_;
+        const std::string shard_metadata = metadata.dump();
+        const bool save = request->command() == PSCommand::SAVE_CHECKPOINT;
+        const bool ok =
+            save ? cache_ps_->SaveCheckpoint(request->arg1(0), shard_metadata)
+                 : cache_ps_->LoadCheckpoint(request->arg1(0), shard_metadata);
+        if (!ok) {
+          return Status(
+              grpc::StatusCode::FAILED_PRECONDITION,
+              save ? "checkpoint save failed" : "checkpoint load failed");
+        }
+        reply->set_reply("ok");
+      } catch (const nlohmann::json::exception& e) {
+        return Status(grpc::StatusCode::INVALID_ARGUMENT, e.what());
+      } catch (const std::exception& e) {
+        return Status(grpc::StatusCode::FAILED_PRECONDITION, e.what());
+      }
     } else if (request->command() == PSCommand::LOAD_FAKE_DATA) {
       if (request->arg1_size() != 1 ||
           static_cast<size_t>(request->arg1(0).size()) != sizeof(int64_t)) {
@@ -355,9 +389,9 @@ private:
     uint64_t total_bytes = 0;
 
     for (int i = 0; i < size; i++) {
-      cache_ps_->PutSingleParameter(reader->item(i), 0);
       total_bytes += reader->item(i)->dim * sizeof(float);
     }
+    cache_ps_->PutParameter(reader, 0);
     LOG(INFO) << "[PS] PutParameter done: " << size << " keys";
     total_put_requests_++;
     total_put_keys_ += size;
@@ -530,6 +564,7 @@ private:
 
 private:
   CachePS* cache_ps_;
+  int shard_id_ = 0;
   std::atomic<uint64_t> total_get_requests_{0};
   std::atomic<uint64_t> total_put_requests_{0};
   std::atomic<uint64_t> total_get_keys_{0};
@@ -610,7 +645,7 @@ public:
             }
 
             auto cache_ps = std::make_unique<CachePS>(shard_config);
-            ParameterServiceImpl service(cache_ps.get());
+            ParameterServiceImpl service(cache_ps.get(), shard);
 
             grpc::EnableDefaultHealthCheckService(true);
             grpc::reflection::InitProtoReflectionServerBuilderPlugin();
@@ -660,7 +695,7 @@ public:
       std::cout << "Starting single parameter server" << std::endl;
       std::string server_address("0.0.0.0:15000");
       auto cache_ps = std::make_unique<CachePS>(config_["cache_ps"]);
-      ParameterServiceImpl service(cache_ps.get());
+      ParameterServiceImpl service(cache_ps.get(), 0);
 
       std::atomic<bool> metrics_running{true};
       std::thread metrics_thread([&service, &metrics_running]() {

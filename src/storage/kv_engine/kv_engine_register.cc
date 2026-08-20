@@ -5,12 +5,16 @@
 #include "gflags/gflags.h"
 
 extern "C" void RecStoreForceLinkFasterKVEngine();
+extern "C" void RecStoreForceLinkDETableEngine();
 extern "C" void RecStoreForceLinkHPSEngine();
 
 namespace {
 struct IOBackendLinkGuard {
   IOBackendLinkGuard() {
     ForceLinkIOBackends();
+#ifdef RECSTORE_ENABLE_DETABLE_ENGINE
+    RecStoreForceLinkDETableEngine();
+#endif
 #ifdef RECSTORE_ENABLE_FASTERKV_ENGINE
     RecStoreForceLinkFasterKVEngine();
 #endif

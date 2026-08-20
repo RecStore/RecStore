@@ -120,6 +120,38 @@ void KVClientOp::LoadFromFile(const std::string& path) {
   throw std::runtime_error("Not impl");
 }
 
+bool KVClientOp::SaveCheckpoint(const std::string& path,
+                                const std::string& metadata) {
+  if (path.empty() || metadata.empty()) {
+    throw std::invalid_argument(
+        "checkpoint path and metadata must be non-empty");
+  }
+#ifdef USE_FAKE_KVCLIENT
+  throw std::runtime_error("Checkpoint save is unsupported by fake KVClient");
+#else
+  if (ps_client_ == nullptr) {
+    throw std::runtime_error("PS client is not initialized");
+  }
+  return ps_client_->SaveCheckpoint(path, metadata);
+#endif
+}
+
+bool KVClientOp::LoadCheckpoint(const std::string& path,
+                                const std::string& metadata) {
+  if (path.empty() || metadata.empty()) {
+    throw std::invalid_argument(
+        "checkpoint path and metadata must be non-empty");
+  }
+#ifdef USE_FAKE_KVCLIENT
+  throw std::runtime_error("Checkpoint load is unsupported by fake KVClient");
+#else
+  if (ps_client_ == nullptr) {
+    throw std::runtime_error("PS client is not initialized");
+  }
+  return ps_client_->LoadCheckpoint(path, metadata);
+#endif
+}
+
 uint64_t KVClientOp::EmbWriteAsync(const base::RecTensor& keys,
                                    const base::RecTensor& values) {
   throw std::runtime_error("Not impl");

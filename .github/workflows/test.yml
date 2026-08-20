@@ -49,6 +49,9 @@ jobs:
           submodules: false
           fetch-depth: 0
           persist-credentials: false
+          # pull_request_target 需要检出 fork 代码以在 Docker 中编译测试。
+          # 安全保障：fork PR 不会发布 coverage，secrets 仅用于 GHCR 镜像拉取。
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
 
       - name: Resolve image reference
         id: image

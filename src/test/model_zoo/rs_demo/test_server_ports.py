@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from model_zoo.rs_demo.runtime.server import (
+from python.pytorch.recstore.benchmark.server import (
     choose_available_ports,
     make_runtime_dir,
     resolve_kv_data_path,
@@ -240,7 +240,7 @@ class TestChooseAvailablePorts(unittest.TestCase):
 
     def test_dram_kv_path_uses_dev_shm_for_backend_policy(self) -> None:
         path = resolve_kv_data_path(
-            output_root="/nas/home/shq/docker/rs_demo",
+            output_root="/tmp/rs_demo",
             run_id="case-r2",
             path_suffix="abc123",
             allocator="R2ShmMalloc",

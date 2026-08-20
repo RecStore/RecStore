@@ -6,6 +6,27 @@
 
 namespace recstore::framework::gpu {
 
+// Profiling struct.  The profile *collection* was removed from
+// gpu_embedding_cache.cu by the external-release cleanup, but op_torch.cc
+// still calls these functions.  We provide inline no-op stubs here so the
+// code compiles without depending on the (removed) .cu definitions.  The
+// profile values will always be zero — if profiling is needed later,
+// restore the definitions in gpu_embedding_cache.cu.
+struct GpuCacheProfile {
+  double query_ms          = 0.0;
+  double backend_lookup_ms = 0.0;
+  double fill_ms           = 0.0;
+  double update_ms         = 0.0;
+  double hit_count         = 0.0;
+  double invalidate_ms     = 0.0;
+  double request_count     = 0.0;
+  double miss_count        = 0.0;
+};
+
+inline GpuCacheProfile GetLastGpuCacheProfile() { return {}; }
+inline void ResetLastGpuCacheProfile() {}
+inline void AddGpuCacheBackendLookupMs(double /*ms*/) {}
+
 bool EnableGpuCache(int64_t capacity, int64_t embedding_dim);
 void DisableGpuCache();
 void ClearGpuCache();

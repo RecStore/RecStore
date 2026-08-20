@@ -11,6 +11,14 @@ EXTRA_NUMERIC_COLUMNS = {
     "batch_dedup_ratio",
     "samples_per_sec",
     "batches_per_sec",
+    "loss",
+    "prefetch_depth",
+    "prefetch_issued_batches",
+    "prefetch_consumed_batches",
+    "prefetch_pending_batches",
+    "prefetch_ready_batches",
+    "prefetch_total_ids",
+    "prefetch_consumed_total_ids",
 }
 
 AGG_FIELDNAMES = ["metric", "mean", "p50", "p95", "max"]

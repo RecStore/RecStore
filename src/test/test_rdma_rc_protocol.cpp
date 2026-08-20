@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -59,6 +60,55 @@ TEST(RdmaRcProtocolTest, PutPayloadAcceptsConstArraySlice) {
   ASSERT_EQ(reader->item_size(), 2);
   EXPECT_EQ(reader->item(0)->key, 10u);
   EXPECT_EQ(reader->item(1)->key, 20u);
+}
+
+TEST(RdmaRcProtocolTest, FlatUpdatePayloadMatchesRowPayload) {
+  std::vector<std::uint64_t> keys = {10, 20};
+  std::vector<float> value_flat = {1.0f, 2.0f, 3.0f, 4.0f};
+  base::RecTensor values(value_flat.data(), {2, 2});
+  const std::vector<float> flat_values   = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::string row_payload;
+  std::string flat_payload;
+  std::string error;
+
+  ASSERT_GT(petps::UpdatePayloadBytes(
+                base::ConstArray<std::uint64_t>(keys), values,
+                &row_payload, &error),
+            0u)
+      << error;
+  ASSERT_GT(petps::UpdatePayloadBytesFlat(
+                base::ConstArray<std::uint64_t>(keys),
+                flat_values.data(),
+                2,
+                &flat_payload,
+                &error),
+            0u)
+      << error;
+
+  // Flat and row payloads use different serialization formats (flat stores
+  // keys + values contiguously; row uses ParameterCompressor with per-row
+  // dim fields). Verify each independently instead of requiring binary equality.
+  const auto* flat_keys =
+      reinterpret_cast<const std::uint64_t*>(flat_payload.data());
+  const auto* flat_values_ptr = reinterpret_cast<const float*>(
+      flat_payload.data() + keys.size() * sizeof(std::uint64_t));
+  EXPECT_EQ(flat_keys[0], 10u);
+  EXPECT_EQ(flat_keys[1], 20u);
+  EXPECT_FLOAT_EQ(flat_values_ptr[0], 1.0f);
+  EXPECT_FLOAT_EQ(flat_values_ptr[1], 2.0f);
+  EXPECT_FLOAT_EQ(flat_values_ptr[2], 3.0f);
+  EXPECT_FLOAT_EQ(flat_values_ptr[3], 4.0f);
+
+  const auto* reader =
+      reinterpret_cast<const ParameterCompressReader*>(row_payload.data());
+  ASSERT_TRUE(reader->Valid(static_cast<int>(row_payload.size())));
+  ASSERT_EQ(reader->item_size(), 2);
+  EXPECT_EQ(reader->item(0)->key, 10u);
+  EXPECT_EQ(reader->item(1)->key, 20u);
+  EXPECT_FLOAT_EQ(reader->item(0)->data()[0], 1.0f);
+  EXPECT_FLOAT_EQ(reader->item(0)->data()[1], 2.0f);
+  EXPECT_FLOAT_EQ(reader->item(1)->data()[0], 3.0f);
+  EXPECT_FLOAT_EQ(reader->item(1)->data()[1], 4.0f);
 }
 
 TEST(RdmaRcProtocolTest, FlatUpdatePayloadStoresContiguousKeysAndValues) {

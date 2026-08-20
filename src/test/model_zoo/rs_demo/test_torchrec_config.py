@@ -91,7 +91,7 @@ class TestTorchRecConfig(unittest.TestCase):
                 "--rdzv-id",
                 "demo-run",
                 "--output-root",
-                "/nas/home/shq/docker/rs_demo",
+                "/tmp/rs_demo",
                 "--run-id",
                 "case-a",
             ]
@@ -104,7 +104,7 @@ class TestTorchRecConfig(unittest.TestCase):
             ("master_port", 29600),
             ("rdzv_backend", "c10d"),
             ("rdzv_id", "demo-run"),
-            ("output_root", "/nas/home/shq/docker/rs_demo"),
+            ("output_root", "/tmp/rs_demo"),
             ("run_id", "case-a"),
         ]:
             with self.subTest(field=field):
@@ -139,6 +139,17 @@ class TestTorchRecConfig(unittest.TestCase):
             with self.subTest(field=field):
                 cfg = parse_config(["--backend", "torchrec", *args])
                 self.assertEqual(getattr(cfg, field), expected)
+
+    def test_torchrec_align_recstore_init_parses(self) -> None:
+        cfg = parse_config(
+            [
+                "--backend",
+                "torchrec",
+                "--torchrec-align-recstore-init",
+            ]
+        )
+
+        self.assertTrue(cfg.torchrec_align_recstore_init)
 
     def test_recstore_ps_type_accepts_rdma(self) -> None:
         cfg = parse_config(
@@ -424,6 +435,10 @@ class TestTorchRecConfig(unittest.TestCase):
                         "--steps",
                         "1",
                         "--no-start-server",
+                        "--output-root",
+                        str(tmpdir),
+                        "--run-id",
+                        "profiler-enabled",
                         "--torchrec-profiler",
                         "--torchrec-trace-dir",
                         str(trace_root),
@@ -510,6 +525,8 @@ class TestTorchRecConfig(unittest.TestCase):
                 cli, "make_runtime_dir", return_value=(Path(tmpdir), resolver_config)
             ), mock.patch.object(
                 cli, "analyze_embupdate", return_value="ok"
+            ), mock.patch.object(
+                cli, "analyze_stage_table", return_value="ok"
             ):
                 rc = cli.main(
                     [
@@ -541,6 +558,8 @@ class TestTorchRecConfig(unittest.TestCase):
                 cli, "make_runtime_dir", side_effect=AssertionError("make_runtime_dir should not be called")
             ), mock.patch.object(
                 cli, "analyze_embupdate", return_value="ok"
+            ), mock.patch.object(
+                cli, "analyze_stage_table", return_value="ok"
             ):
                 rc = cli.main(
                     [
@@ -587,6 +606,8 @@ class TestTorchRecConfig(unittest.TestCase):
                     side_effect=AssertionError("make_runtime_dir should not be called"),
                 ), mock.patch.object(
                     cli, "analyze_embupdate", return_value="ok"
+                ), mock.patch.object(
+                    cli, "analyze_stage_table", return_value="ok"
                 ):
                     rc = cli.main(
                         [
@@ -642,6 +663,8 @@ class TestTorchRecConfig(unittest.TestCase):
                 cli, "make_runtime_dir", return_value=(generated_runtime, generated_config)
             ), mock.patch.object(
                 cli, "analyze_embupdate", return_value="ok"
+            ), mock.patch.object(
+                cli, "analyze_stage_table", return_value="ok"
             ):
                 rc = cli.main(
                     [
@@ -717,6 +740,8 @@ class TestTorchRecConfig(unittest.TestCase):
                         "recstore",
                         "--ps-type",
                         "RDMA",
+                        "--single-node-ps-backend",
+                        "hierkv",
                         "--steps",
                         "1",
                         "--output-root",

@@ -1,12 +1,13 @@
 option(USE_FAKE_KVCLIENT "Use FakeKVClientOp for testing" OFF)
 option(RECSTORE_ENABLE_TENSORFLOW "Build TensorFlow framework ops" OFF)
+option(RECSTORE_ENABLE_GPU_CACHE "Build RecStore framework GPU cache" ON)
 
 find_package(Python 3.10 COMPONENTS Interpreter Development REQUIRED)
 
-if(ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
+if(ENABLE_CUDA AND CMAKE_CUDA_COMPILER AND RECSTORE_ENABLE_GPU_CACHE)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/gpu)
 else()
-    message(STATUS "Skipping framework/gpu because CUDA is disabled or nvcc not found")
+    message(STATUS "Skipping framework/gpu because CUDA is disabled, nvcc is unavailable, or RECSTORE_ENABLE_GPU_CACHE is OFF")
 endif()
 
 set(_recstore_libtorch_lib_dir "${PROJECT_SOURCE_DIR}/third_party/libtorch/libtorch/lib")

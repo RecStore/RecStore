@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -16,7 +17,6 @@ namespace petps {
 namespace {
 
 constexpr int kRawVerbsPort          = 1;
-constexpr int kRawVerbsGidIndex      = 1;
 constexpr std::uint32_t kRawVerbsPsn = 3185;
 constexpr int kRawVerbsCqDepth       = 4096;
 constexpr int kRawVerbsRecvDepth     = 1024;
@@ -35,19 +35,88 @@ std::string QpCreateError(const RawVerbsConfig& config, int node) {
          "). Reduce --client-count or --qps-per-client-per-shard.";
 }
 
-ibv_context* OpenDeviceForNuma(int numa_id) {
+struct OpenedRawVerbsDevice {
+  ibv_context* context = nullptr;
+  int gid_index        = -1;
+};
+
+int ReadDeviceNumaNode(ibv_device* device) {
+  std::ifstream input(std::string("/sys/class/infiniband/") +
+                      ibv_get_device_name(device) + "/device/numa_node");
+  int numa_node = -1;
+  input >> numa_node;
+  return numa_node;
+}
+
+int FindUsableGidIndex(ibv_context* context) {
+  ibv_port_attr port_attr{};
+  if (ibv_query_port(context, kRawVerbsPort, &port_attr) != 0 ||
+      port_attr.state != IBV_PORT_ACTIVE || port_attr.gid_tbl_len <= 0) {
+    return -1;
+  }
+  std::vector<ibv_gid> gids(static_cast<std::size_t>(port_attr.gid_tbl_len));
+  std::vector<bool> roce_v2_gids(
+      static_cast<std::size_t>(port_attr.gid_tbl_len));
+  const std::string gid_type_dir =
+      std::string("/sys/class/infiniband/") +
+      ibv_get_device_name(context->device) + "/ports/" +
+      std::to_string(kRawVerbsPort) + "/gid_attrs/types/";
+  for (int i = 0; i < port_attr.gid_tbl_len; ++i) {
+    if (ibv_query_gid(context, kRawVerbsPort, i, &gids[i]) != 0) {
+      std::memset(&gids[i], 0, sizeof(gids[i]));
+    }
+    std::ifstream type_input(gid_type_dir + std::to_string(i));
+    std::string gid_type;
+    std::getline(type_input, gid_type);
+    roce_v2_gids[static_cast<std::size_t>(i)] = gid_type == "RoCE v2";
+  }
+  return SelectRawVerbsGidIndex(gids, roce_v2_gids);
+}
+
+OpenedRawVerbsDevice OpenDeviceForNuma(int numa_id) {
+  // ibv_fork_init must be called before any other libibverbs API.
+  // It sets MADV_DONTFORK on all mmap'd regions (CQ/QP memory) so that
+  // forked child processes (e.g. DataLoader workers) don't inherit them.
+  // Without this, child exit corrupts the parent's RDMA state.
+  static const bool fork_init_done = []() {
+    ibv_fork_init();
+    return true;
+  }();
+  (void)fork_init_done;
+
   int device_count     = 0;
   ibv_device** devices = ibv_get_device_list(&device_count);
   if (devices == nullptr || device_count == 0) {
     throw std::runtime_error("no RDMA devices found");
   }
-  const int device_index = SelectRawVerbsDeviceIndex(numa_id, device_count);
-  ibv_context* context   = ibv_open_device(devices[device_index]);
+  std::vector<int> device_numa_nodes(static_cast<std::size_t>(device_count));
+  std::vector<bool> usable_devices(static_cast<std::size_t>(device_count));
+  std::vector<int> gid_indices(static_cast<std::size_t>(device_count), -1);
+  for (int i = 0; i < device_count; ++i) {
+    device_numa_nodes[static_cast<std::size_t>(i)] =
+        ReadDeviceNumaNode(devices[i]);
+    ibv_context* candidate = ibv_open_device(devices[i]);
+    if (candidate == nullptr) {
+      continue;
+    }
+    gid_indices[static_cast<std::size_t>(i)] = FindUsableGidIndex(candidate);
+    usable_devices[static_cast<std::size_t>(i)] =
+        gid_indices[static_cast<std::size_t>(i)] >= 0;
+    ibv_close_device(candidate);
+  }
+  const int device_index = SelectRawVerbsDeviceIndex(
+      numa_id, device_numa_nodes, usable_devices);
+  if (device_index < 0) {
+    ibv_free_device_list(devices);
+    throw std::runtime_error("no active RDMA device with a non-zero GID found");
+  }
+  ibv_context* context = ibv_open_device(devices[device_index]);
+  const int gid_index  = gid_indices[static_cast<std::size_t>(device_index)];
   ibv_free_device_list(devices);
   if (context == nullptr) {
     throw std::runtime_error("ibv_open_device failed");
   }
-  return context;
+  return {context, gid_index};
 }
 
 void ModifyQpToInit(ibv_qp* qp) {
@@ -66,7 +135,8 @@ void ModifyQpToInit(ibv_qp* qp) {
 
 void FillAhAttr(ibv_ah_attr* ah_attr,
                 std::uint16_t remote_lid,
-                const std::uint8_t* remote_gid) {
+                const std::uint8_t* remote_gid,
+                int local_gid_index) {
   std::memset(ah_attr, 0, sizeof(*ah_attr));
   ah_attr->dlid          = remote_lid;
   ah_attr->sl            = 0;
@@ -75,20 +145,26 @@ void FillAhAttr(ibv_ah_attr* ah_attr,
   if (remote_gid != nullptr) {
     ah_attr->is_global = 1;
     std::memcpy(&ah_attr->grh.dgid, remote_gid, 16);
-    ah_attr->grh.sgid_index = kRawVerbsGidIndex;
+    ah_attr->grh.sgid_index = local_gid_index;
     ah_attr->grh.hop_limit  = 1;
   }
 }
 
-void ModifyQpToRtr(ibv_qp* qp, const RawVerbsNodeMeta& remote) {
+void ModifyQpToRtr(ibv_qp* qp,
+                   const RawVerbsNodeMeta& remote,
+                   int local_gid_index) {
+  ibv_port_attr port_attr{};
+  if (ibv_query_port(qp->context, kRawVerbsPort, &port_attr) != 0) {
+    throw std::runtime_error(IbvError("ibv_query_port for active MTU"));
+  }
   ibv_qp_attr attr{};
   attr.qp_state           = IBV_QPS_RTR;
-  attr.path_mtu           = IBV_MTU_4096;
+  attr.path_mtu           = port_attr.active_mtu;
   attr.dest_qp_num        = remote.qpn;
   attr.rq_psn             = remote.psn;
   attr.max_dest_rd_atomic = 16;
   attr.min_rnr_timer      = 12;
-  FillAhAttr(&attr.ah_attr, remote.lid, remote.gid);
+  FillAhAttr(&attr.ah_attr, remote.lid, remote.gid, local_gid_index);
   const int flags =
       IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN |
       IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
@@ -121,6 +197,7 @@ struct RawVerbsTransport::Impl {
 
   RawVerbsConfig config;
   ibv_context* context = nullptr;
+  int gid_index        = -1;
   ibv_pd* pd           = nullptr;
   ibv_cq* cq           = nullptr;
   ibv_mr* local_mr     = nullptr;
@@ -139,7 +216,9 @@ struct RawVerbsTransport::Impl {
 
 RawVerbsTransport::RawVerbsTransport(const RawVerbsConfig& config)
     : impl_(std::make_unique<Impl>(config)) {
-  impl_->context = OpenDeviceForNuma(config.numa_id);
+  const auto opened = OpenDeviceForNuma(config.numa_id);
+  impl_->context     = opened.context;
+  impl_->gid_index   = opened.gid_index;
   impl_->pd      = ibv_alloc_pd(impl_->context);
   if (impl_->pd == nullptr) {
     throw std::runtime_error("ibv_alloc_pd failed");
@@ -320,7 +399,7 @@ RawVerbsNodeMeta RawVerbsTransport::LocalMeta() const {
     throw std::runtime_error("ibv_query_port failed");
   }
   ibv_gid gid{};
-  if (ibv_query_gid(impl_->context, kRawVerbsPort, kRawVerbsGidIndex, &gid) !=
+  if (ibv_query_gid(impl_->context, kRawVerbsPort, impl_->gid_index, &gid) !=
       0) {
     throw std::runtime_error("ibv_query_gid failed");
   }
@@ -334,7 +413,7 @@ RawVerbsNodeMeta RawVerbsTransport::LocalMeta() const {
   return meta;
 }
 
-void RawVerbsTransport::PublishAndConnect() {
+void RawVerbsTransport::Publish() {
   const int node_count = impl_->config.num_servers + impl_->config.num_clients;
   const RawVerbsNodeMeta local = LocalMeta();
   RdmaControlPlaneClient control_plane({
@@ -355,7 +434,16 @@ void RawVerbsTransport::PublishAndConnect() {
         impl_->config.remote_lane,
         peer_local);
   }
+}
 
+void RawVerbsTransport::Connect() {
+  const int node_count = impl_->config.num_servers + impl_->config.num_clients;
+  const RawVerbsNodeMeta local = LocalMeta();
+  RdmaControlPlaneClient control_plane({
+      impl_->config.control_plane_host,
+      impl_->config.control_plane_port,
+      impl_->config.control_plane_timeout_ms,
+  });
   impl_->metas.assign(static_cast<std::size_t>(node_count), RawVerbsNodeMeta{});
   impl_->remotes.assign(
       static_cast<std::size_t>(node_count), RawVerbsRemoteMemory{});
@@ -393,7 +481,8 @@ void RawVerbsTransport::PublishAndConnect() {
     }
     ibv_qp* qp = impl_->qps[static_cast<std::size_t>(node)];
     ModifyQpToInit(qp);
-    ModifyQpToRtr(qp, impl_->metas[static_cast<std::size_t>(node)]);
+    ModifyQpToRtr(
+        qp, impl_->metas[static_cast<std::size_t>(node)], impl_->gid_index);
     ModifyQpToRts(qp);
     for (int i = 0; i < kRawVerbsRecvDepth; ++i) {
       ibv_recv_wr wr{};
@@ -406,6 +495,11 @@ void RawVerbsTransport::PublishAndConnect() {
       }
     }
   }
+}
+
+void RawVerbsTransport::PublishAndConnect() {
+  Publish();
+  Connect();
 }
 
 void RawVerbsTransport::Write(

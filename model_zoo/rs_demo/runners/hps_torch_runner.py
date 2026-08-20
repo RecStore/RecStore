@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import time
@@ -26,21 +25,21 @@ from ..runtime.hps_torch_embedding import (
     import_hps_torch_module,
     prepare_hps_torch_model_files,
 )
-from ..runtime.hybrid_dlrm import (
-    build_hybrid_dense_arch,
-    parse_layer_sizes,
+from ..models.dlrm import build_criterion, build_dense_module, compute_dense_loss
+from ..models.utils import (
+    sync_device,
     prepare_hybrid_dlrm_input,
     reshape_torchrec_embeddings_for_dlrm,
     run_hybrid_backward,
-    sync_device,
 )
-from ..runtime.report import finalize_torchrec_row, write_stage_csv
+from python.pytorch.recstore.benchmark.report import finalize_torchrec_row, write_stage_csv
 from .base import BenchmarkRunner
 from ..runtime.timing import stage_timer
-from .torchrec_runner import (
-    _barrier_for_step_alignment,
-    _merge_rank_outputs,
-    _pick_socket_ifname,
+from ..runtime.worker_common import (
+    barrier_for_step_alignment as _barrier_for_step_alignment,
+    build_worker_env as _build_worker_env,
+    merge_rank_outputs as _merge_rank_outputs,
+    read_worker_context as _read_worker_context,
 )
 
 
@@ -265,126 +264,128 @@ class HpsTorchRunner(BenchmarkRunner):
             model_name=cfg.hps_torch_model_name,
             table_specs=table_specs,
         ).to(device)
-        dense_module = build_hybrid_dense_arch(
-            torch=torch,
-            dense_in_features=13,
-            embedding_dim=cfg.embedding_dim,
+        dense_module = build_dense_module(
+            cfg,
             num_sparse_features=len(default_cat_names),
-            dense_arch_layer_sizes=parse_layer_sizes(cfg.dense_arch_layer_sizes),
-            over_arch_layer_sizes=parse_layer_sizes(cfg.over_arch_layer_sizes),
+            embedding_dim=cfg.embedding_dim,
             device=device,
         )
+        criterion = build_criterion(cfg, dense_module)
         if use_dist:
             dense_module = torch.nn.parallel.DistributedDataParallel(
                 dense_module,
                 device_ids=[local_rank],
                 output_device=local_rank,
             )
-        criterion = torch.nn.BCEWithLogitsLoss()
         dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
 
         rows: list[dict[str, Any]] = []
         data_iter = iter(dataloader)
-        for step in range(cfg.steps):
-            row: dict[str, Any] = {
-                "backend": "hps_torch",
-                "model_backend_label": "hps_torch:LookupLayer",
-                "nproc": world_size,
-                "rank": rank,
-                "batch_size": cfg.batch_size,
-                "step": step,
-                "warmup_excluded": _bool_int(step < cfg.warmup_steps),
-                "collective_mode": "not_measured_single_process"
-                if world_size == 1
-                else "dense_ddp_measured_embedding_local",
-                "collective_measured": _bool_int(use_dist),
-                "nnodes": cfg.nnodes,
-                "nproc_per_node": cfg.nproc_per_node,
-                "world_size": world_size,
-                "dist_mode": "single_node",
-                "torchrec_dist_mode": "",
-                "torchrec_memory_mode": "",
-                "torchrec_role": "trainer",
-                "torchrec_is_trainer": 1,
-                "hps_torch_model_name": cfg.hps_torch_model_name,
-                "hps_torch_key_offset_mode": cfg.hps_torch_key_offset_mode,
-            }
-            step_start = time.perf_counter()
+        try:
+            for step in range(cfg.steps):
+                row: dict[str, Any] = {
+                    "backend": "hps_torch",
+                    "model_backend_label": "hps_torch:LookupLayer",
+                    "nproc": world_size,
+                    "rank": rank,
+                    "batch_size": cfg.batch_size,
+                    "step": step,
+                    "warmup_excluded": _bool_int(step < cfg.warmup_steps),
+                    "collective_mode": "not_measured_single_process"
+                    if world_size == 1
+                    else "dense_ddp_measured_embedding_local",
+                    "collective_measured": _bool_int(use_dist),
+                    "nnodes": cfg.nnodes,
+                    "nproc_per_node": cfg.nproc_per_node,
+                    "world_size": world_size,
+                    "dist_mode": "single_node",
+                    "torchrec_dist_mode": "",
+                    "torchrec_memory_mode": "",
+                    "torchrec_role": "trainer",
+                    "torchrec_is_trainer": 1,
+                    "hps_torch_model_name": cfg.hps_torch_model_name,
+                    "hps_torch_key_offset_mode": cfg.hps_torch_key_offset_mode,
+                }
+                step_start = time.perf_counter()
 
-            with stage_timer(row, "batch_prepare_ms"):
-                try:
-                    dense_batch, sparse_batch, labels_batch = next(data_iter)
-                except StopIteration:
-                    data_iter = iter(dataloader)
-                    dense_batch, sparse_batch, labels_batch = next(data_iter)
+                with stage_timer(row, "batch_prepare_ms"):
+                    try:
+                        dense_batch, sparse_batch, labels_batch = next(data_iter)
+                    except StopIteration:
+                        data_iter = iter(dataloader)
+                        dense_batch, sparse_batch, labels_batch = next(data_iter)
 
-            with stage_timer(row, "input_pack_ms"):
-                dense_batch, sparse_features = build_kjt_batch_from_dense_sparse_labels(
-                    dense_batch,
-                    sparse_batch,
-                    labels_batch,
+                with stage_timer(row, "input_pack_ms"):
+                    dense_batch, sparse_features = build_kjt_batch_from_dense_sparse_labels(
+                        dense_batch,
+                        sparse_batch,
+                        labels_batch,
+                        device=device,
+                    )
+                    sync_device(torch, device)
+
+                with stage_timer(row, "embed_lookup_local_ms"):
+                    embeddings = embedding_module(sparse_features)
+                    sync_device(torch, device)
+
+                with stage_timer(row, "embed_pool_local_ms"):
+                    embedded_sparse_source = reshape_torchrec_embeddings_for_dlrm(
+                        embeddings=embeddings,
+                        feature_names=default_cat_names,
+                        torch=torch,
+                    )
+                    sync_device(torch, device)
+
+                with stage_timer(row, "output_unpack_ms"):
+                    dense_features, embedded_sparse, labels = prepare_hybrid_dlrm_input(
+                        dense_batch=dense_batch,
+                        embedded_sparse_source=embedded_sparse_source,
+                        labels_batch=labels_batch,
+                        torch=torch,
+                        device=device,
+                        detach_sparse=True,
+                    )
+
+                with stage_timer(row, "dense_fwd_ms"):
+                    loss, _ = compute_dense_loss(
+                        cfg, dense_module, criterion,
+                        dense_features, embedded_sparse, labels)
+                    sync_device(torch, device)
+
+                with stage_timer(row, "backward_ms"):
+                    _embedded_sparse_grad = run_hybrid_backward(
+                        loss=loss,
+                        embedded_sparse=embedded_sparse,
+                        dense_module=dense_module,
+                        torch=torch,
+                        device=device,
+                    )
+
+                with stage_timer(row, "dense_optimizer_ms"):
+                    dense_optimizer.step()
+                    dense_optimizer.zero_grad(set_to_none=True)
+                    sync_device(torch, device)
+
+                row["sparse_optimizer_ms"] = 0.0
+                row["collective_launch_ms"] = 0.0
+                row["collective_wait_ms"] = 0.0
+                row["step_total_ms"] = (time.perf_counter() - step_start) * 1e3
+                rows.append(finalize_torchrec_row(row))
+                _barrier_for_step_alignment(
+                    dist=torch.distributed,
                     device=device,
+                    local_rank=local_rank,
+                    use_dist=use_dist,
                 )
-                sync_device(torch, device)
-
-            with stage_timer(row, "embed_lookup_ms"):
-                embeddings = embedding_module(sparse_features)
-                sync_device(torch, device)
-
-            with stage_timer(row, "embed_pool_local_ms"):
-                embedded_sparse_source = reshape_torchrec_embeddings_for_dlrm(
-                    embeddings=embeddings,
-                    feature_names=default_cat_names,
-                    torch=torch,
-                )
-                sync_device(torch, device)
-
-            with stage_timer(row, "output_unpack_ms"):
-                dense_features, embedded_sparse, labels = prepare_hybrid_dlrm_input(
-                    dense_batch=dense_batch,
-                    embedded_sparse_source=embedded_sparse_source,
-                    labels_batch=labels_batch,
-                    torch=torch,
-                    device=device,
-                    detach_sparse=True,
-                )
-
-            with stage_timer(row, "dense_fwd_ms"):
-                logits = dense_module(dense_features, embedded_sparse)
-                loss = criterion(logits, labels)
-                sync_device(torch, device)
-
-            with stage_timer(row, "backward_ms"):
-                _embedded_sparse_grad = run_hybrid_backward(
-                    loss=loss,
-                    embedded_sparse=embedded_sparse,
-                    dense_module=dense_module,
-                    torch=torch,
-                    device=device,
-                )
-
-            with stage_timer(row, "dense_optimizer_ms"):
-                dense_optimizer.step()
-                dense_optimizer.zero_grad(set_to_none=True)
-                sync_device(torch, device)
-
-            row["sparse_optimizer_ms"] = 0.0
-            row["collective_launch_ms"] = 0.0
-            row["collective_wait_ms"] = 0.0
-            row["step_total_ms"] = (time.perf_counter() - step_start) * 1e3
-            rows.append(finalize_torchrec_row(row))
-            _barrier_for_step_alignment(
-                dist=torch.distributed,
-                device=device,
-                local_rank=local_rank,
-                use_dist=use_dist,
-            )
-            if (step + 1) % 10 == 0:
-                print(
-                    f"[rs_demo] hps_torch step {step + 1}/{cfg.steps} "
-                    f"emb={rows[-1]['emb_stage_ms']:.2f}ms "
-                    f"step={rows[-1]['step_total_ms']:.2f}ms"
-                )
+                if (step + 1) % 10 == 0:
+                    print(
+                        f"[rs_demo] hps_torch step {step + 1}/{cfg.steps} "
+                        f"emb={rows[-1]['emb_stage_ms']:.2f}ms "
+                        f"step={rows[-1]['step_total_ms']:.2f}ms"
+                    )
+        finally:
+            if hasattr(embedding_module, 'close'):
+                embedding_module.close()
 
         out_path = Path(cfg.hps_torch_main_csv)
         if out_csv != out_path:
@@ -401,7 +402,7 @@ class HpsTorchRunner(BenchmarkRunner):
             cfg=cfg,
             rank=0,
             world_size=1,
-            local_rank=int(os.environ.get("LOCAL_RANK", "0")),
+            local_rank=0,
             out_csv=Path(cfg.hps_torch_main_csv),
         )
 
@@ -417,16 +418,8 @@ class HpsTorchRunner(BenchmarkRunner):
             pass
 
         cmd = self._build_torchrun_cmd(repo_root, cfg)
-        env = os.environ.copy()
-        env["RS_DEMO_HPS_TORCH_WORKER"] = "1"
-        env["RS_DEMO_HPS_TORCH_WORKER_DIR"] = str(rank_dir)
-        socket_ifname = _pick_socket_ifname()
-        if socket_ifname:
-            env.setdefault("NCCL_SOCKET_IFNAME", socket_ifname)
-            env.setdefault("GLOO_SOCKET_IFNAME", socket_ifname)
+        env = _build_worker_env("hps_torch", rank_dir)
         env.setdefault("NCCL_IB_DISABLE", "1")
-        env.setdefault("NCCL_SOCKET_FAMILY", "AF_INET")
-        env.setdefault("NCCL_DEBUG", "WARN")
         res = subprocess.run(
             cmd,
             cwd=str(repo_root),
@@ -455,19 +448,16 @@ class HpsTorchRunner(BenchmarkRunner):
         validate_hps_torch_config(cfg)
         if not torch.cuda.is_available():
             raise RuntimeError("hps_torch.LookupLayer requires CUDA.")
-        if os.environ.get("RS_DEMO_HPS_TORCH_WORKER") == "1":
-            rank = int(os.environ.get("RANK", "0"))
-            local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-            world_size = int(os.environ.get("WORLD_SIZE", str(cfg.nproc_per_node)))
-            worker_dir = Path(os.environ["RS_DEMO_HPS_TORCH_WORKER_DIR"])
-            ensure_shared_dir(worker_dir)
-            out_csv = worker_dir / f"rank{rank}.csv"
+        worker = _read_worker_context("hps_torch", default_world_size=cfg.nproc_per_node)
+        if worker is not None:
+            ensure_shared_dir(worker.output_dir)
+            out_csv = worker.output_dir / f"rank{worker.rank}.csv"
             return self._run_worker(
                 repo_root=repo_root,
                 cfg=cfg,
-                rank=rank,
-                world_size=world_size,
-                local_rank=local_rank,
+                rank=worker.rank,
+                world_size=worker.world_size,
+                local_rank=worker.local_rank,
                 out_csv=out_csv,
             )
         if cfg.nproc_per_node <= 1:

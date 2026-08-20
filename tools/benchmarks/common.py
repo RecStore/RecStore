@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_ROOT = Path("/nas/home/shq/docker/rs_demo")
+DEFAULT_OUTPUT_ROOT = Path("/tmp/rs_demo")
 DEFAULT_REMOTE_HOST = "shq@10.0.2.68"
-DEFAULT_REMOTE_REPO = "/nas/home/shq/docker/RecStore"
+DEFAULT_REMOTE_REPO = "/tmp/RecStore"
 DEFAULT_REMOTE_CONTAINER = "recstore"
 DEFAULT_REMOTE_RUNTIME_ROOT = DEFAULT_OUTPUT_ROOT / "runtime"
 DEFAULT_WARMUP_STEPS = 2

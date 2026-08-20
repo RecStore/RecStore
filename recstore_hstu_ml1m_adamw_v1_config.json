@@ -1,0 +1,44 @@
+{
+    "cache_ps": {
+        "ps_type": "GRPC",
+        "max_batch_keys_size": 65536,
+        "num_threads": 32,
+        "num_shards": 2,
+        "servers": [
+            {"host": "127.0.0.1", "port": 15150, "shard": 0},
+            {"host": "127.0.0.1", "port": 15151, "shard": 1}
+        ],
+        "optimizer": {
+            "type": "AdamW",
+            "learning_rate": 0.001,
+            "beta1": 0.9,
+            "beta2": 0.98,
+            "epsilon": 1e-8,
+            "weight_decay": 0.0
+        },
+        "base_kv_config": {
+            "engine_type": "KVEngineComposite",
+            "capacity": 1000000,
+            "index": {"type": "DRAM_PET_HASH"},
+            "value": {
+                "type": "DRAM_VALUE_STORE",
+                "path": "/dev/shm/recstore_hstu_ml1m_adamw_v1/value",
+                "default_value_size_hint": 512,
+                "dram_allocator": {
+                    "type": "CONCURRENT_SLAB_MEMORY_POOL",
+                    "capacity_bytes": 512000000
+                }
+            }
+        }
+    },
+    "distributed_client": {
+        "num_shards": 2,
+        "hash_method": "city_hash",
+        "max_keys_per_request": 500,
+        "servers": [
+            {"host": "127.0.0.1", "port": 15150, "shard": 0},
+            {"host": "127.0.0.1", "port": 15151, "shard": 1}
+        ]
+    },
+    "client": {"host": "127.0.0.1", "port": 15150, "shard": 0}
+}

@@ -8,6 +8,30 @@ from ._sparse_test_utils import KVClientIsolationMixin, build_features
 
 
 class TestSparseOptimizerStaging(KVClientIsolationMixin, unittest.TestCase):
+    def test_failed_wait_keeps_update_available_for_retry(self):
+        ebc, fake = self.build_module()
+        client = ebc.kv_client
+        handle = client.update_async(
+            "t0",
+            torch.tensor([1], dtype=torch.int64),
+            torch.ones((1, 4), dtype=torch.float32),
+        )
+        apply_update = fake.emb_update_table
+
+        def fail_update(*_args, **_kwargs):
+            raise RuntimeError("backend failure")
+
+        fake.emb_update_table = fail_update
+        with self.assertRaisesRegex(RuntimeError, "backend failure"):
+            client.wait(handle)
+        self.assertIn(handle, client._pending_async_ops)
+
+        fake.emb_update_table = apply_update
+        client.wait(handle)
+        self.assertNotIn(handle, client._pending_async_ops)
+        with self.assertRaisesRegex(RuntimeError, "Unknown async update handle"):
+            client.wait(handle)
+
     def test_rdma_update_is_submitted_before_wait(self):
         ebc, fake = self.build_module()
         submitted = {}

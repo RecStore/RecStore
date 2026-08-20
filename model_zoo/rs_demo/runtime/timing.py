@@ -18,6 +18,9 @@ def stage_timer(row: dict[str, Any], key: str):
         row[key] = (time.perf_counter() - start) * 1e3
 
 
+_VALID_MODES = ("stage", "step", "none")
+
+
 class StepTimer:
     """Per-stage timing for one training step.
 
@@ -27,13 +30,23 @@ class StepTimer:
     stages (`cpu`) use the wall clock, because CUDA events read ~0 for work that
     never touches the compute stream (dataloader, PS/RDMA round trips). On
     non-CUDA devices `gpu` falls back to the wall clock.
+
+    Modes:
+        stage: Per-stage CUDA events, single sync in `finish` (default).
+        step:  No per-stage CUDA events (wall-clock), single sync in `finish`.
+        none:  No per-stage events, no explicit sync.
     """
 
-    def __init__(self, row: dict[str, Any], torch, device) -> None:
+    def __init__(self, row: dict[str, Any], torch, device, *, mode: str = "stage") -> None:
+        if mode not in _VALID_MODES:
+            raise ValueError(
+                f"Invalid timing sync mode {mode!r}; must be one of {', '.join(_VALID_MODES)}"
+            )
         self._row = row
         self._torch = torch
         self._device = device
         self._cuda = device.type == "cuda"
+        self._mode = mode
         self._pending: list[tuple[str, Any, Any]] = []
 
     @contextmanager
@@ -46,7 +59,9 @@ class StepTimer:
 
     @contextmanager
     def gpu(self, key: str):
-        if not self._cuda:
+        # "stage" mode: per-stage CUDA events on GPU; wall-clock fallback otherwise.
+        # "step"/"none": always wall-clock, no per-stage events.
+        if not self._cuda or self._mode != "stage":
             with self.cpu(key):
                 yield
             return
@@ -64,7 +79,13 @@ class StepTimer:
 
         The drain wait is the time the host blocks for outstanding GPU work and
         collectives, i.e. the cross-rank straggler cost.
+
+        "none" mode: no explicit sync, pending events discarded.
+        "step"/"stage" mode: single device sync, then resolve events.
         """
+        if self._mode == "none":
+            self._pending.clear()
+            return 0.0
         if not self._cuda:
             return 0.0
         wait_start = time.perf_counter()

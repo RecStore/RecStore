@@ -11,7 +11,7 @@ from dataclasses import dataclass
 try:
     from torchrec.sparse.jagged_tensor import KeyedJaggedTensor, KeyedTensor
     from torchrec.modules.embedding_configs import EmbeddingBagConfig
-except ModuleNotFoundError:
+except ImportError:
     class KeyedJaggedTensor:  # pragma: no cover - fallback typing surface
         pass
 
@@ -46,14 +46,24 @@ except ModuleNotFoundError:
         embedding_dim: int
         num_embeddings: int
         feature_names: List[str]
-from recstore.KVClient import get_kv_client, RecStoreClient
-from recstore.single_node_exchange import (
-    LookupEmbeddingResponsePayload,
-    LookupIdsPayload,
-    exchange_lookup_embedding_responses,
-    exchange_lookup_ids,
-    reassemble_lookup_embedding_responses,
-)
+try:
+    from ..recstore.KVClient import get_kv_client, RecStoreClient
+    from ..recstore.single_node_exchange import (
+        LookupEmbeddingResponsePayload,
+        LookupIdsPayload,
+        exchange_lookup_embedding_responses,
+        exchange_lookup_ids,
+        reassemble_lookup_embedding_responses,
+    )
+except ImportError:
+    from recstore.KVClient import get_kv_client, RecStoreClient
+    from recstore.single_node_exchange import (
+        LookupEmbeddingResponsePayload,
+        LookupIdsPayload,
+        exchange_lookup_embedding_responses,
+        exchange_lookup_ids,
+        reassemble_lookup_embedding_responses,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +167,7 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
         self._lr = lr
         self._enable_fusion = enable_fusion
         self._fusion_k = fusion_k
+        self.is_recstore_sparse_module = True
         
         self.feature_keys: List[str] = []
         self._config_names: Dict[str, str] = {}

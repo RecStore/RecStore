@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from model_zoo.rs_demo.runtime.torchrec_aggregate import (
+from python.pytorch.recstore.analysis.aggregate import (
     aggregate_torchrec_main_csv,
     write_aggregate_csv,
 )
@@ -100,7 +100,7 @@ class TestTorchRecAggregate(unittest.TestCase):
         self.assertEqual(agg["batch_raw_ids"]["mean"], 30.0)
 
     def test_aggregate_csv_to_wide_pivots_long_format(self) -> None:
-        from model_zoo.rs_demo.runtime.torchrec_aggregate import aggregate_csv_to_wide
+        from python.pytorch.recstore.analysis.aggregate import aggregate_csv_to_wide
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "agg.csv"

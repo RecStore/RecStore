@@ -29,6 +29,8 @@ enum class PSCommand {
   RELOAD_PS,
   LOAD_FAKE_DATA,
   DUMP_FAKE_DATA,
+  SAVE_CHECKPOINT,
+  LOAD_CHECKPOINT,
 };
 
 inline bool IsFloatEmbeddingValues(const base::RecTensor& values,
@@ -99,6 +101,21 @@ public:
                                  const EmbeddingTableConfig& config) = 0;
 
   virtual void Command(PSCommand command) = 0;
+
+  virtual bool
+  SaveCheckpoint(const std::string& path, const std::string& metadata) {
+    (void)path;
+    (void)metadata;
+    LOG(ERROR) << "Checkpoint save is unsupported by this PS client";
+    return false;
+  }
+  virtual bool
+  LoadCheckpoint(const std::string& path, const std::string& metadata) {
+    (void)path;
+    (void)metadata;
+    LOG(ERROR) << "Checkpoint load is unsupported by this PS client";
+    return false;
+  }
 
   virtual uint64_t
   PrefetchParameter(const base::ConstArray<uint64_t>& keys) = 0;

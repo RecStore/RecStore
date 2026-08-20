@@ -185,6 +185,16 @@ public:
     return all_success;
   }
 
+  bool SaveCheckpoint(const std::string& path,
+                      const std::string& metadata) override {
+    return FanOutCheckpoint(path, metadata, true);
+  }
+
+  bool LoadCheckpoint(const std::string& path,
+                      const std::string& metadata) override {
+    return FanOutCheckpoint(path, metadata, false);
+  }
+
   // ---- BasePSClient virtual overrides ------------------------------------
 
   int GetParameter(const base::ConstArray<uint64_t>& keys,
@@ -697,6 +707,41 @@ private:
     std::vector<DistPrefetchShardState> shard_states;
   };
 
+  static std::string
+  ShardCheckpointPath(const std::string& path, int shard_id) {
+    const std::string prefix =
+        path.empty() || path.back() == '/' ? path : path + "/";
+    return prefix + "recstore-shard-" + std::to_string(shard_id) + ".bin";
+  }
+
+  bool FanOutCheckpoint(
+      const std::string& path, const std::string& metadata, bool save) {
+    if (path.empty() || metadata.empty()) {
+      LOG(ERROR) << "Checkpoint path and metadata must be non-empty";
+      return false;
+    }
+    std::vector<std::future<bool>> futures;
+    for (const auto& server : server_configs_) {
+      const auto it = shard_to_client_index_.find(server.shard);
+      if (it == shard_to_client_index_.end()) {
+        LOG(ERROR) << "No client found for shard " << server.shard;
+        return false;
+      }
+      ClientT* client        = clients_[it->second].get();
+      const std::string file = ShardCheckpointPath(path, server.shard);
+      futures.push_back(
+          std::async(std::launch::async, [client, file, metadata, save]() {
+            return save ? client->SaveCheckpoint(file, metadata)
+                        : client->LoadCheckpoint(file, metadata);
+          }));
+    }
+    bool all_success = true;
+    for (auto& future : futures) {
+      all_success = future.get() && all_success;
+    }
+    return all_success;
+  }
+
   void InitializeClients() {
     clients_.clear();
     clients_.reserve(server_configs_.size());
@@ -773,4 +818,3 @@ private:
 };
 
 } // namespace recstore
-

@@ -106,6 +106,10 @@ public:
   // Persistence
   virtual void SaveToFile(const std::string& path)   = 0; // not urgent
   virtual void LoadFromFile(const std::string& path) = 0; // not urgent
+  virtual bool
+  SaveCheckpoint(const std::string& path, const std::string& metadata) = 0;
+  virtual bool
+  LoadCheckpoint(const std::string& path, const std::string& metadata) = 0;
 
   virtual ~CommonOp() = default;
 };
@@ -145,6 +149,10 @@ public:
   void WaitForWrite(uint64_t write_id) override;
   void SaveToFile(const std::string& path) override;
   void LoadFromFile(const std::string& path) override;
+  bool
+  SaveCheckpoint(const std::string& path, const std::string& metadata) override;
+  bool
+  LoadCheckpoint(const std::string& path, const std::string& metadata) override;
   void SetPSConfig(const std::string& host, int port);
   void SetPSBackend(const std::string& backend);
   std::string CurrentPSBackend() const;

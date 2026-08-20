@@ -1,6 +1,85 @@
+import json
+import math
+import os
+import time
+
 import torch
-from typing import List, Union, Dict, Tuple, Any
+from typing import List, Union, Dict, Tuple, Any, Optional
+from time import perf_counter
 from .single_node_exchange import SparseGradPayload, exchange_sparse_grads
+
+_LOCAL_FAST_PATH_BACKENDS = {"local_shm", "hierkv"}
+
+
+def _server_sparse_optimizer_config() -> Dict[str, Any]:
+    config_path = os.environ.get("RECSTORE_CONFIG")
+    if not config_path:
+        return {
+            "type": "SGD",
+            "learning_rate": 0.01,
+            "epsilon": 1e-10,
+            "beta1": 0.9,
+            "beta2": 0.98,
+            "weight_decay": 0.0,
+        }
+    try:
+        with open(config_path, "r", encoding="utf-8") as config_file:
+            root_config = json.load(config_file)
+        optimizer_config = root_config.get("cache_ps", {}).get("optimizer", {})
+    except (OSError, TypeError, ValueError) as error:
+        raise RuntimeError(
+            f"Failed to read sparse optimizer config from {config_path}: {error}"
+        ) from error
+    if not isinstance(optimizer_config, dict):
+        raise RuntimeError("cache_ps.optimizer must be an object")
+    optimizer_type = optimizer_config.get("type", "SGD")
+    default_epsilon = 1e-8 if optimizer_type == "AdamW" else 1e-10
+    return {
+        "type": optimizer_type,
+        "learning_rate": float(optimizer_config.get("learning_rate", 0.01)),
+        "epsilon": float(optimizer_config.get("epsilon", default_epsilon)),
+        "beta1": float(optimizer_config.get("beta1", 0.9)),
+        "beta2": float(optimizer_config.get("beta2", 0.98)),
+        "weight_decay": float(optimizer_config.get("weight_decay", 0.0)),
+    }
+
+
+def _validate_server_sparse_optimizer(
+    expected_type: str,
+    learning_rate: float,
+    epsilon: float,
+    beta1: Optional[float] = None,
+    beta2: Optional[float] = None,
+    weight_decay: Optional[float] = None,
+) -> None:
+    actual = _server_sparse_optimizer_config()
+    matches = (
+        actual["type"] == expected_type
+        and math.isclose(
+            actual["learning_rate"], float(learning_rate), rel_tol=1e-12, abs_tol=0.0
+        )
+        and math.isclose(actual["epsilon"], float(epsilon), rel_tol=1e-12, abs_tol=0.0)
+    )
+    expected_values = {
+        "beta1": beta1,
+        "beta2": beta2,
+        "weight_decay": weight_decay,
+    }
+    for key, expected in expected_values.items():
+        if expected is not None:
+            matches = matches and math.isclose(
+                actual[key], float(expected), rel_tol=1e-12, abs_tol=0.0
+            )
+    if not matches:
+        raise RuntimeError(
+            "RecStore sparse optimizer mismatch: "
+            f"requested type={expected_type}, learning_rate={learning_rate}, "
+            f"epsilon={epsilon}; cache_ps config has type={actual['type']}, "
+            f"learning_rate={actual['learning_rate']}, epsilon={actual['epsilon']}, "
+            f"beta1={actual['beta1']}, beta2={actual['beta2']}, "
+            f"weight_decay={actual['weight_decay']}"
+        )
+
 
 class DistEmbedding:
     pass
@@ -336,6 +415,21 @@ class SparseOptimizer:
         self.kv_client = _get_kv_client_if_needed(params)
         self._inflight_handles: List[Tuple[Any, int]] = []
         self._last_update_payloads: List[Dict[str, Any]] = []
+        self.reset_perf_stats()
+
+    def reset_perf_stats(self) -> None:
+        self._perf_stats: Dict[str, float] = {
+            "update_flush_wait_ms": 0.0,
+        }
+
+    def _perf_add(self, key: str, delta_ms: float) -> None:
+        self._perf_stats[key] = self._perf_stats.get(key, 0.0) + float(delta_ms)
+
+    def consume_perf_stats(self, reset: bool = True) -> Dict[str, float]:
+        stats = dict(self._perf_stats)
+        if reset:
+            self.reset_perf_stats()
+        return stats
 
     def last_update_payloads(self) -> List[Dict[str, Any]]:
         return [
@@ -372,14 +466,20 @@ class SparseOptimizer:
         if self.kv_client is None:
             self._inflight_handles.clear()
             return
-        for kv_client, handle, payload in self._inflight_handles:
-            kv_client.wait(handle)
-            self._last_update_payloads.append(payload)
-        self._inflight_handles.clear()
+        completed = 0
+        try:
+            for kv_client, handle, payload in self._inflight_handles:
+                t_wait_start = perf_counter()
+                kv_client.wait(handle)
+                self._perf_add("update_flush_wait_ms", (perf_counter() - t_wait_start) * 1e3)
+                self._last_update_payloads.append(payload)
+                completed += 1
+        finally:
+            del self._inflight_handles[:completed]
 
 class SparseSGD(SparseOptimizer):
     def step(self):
-        """Performs a single Sparse SGD optimization step."""
+        """Aggregates sparse gradients and submits them to the backend optimizer."""
         with torch.no_grad():
             self._last_update_payloads = []
             for group in self.param_groups:
@@ -408,3 +508,50 @@ class SparseSGD(SparseOptimizer):
                         print(f"Warning: Module type {type(mod).__name__} is not supported by SparseSGD optimizer.")
                     if hasattr(mod, 'reset_trace'):
                         mod.reset_trace()
+
+
+class SparseRowWiseAdagrad(SparseSGD):
+    """Submit raw gradients to a matching server-owned RowWiseAdagrad optimizer."""
+
+    def __init__(
+        self,
+        params: List[torch.nn.Module],
+        lr: float = 0.01,
+        eps: float = 1e-10,
+    ) -> None:
+        if not all(
+            hasattr(module, "_config_names") and hasattr(module, "_trace")
+            for module in params
+        ):
+            raise TypeError(
+                "SparseRowWiseAdagrad only supports RecStore sparse modules"
+            )
+        _validate_server_sparse_optimizer("RowWiseAdagrad", lr, eps)
+        super().__init__(params, lr)
+        self.eps = float(eps)
+
+
+class SparseAdamW(SparseSGD):
+    """Submit raw sparse gradients to the RecStore server-owned AdamW."""
+
+    def __init__(
+        self,
+        params: List[torch.nn.Module],
+        lr: float = 0.001,
+        betas: Tuple[float, float] = (0.9, 0.98),
+        eps: float = 1e-8,
+        weight_decay: float = 0.0,
+    ) -> None:
+        if not all(
+            hasattr(module, "_config_names") and hasattr(module, "_trace")
+            for module in params
+        ):
+            raise TypeError("SparseAdamW only supports RecStore sparse modules")
+        beta1, beta2 = betas
+        _validate_server_sparse_optimizer(
+            "AdamW", lr, eps, beta1=beta1, beta2=beta2, weight_decay=weight_decay
+        )
+        super().__init__(params, lr)
+        self.betas = (float(beta1), float(beta2))
+        self.eps = float(eps)
+        self.weight_decay = float(weight_decay)

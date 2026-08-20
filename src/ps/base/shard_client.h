@@ -29,6 +29,19 @@ public:
                                  const EmbeddingTableConfig& config) = 0;
   virtual void Command(PSCommand command) = 0;
 
+  virtual bool SaveCheckpoint(const std::string& path,
+                              const std::string& metadata) {
+    (void)path;
+    (void)metadata;
+    return false;
+  }
+  virtual bool LoadCheckpoint(const std::string& path,
+                              const std::string& metadata) {
+    (void)path;
+    (void)metadata;
+    return false;
+  }
+
   virtual uint64_t PrefetchParameter(const base::ConstArray<uint64_t>& keys) = 0;
   virtual bool IsPrefetchDone(uint64_t prefetch_id) = 0;
   virtual void WaitForPrefetch(uint64_t prefetch_id) = 0;

@@ -3,17 +3,35 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Dict, Sequence
+
+_repo_root = Path(__file__).resolve().parents[2]
+_src_dir = str(_repo_root / "src")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
+try:
+    from python.pytorch.recstore.optim.config import OptimizationConfig
+except ImportError:
+    @dataclass
+    class OptimizationConfig:  # pragma: no cover - fallback when optim/ pkg not present
+        plugin: str = "none"
+        lookahead: int = 0
+        cleanup_proportion: float = 0.25
+        cache_capacity: int = 0
+        embedding_dim: int = 128
+        plugin_config: Dict[str, Any] = field(default_factory=dict)
 
 
 # Model plugins that contribute their own CLI arguments (routed into
 # ``RunConfig.model_args``).  DLRM is built in and needs none; others live in
 # their own ``model_zoo/<Model>/`` package.  Missing packages are skipped so the
 # CLI still works when only a subset of models is present.
-_MODEL_ARG_PLUGIN_MODULES = ("RankMixer.plugin",)
+_MODEL_ARG_PLUGIN_MODULES = ()
 
 
 def _import_model_plugin(path: str):
@@ -143,7 +161,7 @@ class RunConfig:
     server_port1: int | None = None
     server_wait_seconds: float = 20.0
     allocator: str = "R2ShmMalloc"
-    output_root: str = "/nas/home/shq/docker/rs_demo"
+    output_root: str = "/tmp/rs_demo"
     run_id: str = ""
     jsonl: str = ""
     csv: str = ""
@@ -157,9 +175,7 @@ class RunConfig:
     fuse_k: int = 30
     dense_arch_layer_sizes: str = "512,256,128"
     over_arch_layer_sizes: str = "1024,1024,512,256,1"
-    # Dense compute model: "dlrm" (default) or another registered model such as
-    # "rankmixer" (model_zoo/RankMixer). Model-specific tuning parameters live in
-    # ``model_args`` so this shared config stays model-agnostic.
+    # Dense compute model: "dlrm" (default).
     model: str = "dlrm"
     model_args: dict = field(default_factory=dict)
     backend: str = "recstore"
@@ -172,9 +188,7 @@ class RunConfig:
     enable_gpu_cache: bool = False
     gpu_cache_capacity: int = 0
     disable_gpu_cache_lookup_bypass: bool = False
-    enable_bagpipe_cache: bool = False
-    bagpipe_lookahead: int = 0
-    bagpipe_cleanup_proportion: float = 0.25
+    optimization: OptimizationConfig = field(default_factory=OptimizationConfig)
     master_addr: str = "127.0.0.1"
     master_port: int = 29500
     rdzv_backend: str = "c10d"
@@ -207,6 +221,9 @@ class RunConfig:
     hps_torch_force_materialize: bool = False
     hps_torch_gpucache: bool = True
     hps_torch_gpucacheper: float = 1.0
+    save_checkpoint: bool = False
+    checkpoint_path: str = ""
+    checkpoint_all_ranks: bool = False
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -267,32 +284,37 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--enable-bagpipe-cache",
-        action="store_true",
-        default=False,
+        "--optimization-plugin",
+        type=str,
+        default="none",
         help=(
-            "Enable BagPipe-style GPU cache with TTL-based eviction, "
-            "oracle lookahead prefetch, and sync_now/sync_later gradient "
-            "split. Requires --enable-gpu-cache."
+            "Macro optimization strategy: none, bagpipe, lookahead, "
+            "or any registered plugin. Replaces --enable-bagpipe-cache."
         ),
     )
     parser.add_argument(
-        "--bagpipe-lookahead",
+        "--optimization-lookahead",
         type=int,
         default=0,
-        help="Number of future batches to analyze for oracle cache decisions.",
+        help="Prefetch depth (shared by bagpipe / lookahead plugins).",
     )
     parser.add_argument(
-        "--bagpipe-cleanup-proportion",
+        "--optimization-cleanup-proportion",
         type=float,
         default=0.25,
-        help="Proportion of lookahead batches at which to evict and write back.",
+        help="BagPipe: fraction of lookahead batches at which to evict and write back.",
+    )
+    parser.add_argument(
+        "--optimization-cache-capacity",
+        type=int,
+        default=0,
+        help="GPU cache capacity (number of embedding rows) for plugins that use it.",
     )
     parser.add_argument("--master-addr", type=str, default="127.0.0.1")
     parser.add_argument("--master-port", type=int, default=29500)
     parser.add_argument("--rdzv-backend", type=str, default="c10d")
     parser.add_argument("--rdzv-id", type=str, default="")
-    parser.add_argument("--output-root", type=str, default="/nas/home/shq/docker/rs_demo")
+    parser.add_argument("--output-root", type=str, default="/tmp/rs_demo")
     parser.add_argument("--run-id", type=str, default="")
     parser.add_argument(
         "--ps-type",
@@ -415,14 +437,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--model",
         type=str,
         default="dlrm",
-        choices=["dlrm", "rankmixer"],
-        help="Dense compute model. Non-DLRM models live in model_zoo/<Model>/ "
-             "and contribute their own tuning args (see --help).",
+        choices=["dlrm"],
+        help="Dense compute model.",
     )
-    # Model-specific args (e.g. --rankmixer-*) are contributed by the model
-    # packages and routed into cfg.model_args at parse time.
-    for _plugin in _iter_model_arg_plugins():
-        _plugin.add_arguments(parser)
     parser.add_argument("--torchrec-profiler", action="store_true", default=False)
     parser.add_argument(
         "--torchrec-dist-mode",
@@ -508,7 +525,58 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
     )
     parser.add_argument("--hps-torch-gpucacheper", type=float, default=1.0)
+    parser.add_argument(
+        "--save-checkpoint",
+        action="store_true",
+        default=False,
+        help="Export model checkpoint after training completes.",
+    )
+    parser.add_argument(
+        "--checkpoint-path",
+        type=str,
+        default="",
+        help="Checkpoint output path (.pt). Defaults to <output_root>/outputs/<run_id>/checkpoint.pt",
+    )
+    parser.add_argument(
+        "--checkpoint-all-ranks",
+        action="store_true",
+        default=False,
+        help="Save per-rank checkpoint files (rank0.pt, rank1.pt, ...) in distributed mode.",
+    )
     return parser
+
+
+def _migrate_legacy_optim_fields(raw: dict) -> dict:
+    """Convert old bagpipe_* / enable_bagpipe_cache fields to OptimizationConfig.
+
+    This allows older worker JSON (serialized before the optim/ migration)
+    to load under the new schema.
+    """
+    if "optimization" in raw:
+        # New-style config; just ensure all fields are present.
+        opt = raw["optimization"]
+        if isinstance(opt, dict):
+            opt.setdefault("plugin", "none")
+            opt.setdefault("lookahead", 0)
+            opt.setdefault("cleanup_proportion", 0.25)
+            opt.setdefault("cache_capacity", 0)
+            opt.setdefault("embedding_dim", raw.get("embedding_dim", 128))
+            opt.setdefault("plugin_config", {})
+        return raw
+
+    # Legacy: build OptimizationConfig from old fields.
+    enable_bagpipe = bool(raw.pop("enable_bagpipe_cache", False))
+    bagpipe_lookahead = int(raw.pop("bagpipe_lookahead", 0))
+    bagpipe_cleanup = float(raw.pop("bagpipe_cleanup_proportion", 0.25))
+    raw["optimization"] = {
+        "plugin": "bagpipe" if enable_bagpipe else "none",
+        "lookahead": bagpipe_lookahead,
+        "cleanup_proportion": bagpipe_cleanup,
+        "cache_capacity": 0,
+        "embedding_dim": raw.get("embedding_dim", 128),
+        "plugin_config": {},
+    }
+    return raw
 
 
 def parse_config(argv: list[str] | None = None) -> RunConfig:
@@ -519,6 +587,9 @@ def parse_config(argv: list[str] | None = None) -> RunConfig:
         # Drop removed fields so older worker JSON still loads.
         raw.pop("enable_single_node_distributed_fast_path", None)
         raw.pop("read_before_update", None)
+        raw = _migrate_legacy_optim_fields(raw)
+        if isinstance(raw.get("optimization"), dict):
+            raw["optimization"] = OptimizationConfig(**raw["optimization"])
         return RunConfig(**raw)
     cfg_kwargs = vars(ns).copy()
     cfg_kwargs.pop("run_config_json", None)
@@ -528,7 +599,18 @@ def parse_config(argv: list[str] | None = None) -> RunConfig:
     disable_recstore_fusion = bool(cfg_kwargs.pop("disable_recstore_fusion", False))
     hps_no_materialize = bool(cfg_kwargs.pop("hps_torch_no_materialize_embeddings", False))
     hps_disable_gpucache = bool(cfg_kwargs.pop("hps_torch_disable_gpucache", False))
-    # Route model-specific args (e.g. --rankmixer-*) into model_args.
+
+    # Build OptimizationConfig from flat CLI args.
+    optimization = OptimizationConfig(
+        plugin=str(cfg_kwargs.pop("optimization_plugin", "none")),
+        lookahead=int(cfg_kwargs.pop("optimization_lookahead", 0)),
+        cleanup_proportion=float(cfg_kwargs.pop("optimization_cleanup_proportion", 0.25)),
+        cache_capacity=int(cfg_kwargs.pop("optimization_cache_capacity", 0)),
+        embedding_dim=int(cfg_kwargs.get("embedding_dim", 128)),
+    )
+    cfg_kwargs["optimization"] = optimization
+
+    # Route model-specific args into model_args.
     model_args = {d: cfg_kwargs.pop(d) for d in _model_arg_dests() if d in cfg_kwargs}
     if cfg_kwargs["nproc_per_node"] is None:
         cfg_kwargs["nproc_per_node"] = cfg_kwargs.get("nproc", 1)
@@ -613,20 +695,26 @@ def validate_recstore_config(cfg: RunConfig) -> None:
             "--read-mode must be one of: direct, prefetch, bagpipe"
         )
     cfg.read_mode = read_mode
-    if read_mode == "bagpipe":
+    # When read_mode=bagpipe, auto-enable the bagpipe optimization plugin
+    # so the runner picks up the BagPipeReadPath + BagPipeSparseSGD path.
+    if read_mode == "bagpipe" and cfg.optimization.plugin == "none":
+        cfg.optimization.plugin = "bagpipe"
+        if cfg.optimization.lookahead <= 0:
+            cfg.optimization.lookahead = cfg.prefetch_depth or 4
+    # --enable-gpu-cache is a convenience alias for --optimization-plugin bagpipe.
+    if cfg.enable_gpu_cache and cfg.optimization.plugin == "none":
+        cfg.optimization.plugin = "bagpipe"
+        if cfg.optimization.lookahead <= 0:
+            cfg.optimization.lookahead = cfg.prefetch_depth or 4
+    # Validate OptimizationConfig
+    opt = cfg.optimization
+    if opt.plugin != "none" and opt.lookahead <= 0:
         raise RuntimeError(
-            "read_mode=bagpipe is not wired in recstore_runner yet; "
-            "use --read-mode=direct or --read-mode=prefetch"
+            f"--optimization-plugin {opt.plugin!r} requires --optimization-lookahead > 0"
         )
-    if cfg.enable_gpu_cache:
+    if not (0.0 < opt.cleanup_proportion <= 1.0):
         raise RuntimeError(
-            "--enable-gpu-cache is not supported by recstore_runner; "
-            "use --read-mode=bagpipe when that path is wired"
-        )
-    if cfg.enable_bagpipe_cache:
-        raise RuntimeError(
-            "--enable-bagpipe-cache is not supported; use --read-mode=bagpipe "
-            "when that path is wired"
+            "--optimization-cleanup-proportion must be in (0.0, 1.0]"
         )
     if cfg.prefetch_depth < 0:
         raise RuntimeError("--prefetch-depth must be non-negative")
@@ -691,6 +779,8 @@ def populate_default_paths(cfg: RunConfig) -> None:
         cfg.hps_torch_main_csv = str(outputs_base / "hps_torch_main.csv")
     if not cfg.hps_torch_main_agg_csv:
         cfg.hps_torch_main_agg_csv = str(outputs_base / "hps_torch_main_agg.csv")
+    if not cfg.checkpoint_path:
+        cfg.checkpoint_path = str(outputs_base / "checkpoint.pt")
 
     cfg.recstore_main_csv = str(Path(cfg.recstore_main_csv).resolve())
     cfg.recstore_main_agg_csv = str(Path(cfg.recstore_main_agg_csv).resolve())

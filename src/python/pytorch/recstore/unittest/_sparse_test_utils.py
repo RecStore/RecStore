@@ -3,8 +3,8 @@ import copy
 import torch
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 
-from ...torchrec_kv.EmbeddingBag import RecStoreEmbeddingBagCollection
-from ..KVClient import get_kv_client
+from recstore.KVClient import get_kv_client
+from torchrec_kv.EmbeddingBag import RecStoreEmbeddingBagCollection
 
 
 class FakeOps:

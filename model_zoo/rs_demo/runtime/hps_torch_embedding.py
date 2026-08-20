@@ -319,6 +319,10 @@ class HpsTorchEmbeddingBagCollection(torch.nn.Module):
             )
         self._lookup_executor = ThreadPoolExecutor(max_workers=len(self._layers))
 
+    def close(self) -> None:
+        """Shut down the background lookup thread pool."""
+        self._lookup_executor.shutdown(wait=False)
+
     def embedding_bag_configs(self):
         return self._embedding_bag_configs
 

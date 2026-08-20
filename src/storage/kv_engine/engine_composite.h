@@ -1,17 +1,26 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <limits>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <stdexcept>
+#include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "base/factory.h"
 #include "storage/index/dram/extendible_hash_index.h"
 #include "storage/index/dram/pet_hash_index.h"
 #include "storage/index/dram/unordered_map_index.h"
+#include "storage/index/utils/hash.h"
 #include "storage/kv_engine/base_kv.h"
 #include "storage/value_store/dram_value_store.h"
 #include "storage/value_store/hybrid_value_store.h"
@@ -73,6 +82,7 @@ public:
   void Put(const uint64_t key,
            const std::string_view& value,
            unsigned tid) override {
+    std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     PutInternal(key, value.data(), value.size(), tid, true);
   }
 
@@ -86,6 +96,7 @@ public:
     if (keys.Size() == 0) {
       return;
     }
+    std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
 
     std::unordered_set<uint64_t> seen_keys;
     seen_keys.reserve(static_cast<size_t>(keys.Size()));
@@ -144,6 +155,7 @@ public:
         value_store_->Retire(old_handle);
       }
     }
+    TrackKeys(keys);
   }
 
   void BatchGet(base::ConstArray<uint64_t> keys,
@@ -395,6 +407,7 @@ public:
         embedding_dim <= 0) {
       return false;
     }
+    std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     const int tag_bits      = static_cast<int>(sizeof(tag) * 8);
     const int shift         = static_cast<int>(sizeof(uint64_t) * 8) - tag_bits;
     const uint64_t key_mask = ~0ULL >> tag_bits;
@@ -452,6 +465,7 @@ public:
     if (keys.Size() == 0) {
       return;
     }
+    std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     const char* data = reinterpret_cast<const char*>(value);
     std::vector<ValueStore::WriteSpec> specs;
     specs.reserve(static_cast<size_t>(keys.Size()));
@@ -469,6 +483,204 @@ public:
       }
     }
     index_->BatchPut(keys, handles.data(), 0);
+    TrackKeys(keys);
+  }
+
+  bool SaveCheckpoint(const std::string& file,
+                      const std::string& metadata) override {
+    std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
+    if (file.empty()) {
+      LOG(ERROR) << "KVEngine checkpoint path is empty";
+      return false;
+    }
+
+    std::vector<uint64_t> keys;
+    {
+      std::lock_guard<std::mutex> lock(checkpoint_keys_mu_);
+      keys.assign(checkpoint_keys_.begin(), checkpoint_keys_.end());
+    }
+    std::sort(keys.begin(), keys.end());
+
+    const std::filesystem::path checkpoint_path(file);
+    std::filesystem::path temp_path(file);
+    temp_path += ".tmp";
+    std::error_code error;
+    std::filesystem::remove(temp_path, error);
+
+    std::ofstream output(temp_path, std::ios::binary | std::ios::trunc);
+    if (!output) {
+      LOG(ERROR) << "Failed to open checkpoint temp file: " << temp_path;
+      return false;
+    }
+
+    const uint64_t metadata_size = static_cast<uint64_t>(metadata.size());
+    const uint64_t record_count  = static_cast<uint64_t>(keys.size());
+    uint64_t checksum            = kCheckpointChecksumSeed;
+    UpdateChecksum(&checksum, kCheckpointMagic.data(), kCheckpointMagic.size());
+    UpdateChecksumPod(&checksum, kCheckpointVersion);
+    UpdateChecksumPod(&checksum, metadata_size);
+    UpdateChecksumPod(&checksum, record_count);
+    UpdateChecksum(&checksum, metadata.data(), metadata.size());
+    bool write_ok =
+        WriteBytes(output, kCheckpointMagic.data(), kCheckpointMagic.size()) &&
+        WritePod(output, kCheckpointVersion) &&
+        WritePod(output, metadata_size) && WritePod(output, record_count) &&
+        WriteBytes(output, metadata.data(), metadata.size());
+    for (const uint64_t key : keys) {
+      std::string value;
+      Get(key, value, 0);
+      if (!Exists(key, 0)) {
+        LOG(ERROR) << "KVEngine checkpoint tracked key is missing: " << key;
+        write_ok = false;
+        break;
+      }
+      const uint64_t value_size = static_cast<uint64_t>(value.size());
+      UpdateChecksumPod(&checksum, key);
+      UpdateChecksumPod(&checksum, value_size);
+      UpdateChecksum(&checksum, value.data(), value.size());
+      write_ok =
+          write_ok && WritePod(output, key) && WritePod(output, value_size) &&
+          WriteBytes(output, value.data(), value.size());
+      if (!write_ok) {
+        break;
+      }
+    }
+    write_ok = write_ok && WritePod(output, checksum);
+    output.flush();
+    write_ok = write_ok && output.good();
+    output.close();
+    write_ok = write_ok && !output.fail();
+    if (!write_ok) {
+      LOG(ERROR) << "Failed to write checkpoint temp file: " << temp_path;
+      std::filesystem::remove(temp_path, error);
+      return false;
+    }
+
+    error.clear();
+    std::filesystem::rename(temp_path, checkpoint_path, error);
+    if (error) {
+      LOG(ERROR) << "Failed to publish checkpoint " << checkpoint_path << ": "
+                 << error.message();
+      std::filesystem::remove(temp_path, error);
+      return false;
+    }
+    return true;
+  }
+
+  bool LoadCheckpoint(const std::string& file,
+                      const std::string& expected_metadata) override {
+    std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
+    {
+      std::lock_guard<std::mutex> lock(checkpoint_keys_mu_);
+      if (!checkpoint_keys_.empty()) {
+        LOG(ERROR) << "KVEngine checkpoint load requires an empty engine";
+        return false;
+      }
+    }
+    if (file.empty()) {
+      LOG(ERROR) << "KVEngine checkpoint path is empty";
+      return false;
+    }
+
+    std::error_code error;
+    const std::uintmax_t file_size = std::filesystem::file_size(file, error);
+    if (error || file_size > std::numeric_limits<uint64_t>::max()) {
+      LOG(ERROR) << "Failed to inspect checkpoint file: " << file;
+      return false;
+    }
+    uint64_t remaining = static_cast<uint64_t>(file_size);
+    std::ifstream input(file, std::ios::binary);
+    if (!input) {
+      LOG(ERROR) << "Failed to open checkpoint file: " << file;
+      return false;
+    }
+
+    std::array<char, kCheckpointMagic.size()> magic{};
+    uint32_t version       = 0;
+    uint64_t metadata_size = 0;
+    uint64_t record_count  = 0;
+    if (!ReadBytes(input, magic.data(), magic.size(), &remaining) ||
+        !ReadPod(input, &version, &remaining) ||
+        !ReadPod(input, &metadata_size, &remaining) ||
+        !ReadPod(input, &record_count, &remaining) ||
+        magic != kCheckpointMagic || version != kCheckpointVersion ||
+        metadata_size > remaining ||
+        metadata_size > std::numeric_limits<size_t>::max()) {
+      LOG(ERROR) << "Invalid or truncated checkpoint header: " << file;
+      return false;
+    }
+
+    std::string metadata(static_cast<size_t>(metadata_size), '\0');
+    if (!ReadBytes(input, metadata.data(), metadata_size, &remaining)) {
+      LOG(ERROR) << "Truncated checkpoint metadata: " << file;
+      return false;
+    }
+    if (metadata != expected_metadata) {
+      LOG(ERROR) << "Checkpoint metadata mismatch: " << file;
+      return false;
+    }
+    if (remaining < sizeof(uint64_t)) {
+      LOG(ERROR) << "Checkpoint checksum is missing: " << file;
+      return false;
+    }
+    if (record_count > std::numeric_limits<size_t>::max() ||
+        record_count >
+            (remaining - sizeof(uint64_t)) / (2 * sizeof(uint64_t))) {
+      LOG(ERROR) << "Invalid checkpoint record count: " << file;
+      return false;
+    }
+
+    uint64_t checksum = kCheckpointChecksumSeed;
+    UpdateChecksum(&checksum, magic.data(), magic.size());
+    UpdateChecksumPod(&checksum, version);
+    UpdateChecksumPod(&checksum, metadata_size);
+    UpdateChecksumPod(&checksum, record_count);
+    UpdateChecksum(&checksum, metadata.data(), metadata.size());
+    std::vector<std::pair<uint64_t, std::string>> records;
+    records.reserve(static_cast<size_t>(record_count));
+    std::unordered_set<uint64_t> seen_keys;
+    seen_keys.reserve(static_cast<size_t>(record_count));
+    for (uint64_t i = 0; i < record_count; ++i) {
+      uint64_t key        = 0;
+      uint64_t value_size = 0;
+      if (!ReadPod(input, &key, &remaining) ||
+          !ReadPod(input, &value_size, &remaining) || value_size > remaining ||
+          value_size > std::numeric_limits<size_t>::max() ||
+          !seen_keys.insert(key).second) {
+        LOG(ERROR) << "Invalid or truncated checkpoint record: " << file;
+        return false;
+      }
+      std::string value(static_cast<size_t>(value_size), '\0');
+      if (!ReadBytes(input, value.data(), value_size, &remaining)) {
+        LOG(ERROR) << "Truncated checkpoint value: " << file;
+        return false;
+      }
+      UpdateChecksumPod(&checksum, key);
+      UpdateChecksumPod(&checksum, value_size);
+      UpdateChecksum(&checksum, value.data(), value.size());
+      records.emplace_back(key, std::move(value));
+    }
+    uint64_t saved_checksum = 0;
+    if (!ReadPod(input, &saved_checksum, &remaining) || remaining != 0) {
+      LOG(ERROR) << "Checkpoint contains trailing data: " << file;
+      return false;
+    }
+    if (saved_checksum != checksum) {
+      LOG(ERROR) << "Checkpoint checksum mismatch: " << file;
+      return false;
+    }
+
+    for (const auto& record : records) {
+      PutInternal(
+          record.first, record.second.data(), record.second.size(), 0, false);
+    }
+    return true;
+  }
+
+  uint64_t CheckpointRecordCount() const override {
+    std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
+    std::lock_guard<std::mutex> lock(checkpoint_keys_mu_);
+    return static_cast<uint64_t>(checkpoint_keys_.size());
   }
 
   void Util() override {
@@ -486,6 +698,69 @@ public:
   }
 
 private:
+  static bool WriteBytes(std::ofstream& output, const void* data, size_t size) {
+    if (size >
+        static_cast<size_t>((std::numeric_limits<std::streamsize>::max)())) {
+      return false;
+    }
+    if (size != 0) {
+      output.write(static_cast<const char*>(data),
+                   static_cast<std::streamsize>(size));
+    }
+    return output.good();
+  }
+
+  template <typename T>
+  static bool WritePod(std::ofstream& output, const T& value) {
+    return WriteBytes(output, &value, sizeof(value));
+  }
+
+  static bool ReadBytes(
+      std::ifstream& input, void* data, uint64_t size, uint64_t* remaining) {
+    if (remaining == nullptr || size > *remaining ||
+        size > static_cast<uint64_t>(
+                   (std::numeric_limits<std::streamsize>::max)())) {
+      return false;
+    }
+    if (size != 0) {
+      input.read(static_cast<char*>(data), static_cast<std::streamsize>(size));
+      if (!input) {
+        return false;
+      }
+    }
+    *remaining -= size;
+    return true;
+  }
+
+  template <typename T>
+  static bool ReadPod(std::ifstream& input, T* value, uint64_t* remaining) {
+    return ReadBytes(input, value, sizeof(*value), remaining);
+  }
+
+  static void
+  UpdateChecksum(uint64_t* checksum, const void* data, size_t size) {
+    if (size != 0) {
+      *checksum = xxhash(data, size, *checksum);
+    }
+  }
+
+  template <typename T>
+  static void UpdateChecksumPod(uint64_t* checksum, const T& value) {
+    UpdateChecksum(checksum, &value, sizeof(value));
+  }
+
+  void TrackKey(uint64_t key) {
+    std::lock_guard<std::mutex> lock(checkpoint_keys_mu_);
+    checkpoint_keys_.insert(key);
+  }
+
+  void TrackKeys(base::ConstArray<uint64_t> keys) {
+    std::lock_guard<std::mutex> lock(checkpoint_keys_mu_);
+    for (int i = 0; i < keys.Size(); ++i) {
+      checkpoint_keys_.insert(keys[i]);
+    }
+  }
+
   void PutInternal(uint64_t key,
                    const void* data,
                    size_t size,
@@ -503,13 +778,23 @@ private:
     if (old_handle != kValueHandleNone) {
       value_store_->Retire(old_handle);
     }
+    TrackKey(key);
   }
+
+  inline static constexpr std::array<char, 8> kCheckpointMagic = {
+      'R', 'S', 'K', 'V', 'C', 'P', '0', '1'};
+  inline static constexpr uint32_t kCheckpointVersion = 2;
+  inline static constexpr uint64_t kCheckpointChecksumSeed =
+      0x9e3779b97f4a7c15ULL;
 
   BaseKVConfig config_;
   std::unique_ptr<Index> index_;
   std::unique_ptr<ValueStore> value_store_;
   int num_threads_                = 0;
   size_t default_value_size_hint_ = 0;
+  mutable std::shared_mutex checkpoint_mu_;
+  mutable std::mutex checkpoint_keys_mu_;
+  std::unordered_set<uint64_t> checkpoint_keys_;
 };
 
 FACTORY_REGISTER(

@@ -1,6 +1,8 @@
 #include "optimizer.h"
 #include "ps/local_shm/local_shm_stage_report.h"
+#include <algorithm>
 #include <cstring>
+#include <limits>
 
 namespace {
 
@@ -63,6 +65,40 @@ int InitOrReuseTensor(
 }
 
 } // namespace
+
+std::unique_ptr<Optimizer> CreateOptimizer(const json& config) {
+  if (!config.is_object()) {
+    throw std::invalid_argument("cache_ps.optimizer must be an object");
+  }
+  const std::string type = config.value("type", "SGD");
+  const float learning_rate = config.value("learning_rate", 0.01f);
+  if (!std::isfinite(learning_rate) || learning_rate < 0.0f) {
+    throw std::invalid_argument("cache_ps.optimizer.learning_rate is invalid");
+  }
+  if (type == "SGD") return std::make_unique<SGD>(learning_rate);
+  if (type == "RowWiseAdagrad") {
+    const float epsilon = config.value("epsilon", 1e-10f);
+    if (!std::isfinite(epsilon) || epsilon < 0.0f) {
+      throw std::invalid_argument("cache_ps.optimizer.epsilon is invalid");
+    }
+    return std::make_unique<RowWiseAdaGrad>(learning_rate, epsilon);
+  }
+  if (type == "AdamW") {
+    const float beta1 = config.value("beta1", 0.9f);
+    const float beta2 = config.value("beta2", 0.98f);
+    const float epsilon = config.value("epsilon", 1e-8f);
+    const float weight_decay = config.value("weight_decay", 0.0f);
+    if (!std::isfinite(beta1) || beta1 < 0.0f || beta1 >= 1.0f ||
+        !std::isfinite(beta2) || beta2 < 0.0f || beta2 >= 1.0f ||
+        !std::isfinite(epsilon) || epsilon < 0.0f ||
+        !std::isfinite(weight_decay) || weight_decay < 0.0f) {
+      throw std::invalid_argument("cache_ps.optimizer AdamW parameters are invalid");
+    }
+    return std::make_unique<AdamW>(
+        learning_rate, beta1, beta2, epsilon, weight_decay);
+  }
+  throw std::invalid_argument("Unsupported cache_ps.optimizer.type: " + type);
+}
 
 int SGD::Init(const std::vector<std::string> table_name,
               const EmbeddingTableConfig& config,
@@ -378,14 +414,17 @@ void RowWiseAdaGrad::Update(
   acc_it->second->BatchGet(keys, &acc_values, tid);
 
   for (int i = 0; i < size; ++i) {
-    const auto* item = reader->item(i);
-    if (current_values[i].Size() == 0 || acc_values[i].Size() == 0) {
-      continue;
+    const auto* item           = reader->item(i);
+    const auto& current        = current_values[static_cast<size_t>(i)];
+    const auto& acc            = acc_values[static_cast<size_t>(i)];
+    const int64_t expected_dim = param_it->second->EmbeddingDim();
+    if (item->dim != expected_dim ||
+        (current.Size() != 0 && current.Size() != expected_dim) ||
+        (acc.Size() != 0 && acc.Size() != 1)) {
+      throw std::runtime_error(
+          "RowWiseAdaGrad::Update embedding_dim mismatch for table " + table);
     }
-
-    float* param_data = const_cast<float*>(current_values[i].Data());
-    float* acc_data   = const_cast<float*>(acc_values[i].Data());
-    int dim           = std::min(current_values[i].Size(), item->dim);
+    const int dim = item->dim;
 
     float grad_square_mean = 0.0;
 #pragma omp simd reduction(+ : grad_square_mean)
@@ -394,12 +433,34 @@ void RowWiseAdaGrad::Update(
     }
     grad_square_mean /= dim;
 
-    acc_data[0] += grad_square_mean;
+    float accumulated_grad = acc.Size() == 0 ? 0.0f : acc.Data()[0];
+    accumulated_grad += grad_square_mean;
 
-    float adaptive_lr = learning_rate_ / (std::sqrt(acc_data[0]) + epsilon_);
+    const float adaptive_lr =
+        learning_rate_ / (std::sqrt(accumulated_grad) + epsilon_);
+    if (current.Size() == 0) {
+      std::vector<float> initial_value(static_cast<size_t>(dim), 0.0f);
+      for (int j = 0; j < dim; ++j) {
+        initial_value[static_cast<size_t>(j)] = -adaptive_lr * item->data()[j];
+      }
+      const std::string value(
+          reinterpret_cast<const char*>(initial_value.data()),
+          initial_value.size() * sizeof(float));
+      param_it->second->Put(item->key, value, tid);
+    } else {
+      float* param_data = const_cast<float*>(current.Data());
 #pragma omp simd
-    for (int j = 0; j < dim; ++j) {
-      param_data[j] -= adaptive_lr * item->data()[j];
+      for (int j = 0; j < dim; ++j) {
+        param_data[j] -= adaptive_lr * item->data()[j];
+      }
+    }
+
+    if (acc.Size() == 0) {
+      const std::string value(
+          reinterpret_cast<const char*>(&accumulated_grad), sizeof(float));
+      acc_it->second->Put(item->key, value, tid);
+    } else {
+      const_cast<float*>(acc.Data())[0] = accumulated_grad;
     }
   }
 }
@@ -437,20 +498,15 @@ void RowWiseAdaGrad::UpdateFlat(
   for (int64_t row = 0; row < num_rows; ++row) {
     const auto& current = current_values[static_cast<size_t>(row)];
     const auto& acc     = acc_values[static_cast<size_t>(row)];
-    if (current.Size() == 0 || acc.Size() == 0) {
-      continue;
-    }
-    if (static_cast<int64_t>(current.Size()) != embedding_dim ||
-        acc.Size() != 1) {
+    if ((current.Size() != 0 &&
+         static_cast<int64_t>(current.Size()) != embedding_dim) ||
+        (acc.Size() != 0 && acc.Size() != 1)) {
       throw std::runtime_error(
           "RowWiseAdaGrad::UpdateFlat embedding_dim mismatch for table " +
           table);
     }
 
-    const float* row_grad = grads + row * embedding_dim;
-    float* param_data     = const_cast<float*>(current.Data());
-    float* acc_data       = const_cast<float*>(acc.Data());
-
+    const float* row_grad  = grads + row * embedding_dim;
     float grad_square_mean = 0.0f;
 #pragma omp simd reduction(+ : grad_square_mean)
     for (int64_t col = 0; col < embedding_dim; ++col) {
@@ -458,11 +514,224 @@ void RowWiseAdaGrad::UpdateFlat(
     }
     grad_square_mean /= static_cast<float>(embedding_dim);
 
-    acc_data[0] += grad_square_mean;
-    float adaptive_lr = learning_rate_ / (std::sqrt(acc_data[0]) + epsilon_);
+    float accumulated_grad = acc.Size() == 0 ? 0.0f : acc.Data()[0];
+    accumulated_grad += grad_square_mean;
+    const float adaptive_lr =
+        learning_rate_ / (std::sqrt(accumulated_grad) + epsilon_);
+
+    if (current.Size() == 0) {
+      std::vector<float> initial_value(
+          static_cast<size_t>(embedding_dim), 0.0f);
+      for (int64_t col = 0; col < embedding_dim; ++col) {
+        initial_value[static_cast<size_t>(col)] = -adaptive_lr * row_grad[col];
+      }
+      const std::string value(
+          reinterpret_cast<const char*>(initial_value.data()),
+          initial_value.size() * sizeof(float));
+      param_it->second->Put(keys[static_cast<size_t>(row)], value, tid);
+    } else {
+      float* param_data = const_cast<float*>(current.Data());
 #pragma omp simd
-    for (int64_t col = 0; col < embedding_dim; ++col) {
-      param_data[col] -= adaptive_lr * row_grad[col];
+      for (int64_t col = 0; col < embedding_dim; ++col) {
+        param_data[col] -= adaptive_lr * row_grad[col];
+      }
+    }
+
+    if (acc.Size() == 0) {
+      const std::string value(
+          reinterpret_cast<const char*>(&accumulated_grad), sizeof(float));
+      acc_it->second->Put(keys[static_cast<size_t>(row)], value, tid);
+    } else {
+      const_cast<float*>(acc.Data())[0] = accumulated_grad;
     }
   }
+}
+
+namespace {
+
+// The step is stored as a tagged scalar in its own table.  Keep its key away
+// from normal embedding ids (the top 8 bits are reserved for TensorType).
+constexpr uint64_t kAdamWStepKey = (std::numeric_limits<uint64_t>::max() >> 8);
+
+} // namespace
+
+int AdamW::Init(const std::vector<std::string> table_name,
+                const EmbeddingTableConfig& config,
+                BaseKV* base_kv) {
+  for (const auto& name : table_name) {
+    const std::vector<uint64_t> shape = {
+        config.num_embeddings, config.embedding_dim};
+    auto* param_tensor = new SparseTensor();
+    auto mutable_name  = name;
+    auto mutable_shape = shape;
+    param_tensor->init(
+        mutable_name, PARAMETER, PARAMETER, mutable_shape, base_kv);
+    tensor_map_[name] = param_tensor;
+
+    auto* first_moment           = new SparseTensor();
+    const std::string first_name = name + "_adamw_m";
+    auto mutable_first_name      = first_name;
+    first_moment->init(
+        mutable_first_name, MOMENT_1, MOMENT_1, mutable_shape, base_kv);
+    tensor_map_[first_name] = first_moment;
+
+    auto* second_moment           = new SparseTensor();
+    const std::string second_name = name + "_adamw_v";
+    auto mutable_second_name      = second_name;
+    second_moment->init(
+        mutable_second_name, MOMENT_2, MOMENT_2, mutable_shape, base_kv);
+    tensor_map_[second_name] = second_moment;
+
+    auto* step_tensor                = new SparseTensor();
+    const std::string step_name      = name + "_adamw_step";
+    auto mutable_step_name           = step_name;
+    std::vector<uint64_t> step_shape = {1, 1};
+    step_tensor->init(
+        mutable_step_name, MOMENT_1, MOMENT_1, step_shape, base_kv);
+    tensor_map_[step_name] = step_tensor;
+  }
+  return static_cast<int>(PARAMETER);
+}
+
+void AdamW::Update(
+    std::string table, const ParameterCompressReader* reader, unsigned tid) {
+  auto param_it = tensor_map_.find(table);
+  if (param_it == tensor_map_.end()) {
+    throw std::runtime_error("Table not found: " + table);
+  }
+  const int size    = reader->item_size();
+  const int64_t dim = param_it->second->EmbeddingDim();
+  std::vector<uint64_t> keys;
+  std::vector<float> grads;
+  keys.reserve(size);
+  grads.reserve(static_cast<size_t>(size) * static_cast<size_t>(dim));
+  for (int i = 0; i < size; ++i) {
+    const auto* item = reader->item(i);
+    if (item->dim != dim) {
+      throw std::runtime_error(
+          "AdamW::Update embedding_dim mismatch for table " + table);
+    }
+    keys.push_back(item->key);
+    grads.insert(grads.end(), item->data(), item->data() + dim);
+  }
+  UpdateRows(table, keys.data(), grads.data(), size, dim, tid);
+}
+
+void AdamW::UpdateFlat(
+    std::string table,
+    const base::ConstArray<uint64_t>& keys,
+    const float* grads,
+    int64_t num_rows,
+    int64_t embedding_dim,
+    unsigned tid) {
+  ValidateFlatUpdateArgs(keys, grads, num_rows, embedding_dim);
+  auto it = tensor_map_.find(table);
+  if (it == tensor_map_.end()) {
+    throw std::runtime_error("Table not found: " + table);
+  }
+  if (it->second->EmbeddingDim() != embedding_dim) {
+    throw std::runtime_error(
+        "AdamW::UpdateFlat embedding_dim mismatch for table " + table);
+  }
+  UpdateRows(table, keys.Data(), grads, num_rows, embedding_dim, tid);
+}
+
+void AdamW::UpdateRows(
+    const std::string& table,
+    const uint64_t* keys,
+    const float* grads,
+    int64_t num_rows,
+    int64_t embedding_dim,
+    unsigned tid) {
+  auto param_it  = tensor_map_.find(table);
+  auto first_it  = tensor_map_.find(table + "_adamw_m");
+  auto second_it = tensor_map_.find(table + "_adamw_v");
+  auto step_it   = tensor_map_.find(table + "_adamw_step");
+  if (param_it == tensor_map_.end() || first_it == tensor_map_.end() ||
+      second_it == tensor_map_.end() || step_it == tensor_map_.end()) {
+    throw std::runtime_error("AdamW state table not found for table " + table);
+  }
+
+  std::string step_value;
+  step_it->second->Get(kAdamWStepKey, step_value, tid);
+  float step =
+      step_value.empty() ? 0.0f : base::ConstArray<float>(step_value).Data()[0];
+  step += 1.0f;
+  const float bias1 = 1.0f - std::pow(beta1_, step);
+  const float bias2 = 1.0f - std::pow(beta2_, step);
+  if (!(bias1 > 0.0f) || !(bias2 > 0.0f)) {
+    throw std::runtime_error("AdamW bias correction underflow");
+  }
+
+  std::vector<uint64_t> key_vec(keys, keys + num_rows);
+  std::vector<base::ConstArray<float>> params;
+  std::vector<base::ConstArray<float>> first;
+  std::vector<base::ConstArray<float>> second;
+  param_it->second->BatchGet(key_vec, &params, tid);
+  first_it->second->BatchGet(key_vec, &first, tid);
+  second_it->second->BatchGet(key_vec, &second, tid);
+
+  const float decay       = 1.0f - learning_rate_ * weight_decay_;
+  const float correction1 = 1.0f / bias1;
+  const float correction2 = 1.0f / bias2;
+  for (int64_t row = 0; row < num_rows; ++row) {
+    const auto index      = static_cast<size_t>(row);
+    const float* row_grad = grads + row * embedding_dim;
+    std::vector<float> param(static_cast<size_t>(embedding_dim), 0.0f);
+    std::vector<float> moment1(static_cast<size_t>(embedding_dim), 0.0f);
+    std::vector<float> moment2(static_cast<size_t>(embedding_dim), 0.0f);
+    if (params[index].Size() != 0) {
+      if (params[index].Size() != embedding_dim) {
+        throw std::runtime_error(
+            "AdamW parameter dimension mismatch for table " + table);
+      }
+      std::copy(params[index].Data(),
+                params[index].Data() + embedding_dim,
+                param.begin());
+    }
+    if (first[index].Size() != 0) {
+      if (first[index].Size() != embedding_dim) {
+        throw std::runtime_error(
+            "AdamW first moment dimension mismatch for table " + table);
+      }
+      std::copy(first[index].Data(),
+                first[index].Data() + embedding_dim,
+                moment1.begin());
+    }
+    if (second[index].Size() != 0) {
+      if (second[index].Size() != embedding_dim) {
+        throw std::runtime_error(
+            "AdamW second moment dimension mismatch for table " + table);
+      }
+      std::copy(second[index].Data(),
+                second[index].Data() + embedding_dim,
+                moment2.begin());
+    }
+    for (int64_t col = 0; col < embedding_dim; ++col) {
+      const float grad = row_grad[col];
+      moment1[static_cast<size_t>(col)] =
+          beta1_ * moment1[static_cast<size_t>(col)] + (1.0f - beta1_) * grad;
+      moment2[static_cast<size_t>(col)] =
+          beta2_ * moment2[static_cast<size_t>(col)] +
+          (1.0f - beta2_) * grad * grad;
+      const float m_hat = moment1[static_cast<size_t>(col)] * correction1;
+      const float v_hat = moment2[static_cast<size_t>(col)] * correction2;
+      param[static_cast<size_t>(col)] =
+          decay * param[static_cast<size_t>(col)] -
+          learning_rate_ * m_hat / (std::sqrt(v_hat) + epsilon_);
+    }
+    const std::string param_value(reinterpret_cast<const char*>(param.data()),
+                                  param.size() * sizeof(float));
+    const std::string first_value(reinterpret_cast<const char*>(moment1.data()),
+                                  moment1.size() * sizeof(float));
+    const std::string second_value(
+        reinterpret_cast<const char*>(moment2.data()),
+        moment2.size() * sizeof(float));
+    param_it->second->Put(keys[index], param_value, tid);
+    first_it->second->Put(keys[index], first_value, tid);
+    second_it->second->Put(keys[index], second_value, tid);
+  }
+  const std::string next_step(
+      reinterpret_cast<const char*>(&step), sizeof(float));
+  step_it->second->Put(kAdamWStepKey, next_step, tid);
 }

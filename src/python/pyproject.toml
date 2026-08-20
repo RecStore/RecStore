@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=64", "wheel", "torch"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recstore"
+description = "Distributed parameter server and embedding store for recommendation models"
+version = "0.1.0"
+requires-python = ">=3.8"
+dependencies = [
+    "torch",
+    "numpy",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[tool.setuptools]
+package-dir = {"" = "pytorch"}
+
+[tool.setuptools.packages.find]
+where = ["pytorch"]
+
+[tool.setuptools.package-data]
+recstore = ["native/*.so", "native/*.a"]

@@ -162,5 +162,21 @@ public:
     LOG(WARNING) << "clear() not fully implemented for this KV engine";
   };
 
+  virtual bool
+  SaveCheckpoint(const std::string& file, const std::string& metadata) {
+    (void)file;
+    (void)metadata;
+    return false;
+  }
+
+  virtual bool LoadCheckpoint(const std::string& file,
+                              const std::string& expected_metadata) {
+    (void)file;
+    (void)expected_metadata;
+    return false;
+  }
+
+  virtual uint64_t CheckpointRecordCount() const { return 0; }
+
 protected:
 };

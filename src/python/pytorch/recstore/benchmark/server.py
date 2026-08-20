@@ -300,13 +300,7 @@ def build_runtime_config(
     cfg["client"]["shard"] = 0
 
     cfg.setdefault("distributed_client", {})
-    if cfg["cache_ps"]["ps_type"] == "LOCAL_SHM":
-        servers = [{"host": host, "port": port0, "shard": 0}]
-    else:
-        servers = [
-            {"host": host, "port": port0, "shard": 0},
-            {"host": host, "port": port1, "shard": 1},
-        ]
+    servers = [{"host": host, "port": port0, "shard": 0}]
     cfg["distributed_client"]["num_shards"] = len(servers)
     cfg["distributed_client"]["servers"] = list(servers)
 

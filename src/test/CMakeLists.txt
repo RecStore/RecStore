@@ -117,6 +117,16 @@ target_link_libraries(test_rectensor PUBLIC
 )
 add_test(NAME test_rectensor COMMAND test_rectensor)
 
+add_executable(test_optimizer test_optimizer.cpp)
+target_link_libraries(test_optimizer PUBLIC
+    sparse_tensor
+    base
+    gtest
+    gtest_main
+    pthread
+)
+add_test(NAME test_optimizer COMMAND test_optimizer)
+
 add_executable(test_shm_file test_shm_file.cpp)
 target_link_libraries(test_shm_file PUBLIC
     base
@@ -159,6 +169,20 @@ target_link_libraries(test_kvengine PUBLIC
     TBB::tbb
 )
 add_test(NAME test_kvengine COMMAND test_kvengine)
+
+add_executable(test_kvengine_checkpoint test_kvengine_checkpoint.cpp)
+target_link_libraries(test_kvengine_checkpoint PUBLIC
+    extendible_hash
+    base
+    base_memory
+    ps_common
+    kv_engine
+    gtest
+    gtest_main
+    pthread
+    TBB::tbb
+)
+add_test(NAME test_kvengine_checkpoint COMMAND test_kvengine_checkpoint)
 
 if(RECSTORE_HUGECTR_CUDA_HEADERS_AVAILABLE)
     add_executable(test_hps_recstore_backend
@@ -228,6 +252,13 @@ set(RECSTORE_EXTERNAL_KV_ENGINE_TEST_LIBS
     pthread
 )
 set(RECSTORE_EXTERNAL_KV_ENGINE_TEST_DEFS)
+if(TARGET detable_plugin_api)
+    add_library(test_dynamic_kv_plugin MODULE test_dynamic_kv_plugin.cc)
+    target_link_libraries(test_dynamic_kv_plugin PRIVATE detable_plugin_api)
+    set(RECSTORE_EXTERNAL_KV_ENGINE_TEST_ENABLED ON)
+    list(APPEND RECSTORE_EXTERNAL_KV_ENGINE_TEST_DEFS
+        RECSTORE_TEST_ENABLE_DETABLE_ENGINE)
+endif()
 if(TARGET fasterkv_backend)
     set(RECSTORE_EXTERNAL_KV_ENGINE_TEST_ENABLED ON)
     list(APPEND RECSTORE_EXTERNAL_KV_ENGINE_TEST_DEFS
@@ -243,6 +274,12 @@ if(RECSTORE_EXTERNAL_KV_ENGINE_TEST_ENABLED)
     target_compile_definitions(test_external_kv_engine PRIVATE
         ${RECSTORE_EXTERNAL_KV_ENGINE_TEST_DEFS}
     )
+    if(TARGET test_dynamic_kv_plugin)
+        add_dependencies(test_external_kv_engine test_dynamic_kv_plugin)
+        target_compile_definitions(test_external_kv_engine PRIVATE
+            RECSTORE_TEST_DYNAMIC_KV_PLUGIN_PATH="$<TARGET_FILE:test_dynamic_kv_plugin>"
+        )
+    endif()
     target_link_libraries(test_external_kv_engine PUBLIC
         ${RECSTORE_EXTERNAL_KV_ENGINE_TEST_LIBS}
     )
@@ -484,6 +521,16 @@ set_tests_properties(
     test_hierkv_python_ops_py
     PROPERTIES
     LABELS "hierkv;python;integration"
+)
+
+add_python_unittest(
+    test_sparse_optimizer_config_py
+    src.python.pytorch.recstore.unittest.test_sparse_optimizer_config
+)
+set_tests_properties(
+    test_sparse_optimizer_config_py
+    PROPERTIES
+    LABELS "optimizer;python"
 )
 
 if(TARGET recstore_torch_ops)

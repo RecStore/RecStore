@@ -16,6 +16,10 @@
                 "shard": 1
             }
         ],
+        "optimizer": {
+            "type": "SGD",
+            "learning_rate": 0.01
+        },
         "base_kv_config": {
             "engine_type": "KVEngineComposite",
             "capacity": 1000000,

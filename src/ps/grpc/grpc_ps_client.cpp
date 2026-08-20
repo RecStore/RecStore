@@ -532,6 +532,40 @@ bool GRPCParameterClient::LoadCkpt(
   return status.ok();
 }
 
+bool GRPCParameterClient::SaveCheckpoint(const std::string& path,
+                                         const std::string& metadata) {
+  CommandRequest request;
+  CommandResponse response;
+  request.set_command(PSCommand::SAVE_CHECKPOINT);
+  request.add_arg1(path);
+  request.add_arg2(metadata);
+  grpc::ClientContext context;
+  SetRpcDeadline(&context, 600000);
+  const grpc::Status status = stubs_[0]->Command(&context, request, &response);
+  if (!status.ok()) {
+    LOG(ERROR) << "gRPC checkpoint save failed: " << status.error_code() << " "
+               << status.error_message();
+  }
+  return status.ok();
+}
+
+bool GRPCParameterClient::LoadCheckpoint(const std::string& path,
+                                         const std::string& metadata) {
+  CommandRequest request;
+  CommandResponse response;
+  request.set_command(PSCommand::LOAD_CHECKPOINT);
+  request.add_arg1(path);
+  request.add_arg2(metadata);
+  grpc::ClientContext context;
+  SetRpcDeadline(&context, 600000);
+  const grpc::Status status = stubs_[0]->Command(&context, request, &response);
+  if (!status.ok()) {
+    LOG(ERROR) << "gRPC checkpoint load failed: " << status.error_code() << " "
+               << status.error_message();
+  }
+  return status.ok();
+}
+
 bool GRPCParameterClient::PutParameter(
     const std::vector<uint64_t>& keys, const base::RecTensor& values) {
   if (!recstore::IsFloatEmbeddingValues(values,
@@ -720,6 +754,10 @@ void GRPCParameterClient::Command(recstore::PSCommand command) {
   case recstore::PSCommand::DUMP_FAKE_DATA: {
     DumpFakeData(4096);
   } break;
+  case recstore::PSCommand::SAVE_CHECKPOINT:
+  case recstore::PSCommand::LOAD_CHECKPOINT:
+    LOG(WARNING) << "Checkpoint command requires path and metadata";
+    break;
   default:
     LOG(ERROR) << "Unknown PS command: " << static_cast<int>(command);
     break;

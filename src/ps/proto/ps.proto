@@ -17,6 +17,8 @@ enum PSCommand{
   RELOAD_PS = 1;
   LOAD_FAKE_DATA = 2;
   DUMP_FAKE_DATA = 3;
+  SAVE_CHECKPOINT = 4;
+  LOAD_CHECKPOINT = 5;
 };
 
 message CommandRequest{

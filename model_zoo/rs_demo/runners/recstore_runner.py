@@ -10,8 +10,10 @@ from pathlib import Path
 from typing import Any
 
 import torch
-os.environ.setdefault("RECSTORE_DEFER_OPS_LOAD", "1")
-import recstore
+_repo_root = Path(__file__).resolve().parents[3]
+_pytorch_src = str(_repo_root / "src" / "python" / "pytorch")
+if _pytorch_src not in sys.path:
+    sys.path.insert(0, _pytorch_src)
 
 from ..config import (
     RunConfig,
@@ -27,33 +29,46 @@ from ..data.dlrm_source import (
     get_default_cat_names,
     inject_project_paths,
 )
-from ..runtime.hybrid_dlrm import (
+from ..models.dlrm import (
     build_criterion,
     build_dense_module,
     compute_dense_loss,
+)
+from ..models.utils import (
     prepare_hybrid_dlrm_input,
     reshape_torchrec_embeddings_for_dlrm,
+    run_hybrid_backward,
 )
-from ..runtime.report import finalize_recstore_row, summarize_us
+from python.pytorch.recstore.benchmark.report import finalize_recstore_row
 from ..runtime.timing import StepTimer
 from ..runtime.worker_common import (
     barrier_for_step_alignment as _barrier_for_step_alignment,
     bool_int as _bool_int,
-    load_rows as _load_rows,
-    parse_nccl_transport_log as _parse_nccl_transport_log,
-    pick_socket_ifname as _pick_socket_ifname,
+    build_worker_env as _build_worker_env,
+    merge_rank_outputs as _merge_rank_outputs,
+    read_worker_context as _read_worker_context,
     write_rows as _write_rows,
 )
 from .base import BenchmarkRunner
 
-from recstore.embedding_read_path import build_embedding_read_path
+from recstore.embedding_read_path import (
+    BagPipeReadPath,
+    PreparedTicket,
+    build_embedding_read_path,
+)
+from recstore.optim import OptimizationPluginRegistry
+
+
+_RECSTORE_DEFER_OPS_LOAD = "RECSTORE_DEFER_OPS_LOAD"
+
+os.environ.setdefault(_RECSTORE_DEFER_OPS_LOAD, "1")
+import recstore
 
 
 def _safe_ratio(numerator: float, denominator: float) -> float:
-    denominator = float(denominator)
     if denominator == 0.0:
         return 0.0
-    return float(numerator) / denominator
+    return numerator / denominator
 
 
 def _add_sparse_id_stats(
@@ -81,9 +96,7 @@ def _add_sparse_id_stats(
     row["batch_dedup_ratio"] = _safe_ratio(raw_count - unique_count, raw_count)
 
 
-def _finalize_step_timing(
-    row: dict[str, Any], *, consume_start: float, wall_start: float
-) -> None:
+def _finalize_step_timing(row: dict[str, Any], *, wall_start: float) -> None:
     total_ms = (time.perf_counter() - wall_start) * 1e3
     row["step_total_ms"] = total_ms
     row["step_end_to_end_ms"] = total_ms
@@ -92,24 +105,37 @@ def _finalize_step_timing(
 
 
 def _consume_perf_stats(obj: Any) -> dict[str, float]:
-    consume = getattr(obj, "consume_perf_stats", None)
-    if consume is None:
-        return {}
-    stats = consume(reset=True)
+    stats = obj.consume_perf_stats(reset=True)
     return stats if isinstance(stats, dict) else {}
 
 
 def _merge_consumed_perf_stats(row: dict[str, Any], stats: dict[str, float]) -> None:
     for key, value in stats.items():
-        if key in row and row[key] not in (0, 0.0, "", None):
+        if row.get(key):
             continue
         row[key] = value
 
 
 def _reset_perf_stats(obj: Any) -> None:
-    reset = getattr(obj, "reset_perf_stats", None)
-    if reset is not None:
-        reset()
+    obj.reset_perf_stats()
+
+
+def _fill_prefetch_buffer(
+    prepared_batches: deque,
+    prepare_fn: Any,
+    *,
+    from_step: int,
+    target_buffer: int,
+    max_steps: int,
+) -> None:
+    """Prepare batches until the buffer exceeds target_buffer or steps run out."""
+    current = len(prepared_batches)
+    needed = target_buffer + 1 - current
+    for i in range(needed):
+        future_step = from_step + current + i
+        if future_step >= max_steps:
+            break
+        prepared_batches.append(prepare_fn(future_step))
 
 
 def _maybe_warmup_gpu_local_shm_fast_path(
@@ -121,46 +147,12 @@ def _maybe_warmup_gpu_local_shm_fast_path(
         return False
     if not client.is_shared_local_shm_table():
         return False
-    # ponytail: activate_shard only on some test/distributed fakes, not RecStoreClient
-    activate_shard = getattr(client, "activate_shard", None)
-    if callable(activate_shard):
-        activate_shard(0)
+    # activate_shard exists on test/distributed fakes, not RecStoreClient.
+    if hasattr(client, "activate_shard"):
+        client.activate_shard(0)
     if client.current_ps_backend() != "local_shm":
         client.set_ps_backend("local_shm")
     return bool(client.warmup_local_lookup_flat_cuda_region())
-
-
-def _debug_log_path(cfg: RunConfig, rank: int) -> Path:
-    return Path(cfg.output_root) / "outputs" / cfg.run_id / f"recstore_worker_rank{rank}.log"
-
-
-def _append_worker_debug(cfg: RunConfig, rank: int, message: str) -> None:
-    debug_path = _debug_log_path(cfg, rank)
-    debug_path.parent.mkdir(parents=True, exist_ok=True)
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    with debug_path.open("a", encoding="utf-8") as f:
-        f.write(f"{timestamp} rank={rank} {message}\n")
-
-
-def _merge_rank_outputs(paths: list[Path], out_path: Path) -> list[dict[str, Any]]:
-    merged: list[dict[str, Any]] = []
-    for path in paths:
-        for row in _load_rows(path):
-            normalized: dict[str, Any] = {}
-            for key, value in row.items():
-                if value is None:
-                    normalized[key] = ""
-                elif key in {"backend", "dist_mode"}:
-                    normalized[key] = value
-                else:
-                    try:
-                        normalized[key] = float(value) if "." in value else int(value)
-                    except (TypeError, ValueError):
-                        normalized[key] = value
-            merged.append(normalized)
-    merged.sort(key=lambda row: (int(row.get("rank", 0)), int(row.get("step", 0))))
-    _write_rows(out_path, merged)
-    return merged
 
 
 def _build_train_dataloader_for_mode(repo_root: Path, cfg: RunConfig, rank: int):
@@ -236,15 +228,7 @@ class RecStoreRunner(BenchmarkRunner):
         config_json = dump_run_config(worker_cfg, rank_dir / "worker_config.json")
 
         cmd = self._build_torchrun_cmd(repo_root, cfg, config_json)
-        env = os.environ.copy()
-        env["RS_DEMO_RECSTORE_WORKER"] = "1"
-        env["RS_DEMO_RECSTORE_WORKER_DIR"] = str(rank_dir)
-        socket_ifname = _pick_socket_ifname()
-        if socket_ifname:
-            env.setdefault("NCCL_SOCKET_IFNAME", socket_ifname)
-            env.setdefault("GLOO_SOCKET_IFNAME", socket_ifname)
-        env.setdefault("NCCL_SOCKET_FAMILY", "AF_INET")
-        env.setdefault("NCCL_DEBUG", "WARN")
+        env = _build_worker_env("recstore", rank_dir)
         res = subprocess.run(
             cmd, cwd=str(repo_root), env=env, check=False, text=True, capture_output=True
         )
@@ -264,37 +248,19 @@ class RecStoreRunner(BenchmarkRunner):
 
     # -- worker setup ------------------------------------------------------
 
-    def _init_process_group(self, cfg, rank, world_size, local_rank, dist):
+    def _init_process_group(self, world_size, local_rank, dist):
         """Set up the CUDA device and (if distributed) the process group."""
         use_dist = world_size > 1
         backend = "nccl"
         if torch.cuda.is_available():
             torch.cuda.set_device(local_rank)
         device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
-        _append_worker_debug(
-            cfg, rank,
-            f"worker_start world_size={world_size} local_rank={local_rank} backend={backend}",
-        )
         if use_dist and not dist.is_initialized():
-            nccl_log_path = Path(
-                os.environ.get(
-                    "NCCL_DEBUG_FILE",
-                    str(Path(cfg.output_root) / "outputs" / cfg.run_id
-                        / f"recstore_nccl_rank{rank}.log"),
-                )
-            )
-            nccl_log_path.parent.mkdir(parents=True, exist_ok=True)
-            os.environ["NCCL_DEBUG_FILE"] = str(nccl_log_path)
-            os.environ.setdefault("NCCL_DEBUG", "INFO")
-            os.environ.setdefault("NCCL_DEBUG_SUBSYS", "NET")
             dist.init_process_group(
                 backend=backend,
                 device_id=device if device.type == "cuda" else None,
             )
             dist.barrier()
-            _append_worker_debug(
-                cfg, rank, f"nccl_transport={_parse_nccl_transport_log(nccl_log_path)}"
-            )
         return device, use_dist
 
     def _build_embedding_module(self, cfg, client, default_cat_names):
@@ -342,11 +308,12 @@ class RecStoreRunner(BenchmarkRunner):
             )
 
         orig_cwd = Path.cwd()
+        plugin = None
         try:
             os.chdir(str(self.runtime_dir))
             torch.manual_seed(cfg.seed)
             device, use_dist = self._init_process_group(
-                cfg, rank, world_size, local_rank, dist
+                world_size, local_rank, dist
             )
 
             recstore.load_ops_library()
@@ -372,13 +339,40 @@ class RecStoreRunner(BenchmarkRunner):
                 kv_client=client,
                 initialize_tables=(rank == 0),
             )
-            read_path = build_embedding_read_path(
-                cfg.read_mode,
-                embedding_module=embedding_module,
-                prefetch_depth=cfg.prefetch_depth,
-                embedding_dim=cfg.embedding_dim,
-                feature_offsets=fused_id_offsets,
-            )
+            # -- optimization plugin + read path --------------------------------
+            use_bagpipe = cfg.optimization.plugin == "bagpipe" or cfg.read_mode == "bagpipe"
+
+            if use_bagpipe:
+                def _id_extractor(sparse_features):
+                    return convert_kjt_ids_to_fused_ids(sparse_features, table_offsets)
+
+                plugin = OptimizationPluginRegistry.create(
+                    "bagpipe",
+                    embedding_module=embedding_module,
+                    kv_client=client,
+                    lookahead=cfg.optimization.lookahead,
+                    cleanup_proportion=cfg.optimization.cleanup_proportion,
+                    cache_capacity=cfg.optimization.cache_capacity,
+                    embedding_dim=cfg.optimization.embedding_dim,
+                    fuse_k=cfg.fuse_k,
+                    table_offsets=table_offsets,
+                    device=device,
+                    lr=0.01,
+                    id_extractor=_id_extractor,
+                )
+                sparse_optimizer = plugin.create_sparse_optimizer(
+                    [embedding_module], lr=0.01
+                )
+                read_path = BagPipeReadPath(plugin, device=device)
+            else:
+                read_path = build_embedding_read_path(
+                    cfg.read_mode,
+                    embedding_module=embedding_module,
+                    prefetch_depth=cfg.prefetch_depth,
+                    embedding_dim=cfg.embedding_dim,
+                    feature_offsets=fused_id_offsets,
+                )
+                sparse_optimizer = recstore.SparseSGD([embedding_module], lr=0.01)
 
             _barrier_for_step_alignment(
                 dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
@@ -394,12 +388,12 @@ class RecStoreRunner(BenchmarkRunner):
                 dense_module=dense_module, device=device,
                 local_rank=local_rank, use_dist=use_dist,
             )
-            dispatch_module = (
+            unwrapped_module = (
                 dense_module.module
                 if isinstance(dense_module, torch.nn.parallel.DistributedDataParallel)
                 else dense_module
             )
-            criterion = build_criterion(cfg, dispatch_module)
+            criterion = build_criterion(cfg, unwrapped_module)
             dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
             sparse_optimizer = recstore.SparseSGD([embedding_module], lr=0.01)
             record_pooled_grad = getattr(embedding_module, "record_pooled_grad", None)
@@ -438,42 +432,38 @@ class RecStoreRunner(BenchmarkRunner):
                 ticket = read_path.on_batch_prepared(
                     batch_step, sparse_features, sparse_batch, row
                 )
-                if (
-                    isinstance(ticket, tuple)
-                    and len(ticket) == 3
-                    and hasattr(ticket[0], "numel")
-                ):
-                    unique_ids, _, raw_count = ticket
+                if isinstance(ticket, PreparedTicket):
                     _add_sparse_id_stats(
                         row,
                         sparse_features,
                         table_offsets,
-                        precomputed=(int(unique_ids.numel()), int(raw_count)),
+                        precomputed=(
+                            int(ticket.unique_ids.numel()),
+                            ticket.raw_count,
+                        ),
                     )
                 else:
                     _add_sparse_id_stats(row, sparse_features, table_offsets)
                 return (
-                    batch_step, row, time.perf_counter(),
+                    batch_step, row,
                     dense_batch, sparse_features, labels_batch, ticket,
                 )
 
             for step in range(cfg.steps):
                 step_wall_start = time.perf_counter()
                 observed_depth = read_path.depth * 2
-                while (
-                    len(prepared_batches) <= observed_depth
-                    and step + len(prepared_batches) < cfg.steps
-                ):
-                    prepared_batches.append(prepare_next_batch(step + len(prepared_batches)))
+                target_buffer = read_path.desired_buffer_size
+                _fill_prefetch_buffer(
+                    prepared_batches, prepare_next_batch,
+                    from_step=step, target_buffer=target_buffer, max_steps=cfg.steps,
+                )
                 if step + len(prepared_batches) >= cfg.steps:
                     read_path.advance_all()
 
                 (
-                    _, row, step_start, dense_batch, sparse_features, labels_batch,
+                    _, row, dense_batch, sparse_features, labels_batch,
                     ticket,
                 ) = prepared_batches.popleft()
-                consume_step_start = time.perf_counter()
-                del step_start  # issue-queue wait is not an E2E export metric
 
                 _reset_perf_stats(embedding_module)
                 sparse_optimizer.zero_grad()
@@ -509,18 +499,9 @@ class RecStoreRunner(BenchmarkRunner):
                     )
 
                 with timer.gpu("backward_ms"):
-                    for param in dense_module.parameters():
-                        if param.requires_grad:
-                            param.grad = None
-                    if not embedded_sparse.is_leaf:
-                        embedded_sparse.retain_grad()
-                    embedded_sparse.grad = None
-                    loss.backward()
-                    if embedded_sparse.grad is None:
-                        raise RuntimeError(
-                            "missing embedded_sparse gradient after backward"
-                        )
-                    embedded_sparse_grad = embedded_sparse.grad.detach()
+                    embedded_sparse_grad = run_hybrid_backward(
+                        loss, embedded_sparse, dense_module, torch, device
+                    )
 
                 with timer.gpu("dense_optimizer_ms"):
                     dense_optimizer.step()
@@ -563,27 +544,22 @@ class RecStoreRunner(BenchmarkRunner):
 
                     flush_start = time.perf_counter()
                     sparse_optimizer.flush()
-                    row["sparse_optimizer_flush_ms"] = (time.perf_counter() - flush_start) * 1e3
-
+                    row["sparse_optimizer_flush_ms"] = (
+                        time.perf_counter() - flush_start
+                    ) * 1e3
                     read_path.after_sparse_update(
                         step, sparse_features, sparse_optimizer, row
                     )
                     sparse_optimizer.zero_grad()
 
-                # Resolve the CUDA-event GPU stages after a single device drain.
-                timer.finish()
                 row["loss"] = float(loss.detach().float().cpu().item())
                 _merge_consumed_perf_stats(row, _consume_perf_stats(embedding_module))
-
                 row["dense_compute_ms"] = (
                     row["dense_fwd_ms"]
                     + row["backward_ms"]
                     + row["dense_optimizer_ms"]
                 )
-                _finalize_step_timing(
-                    row, consume_start=consume_step_start, wall_start=step_wall_start
-                )
-
+                _finalize_step_timing(row, wall_start=step_wall_start)
                 rows.append(finalize_recstore_row(row))
                 _barrier_for_step_alignment(
                     dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
@@ -598,6 +574,17 @@ class RecStoreRunner(BenchmarkRunner):
             print("[rs_demo] workload finished")
 
             _write_rows(out_csv, rows)
+            if cfg.save_checkpoint:
+                from ..checkpoint import export_checkpoint
+                export_checkpoint(
+                    Path(cfg.checkpoint_path),
+                    cfg=cfg, step=cfg.steps,
+                    dense_module=unwrapped_module,
+                    embedding_module=embedding_module,
+                    dense_optimizer=dense_optimizer,
+                    sparse_optimizer=sparse_optimizer,
+                    rank=rank,
+                )
             if use_dist and dist.is_initialized():
                 dist.barrier(device_ids=[local_rank] if device.type == "cuda" else None)
                 dist.destroy_process_group()
@@ -606,6 +593,8 @@ class RecStoreRunner(BenchmarkRunner):
                 "rows": rows,
             }
         finally:
+            if plugin is not None:
+                plugin.shutdown()
             os.chdir(str(orig_cwd))
 
     def run(self, repo_root: Path, cfg: RunConfig) -> dict:
@@ -613,17 +602,15 @@ class RecStoreRunner(BenchmarkRunner):
             raise ValueError("RecStoreRunner requires cfg.backend to be 'recstore'.")
         validate_recstore_config(cfg)
 
-        if os.environ.get("RS_DEMO_RECSTORE_WORKER") == "1":
-            rank = int(os.environ.get("RANK", "0"))
-            local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-            world_size = int(
-                os.environ.get("WORLD_SIZE", str(cfg.nnodes * cfg.nproc_per_node))
-            )
-            worker_dir = Path(os.environ["RS_DEMO_RECSTORE_WORKER_DIR"])
-            ensure_shared_dir(worker_dir)
+        worker = _read_worker_context(
+            "recstore", default_world_size=cfg.nnodes * cfg.nproc_per_node
+        )
+        if worker is not None:
+            ensure_shared_dir(worker.output_dir)
             return self._run_local_worker(
-                repo_root=repo_root, cfg=cfg, rank=rank, world_size=world_size,
-                local_rank=local_rank, out_csv=worker_dir / f"rank{rank}.csv",
+                repo_root=repo_root, cfg=cfg, rank=worker.rank,
+                world_size=worker.world_size, local_rank=worker.local_rank,
+                out_csv=worker.output_dir / f"rank{worker.rank}.csv",
             )
 
         if cfg.nnodes * cfg.nproc_per_node <= 1:
