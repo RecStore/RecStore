@@ -22,7 +22,8 @@ class BagPipeCommMixin:
     """Mixin providing cross-GPU gradient synchronization primitives.
 
     Expects the host class to provide: ``device``, ``_shared_ids``,
-    ``_global_id_to_index``, ``_global_unique_count``, ``_init_unique_ids``,
+    ``_shared_ids_tensor`` (sorted int64 tensor), ``_global_id_to_index``,
+    ``_global_unique_count``, ``_init_unique_ids``,
     ``_init_batches_seen``, ``_prescan_done``, ``_prescan_unique_ids``,
     ``_stats``, ``lookahead_value``.
     """
@@ -90,6 +91,7 @@ class BagPipeCommMixin:
             return
         if not self._is_distributed():
             self._shared_ids = set()
+            self._shared_ids_tensor = torch.empty(0, dtype=torch.int64)
             return
 
         id_list = unique_ids.tolist() if unique_ids.numel() > 0 else []
@@ -113,6 +115,7 @@ class BagPipeCommMixin:
         """Build the shared-ID set + global index mapping via all_gather."""
         if not self._is_distributed():
             self._shared_ids = set()
+            self._shared_ids_tensor = torch.empty(0, dtype=torch.int64)
             self._global_id_to_index = {}
             self._global_unique_count = 0
             return
@@ -141,6 +144,12 @@ class BagPipeCommMixin:
 
         self._shared_ids = {fid for fid, cnt in id_rank_count.items() if cnt > 1}
         all_shared = sorted(self._shared_ids)
+        # 排序张量同时服务两处: torch.isin 的 shared/local 切分, 以及
+        # searchsorted 的 fid -> dense 缓冲行号映射（= sorted 序即
+        # _global_id_to_index 的值, 免去逐 fid dict.get 循环）。
+        self._shared_ids_tensor = torch.tensor(
+            all_shared, dtype=torch.int64, device=self.device
+        )
         self._global_id_to_index = {fid: i for i, fid in enumerate(all_shared)}
         self._global_unique_count = len(all_shared)
 
@@ -251,26 +260,25 @@ class BagPipeCommMixin:
             dtype=torch.float32, device=self.device,
         )
 
-        id_list = ids.tolist()
-        global_indices = []
-        valid_mask = []
-        for fid in id_list:
-            gidx = self._global_id_to_index.get(fid, -1)
-            global_indices.append(gidx)
-            valid_mask.append(gidx >= 0)
+        ids_dev = ids.to(self.device, dtype=torch.int64)
+        grads_dev = grads.to(self.device, dtype=torch.float32)
 
-        if not any(valid_mask):
+        # 向量化 fid -> dense 缓冲行号: _shared_ids_tensor 有序,
+        # searchsorted 命中即行号（与 _global_id_to_index 的值一致）。
+        # 不做 .any() 早退 —— 那是一次强制同步; 空 valid 集合时 all_reduce
+        # 聚合的是零缓冲, _apply_aggregated 对空 id 集自然跳过。
+        shared_tensor = self._shared_ids_tensor
+        if shared_tensor is None or shared_tensor.numel() == 0:
             self._stats["bagpipe_all_reduce_calls"] += 1
             self._stats["bagpipe_all_reduce_ms"] += (time.perf_counter() - t_start) * 1e3
             return ids[:0], grads[:0], None
+        pos = torch.searchsorted(shared_tensor, ids_dev)
+        pos_clamped = pos.clamp(max=shared_tensor.numel() - 1)
+        valid_mask_tensor = shared_tensor[pos_clamped] == ids_dev
 
-        valid_indices = torch.tensor(
-            [gi for gi in global_indices if gi >= 0],
-            dtype=torch.long, device=self.device,
-        )
-        valid_grads = grads[
-            torch.tensor(valid_mask, dtype=torch.bool, device=self.device)
-        ].to(self.device, dtype=torch.float32).contiguous()
+        valid_indices = pos_clamped[valid_mask_tensor]
+        valid_ids = ids_dev[valid_mask_tensor].contiguous()
+        valid_grads = grads_dev[valid_mask_tensor].contiguous()
 
         dense_grads.index_put_((valid_indices,), valid_grads)
 
@@ -284,5 +292,7 @@ class BagPipeCommMixin:
         self._stats["bagpipe_all_reduce_ids"] += float(len(valid_indices))
         self._stats["bagpipe_all_reduce_ms"] += (time.perf_counter() - t_start) * 1e3
 
-        work_obj = _DenseWork(work, dense_grads, valid_indices, ids, dim, self.device)
-        return ids.to(self.device), grads.to(self.device), work_obj
+        work_obj = _DenseWork(
+            work, dense_grads, valid_indices, valid_ids, dim, self.device
+        )
+        return valid_ids, valid_grads, work_obj
