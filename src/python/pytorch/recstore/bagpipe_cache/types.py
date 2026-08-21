@@ -9,18 +9,11 @@ import torch
 
 
 @dataclass
-class CacheEntry:
-    """Per-entry metadata for a fused ID currently residing in the GPU cache."""
-    ttl: int            # batch number at which this entry expires
-    dirty: bool = False # whether it received an SGD update (needs writeback)
-
-
-@dataclass
 class PrefetchSlot:
     """A batched prefetch in flight."""
     handle: int
-    ids_cpu: torch.Tensor       # unique fused IDs prefetched
-    ttl_map: Dict[int, int]     # fused_id -> expiry batch
+    ids_cpu: torch.Tensor       # unique fused IDs prefetched (sorted, CPU)
+    ttl_dev: torch.Tensor       # expiry batch per ID, aligned with ids_cpu (device)
     issue_ts: float
     num_ids: int
 
