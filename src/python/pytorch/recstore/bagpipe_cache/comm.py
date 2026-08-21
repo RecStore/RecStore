@@ -222,6 +222,10 @@ class BagPipeCommMixin:
                        for _ in range(world_size)]
 
         if stream is not None:
+            # 缓冲在主流上写入, 集合通信在侧流上发射: 必须先让侧流等待
+            # 主流, 否则 NCCL kernel 可能读到旧的全零缓冲 (write-after-read
+            # 竞态, kernel launch 延迟通常掩盖它, 但语义上是 UB)。
+            stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(stream):
                 work_ids = dist.all_gather(ids_list, padded_ids, async_op=True)
                 work_grads = dist.all_gather(grads_list, padded_grads, async_op=True)
@@ -283,6 +287,9 @@ class BagPipeCommMixin:
         dense_grads.index_put_((valid_indices,), valid_grads)
 
         if stream is not None:
+            # 同上: index_put_ 在主流上写入 dense_grads, all_reduce 在侧流
+            # 上消费 —— 先建立主流 -> 侧流的顺序。
+            stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(stream):
                 work = dist.all_reduce(dense_grads, async_op=True)
         else:
