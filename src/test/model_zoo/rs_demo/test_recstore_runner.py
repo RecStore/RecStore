@@ -96,6 +96,19 @@ class _FakeRecStoreClient:
         )
         return True
 
+    def apply_sgd_update_gpu_cache_best_effort(
+        self, name, ids, grads, *, learning_rate
+    ) -> None:
+        self.gpu_cache_sgd_update_calls.append(
+            (
+                str(name),
+                ids.detach().to(dtype=torch.int64, device="cpu").clone(),
+                grads.detach().to(dtype=torch.float32, device="cpu").clone(),
+                float(learning_rate),
+            )
+        )
+        return None
+
     def init_embedding_table(self, table_name: str, num_embeddings: int, embedding_dim: int) -> bool:
         self.init_embedding_table_calls += 1
         return True

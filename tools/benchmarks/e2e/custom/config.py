@@ -48,6 +48,8 @@ class BenchmarkConfig:
     repeat: int = 3
     read_mode: str = "prefetch"
     prefetch_depth: int = 0
+    # 0 = 用 rs_demo 的默认 (BagPipe 160000); 仅在显式给定且 >0 时透传
+    optimization_cache_capacity: int = 0
     index_type: str = "DRAM_PET_HASH"
     torchrec_baselines: tuple[str, ...] = ("hbm",)
     master_port: int = 29500

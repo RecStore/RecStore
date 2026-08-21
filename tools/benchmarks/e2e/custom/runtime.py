@@ -407,6 +407,15 @@ def build_client_command(
         cfg.read_mode,
         "--prefetch-depth",
         str(cfg.prefetch_depth),
+    ]
+    if cfg.optimization_cache_capacity > 0:
+        cmd.extend(
+            [
+                "--optimization-cache-capacity",
+                str(cfg.optimization_cache_capacity),
+            ]
+        )
+    cmd.extend([
         "--dense-arch-layer-sizes",
         _dense_arch_for_embedding_dim(cfg.embedding_dim),
         "--data-dir",
@@ -434,7 +443,7 @@ def build_client_command(
         str(cfg.master_port),
         "--rdzv-id",
         rdzv_id or run_id,
-    ]
+    ])
     return _wrap_remote(cmd, ssh_host=client.ssh_host, ssh_port=client.ssh_port, cwd=client.repo_root)
 
 

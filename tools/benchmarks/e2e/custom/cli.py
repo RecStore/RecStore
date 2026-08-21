@@ -41,6 +41,7 @@ def _build_config_from_args(args: argparse.Namespace) -> tuple[BenchmarkConfig, 
         repeat=args.repeat,
         read_mode=args.read_mode,
         prefetch_depth=args.prefetch_depth,
+        optimization_cache_capacity=args.optimization_cache_capacity,
         index_type=args.index_type,
         torchrec_baselines=() if args.no_torchrec else parse_torchrec_baselines(args.torchrec_baselines),
         master_port=args.master_port,
@@ -74,6 +75,13 @@ def main(argv: list[str] | None = None) -> int:
         default="prefetch",
     )
     parser.add_argument("--prefetch-depth", type=int, default=0)
+    parser.add_argument(
+        "--optimization-cache-capacity",
+        type=int,
+        default=0,
+        help="GPU cache capacity for optimization plugins (e.g. bagpipe); "
+        "0 keeps the rs_demo default (bagpipe: 160000).",
+    )
     parser.add_argument(
         "--index-type",
         choices=["DRAM_PET_HASH", "DRAM_EXTENDIBLE_HASH", "DRAM_UNORDERED_MAP"],
