@@ -361,6 +361,35 @@ void UpdateGpuCache(const torch::Tensor& keys_cuda,
   }
 }
 
+void ApplySgdUpdateBestEffortGpuCache(const torch::Tensor& keys_cuda,
+                                      const torch::Tensor& grads_cuda,
+                                      double learning_rate) {
+  if (keys_cuda.numel() == 0) {
+    return;
+  }
+  c10::cuda::CUDAGuard device_guard(keys_cuda.device());
+  const auto stream = at::cuda::getCurrentCUDAStream();
+  std::shared_ptr<CacheImpl> cache;
+  {
+    std::lock_guard<std::mutex> guard(g_mu);
+    if (!g_cache) {
+      return;
+    }
+    ValidateCacheMutationTensors(keys_cuda, grads_cuda);
+    RequireCacheDevice(keys_cuda, "keys_cuda");
+    RequireCacheDevice(grads_cuda, "grads_cuda");
+    cache = g_cache;
+    WaitForPriorCacheOpOnStreamLocked(stream.stream());
+    cache->ApplySgd(keys_cuda.data_ptr<int64_t>(),
+                    static_cast<size_t>(keys_cuda.numel()),
+                    grads_cuda.data_ptr<float>(),
+                    static_cast<float>(learning_rate),
+                    stream.stream());
+    RetainCacheUntilStreamCompletes(cache, stream.stream());
+    RecordLastCacheOpOnStreamLocked(stream.stream());
+  }
+}
+
 void InvalidateGpuCache(const torch::Tensor& keys_cuda) {
   if (keys_cuda.numel() == 0) {
     return;

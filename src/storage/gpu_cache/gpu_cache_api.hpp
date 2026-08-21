@@ -44,6 +44,13 @@ class gpu_cache_api {
                       cudaStream_t stream,
                       const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) = 0;
 
+  // ApplySgd API: in-place SGD step (value -= lr * grad) on the embeddings
+  // which exist in the cache.  Missing keys are silently skipped (best-effort,
+  // no insertion, no host-side missing report).
+  virtual void ApplySgd(const key_type* d_keys, const size_t len, const float* d_grads,
+                        const float lr, cudaStream_t stream,
+                        const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) {}
+
   // Remove API, i.e. invalidate existing embeddings from the cache
   virtual void Remove(const key_type* d_keys, const size_t len, cudaStream_t stream,
                       const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) = 0;

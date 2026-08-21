@@ -127,6 +127,13 @@ void MaintainGpuCacheAfterUpdateNoThrow(const torch::Tensor& keys,
   if (!gpu::IsGpuCacheEnabled()) {
     return;
   }
+  // When the adaptive bypass system is explicitly disabled, an external
+  // controller (e.g. BagPipe) owns cache invalidation: it pushes deltas the
+  // cache has already applied, so invalidating here (or clearing the whole
+  // cache when keys are on CPU) would needlessly evict valid entries.
+  if (!g_gpu_cache_lookup_bypass_enabled) {
+    return;
+  }
   if (ShouldBypassGpuCacheMaintenance(keys.numel())) {
     return;
   }
@@ -1078,6 +1085,42 @@ bool apply_sgd_update_gpu_cache_torch(const torch::Tensor& keys,
 #endif
 }
 
+// Best-effort in-place SGD on the GPU cache: value -= lr * grad for keys
+// present in the cache; missing keys silently skipped.  No Query, no
+// missing report, no device synchronization.  This is the cache-side SGD
+// primitive for controllers (BagPipe) that own their own cache policy.
+void apply_sgd_update_gpu_cache_best_effort_torch(const torch::Tensor& keys,
+                                                  const torch::Tensor& grads,
+                                                  double learning_rate) {
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+  TORCH_CHECK(keys.dim() == 1, "keys must be 1-dimensional");
+  TORCH_CHECK(keys.scalar_type() == torch::kInt64, "keys must be int64");
+  TORCH_CHECK(grads.dim() == 2, "grads must be 2-dimensional");
+  TORCH_CHECK(grads.scalar_type() == torch::kFloat32, "grads must be float32");
+  TORCH_CHECK(keys.size(0) == grads.size(0),
+              "keys and grads must have the same number of rows");
+  if (keys.numel() == 0) {
+    return;
+  }
+  TORCH_CHECK(keys.is_cuda() || grads.is_cuda(),
+              "apply_sgd_update_gpu_cache_best_effort requires keys or grads on CUDA");
+  const auto cache_device = grads.is_cuda() ? grads.device() : keys.device();
+  auto keys_cuda          = keys.is_cuda() ? keys : keys.to(cache_device);
+  auto grads_cuda         = grads.is_cuda() ? grads : grads.to(cache_device);
+  if (!keys_cuda.is_contiguous()) {
+    keys_cuda = keys_cuda.contiguous();
+  }
+  if (!grads_cuda.is_contiguous()) {
+    grads_cuda = grads_cuda.contiguous();
+  }
+  gpu::ApplySgdUpdateBestEffortGpuCache(keys_cuda, grads_cuda, learning_rate);
+#else
+  (void)keys;
+  (void)grads;
+  (void)learning_rate;
+#endif
+}
+
 void set_gpu_cache_lookup_bypass_enabled_torch(bool enabled) {
 #ifdef RECSTORE_ENABLE_GPU_CACHE
   SetGpuCacheLookupBypassEnabled(enabled);
@@ -1183,6 +1226,8 @@ TORCH_LIBRARY(recstore_ops, m) {
   m.def("prefill_gpu_cache", prefill_gpu_cache_torch);
   m.def("invalidate_gpu_cache", invalidate_gpu_cache_torch);
   m.def("apply_sgd_update_gpu_cache", apply_sgd_update_gpu_cache_torch);
+  m.def("apply_sgd_update_gpu_cache_best_effort",
+        apply_sgd_update_gpu_cache_best_effort_torch);
   m.def("set_gpu_cache_lookup_bypass_enabled",
         set_gpu_cache_lookup_bypass_enabled_torch);
   m.def("is_gpu_cache_lookup_bypass_enabled",
