@@ -1278,6 +1278,33 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
             used_fused_prefetch = False
             _gpu_cache_fn = getattr(self.kv_client, "is_gpu_cache_enabled", None)
             _gpu_cache_on = bool(_gpu_cache_fn()) if callable(_gpu_cache_fn) else False
+            # [BagPipe-probe] log once which lookup branch this run actually
+            # takes; written to a file because torchrun's captured stdout is
+            # discarded on success.
+            if not getattr(self, "_lookup_branch_logged", False):
+                self._lookup_branch_logged = True
+                if use_local_shm_direct_fast_path:
+                    _branch = "local_shm_direct"
+                elif use_single_node_owner_exchange_fast_path:
+                    _branch = "single_node_owner_exchange"
+                elif self._fused_prefetch_handle is not None:
+                    _branch = "fused_prefetch"
+                elif len(self._prefetch_handles) > 0:
+                    _branch = "per_feature_prefetch"
+                elif _gpu_cache_on:
+                    _branch = "gpu_cache"
+                else:
+                    _branch = "pull"
+                try:
+                    _path = os.environ.get("RS_DEMO_BAGPIPE_PROBE_LOG", "/tmp/ebc_probe.log")
+                    with open(_path, "a", encoding="utf-8") as _f:
+                        _f.write(
+                            f"[EBC-probe] lookup branch={_branch} "
+                            f"gpu_cache_on={_gpu_cache_on} device={compute_device} "
+                            f"num_fused_ids={int(fused_values_all.numel())}\n"
+                        )
+                except Exception:  # noqa: BLE001
+                    pass
             if use_local_shm_direct_fast_path:
                 is_gpu_cache_enabled = getattr(self.kv_client, "is_gpu_cache_enabled", None)
                 gpu_cache_enabled = bool(is_gpu_cache_enabled()) if callable(is_gpu_cache_enabled) else True

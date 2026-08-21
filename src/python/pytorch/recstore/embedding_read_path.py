@@ -420,8 +420,10 @@ class BagPipeReadPath:
         row: dict[str, Any],
     ) -> Any:
         del step, sparse_batch, row
-        self._plugin.on_prepare(sparse_features)
-        return None  # no ticket — bagpipe manages its own prefetch internally
+        # ticket = (unique_ids, inverse, raw_count) 由 controller 的 enqueue
+        # 产生 (设备端), 训练循环把它透传给 record_pooled_grad 的 prepared
+        # 路径, 免去第二次 unique。
+        return self._plugin.on_prepare(sparse_features)
 
     def before_lookup(
         self,

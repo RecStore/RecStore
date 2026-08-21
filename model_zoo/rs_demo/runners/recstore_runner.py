@@ -24,6 +24,7 @@ from ..data.dlrm_source import (
     build_kjt_batch_from_dense_sparse_labels,
     build_train_dataloader,
     convert_kjt_ids_to_fused_ids,
+    convert_kjt_ids_to_fused_ids_device,
     get_default_cat_names,
     inject_project_paths,
 )
@@ -249,6 +250,14 @@ class RecStoreRunner(BenchmarkRunner):
         res = subprocess.run(
             cmd, cwd=str(repo_root), env=env, check=False, text=True, capture_output=True
         )
+        # [BagPipe-probe] keep worker stderr even on success: C++ WARNINGs
+        # (GPU cache fallbacks, update failures) are otherwise lost.
+        try:
+            (rank_dir / "worker_stderr.log").write_text(
+                res.stderr or "", encoding="utf-8"
+            )
+        except Exception:
+            pass
         if res.returncode != 0:
             raise RuntimeError(
                 "recstore torchrun worker failed\n"
@@ -386,7 +395,11 @@ class RecStoreRunner(BenchmarkRunner):
 
             if use_bagpipe:
                 def _id_extractor(sparse_features):
-                    return convert_kjt_ids_to_fused_ids(sparse_features, table_offsets)
+                    # 设备端提取: CPU 版逐特征 .cpu() 的 26 次 D2H 同步拷贝
+                    # 是 enqueue 路径的主要 host 开销 (~4ms/步)
+                    return convert_kjt_ids_to_fused_ids_device(
+                        sparse_features, table_offsets
+                    )
 
                 cache_cap = cfg.optimization.cache_capacity or cfg.gpu_cache_capacity or 160000
                 if not client.is_gpu_cache_enabled():
@@ -399,6 +412,16 @@ class RecStoreRunner(BenchmarkRunner):
                         )
                     print(f"[rs_demo] BagPipe GPU cache enabled: capacity={cache_cap}, dim={cfg.embedding_dim}")
 
+                # The C++ ops layer ships an adaptive lookup-bypass latch
+                # (kGpuCacheLowHitLimit=1, hit_ratio<0.05): one cold-start
+                # lookup clears the cache and permanently bypasses it, which
+                # dooms every later apply_sgd_update_gpu_cache to fallback and
+                # poisons all ranks via the MIN all-reduce. BagPipe manages its
+                # own cache policy, so disable the latch.
+                _bypass_off = getattr(client, "set_gpu_cache_lookup_bypass_enabled", None)
+                if callable(_bypass_off):
+                    _bypass_off(False)
+
                 master_table_name = eb_configs[0]["name"] if eb_configs else ""
                 plugin = OptimizationPluginRegistry.create(
                     "bagpipe",
@@ -410,6 +433,10 @@ class RecStoreRunner(BenchmarkRunner):
                     embedding_dim=cfg.optimization.embedding_dim,
                     fuse_k=cfg.fuse_k,
                     table_offsets=table_offsets,
+                    table_sizes={
+                        cfg_item["feature_names"][0]: cfg_item["num_embeddings"]
+                        for cfg_item in eb_configs
+                    },
                     master_table_name=master_table_name,
                     device=device,
                     lr=0.01,

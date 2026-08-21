@@ -149,6 +149,35 @@ def convert_kjt_ids_to_fused_ids(sparse_features, table_offsets: dict[str, int])
     return torch.cat(ids_chunks, dim=0).contiguous()
 
 
+def convert_kjt_ids_to_fused_ids_device(
+    sparse_features, table_offsets: dict[str, int]
+) -> torch.Tensor:
+    """设备端构建 fused id（BagPipe enqueue 路径专用）。
+
+    与 :func:`convert_kjt_ids_to_fused_ids` 语义相同，但全程留在 KJT 所在
+    设备：CPU 版对 26 个特征逐个 ``.cpu()`` 产生 26 次 D2H 同步拷贝，再在
+    host 上做加法/cat/unique，是 enqueue 路径的主要 host 开销（实测占
+    update_overlap_prepare 的 ~4ms）。本版本只发射 3 个设备端 kernel，
+    不产生任何 host 同步。
+    """
+    keys = list(sparse_features.keys())
+    if not keys:
+        return torch.empty((0,), dtype=torch.int64)
+    values = sparse_features.values()
+    if values.dtype != torch.int64:
+        values = values.to(torch.int64)
+    lengths = sparse_features.lengths().to(
+        device=values.device, dtype=torch.long
+    )
+    rows_per_feature = lengths.view(len(keys), -1).sum(dim=1)
+    prefixes = torch.tensor(
+        [table_offsets[key] for key in keys],
+        device=values.device,
+        dtype=torch.int64,
+    ).repeat_interleave(rows_per_feature)
+    return (values + prefixes).contiguous()
+
+
 def build_train_dataloader(
     repo_root: Path,
     data_dir_rel: str,
