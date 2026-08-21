@@ -1278,10 +1278,12 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
             used_fused_prefetch = False
             _gpu_cache_fn = getattr(self.kv_client, "is_gpu_cache_enabled", None)
             _gpu_cache_on = bool(_gpu_cache_fn()) if callable(_gpu_cache_fn) else False
-            # [BagPipe-probe] log once which lookup branch this run actually
-            # takes; written to a file because torchrun's captured stdout is
-            # discarded on success.
-            if not getattr(self, "_lookup_branch_logged", False):
+            # [BagPipe-probe] opt-in one-shot log of which lookup branch this
+            # run actually takes; written to a file because torchrun's captured
+            # stdout is discarded on success.  Disabled unless
+            # RS_DEMO_BAGPIPE_PROBE_LOG names a path (zero I/O otherwise).
+            _probe_path = os.environ.get("RS_DEMO_BAGPIPE_PROBE_LOG")
+            if _probe_path and not getattr(self, "_lookup_branch_logged", False):
                 self._lookup_branch_logged = True
                 if use_local_shm_direct_fast_path:
                     _branch = "local_shm_direct"
@@ -1296,8 +1298,7 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
                 else:
                     _branch = "pull"
                 try:
-                    _path = os.environ.get("RS_DEMO_BAGPIPE_PROBE_LOG", "/tmp/ebc_probe.log")
-                    with open(_path, "a", encoding="utf-8") as _f:
+                    with open(_probe_path, "a", encoding="utf-8") as _f:
                         _f.write(
                             f"[EBC-probe] lookup branch={_branch} "
                             f"gpu_cache_on={_gpu_cache_on} device={compute_device} "
