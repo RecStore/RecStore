@@ -75,6 +75,12 @@ class gpu_cache : public gpu_cache_api<key_type> {
   void Update(const key_type* d_keys, const size_t len, const float* d_values, cudaStream_t stream,
               const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
 
+  // ApplySgd API: in-place SGD step (value -= lr * grad) on the embeddings
+  // which exist in the cache.  Missing keys are silently skipped.
+  void ApplySgd(const key_type* d_keys, const size_t len, const float* d_grads, const float lr,
+                cudaStream_t stream,
+                const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
+
   // Remove API, i.e. invalidate existing embeddings from the cache.
   // Input keys must not equal the reserved cache sentinel values described above.
   void Remove(const key_type* d_keys, const size_t len, cudaStream_t stream,

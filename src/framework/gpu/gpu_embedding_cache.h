@@ -30,6 +30,12 @@ void ScatterMissValues(torch::Tensor* output_values,
 bool ApplySgdUpdateGpuCache(const torch::Tensor& keys_cuda,
                             const torch::Tensor& grads_cuda,
                             double learning_rate);
+// Best-effort in-place SGD: value -= lr * grad on present keys only.
+// Missing keys are silently skipped — no Query, no missing report, no
+// device synchronization, no cache invalidation.
+void ApplySgdUpdateBestEffortGpuCache(const torch::Tensor& keys_cuda,
+                                      const torch::Tensor& grads_cuda,
+                                      double learning_rate);
 void UpdateGpuCache(const torch::Tensor& keys_cuda,
                     const torch::Tensor& values_cuda);
 void InvalidateGpuCache(const torch::Tensor& keys_cuda);

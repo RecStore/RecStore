@@ -58,6 +58,33 @@ __forceinline__ __device__ void warp_tile_copy(const size_t lane_idx,
 }
 #endif
 
+// In-place SGD step: d_dst[i] -= lr * d_src[i].  Used by the best-effort
+// cache-side SGD path (BagPipe): present keys get the gradient applied,
+// missing keys are silently skipped (no insert, no error, no sync).
+#ifdef LIBCUDACXX_VERSION
+template <int warp_size>
+__forceinline__ __device__ void warp_tile_sgd_axpy(const size_t lane_idx,
+                                                   const size_t emb_vec_size_in_float,
+                                                   float* d_dst, const float* d_src,
+                                                   const float lr) {
+#pragma unroll
+  for (size_t i = lane_idx; i < emb_vec_size_in_float; i += warp_size) {
+    d_dst[i] = d_dst[i] - lr * d_src[i];
+  }
+}
+#else
+template <int warp_size>
+__forceinline__ __device__ void warp_tile_sgd_axpy(const size_t lane_idx,
+                                                   const size_t emb_vec_size_in_float,
+                                                   volatile float* d_dst, const float* d_src,
+                                                   const float lr) {
+#pragma unroll
+  for (size_t i = lane_idx; i < emb_vec_size_in_float; i += warp_size) {
+    d_dst[i] = d_dst[i] - lr * d_src[i];
+  }
+}
+#endif
+
 #ifdef LIBCUDACXX_VERSION
 // Will be called by multiple thread_block_tile((sub-)warp) on the same mutex
 // Expect only one thread_block_tile return to execute critical section at any time
@@ -1080,6 +1107,176 @@ __global__ void update_kernel(const key_type* d_keys, const size_t len, const fl
 }
 #endif
 
+// Kernel to apply an in-place SGD step (value -= lr * grad) on existing keys.
+// Mirrors update_kernel, but instead of overwriting the value it applies the
+// gradient.  Missing keys are silently skipped: best-effort semantics, no
+// insertion, no host-side missing report (thus no device synchronization).
+#ifdef LIBCUDACXX_VERSION
+template <typename key_type, typename slabset, typename set_hasher, typename slab_hasher,
+          typename mutex, key_type empty_key, int set_associativity, int warp_size>
+__global__ void sgd_update_kernel(const key_type* d_keys, const size_t len, const float* d_grads,
+                                  const float lr, const size_t embedding_vec_size,
+                                  const size_t capacity_in_set, const slabset* keys, float* vals,
+                                  mutex* set_mutex, const size_t task_per_warp_tile) {
+  cg::thread_block_tile<warp_size> warp_tile =
+      cg::tiled_partition<warp_size>(cg::this_thread_block());
+  const size_t lane_idx = warp_tile.thread_rank();
+  const size_t warp_tile_global_idx =
+      (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
+  const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
+  key_type key;
+  size_t src_set;
+  size_t src_slab;
+  bool active = false;
+  if (lane_idx < task_per_warp_tile) {
+    if (key_idx < len) {
+      active = true;
+      key = d_keys[key_idx];
+      src_set = set_hasher::hash(key) % capacity_in_set;
+      src_slab = slab_hasher::hash(key) % set_associativity;
+    }
+  }
+
+  unsigned active_mask = warp_tile.ballot(active);
+
+  while (active_mask != 0) {
+    int next_lane = __ffs(active_mask) - 1;
+    key_type next_key = warp_tile.shfl(key, next_lane);
+    size_t next_idx = warp_tile.shfl(key_idx, next_lane);
+    size_t next_set = warp_tile.shfl(src_set, next_lane);
+    size_t next_slab = warp_tile.shfl(src_slab, next_lane);
+
+    size_t counter = 0;
+    const unsigned old_active_mask = active_mask;
+
+    warp_lock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
+
+    while (active_mask == old_active_mask) {
+      // Searched the whole slabset without a hit: skip this key silently
+      if (counter >= set_associativity) {
+        if (lane_idx == (size_t)next_lane) {
+          active = false;
+        }
+        active_mask = warp_tile.ballot(active);
+        break;
+      }
+
+      key_type read_key = keys[next_set].set_[next_slab].slab_[lane_idx];
+      int found_lane = __ffs(warp_tile.ballot(read_key == next_key)) - 1;
+
+      if (found_lane >= 0) {
+        size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
+        if (lane_idx == (size_t)next_lane) {
+          active = false;
+        }
+
+        warp_tile_sgd_axpy<warp_size>(lane_idx, embedding_vec_size,
+                                      vals + found_offset * embedding_vec_size,
+                                      d_grads + next_idx * embedding_vec_size, lr);
+
+        active_mask = warp_tile.ballot(active);
+        break;
+      }
+
+      if (warp_tile.ballot(read_key == empty_key) != 0) {
+        if (lane_idx == (size_t)next_lane) {
+          active = false;
+        }
+        active_mask = warp_tile.ballot(active);
+        break;
+      }
+
+      counter++;
+      next_slab = (next_slab + 1) % set_associativity;
+    }
+
+    warp_unlock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
+  }
+}
+#else
+template <typename key_type, typename slabset, typename set_hasher, typename slab_hasher,
+          key_type empty_key, int set_associativity, int warp_size>
+__global__ void sgd_update_kernel(const key_type* d_keys, const size_t len, const float* d_grads,
+                                  const float lr, const size_t embedding_vec_size,
+                                  const size_t capacity_in_set, volatile slabset* keys,
+                                  volatile float* vals, volatile int* set_mutex,
+                                  const size_t task_per_warp_tile) {
+  cg::thread_block_tile<warp_size> warp_tile =
+      cg::tiled_partition<warp_size>(cg::this_thread_block());
+  const size_t lane_idx = warp_tile.thread_rank();
+  const size_t warp_tile_global_idx =
+      (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
+  const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
+  key_type key;
+  size_t src_set;
+  size_t src_slab;
+  bool active = false;
+  if (lane_idx < task_per_warp_tile) {
+    if (key_idx < len) {
+      active = true;
+      key = d_keys[key_idx];
+      src_set = set_hasher::hash(key) % capacity_in_set;
+      src_slab = slab_hasher::hash(key) % set_associativity;
+    }
+  }
+
+  unsigned active_mask = warp_tile.ballot(active);
+
+  while (active_mask != 0) {
+    int next_lane = __ffs(active_mask) - 1;
+    key_type next_key = warp_tile.shfl(key, next_lane);
+    size_t next_idx = warp_tile.shfl(key_idx, next_lane);
+    size_t next_set = warp_tile.shfl(src_set, next_lane);
+    size_t next_slab = warp_tile.shfl(src_slab, next_lane);
+
+    size_t counter = 0;
+    const unsigned old_active_mask = active_mask;
+
+    warp_lock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
+
+    while (active_mask == old_active_mask) {
+      if (counter >= set_associativity) {
+        if (lane_idx == (size_t)next_lane) {
+          active = false;
+        }
+        active_mask = warp_tile.ballot(active);
+        break;
+      }
+
+      key_type read_key = ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[lane_idx];
+      int found_lane = __ffs(warp_tile.ballot(read_key == next_key)) - 1;
+
+      if (found_lane >= 0) {
+        size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
+        if (lane_idx == (size_t)next_lane) {
+          active = false;
+        }
+
+        warp_tile_sgd_axpy<warp_size>(lane_idx, embedding_vec_size,
+                                      vals + found_offset * embedding_vec_size,
+                                      d_grads + next_idx * embedding_vec_size, lr);
+
+        active_mask = warp_tile.ballot(active);
+        break;
+      }
+
+      if (warp_tile.ballot(read_key == empty_key) != 0) {
+        if (lane_idx == (size_t)next_lane) {
+          active = false;
+        }
+        active_mask = warp_tile.ballot(active);
+        break;
+      }
+
+      counter++;
+      next_slab = (next_slab + 1) % set_associativity;
+    }
+
+    warp_unlock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
+  }
+}
+#endif
+
 #ifdef LIBCUDACXX_VERSION
 template <typename key_type, typename slabset, typename ref_counter_type, typename set_hasher,
           typename slab_hasher, typename mutex, key_type empty_key, key_type deleted_key,
@@ -1767,6 +1964,56 @@ void gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_si
                                               task_per_warp_tile);
 
   // Check for GPU error before return
+  CUDA_CHECK(cudaGetLastError());
+}
+#endif
+
+// Apply an in-place SGD step (value -= lr * grad) on existing keys.
+// Missing keys are silently skipped (best-effort semantics).
+#ifdef LIBCUDACXX_VERSION
+template <typename key_type, typename ref_counter_type, key_type empty_key, int set_associativity,
+          int warp_size, typename set_hasher, typename slab_hasher>
+void gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_size, set_hasher,
+               slab_hasher>::ApplySgd(const key_type* d_keys, const size_t len,
+                                      const float* d_grads, const float lr, cudaStream_t stream,
+                                      const size_t task_per_warp_tile) {
+  if (len == 0) {
+    return;
+  }
+
+  nv::CudaDeviceRestorer dev_restorer;
+  dev_restorer.check_device(dev_);
+
+  const size_t keys_per_block = (BLOCK_SIZE_ / warp_size) * task_per_warp_tile;
+  const size_t grid_size = ((len - 1) / keys_per_block) + 1;
+  sgd_update_kernel<key_type, slabset, set_hasher, slab_hasher, mutex, empty_key,
+                    set_associativity, warp_size><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+      d_keys, len, d_grads, lr, embedding_vec_size_, capacity_in_set_, keys_, vals_, set_mutex_,
+      task_per_warp_tile);
+
+  CUDA_CHECK(cudaGetLastError());
+}
+#else
+template <typename key_type, typename ref_counter_type, key_type empty_key, int set_associativity,
+          int warp_size, typename set_hasher, typename slab_hasher>
+void gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_size, set_hasher,
+               slab_hasher>::ApplySgd(const key_type* d_keys, const size_t len,
+                                      const float* d_grads, const float lr, cudaStream_t stream,
+                                      const size_t task_per_warp_tile) {
+  if (len == 0) {
+    return;
+  }
+
+  nv::CudaDeviceRestorer dev_restorer;
+  dev_restorer.check_device(dev_);
+
+  const size_t keys_per_block = (BLOCK_SIZE_ / warp_size) * task_per_warp_tile;
+  const size_t grid_size = ((len - 1) / keys_per_block) + 1;
+  sgd_update_kernel<key_type, slabset, set_hasher, slab_hasher, empty_key, set_associativity,
+                    warp_size><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+      d_keys, len, d_grads, lr, embedding_vec_size_, capacity_in_set_, keys_, vals_, set_mutex_,
+      task_per_warp_tile);
+
   CUDA_CHECK(cudaGetLastError());
 }
 #endif
