@@ -24,6 +24,7 @@ from ..data.dlrm_source import (
     build_kjt_batch_from_dense_sparse_labels,
     build_train_dataloader,
     convert_kjt_ids_to_fused_ids,
+    convert_kjt_ids_to_fused_ids_device,
     get_default_cat_names,
     inject_project_paths,
 )
@@ -46,7 +47,8 @@ from ..runtime.worker_common import (
 )
 from .base import BenchmarkRunner
 
-from recstore.embedding_read_path import build_embedding_read_path
+from recstore.embedding_read_path import BagPipeReadPath, build_embedding_read_path
+from recstore.optim import OptimizationPluginRegistry
 
 
 def _safe_ratio(numerator: float, denominator: float) -> float:
@@ -248,6 +250,14 @@ class RecStoreRunner(BenchmarkRunner):
         res = subprocess.run(
             cmd, cwd=str(repo_root), env=env, check=False, text=True, capture_output=True
         )
+        # [BagPipe-probe] keep worker stderr even on success: C++ WARNINGs
+        # (GPU cache fallbacks, update failures) are otherwise lost.
+        try:
+            (rank_dir / "worker_stderr.log").write_text(
+                res.stderr or "", encoding="utf-8"
+            )
+        except Exception:
+            pass
         if res.returncode != 0:
             raise RuntimeError(
                 "recstore torchrun worker failed\n"
@@ -342,6 +352,8 @@ class RecStoreRunner(BenchmarkRunner):
             )
 
         orig_cwd = Path.cwd()
+        client = None
+        plugin = None
         try:
             os.chdir(str(self.runtime_dir))
             torch.manual_seed(cfg.seed)
@@ -372,13 +384,77 @@ class RecStoreRunner(BenchmarkRunner):
                 kv_client=client,
                 initialize_tables=(rank == 0),
             )
-            read_path = build_embedding_read_path(
-                cfg.read_mode,
-                embedding_module=embedding_module,
-                prefetch_depth=cfg.prefetch_depth,
-                embedding_dim=cfg.embedding_dim,
-                feature_offsets=fused_id_offsets,
-            )
+            # -- optimization plugin + read path --------------------------------
+            # BagPipe branch re-grafted from the benchmark branch (8ce3f9ae):
+            # the upstream merge dropped it entirely, so read_mode=bagpipe hit
+            # "requires a plugin instance" and --optimization-plugin bagpipe was
+            # silently ignored. GPU cache is mandatory for BagPipe — without it
+            # every lookup and sparse update falls back to the PS-direct path,
+            # making BagPipe slower than the plain prefetch path.
+            use_bagpipe = cfg.optimization.plugin == "bagpipe" or cfg.read_mode == "bagpipe"
+
+            if use_bagpipe:
+                def _id_extractor(sparse_features):
+                    # 设备端提取: CPU 版逐特征 .cpu() 的 26 次 D2H 同步拷贝
+                    # 是 enqueue 路径的主要 host 开销 (~4ms/步)
+                    return convert_kjt_ids_to_fused_ids_device(
+                        sparse_features, table_offsets
+                    )
+
+                cache_cap = cfg.optimization.cache_capacity or cfg.gpu_cache_capacity or 160000
+                if not client.is_gpu_cache_enabled():
+                    ok = client.enable_gpu_cache(cache_cap, cfg.embedding_dim)
+                    if not ok:
+                        raise RuntimeError(
+                            f"BagPipe requires GPU cache but enable_gpu_cache("
+                            f"capacity={cache_cap}, dim={cfg.embedding_dim}) "
+                            f"returned False. Cannot continue without GPU cache."
+                        )
+                    print(f"[rs_demo] BagPipe GPU cache enabled: capacity={cache_cap}, dim={cfg.embedding_dim}")
+
+                # The C++ ops layer ships an adaptive lookup-bypass latch
+                # (kGpuCacheLowHitLimit=1, hit_ratio<0.05): one cold-start
+                # lookup clears the cache and permanently bypasses it, which
+                # dooms every later apply_sgd_update_gpu_cache to fallback and
+                # poisons all ranks via the MIN all-reduce. BagPipe manages its
+                # own cache policy, so disable the latch.
+                _bypass_off = getattr(client, "set_gpu_cache_lookup_bypass_enabled", None)
+                if callable(_bypass_off):
+                    _bypass_off(False)
+
+                master_table_name = eb_configs[0]["name"] if eb_configs else ""
+                plugin = OptimizationPluginRegistry.create(
+                    "bagpipe",
+                    embedding_module=embedding_module,
+                    kv_client=client,
+                    lookahead=cfg.optimization.lookahead,
+                    cleanup_proportion=cfg.optimization.cleanup_proportion,
+                    cache_capacity=cache_cap,
+                    embedding_dim=cfg.optimization.embedding_dim,
+                    fuse_k=cfg.fuse_k,
+                    table_offsets=table_offsets,
+                    table_sizes={
+                        cfg_item["feature_names"][0]: cfg_item["num_embeddings"]
+                        for cfg_item in eb_configs
+                    },
+                    master_table_name=master_table_name,
+                    device=device,
+                    lr=0.01,
+                    id_extractor=_id_extractor,
+                )
+                sparse_optimizer = plugin.create_sparse_optimizer(
+                    [embedding_module], lr=0.01
+                )
+                read_path = BagPipeReadPath(plugin, device=device)
+            else:
+                read_path = build_embedding_read_path(
+                    cfg.read_mode,
+                    embedding_module=embedding_module,
+                    prefetch_depth=cfg.prefetch_depth,
+                    embedding_dim=cfg.embedding_dim,
+                    feature_offsets=fused_id_offsets,
+                )
+                sparse_optimizer = recstore.SparseSGD([embedding_module], lr=0.01)
 
             _barrier_for_step_alignment(
                 dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
@@ -401,7 +477,6 @@ class RecStoreRunner(BenchmarkRunner):
             )
             criterion = build_criterion(cfg, dispatch_module)
             dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
-            sparse_optimizer = recstore.SparseSGD([embedding_module], lr=0.01)
             record_pooled_grad = getattr(embedding_module, "record_pooled_grad", None)
 
             if _maybe_warmup_gpu_local_shm_fast_path(cfg=cfg, client=client, device=device):
@@ -606,6 +681,12 @@ class RecStoreRunner(BenchmarkRunner):
                 "rows": rows,
             }
         finally:
+            # BagPipe plugin teardown (benchmark branch 8ce3f9ae); no-op for
+            # the non-bagpipe paths where plugin stays None.
+            if plugin is not None:
+                plugin.shutdown()
+            if client is not None and client.is_gpu_cache_enabled():
+                client.disable_gpu_cache()
             os.chdir(str(orig_cwd))
 
     def run(self, repo_root: Path, cfg: RunConfig) -> dict:
