@@ -284,6 +284,43 @@ class TestBagPipeAggregatedApply(unittest.TestCase):
 
 
 class TestCompactTranslation(unittest.TestCase):
+    def test_consume_stats_snapshot_never_double_counts(self):
+        """consume_stats(reset=False) 是只读快照: GPU 热累加器并入返回值后
+        即清零, 后续调用不得把同一批计数二次计入。"""
+        from ..bagpipe_cache.controller import BagPipeCacheController
+
+        ctrl = BagPipeCacheController(
+            embedding_module=None,
+            kv_client=None,
+            lookahead_value=4,
+            cleanup_batch_proportion=0.25,
+            cache_capacity=1000,
+            embedding_dim=4,
+            fuse_k=30,
+            table_offsets={"a": 0},
+            master_table_name="t",
+            device=torch.device("cpu"),
+            id_extractor=lambda sf: sf,
+            table_sizes={"a": 100},
+        )
+        try:
+            ctrl._hot_add("bagpipe_no_sync_ids", torch.tensor(5.0))
+            snap1 = ctrl.consume_stats(reset=False)
+            self.assertEqual(snap1["bagpipe_no_sync_ids"], 5.0)
+            # 累加器已清零且 _stats 未清 (reset=False 累计语义): 无新计数时
+            # 快照值不变 —— 若旧实现 (reset=False 不清累加器) 则会变成 10.0。
+            snap2 = ctrl.consume_stats(reset=False)
+            self.assertEqual(snap2["bagpipe_no_sync_ids"], 5.0)
+            # reset=True 返回的应是整个累计区间 (5 + 3), 之后清零 ——
+            # 只读快照期间的计数不会被吞也不会重复。
+            ctrl._hot_add("bagpipe_no_sync_ids", torch.tensor(3.0))
+            snap3 = ctrl.consume_stats(reset=True)
+            self.assertEqual(snap3["bagpipe_no_sync_ids"], 8.0)
+            snap4 = ctrl.consume_stats(reset=True)
+            self.assertEqual(snap4["bagpipe_no_sync_ids"], 0.0)
+        finally:
+            ctrl._cleanup_queue.put(None)
+
     def test_fused_compact_roundtrip_and_space(self):
         """fused id (table<<fuse_k|row) → compact (table<<shift|row) 往返一致,
         簿记空间 = num_tables << shift (不被 fuse_k=30 的名义空间撑爆)."""

@@ -252,12 +252,20 @@ class BagPipeCacheController(
         }
 
     def consume_stats(self, *, reset: bool = True) -> Dict[str, float]:
-        # 热计数器在此取回 (.item() 位于 timer.finish() 的 device drain 之后,
-        # 不在关键路径上引入同步)
+        """Merge current stats into a snapshot.
+
+        热计数器在此取回 (.item() 位于 timer.finish() 的 device drain 之后,
+        不在关键路径上引入同步)。GPU 热累加器无论 reset 与否都会清零:
+        累加器已并入 ``_stats``, 若留在设备上, 下一次 consume_stats 会把它
+        二次计入。
+
+        ``reset=False`` 是"只读快照": 返回累计值但 ``_stats`` 保留, 后续
+        ``reset=True`` 的调用会把整个累计区间 (含只读快照期间的部分) 一并
+        返回后才清零 —— 计数只被消费一次。
+        """
         for key, acc in self._hot_stats_dev.items():
             self._stats[key] = self._stats.get(key, 0.0) + float(acc.item())
-            if reset:
-                acc.zero_()
+            acc.zero_()
         self._stats["bagpipe_cache_entries"] = float(self._cached_count())
         self._stats["bagpipe_dirty_entries"] = float(self._dirty_count())
         stats = dict(self._stats)
