@@ -37,7 +37,6 @@ from ..models.dlrm import (
 from ..models.utils import (
     prepare_hybrid_dlrm_input,
     reshape_torchrec_embeddings_for_dlrm,
-    run_hybrid_backward,
 )
 from python.pytorch.recstore.benchmark.report import finalize_recstore_row
 from ..runtime.timing import StepTimer
@@ -442,6 +441,18 @@ class RecStoreRunner(BenchmarkRunner):
                             ticket.raw_count,
                         ),
                     )
+                elif (
+                    isinstance(ticket, tuple)
+                    and len(ticket) == 3
+                    and hasattr(ticket[0], "numel")
+                ):
+                    unique_ids, _, raw_count = ticket
+                    _add_sparse_id_stats(
+                        row,
+                        sparse_features,
+                        table_offsets,
+                        precomputed=(int(unique_ids.numel()), int(raw_count)),
+                    )
                 else:
                     _add_sparse_id_stats(row, sparse_features, table_offsets)
                 return (
@@ -499,9 +510,18 @@ class RecStoreRunner(BenchmarkRunner):
                     )
 
                 with timer.gpu("backward_ms"):
-                    embedded_sparse_grad = run_hybrid_backward(
-                        loss, embedded_sparse, dense_module, torch, device
-                    )
+                    for param in dense_module.parameters():
+                        if param.requires_grad:
+                            param.grad = None
+                    if not embedded_sparse.is_leaf:
+                        embedded_sparse.retain_grad()
+                    embedded_sparse.grad = None
+                    loss.backward()
+                    if embedded_sparse.grad is None:
+                        raise RuntimeError(
+                            "missing embedded_sparse gradient after backward"
+                        )
+                    embedded_sparse_grad = embedded_sparse.grad.detach()
 
                 with timer.gpu("dense_optimizer_ms"):
                     dense_optimizer.step()
@@ -554,6 +574,7 @@ class RecStoreRunner(BenchmarkRunner):
 
                 row["loss"] = float(loss.detach().float().cpu().item())
                 _merge_consumed_perf_stats(row, _consume_perf_stats(embedding_module))
+                row["step_sync_wait_ms"] = timer.finish()
                 row["dense_compute_ms"] = (
                     row["dense_fwd_ms"]
                     + row["backward_ms"]

@@ -89,12 +89,13 @@ public:
     std::lock_guard<std::mutex> lock(checkpoint_mu_);
     base_kv_->clear();
     active_checkpoint_identity_.clear();
-    checkpoint_dirty_ = base_kv_->CheckpointRecordCount() != 0;
+    checkpoint_dirty_.store(
+        base_kv_->CheckpointRecordCount() != 0, std::memory_order_relaxed);
   }
 
   void LoadFakeData(int64_t key_capacity, int value_size) {
     std::lock_guard<std::mutex> lock(checkpoint_mu_);
-    checkpoint_dirty_ = true;
+    checkpoint_dirty_.store(true, std::memory_order_relaxed);
     base_kv_->LoadFakeData(key_capacity, value_size);
   }
 
@@ -113,7 +114,7 @@ public:
       return false;
     }
     active_checkpoint_identity_ = identity;
-    checkpoint_dirty_           = false;
+    checkpoint_dirty_.store(false, std::memory_order_relaxed);
     return true;
   }
 
@@ -121,10 +122,11 @@ public:
                       const std::string& expected_metadata) {
     const std::string identity = CheckpointIdentity(expected_metadata);
     std::lock_guard<std::mutex> lock(checkpoint_mu_);
-    if (!checkpoint_dirty_ && active_checkpoint_identity_ == identity) {
+    if (!checkpoint_dirty_.load(std::memory_order_relaxed) &&
+        active_checkpoint_identity_ == identity) {
       return true;
     }
-    if (checkpoint_dirty_) {
+    if (checkpoint_dirty_.load(std::memory_order_relaxed)) {
       throw std::runtime_error(
           "checkpoint load rejected: parameter server has unsaved updates");
     }
@@ -138,24 +140,25 @@ public:
     }
     try {
       if (!base_kv_->LoadCheckpoint(path, expected_metadata)) {
-        checkpoint_dirty_ = base_kv_->CheckpointRecordCount() != 0;
+        checkpoint_dirty_.store(
+            base_kv_->CheckpointRecordCount() != 0, std::memory_order_relaxed);
         LOG(ERROR) << "Failed to load checkpoint: " << path;
         return false;
       }
     } catch (...) {
-      checkpoint_dirty_ = base_kv_->CheckpointRecordCount() != 0;
+      checkpoint_dirty_.store(
+          base_kv_->CheckpointRecordCount() != 0, std::memory_order_relaxed);
       throw;
     }
     active_checkpoint_identity_ = identity;
-    checkpoint_dirty_           = false;
+    checkpoint_dirty_.store(false, std::memory_order_relaxed);
     return true;
   }
 
   void PutSingleParameter(
       const uint64_t key, const void* data, const int dim, const int tid) {
-    std::lock_guard<std::mutex> lock(checkpoint_mu_);
-    checkpoint_dirty_ = true;
     base_kv_->Put(key, std::string_view((char*)data, dim * sizeof(float)), tid);
+    MarkCheckpointDirty();
   }
 
   void PutDenseParameterBatch(
@@ -167,8 +170,6 @@ public:
     if (key_count <= 0 || embedding_dim <= 0) {
       return;
     }
-    std::lock_guard<std::mutex> lock(checkpoint_mu_);
-    checkpoint_dirty_ = true;
     base::ConstArray<uint64_t> key_array(keys, key_count);
     std::vector<base::ConstArray<float>> value_slices;
     value_slices.reserve(static_cast<std::size_t>(key_count));
@@ -176,22 +177,20 @@ public:
       value_slices.emplace_back(values + i * embedding_dim, embedding_dim);
     }
     base_kv_->BatchPut(key_array, &value_slices, tid);
+    MarkCheckpointDirty();
   }
 
   void PutSingleParameter(const ParameterCompressItem* item, int tid) {
-    std::lock_guard<std::mutex> lock(checkpoint_mu_);
-    checkpoint_dirty_ = true;
     auto key          = item->key;
     auto dim          = item->dim;
     base_kv_->Put(
         key, std::string_view((char*)item->data(), dim * sizeof(float)), tid);
+    MarkCheckpointDirty();
   }
 
   void PutParameter(coroutine<void>::push_type& sink,
                     const ParameterCompressReader* reader,
                     int tid) {
-    std::lock_guard<std::mutex> lock(checkpoint_mu_);
-    checkpoint_dirty_ = true;
     std::vector<uint64_t> keys_vec;
     std::vector<base::ConstArray<float>> values;
     for (int i = 0; i < reader->item_size(); i++) {
@@ -202,11 +201,10 @@ public:
     base::ConstArray<uint64_t> keys(keys_vec);
 
     base_kv_->BatchPut(sink, keys, &values, tid);
+    MarkCheckpointDirty();
   }
 
   void PutParameter(const ParameterCompressReader* reader, int tid) {
-    std::lock_guard<std::mutex> lock(checkpoint_mu_);
-    checkpoint_dirty_ = true;
     std::vector<uint64_t> keys_vec;
     std::vector<base::ConstArray<float>> values;
     for (int i = 0; i < reader->item_size(); i++) {
@@ -217,6 +215,7 @@ public:
     base::ConstArray<uint64_t> keys(keys_vec);
 
     base_kv_->BatchPut(keys, &values, tid);
+    MarkCheckpointDirty();
   }
 
   bool GetParameterRun2Completion(key_t key, ParameterPack& pack, int tid) {
@@ -513,14 +512,13 @@ public:
   bool UpdateParameter(const std::string& table_name,
                        const ParameterCompressReader* reader,
                        unsigned tid) {
-    std::lock_guard<std::mutex> lock(checkpoint_mu_);
     if (!optimizer_) {
       LOG(ERROR) << "Optimizer not initialized. Please call InitTable first.";
       return false;
     }
 
-    checkpoint_dirty_ = true;
     optimizer_->Update(table_name, reader, tid);
+    MarkCheckpointDirty();
     return true;
   }
 
@@ -531,7 +529,6 @@ public:
       int64_t num_rows,
       int64_t embedding_dim,
       unsigned tid) {
-    std::lock_guard<std::mutex> lock(checkpoint_mu_);
     if (grads == nullptr) {
       LOG(ERROR) << "UpdateParameterFlat grads pointer is null";
       return false;
@@ -550,13 +547,19 @@ public:
       LOG(ERROR) << "Optimizer not initialized. Please call InitTable first.";
       return false;
     }
-    checkpoint_dirty_ = true;
     optimizer_->UpdateFlat(
         table_name, keys, grads, num_rows, embedding_dim, tid);
+    MarkCheckpointDirty();
     return true;
   }
 
 private:
+  void MarkCheckpointDirty() {
+    if (!checkpoint_dirty_.load(std::memory_order_relaxed)) {
+      checkpoint_dirty_.store(true, std::memory_order_relaxed);
+    }
+  }
+
   static std::string CheckpointIdentity(const std::string& metadata) {
     const json parsed = json::parse(metadata);
     if (!parsed.is_object() || !parsed.contains("identity") ||
@@ -574,6 +577,6 @@ private:
   std::mutex checkpoint_mu_;
   std::unordered_map<std::string, EmbeddingTableConfig> table_configs_;
   std::string active_checkpoint_identity_;
-  bool checkpoint_dirty_ = false;
+  std::atomic<bool> checkpoint_dirty_{false};
   std::atomic<bool> stopFlag_{false};
 };

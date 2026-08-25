@@ -6,6 +6,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+os.environ.setdefault("RECSTORE_DEFER_OPS_LOAD", "1")
+
 from .config import (
     RunConfig,
     ensure_parent_dirs,

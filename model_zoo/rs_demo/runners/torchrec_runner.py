@@ -42,7 +42,7 @@ from ..runtime.worker_common import (
     read_worker_context as _read_worker_context,
     write_rows as _write_rows,
 )
-from python.pytorch.recstore.analysis.profiler import build_torchrec_profiler
+from python.pytorch.recstore.analysis.profiler import ProfilerConfig, build_torchrec_profiler
 from .base import BenchmarkRunner
 
 
@@ -125,12 +125,7 @@ def _compute_or_load_shared_sharding_plan(
             f.flush()
             os.fsync(f.fileno())
         os.replace(pending_path, plan_path)
-    else:
-        wait_deadline = time.monotonic() + 60.0
-        while not plan_path.exists():
-            if time.monotonic() >= wait_deadline:
-                raise TimeoutError(f"Timed out waiting for shared sharding plan: {plan_path}")
-            time.sleep(0.1)
+    dist.barrier()
     with plan_path.open("rb") as f:
         plan = pickle.load(f)
     return plan
@@ -142,6 +137,7 @@ def _remove_stale_distributed_outputs(cfg: RunConfig, rank_dir: Path) -> None:
         run_output_dir / "torchrec_worker_fingerprints.json",
         run_output_dir / "torchrec_worker_fingerprints.json.lock",
         run_output_dir / "torchrec_plan.pkl",
+        run_output_dir / f"torchrec_nccl_rank{cfg.node_rank}.log",
         Path(cfg.torchrec_main_csv),
         Path(cfg.torchrec_main_agg_csv),
         Path(cfg.torchrec_trace_csv),
@@ -389,7 +385,13 @@ def _run_single_or_dist_worker(
     sparse_optimizer = torch.optim.SGD(embedding_module.parameters(), lr=0.01)
 
     profiler = build_torchrec_profiler(
-        cfg,
+        ProfilerConfig(
+            enabled=cfg.torchrec_profiler,
+            trace_dir=cfg.torchrec_trace_dir,
+            warmup=cfg.torchrec_profiler_warmup,
+            active=cfg.torchrec_profiler_active,
+            repeat=cfg.torchrec_profiler_repeat,
+        ),
         on_trace_ready=_make_trace_handler(cfg, rank) if cfg.torchrec_profiler else None,
     )
     profiler_context = profiler or nullcontext()
@@ -435,8 +437,7 @@ def _run_single_or_dist_worker(
                 )
                 sparse_features = sparse_features.to(device, non_blocking=True)
 
-            _append_worker_debug(cfg, rank, f"before_embedding step={step}")
-            with timer.gpu("embed_lookup_local_ms"):
+            with timer.gpu("embed_lookup_ms"):
                 embeddings = embedding_module(sparse_features)
 
             with timer.gpu("embed_pool_local_ms"):
@@ -573,6 +574,13 @@ class TorchRecRunner(BenchmarkRunner):
             text=True,
             capture_output=True,
         )
+        nccl_log = (
+            Path(cfg.output_root)
+            / "outputs"
+            / cfg.run_id
+            / f"torchrec_nccl_rank{cfg.node_rank}.log"
+        )
+        nccl_log.write_text(res.stdout + res.stderr, encoding="utf-8")
         if res.returncode != 0:
             raise RuntimeError(
                 "torchrun worker failed\n"

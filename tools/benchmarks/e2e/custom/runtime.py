@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -179,6 +180,22 @@ def start_rdma_ps_cluster(
             f"num_clients={runner.num_clients}\n"
         )
     runner._rs_demo_log_path = log_path  # type: ignore[attr-defined]
+    cleanup_commands = []
+    cleanup_hosts = set()
+    for server in sorted_servers:
+        host = (server.ssh_host, server.ssh_port, server.repo_root)
+        if server.ssh_host in {"", "local", "localhost"} or host in cleanup_hosts:
+            continue
+        cleanup_hosts.add(host)
+        cleanup_commands.append(
+            _wrap_remote(
+                [str(server.repo_root / "tools/benchmarks/kill_bench_procs.sh")],
+                ssh_host=server.ssh_host,
+                ssh_port=server.ssh_port,
+                cwd=server.repo_root,
+            )
+        )
+    runner._rs_demo_remote_cleanup_commands = cleanup_commands  # type: ignore[attr-defined]
     runner.start()
     return runner
 
@@ -186,6 +203,8 @@ def start_rdma_ps_cluster(
 def stop_rdma_ps_cluster(runner: Any) -> None:
     if runner is not None:
         runner.stop()
+        for cmd in runner._rs_demo_remote_cleanup_commands:
+            subprocess.run(cmd, check=True)
 
 
 def build_server_command(*, server: ServerSpec, runtime_config: Path, transport: str) -> list[str]:
