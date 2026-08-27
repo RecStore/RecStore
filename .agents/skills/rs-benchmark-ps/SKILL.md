@@ -204,6 +204,51 @@ ctest --test-dir build -L rdma_integration -VV
 If `ctest` returns skip code `77`, report the skip reason instead of treating
 it as a pass.
 
+## RDMA Integration and Op-layer Validation
+
+Use these checks when validating the PetPS integration or Python/op-layer
+wrapper. They are correctness checks, not throughput measurements.
+
+PetPS single-shard integration:
+
+```bash
+python3 src/test/scripts/run_petps_integration.py \
+  --server-count 1 \
+  --config-path ./src/test/configs/recstore_config.rdma_test.json \
+  --test-binary ./build/bin/petps_integration_test \
+  --gtest-filter=PetPSIntegrationTest.PutGetRoundTripSingleShard:PetPSIntegrationTest.UpdateGetRoundTripSingleShard \
+  --rdma-control-plane-host=127.0.0.1 \
+  --show-runner-logs \
+  --client-timeout=20 \
+  --cluster-timeout=35
+```
+
+For multi-shard routing, use `recstore_config.rdma_multishard_test.json`,
+`--server-count 2`, and the `PutGetRoundTripMultiShard` filter. Verify
+`distributed_client.num_shards`, `distributed_client.servers`, server count,
+and key-to-shard routing before diagnosing transport behavior.
+
+Op-layer and PyTorch wrapper checks use
+`src/test/configs/recstore_config.op_rdma.json`:
+
+```bash
+ctest --test-dir ./build -R '^test_op_runtime_support$|^test_op$' -VV
+ctest --test-dir ./build -R '^pytorch_client_test_rdma_basic$' -VV
+ctest --test-dir ./build -R '^pytorch_client_test_rdma$|^pytorch_client_test_rdma_auto$' -VV
+```
+
+Script plumbing checks:
+
+```bash
+python3 -m unittest src/test/scripts/test_petps_cluster_runner.py
+python3 -m unittest src/test/scripts/test_run_rdma_rc_transport_benchmark.py
+python3 -m unittest src/test/scripts/test_run_rdma_transport_benchmarks.py
+```
+
+These checks do not prove that RDMA hardware is available. Tests with
+`SKIP_RETURN_CODE=77` must be reported as skipped with their preflight reason.
+Run a real minimum RDMA benchmark only when verbs devices are present.
+
 ## Command Templates
 
 Local RDMA smoke:
