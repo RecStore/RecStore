@@ -20,7 +20,7 @@ Use this skill from a RecStore checkout. Do not run helper scripts from this ski
    - record-count (default=10M)
    - read mode (default = `get`; use `batch_get_flat` when aligning with PS RDMA GET)
    - batch keys (default = `500` for `batch_get_flat`)
-3. Run:
+3. Run build and correctness checks:
    - Always compile in Release mode for KVEngine benchmarks. The compare
      script expects `build/bin/benchmark_kv_engine`, so configure Release into
      `build`:
@@ -28,9 +28,14 @@ Use this skill from a RecStore checkout. Do not run helper scripts from this ski
    - `cmake --build build --target test_kvengine -j`
    - `ctest --test-dir build -R '^test_kvengine$' -VV`
    - `cmake --build build --target benchmark_kv_engine -j`
-   - `tools/benchmarks/run_kvengine_compare.py`
-4. Save logs and CSV/SVG artifacts under the chosen result directory.
-5. Write `summary.md` as exactly three report tables, with the benchmark hyperparameters recorded as Chinese prose under `Workload 说明` before the first table:
+4. Immediately before `run_kvengine_compare.py`, clean leftover
+   RecStore/TorchRec/KVEngine processes on every host that will run the
+   benchmark (local-only by default). Use
+   `./tools/benchmarks/kill_bench_procs.sh` only — do not hand-roll `pkill -f`.
+   Fail the run if cleanup exits nonzero.
+5. Run `tools/benchmarks/run_kvengine_compare.py`.
+6. Save logs and CSV/SVG artifacts under the chosen result directory.
+7. Write `summary.md` as exactly three report tables, with the benchmark hyperparameters recorded as Chinese prose under `Workload 说明` before the first table:
    - Workload description
    - Run throughput
    - Load throughput
@@ -44,6 +49,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target test_kvengine -j
 ctest --test-dir build -R '^test_kvengine$' -VV
 cmake --build build --target benchmark_kv_engine -j
+./tools/benchmarks/kill_bench_procs.sh
 ```
 
 ```bash

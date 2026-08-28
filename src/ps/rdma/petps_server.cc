@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
+#include <csignal>
 #include <deque>
 #include <cstdint>
 #include <cstdlib>
@@ -885,14 +886,20 @@ private:
 
     std::uint64_t num_embeddings = 0;
     std::uint64_t embedding_dim  = 0;
+    std::uint64_t table_id       = 0;
     std::memcpy(&num_embeddings, payload, sizeof(num_embeddings));
     std::memcpy(&embedding_dim,
                 payload + sizeof(num_embeddings),
                 sizeof(embedding_dim));
-    const bool ok = cache_ps_->InitTable(
-        std::string(table_name), num_embeddings, embedding_dim);
+    std::memcpy(&table_id,
+                payload + sizeof(num_embeddings) + sizeof(embedding_dim),
+                sizeof(table_id));
+    const int tag = cache_ps_->InitTable(
+        std::string(table_name), num_embeddings, embedding_dim, table_id);
     response->status->status = static_cast<std::int32_t>(
-        ok ? petps::RpcStatus::kOk : petps::RpcStatus::kInvalidPayload);
+        tag >= 0 ? petps::RpcStatus::kOk : petps::RpcStatus::kInvalidPayload);
+    response->status->reserved =
+        tag >= 0 ? static_cast<std::uint32_t>(tag) : 0;
     response->status->response_bytes = 0;
   }
 
@@ -1265,10 +1272,22 @@ private:
   ProfileCounters profile_;
 };
 
+std::atomic<bool> g_stop_requested{false};
+
+void HandleStopSignal(int) { g_stop_requested.store(true); }
+
 } // namespace
 
 int main(int argc, char* argv[]) {
-  folly::init(&argc, &argv);
+  // Keep crash dumps for real fatals; let SIGTERM/SIGINT exit cleanly.
+  folly::InitOptions init_options;
+  init_options.fatalSignals(
+      (1UL << SIGSEGV) | (1UL << SIGILL) | (1UL << SIGFPE) | (1UL << SIGABRT) |
+      (1UL << SIGBUS) | (1UL << SIGQUIT));
+  folly::init(&argc, &argv, init_options);
+  std::signal(SIGTERM, HandleStopSignal);
+  std::signal(SIGINT, HandleStopSignal);
+
   if (ShouldTraceRdmaGet()) {
     std::cerr << "component=rdma_get_trace side=server event=enabled interval="
               << RdmaGetTraceInterval() << std::endl;
@@ -1321,8 +1340,11 @@ int main(int argc, char* argv[]) {
   auto ps            = std::make_unique<PetPSServer>(
       cache_ps.get(), FLAGS_thread_num, shard_id, NamespaceToken());
   ps->Run();
-  while (true) {
+  while (!g_stop_requested.load()) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
-  return 0;
+  LOG(INFO) << "component=petps_server event=shutdown";
+  // ponytail: process exit; PetPSServer's joinable poll threads would
+  // std::terminate in ~vector<thread>. Upgrade: PetPSServer::Stop()+join.
+  std::_Exit(0);
 }

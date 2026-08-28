@@ -15,7 +15,7 @@
 #include "base/flatc.h"
 #include "base/json.h"
 #include "base/tensor.h"
-#include "ps/base/base_client.h"
+#include "ps/base/shard_client.h"
 #include "ps/base/parameters.h"
 #include "ps_brpc.pb.h"
 
@@ -55,38 +55,7 @@ struct BrpcPrefetchBatch {
   std::atomic<int> completed_count_;
 };
 
-struct BrpcPrewriteBatch {
-  BrpcPrewriteBatch(int request_num) {
-    batch_size_ = request_num;
-    key_sizes_.resize(request_num);
-    requests_.resize(request_num);
-    responses_.resize(request_num);
-    controllers_.resize(request_num);
-    completed_count_ = 0;
-  }
-
-  BrpcPrewriteBatch(BrpcPrewriteBatch&& other) noexcept
-      : key_sizes_(std::move(other.key_sizes_)),
-        requests_(std::move(other.requests_)),
-        responses_(std::move(other.responses_)),
-        controllers_(std::move(other.controllers_)),
-        batch_size_(other.batch_size_),
-        completed_count_(other.completed_count_.load()) {
-    other.batch_size_ = 0;
-  }
-
-  BrpcPrewriteBatch(const BrpcPrewriteBatch&)            = delete;
-  BrpcPrewriteBatch& operator=(const BrpcPrewriteBatch&) = delete;
-
-  std::vector<int> key_sizes_;
-  std::vector<recstoreps_brpc::PutParameterRequest> requests_;
-  std::vector<recstoreps_brpc::PutParameterResponse> responses_;
-  std::vector<std::unique_ptr<brpc::Controller>> controllers_;
-  int batch_size_;
-  std::atomic<int> completed_count_;
-};
-
-class BRPCParameterClient : public recstore::BasePSClient {
+class BRPCParameterClient : public recstore::ShardClient {
 public:
   // New constructor with JSON config
   explicit BRPCParameterClient(json config);
@@ -96,21 +65,13 @@ public:
 
   ~BRPCParameterClient() {}
 
-  // BasePSClient pure virtual implementations
-  virtual int
-  GetParameter(const base::ConstArray<uint64_t>& keys, float* values) override;
-
-  int AsyncGetParameter(const base::ConstArray<uint64_t>& keys,
-                        float* values) override;
+  int GetParameter(const base::ConstArray<uint64_t>& keys,
+                   base::RecTensor& values) override;
 
   int PutParameter(const base::ConstArray<uint64_t>& keys,
-                   const std::vector<std::vector<float>>& values) override;
+                   const base::RecTensor& values) override;
 
   void Command(recstore::PSCommand command) override;
-
-  // Legacy API methods
-  int GetParameter(const base::ConstArray<uint64_t>& keys,
-                   std::vector<std::vector<float>>* values);
 
   inline int shard() const { return shard_; }
 
@@ -124,35 +85,21 @@ public:
                 const std::vector<std::string>& emb_file_path);
 
   bool PutParameter(const std::vector<uint64_t>& keys,
-                    const std::vector<std::vector<float>>& values);
+                    const base::RecTensor& values);
 
   int UpdateParameter(const std::string& table_name,
                       const base::ConstArray<uint64_t>& keys,
-                      const std::vector<std::vector<float>>* grads);
-  int UpdateParameterFlat(const std::string& table_name,
-                          const base::ConstArray<uint64_t>& keys,
-                          const float* grads,
-                          int64_t num_rows,
-                          int64_t embedding_dim) override;
+                      const base::RecTensor& grads) override;
 
   int InitEmbeddingTable(const std::string& table_name,
-                         const recstore::EmbeddingTableConfig& config);
+                         const recstore::EmbeddingTableConfig& config) override;
 
   // Prefetch API
-  uint64_t PrefetchParameter(const base::ConstArray<uint64_t>& keys);
-  bool IsPrefetchDone(uint64_t prefetch_id);
-  void WaitForPrefetch(uint64_t prefetch_id);
+  uint64_t PrefetchParameter(const base::ConstArray<uint64_t>& keys) override;
+  bool IsPrefetchDone(uint64_t prefetch_id) override;
+  void WaitForPrefetch(uint64_t prefetch_id) override;
   bool GetPrefetchResult(uint64_t prefetch_id,
-                         std::vector<std::vector<float>>* values);
-  bool GetPrefetchResultFlat(uint64_t prefetch_id,
-                             std::vector<float>* values,
-                             int64_t* num_rows,
-                             int64_t embedding_dim) override;
-
-  virtual uint64_t
-  EmbWriteAsync(const base::RecTensor& keys, const base::RecTensor& values);
-  virtual bool IsWriteDone(uint64_t write_id);
-  virtual void WaitForWrite(uint64_t write_id);
+                         base::RecTensor& values) override;
 
 protected:
   bool Initialize();
@@ -171,7 +118,5 @@ protected:
 
 private:
   std::unordered_map<uint64_t, struct BrpcPrefetchBatch> prefetch_batches_;
-  std::unordered_map<uint64_t, struct BrpcPrewriteBatch> prewrite_batches_;
   uint64_t next_prefetch_id_ = 1;
-  uint64_t next_prewrite_id_ = 1;
 };

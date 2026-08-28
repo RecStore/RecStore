@@ -11,10 +11,10 @@
 #include <vector>
 
 #include "base/array.h"
+#include "base/tensor.h"
 #include "base/bind_core.h"
 #include "benchmark/ps/rdma_rc_transport_benchmark_values.h"
-#include "ps/rdma/allshards_ps_client.h"
-#include "ps/rdma/petps_client.h"
+#include "ps/rdma/rdma_ps_client_adapter.h"
 #include "ps/rdma/rc_options.h"
 
 DEFINE_int32(num_shards, 1, "number of RDMA RC shards");
@@ -42,7 +42,7 @@ constexpr const char* kTransportName = "RDMA_RC";
 
 struct BenchmarkInput {
   std::vector<std::uint64_t> keys;
-  std::vector<std::vector<float>> values;
+  base::RecTensor values;
   base::ConstArray<std::uint64_t> key_array;
 };
 
@@ -56,19 +56,17 @@ std::vector<std::uint64_t> MakeKeys(int batch_keys) {
   return keys;
 }
 
-std::vector<std::vector<float>>
-MakeValues(const std::vector<std::uint64_t>& keys) {
+base::RecTensor MakeValues(const std::vector<std::uint64_t>& keys) {
   const int dim = FLAGS_value_size / sizeof(float);
   CHECK_GT(dim, 0) << "--value_size must be at least sizeof(float)";
-  std::vector<std::vector<float>> values;
-  values.reserve(keys.size());
-  for (auto key : keys) {
-    std::vector<float> row;
-    row.reserve(static_cast<std::size_t>(dim));
+  base::RecTensor values(
+      {static_cast<int64_t>(keys.size()), dim}, base::DataType::FLOAT32);
+  float* dst = values.data_as<float>();
+  for (size_t row = 0; row < keys.size(); ++row) {
     for (int col = 0; col < dim; ++col) {
-      row.push_back(recstore::benchmark::MakeHashedValue(key, col));
+      dst[row * static_cast<size_t>(dim) + static_cast<size_t>(col)] =
+          recstore::benchmark::MakeHashedValue(keys[row], col);
     }
-    values.push_back(std::move(row));
   }
   return values;
 }
@@ -311,7 +309,7 @@ void RunOperation(const std::string& op,
   }
 }
 
-void RunAsyncStreamOperation(BaseParameterClient* client,
+void RunAsyncStreamOperation(recstore::RdmaRawAccess* raw,
                              const BenchmarkInput& input) {
   const int dim                = FLAGS_value_size / sizeof(float);
   const int total_rounds       = FLAGS_warmup_rounds + FLAGS_rounds;
@@ -340,12 +338,13 @@ void RunAsyncStreamOperation(BaseParameterClient* client,
     int submitted     = 0;
     const int initial = std::min(FLAGS_async_depth, requests_per_round);
     for (; submitted < initial; ++submitted) {
-      const int slot                          = submitted % FLAGS_async_depth;
-      rpc_ids[static_cast<std::size_t>(slot)] = client->GetParameter(
+      const int slot = submitted % FLAGS_async_depth;
+      rpc_ids[static_cast<std::size_t>(slot)] = raw->SubmitGetParameter(
           input.key_array,
           outputs[static_cast<std::size_t>(slot)].data(),
           true,
-          0);
+          0,
+          dim);
       request_ids[static_cast<std::size_t>(slot)] = submitted;
 
       MaybePrintAsyncProgress(
@@ -363,21 +362,22 @@ void RunAsyncStreamOperation(BaseParameterClient* client,
     for (int completed = 0; completed < requests_per_round; ++completed) {
       const int slot   = completed % FLAGS_async_depth;
       const int rpc_id = rpc_ids[static_cast<std::size_t>(slot)];
-      client->WaitRPCFinish(rpc_id);
+      raw->WaitRPCFinish(rpc_id);
       VerifyFlatOutput(
           input,
           outputs[static_cast<std::size_t>(slot)],
           "async_stream",
           request_ids[static_cast<std::size_t>(slot)],
           slot);
-      client->RevokeRPCResource(rpc_id);
+      raw->RevokeRPCResource(rpc_id);
 
       if (submitted < requests_per_round) {
-        rpc_ids[static_cast<std::size_t>(slot)] = client->GetParameter(
+        rpc_ids[static_cast<std::size_t>(slot)] = raw->SubmitGetParameter(
             input.key_array,
             outputs[static_cast<std::size_t>(slot)].data(),
             true,
-            0);
+            0,
+            dim);
         request_ids[static_cast<std::size_t>(slot)] = submitted;
         ++submitted;
       }
@@ -418,31 +418,28 @@ class BenchmarkClient {
 public:
   explicit BenchmarkClient(int num_shards) {
     CHECK_GT(num_shards, 0);
-    if (num_shards == 1) {
-      shard_clients_.push_back(
-          std::make_unique<petps::PetPSClient>("127.0.0.1", 1234, 0));
-      client_ = shard_clients_.front().get();
-    } else {
-      std::vector<BaseParameterClient*> raw_clients;
-      raw_clients.reserve(static_cast<std::size_t>(num_shards));
-      for (int shard = 0; shard < num_shards; ++shard) {
-        shard_clients_.push_back(
-            std::make_unique<petps::PetPSClient>("127.0.0.1", 1234, shard));
-        raw_clients.push_back(shard_clients_.back().get());
-      }
-      multi_client_ = std::make_unique<AllShardsParameterClientWrapper>(
-          raw_clients, num_shards);
-      client_ = multi_client_.get();
+    json config      = json::object();
+    config["client"] = {{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}};
+    json servers     = json::array();
+    for (int shard = 0; shard < num_shards; ++shard) {
+      servers.push_back(
+          {{"host", "127.0.0.1"}, {"port", 1234}, {"shard", shard}});
     }
-    client_->InitThread();
+    config["distributed_client"] = {
+        {"num_shards", num_shards},
+        {"hash_method", "city_hash"},
+        {"servers", servers},
+    };
+    adapter_ = std::make_unique<recstore::RDMAPSClientAdapter>(config);
+    raw_     = std::make_unique<recstore::RdmaRawAccess>(adapter_.get());
   }
 
-  BaseParameterClient* get() const { return client_; }
+  recstore::RDMAPSClientAdapter* get() const { return adapter_.get(); }
+  recstore::RdmaRawAccess* raw() const { return raw_.get(); }
 
 private:
-  std::vector<std::unique_ptr<petps::PetPSClient>> shard_clients_;
-  std::unique_ptr<AllShardsParameterClientWrapper> multi_client_;
-  BaseParameterClient* client_ = nullptr;
+  std::unique_ptr<recstore::RDMAPSClientAdapter> adapter_;
+  std::unique_ptr<recstore::RdmaRawAccess> raw_;
 };
 
 } // namespace
@@ -455,17 +452,19 @@ int main(int argc, char** argv) {
 
     BenchmarkInput input = MakeInput();
     BenchmarkClient benchmark_client(FLAGS_num_shards);
-    BaseParameterClient* client = benchmark_client.get();
-    CHECK_NE(client, nullptr);
+    recstore::RDMAPSClientAdapter* adapter = benchmark_client.get();
+    recstore::RdmaRawAccess* raw = benchmark_client.raw();
+    CHECK_NE(adapter, nullptr);
+    CHECK_NE(raw, nullptr);
 
-    CHECK_EQ(client->PutParameter(input.keys, input.values), 0)
+    CHECK_EQ(adapter->PutParameter(input.key_array, input.values), 0)
         << "initial RDMA RC PutParameter failed";
 
     if (ShouldRunOp(FLAGS_op, "put")) {
       RunOperation(
           "put",
           [&](int iteration) {
-            CHECK_EQ(client->PutParameter(input.keys, input.values), 0)
+            CHECK_EQ(adapter->PutParameter(input.key_array, input.values), 0)
                 << "RDMA RC put failed at iteration=" << iteration;
           },
           input.keys.size());
@@ -478,11 +477,11 @@ int main(int argc, char** argv) {
       RunOperation(
           "get",
           [&](int iteration) {
-            int rpc_id =
-                client->GetParameter(input.key_array, output.data(), false, 0);
-            client->WaitRPCFinish(rpc_id);
+            int rpc_id = raw->SubmitGetParameter(
+                input.key_array, output.data(), false, 0, dim);
+            raw->WaitRPCFinish(rpc_id);
             VerifyFlatOutput(input, output, "get", iteration);
-            client->RevokeRPCResource(rpc_id);
+            raw->RevokeRPCResource(rpc_id);
             (void)iteration;
           },
           input.keys.size());
@@ -495,18 +494,18 @@ int main(int argc, char** argv) {
       RunOperation(
           "async_get",
           [&](int iteration) {
-            int rpc_id =
-                client->GetParameter(input.key_array, output.data(), true, 0);
-            client->WaitRPCFinish(rpc_id);
+            int rpc_id = raw->SubmitGetParameter(
+                input.key_array, output.data(), true, 0, dim);
+            raw->WaitRPCFinish(rpc_id);
             VerifyFlatOutput(input, output, "async_get", iteration);
-            client->RevokeRPCResource(rpc_id);
+            raw->RevokeRPCResource(rpc_id);
             (void)iteration;
           },
           input.keys.size());
     }
 
     if (ShouldRunOp(FLAGS_op, "async_stream")) {
-      RunAsyncStreamOperation(client, input);
+      RunAsyncStreamOperation(raw, input);
     }
 
     if (ShouldRunOp(FLAGS_op, "mixed")) {
@@ -518,13 +517,13 @@ int main(int argc, char** argv) {
               std::to_string(100 - FLAGS_get_ratio),
           [&](int iteration) {
             if (MixedIterationIsGet(iteration)) {
-              int rpc_id = client->GetParameter(
-                  input.key_array, output.data(), false, 0);
-              client->WaitRPCFinish(rpc_id);
+              int rpc_id = raw->SubmitGetParameter(
+                  input.key_array, output.data(), false, 0, dim);
+              raw->WaitRPCFinish(rpc_id);
               VerifyFlatOutput(input, output, "mixed", iteration);
-              client->RevokeRPCResource(rpc_id);
+              raw->RevokeRPCResource(rpc_id);
             } else {
-              CHECK_EQ(client->PutParameter(input.keys, input.values), 0)
+              CHECK_EQ(adapter->PutParameter(input.key_array, input.values), 0)
                   << "RDMA RC mixed put failed at iteration=" << iteration;
             }
           },

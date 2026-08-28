@@ -85,6 +85,17 @@ inline void ResetLocalUpdateFlatProfile() {
 }
 
 #ifdef RECSTORE_ENABLE_GPU_CACHE
+struct PendingGpuCacheUpdate {
+  torch::Tensor keys;
+  torch::Tensor grads;
+};
+
+std::mutex g_pending_gpu_cache_updates_mu;
+std::unordered_map<uint64_t, PendingGpuCacheUpdate>
+    g_pending_gpu_cache_updates;
+#endif
+
+#ifdef RECSTORE_ENABLE_GPU_CACHE
 constexpr int64_t kGpuCacheBypassMinRows            = 1024;
 constexpr int kGpuCacheLowHitLimit                  = 1;
 constexpr double kGpuCacheLowHitRatio               = 0.05;
@@ -740,20 +751,17 @@ emb_wait_result_torch(int64_t prefetch_id, int64_t embedding_dim) {
   TORCH_CHECK(embedding_dim > 0, "Embedding dimension must be positive");
   auto op = GetKVClientOp();
   op->WaitForPrefetch(static_cast<uint64_t>(prefetch_id));
-  std::vector<float> flat_values;
-  int64_t L = 0;
-  op->GetPretchResultFlat(
-      static_cast<uint64_t>(prefetch_id), &flat_values, &L, embedding_dim);
+  auto owned = std::make_shared<base::RecTensor>(
+      std::vector<int64_t>{0, embedding_dim}, base::DataType::FLOAT32);
+  op->GetPretchResult(static_cast<uint64_t>(prefetch_id), *owned);
   auto options =
       torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU);
-  auto out = torch::empty({L, embedding_dim}, options);
-  if (L > 0 && !flat_values.empty()) {
-    std::memcpy(out.data_ptr<float>(),
-                flat_values.data(),
-                static_cast<size_t>(L) * static_cast<size_t>(embedding_dim) *
-                    sizeof(float));
+  const int64_t L = owned->dim() == 2 ? owned->shape(0) : 0;
+  if (L == 0) {
+    return torch::empty({0, embedding_dim}, options);
   }
-  return out;
+  return torch::from_blob(
+      owned->data(), {L, embedding_dim}, [owned](void*) {}, options);
 }
 
 void emb_update_torch(const torch::Tensor& keys, const torch::Tensor& grads) {
@@ -799,6 +807,72 @@ void emb_update_table_torch(const std::string& table_name,
   op->EmbUpdate(table_name, rec_keys, rec_grads);
 #ifdef RECSTORE_ENABLE_GPU_CACHE
   MaintainGpuCacheAfterUpdateNoThrow(keys, grads, grads.size(1));
+#endif
+}
+
+int64_t emb_update_async_torch(const std::string& table_name,
+                               const torch::Tensor& keys,
+                               const torch::Tensor& grads) {
+  TORCH_CHECK(!table_name.empty(), "table_name must be non-empty");
+  TORCH_CHECK(keys.dim() == 1, "Keys tensor must be 1-dimensional");
+  TORCH_CHECK(keys.scalar_type() == torch::kInt64,
+              "Keys tensor must have dtype int64");
+  TORCH_CHECK(keys.is_contiguous(), "Keys tensor must be contiguous");
+  TORCH_CHECK(grads.dim() == 2, "Grads tensor must be 2-dimensional");
+  TORCH_CHECK(grads.scalar_type() == torch::kFloat32,
+              "Grads tensor must have dtype float32");
+  TORCH_CHECK(grads.is_contiguous(), "Grads tensor must be contiguous");
+  TORCH_CHECK(keys.size(0) == grads.size(0),
+              "Keys and grads tensors must have the same number of entries");
+
+  torch::Tensor cpu_keys  = keys.is_cuda() ? keys.cpu() : keys;
+  torch::Tensor cpu_grads = grads.is_cuda() ? grads.cpu() : grads;
+  auto kv_op              = GetConcreteKVClientOp();
+  TORCH_CHECK(kv_op->CurrentPSBackend() == "rdma",
+              "emb_update_async requires the RDMA backend");
+  const uint64_t update_id = kv_op->EmbUpdateAsync(
+      table_name,
+      ToRecTensor(cpu_keys, base::DataType::UINT64),
+      ToRecTensor(cpu_grads, base::DataType::FLOAT32));
+
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+  std::lock_guard<std::mutex> guard(g_pending_gpu_cache_updates_mu);
+  const auto [it, inserted] = g_pending_gpu_cache_updates.emplace(
+      update_id, PendingGpuCacheUpdate{keys, grads});
+  TORCH_CHECK(inserted, "Duplicate asynchronous RDMA update handle");
+#endif
+  return static_cast<int64_t>(update_id);
+}
+
+void emb_update_wait_torch(int64_t update_id) {
+  TORCH_CHECK(update_id > 0, "update_id must be positive");
+  auto kv_op = GetConcreteKVClientOp();
+  try {
+    kv_op->WaitForEmbUpdate(static_cast<uint64_t>(update_id));
+  } catch (...) {
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+    {
+      std::lock_guard<std::mutex> guard(g_pending_gpu_cache_updates_mu);
+      g_pending_gpu_cache_updates.erase(static_cast<uint64_t>(update_id));
+    }
+    SafeClearGpuCacheNoThrow();
+#endif
+    throw;
+  }
+
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+  PendingGpuCacheUpdate pending;
+  {
+    std::lock_guard<std::mutex> guard(g_pending_gpu_cache_updates_mu);
+    const auto it =
+        g_pending_gpu_cache_updates.find(static_cast<uint64_t>(update_id));
+    TORCH_CHECK(it != g_pending_gpu_cache_updates.end(),
+                "Missing GPU cache state for asynchronous RDMA update");
+    pending = std::move(it->second);
+    g_pending_gpu_cache_updates.erase(it);
+  }
+  MaintainGpuCacheAfterUpdateNoThrow(
+      pending.keys, pending.grads, pending.grads.size(1));
 #endif
 }
 
@@ -912,26 +986,29 @@ bool warmup_local_lookup_flat_cuda_region_torch() {
   return EnsurePinnedLocalShmPayload(payload_base, payload_bytes);
 }
 
-bool init_embedding_table_torch(const std::string& table_name,
-                                int64_t num_embeddings,
-                                int64_t embedding_dim) {
+int64_t init_embedding_table_torch(const std::string& table_name,
+                                   int64_t num_embeddings,
+                                   int64_t embedding_dim,
+                                   int64_t table_id = 0) {
   TORCH_CHECK(!table_name.empty(), "table_name must be non-empty");
   TORCH_CHECK(num_embeddings > 0, "num_embeddings must be positive");
   TORCH_CHECK(embedding_dim > 0, "embedding_dim must be positive");
+  TORCH_CHECK(table_id >= 0, "table_id must be non-negative");
 
   EmbeddingTableConfig cfg{};
   cfg.num_embeddings = static_cast<uint64_t>(num_embeddings);
   cfg.embedding_dim  = static_cast<uint64_t>(embedding_dim);
+  cfg.table_id       = static_cast<uint64_t>(table_id);
 
-  auto op       = GetKVClientOp();
-  const bool ok = op->InitEmbeddingTable(table_name, cfg);
+  auto kv_op      = GetConcreteKVClientOp();
+  const int64_t tag = kv_op->InitEmbeddingTable(table_name, cfg);
 #ifdef RECSTORE_ENABLE_GPU_CACHE
-  if (ok && gpu::IsGpuCacheEnabled()) {
+  if (tag >= 0 && gpu::IsGpuCacheEnabled()) {
     SafeClearGpuCacheNoThrow();
     gpu::ResetLastGpuCacheProfile();
   }
 #endif
-  return ok;
+  return tag;
 }
 
 bool save_checkpoint_torch(const std::string& path,
@@ -1281,6 +1358,8 @@ TORCH_LIBRARY(recstore_ops, m) {
   m.def("gpu_cache_lookup_flat", gpu_cache_lookup_flat_torch);
   m.def("emb_update", emb_update_torch);
   m.def("emb_update_table", emb_update_table_torch);
+  m.def("emb_update_async", emb_update_async_torch);
+  m.def("emb_update_wait", emb_update_wait_torch);
   m.def("local_update_flat", local_update_flat_torch);
   m.def("init_embedding_table", init_embedding_table_torch);
   m.def("save_checkpoint", save_checkpoint_torch);

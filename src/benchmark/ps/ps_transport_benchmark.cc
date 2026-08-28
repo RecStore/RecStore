@@ -27,7 +27,7 @@
 #include "ps/brpc/dist_brpc_ps_client.h"
 #include "ps/grpc/dist_grpc_ps_client.h"
 #include "ps/local_shm/local_shm_client.h"
-#include "ps/rdma/allshards_ps_client.h"
+#include "ps/rdma/rdma_ps_client_adapter.h"
 #include "ps/rdma/petps_client.h"
 #include "ps/rdma/rdma_common.h"
 #include "ps/rdma/rdma_protocol.h"
@@ -69,7 +69,7 @@ DEFINE_bool(transaction_profile,
             "print per-thread transaction timing breakdown");
 DEFINE_bool(rdma_direct_async_fetch,
             false,
-            "RDMA fetch-only transactions use BaseParameterClient async GET "
+            "RDMA fetch-only transactions use petps::PetPSClient async GET "
             "with preallocated output buffers, bypassing the PS prefetch "
             "adapter state and result vector copy");
 DEFINE_bool(verify_deterministic_values,
@@ -233,13 +233,16 @@ std::vector<uint64_t> MakeKeys(int batch_keys) {
   return keys;
 }
 
-std::vector<std::vector<float>> MakeValues(const std::vector<uint64_t>& keys) {
+base::RecTensor MakeValues(const std::vector<uint64_t>& keys) {
   const int dim = FLAGS_value_size / sizeof(float);
-  std::vector<std::vector<float>> values;
-  values.reserve(keys.size());
-  for (auto key : keys) {
-    std::vector<float> row(dim, static_cast<float>(key));
-    values.push_back(std::move(row));
+  base::RecTensor values(
+      {static_cast<int64_t>(keys.size()), dim}, base::DataType::FLOAT32);
+  float* dst = values.data_as<float>();
+  for (size_t row = 0; row < keys.size(); ++row) {
+    for (int col = 0; col < dim; ++col) {
+      dst[row * static_cast<size_t>(dim) + static_cast<size_t>(col)] =
+          static_cast<float>(keys[row]);
+    }
   }
   return values;
 }
@@ -286,10 +289,8 @@ void VerifyDeterministicFlatValues(const std::vector<uint64_t>& keys,
 }
 
 bool ClientReturnsZeroOnSuccess(recstore::BasePSClient* client) {
-  return dynamic_cast<recstore::DistributedGRPCParameterClient*>(client) !=
-             nullptr ||
-         dynamic_cast<recstore::DistributedBRPCParameterClient*>(client) !=
-             nullptr;
+  (void)client;
+  return true;
 }
 
 bool ShouldPrintPerRound(const std::string& mode) {
@@ -446,15 +447,11 @@ bool PutFlat(recstore::BasePSClient* client,
              const std::vector<uint64_t>& keys,
              const std::vector<float>& flat_values,
              int dim) {
-  std::vector<std::vector<float>> rows;
-  rows.reserve(keys.size());
-  for (size_t row = 0; row < keys.size(); ++row) {
-    const float* begin = flat_values.data() + row * static_cast<size_t>(dim);
-    rows.emplace_back(begin, begin + dim);
-  }
+  base::RecTensor values(const_cast<float*>(flat_values.data()),
+                         {static_cast<int64_t>(keys.size()), dim});
   return BenchmarkWriteSucceeded(
       transport,
-      client->PutParameter(base::ConstArray<uint64_t>(keys), rows),
+      client->PutParameter(base::ConstArray<uint64_t>(keys), values),
       ClientReturnsZeroOnSuccess(client));
 }
 
@@ -464,30 +461,15 @@ bool GetFlat(recstore::BasePSClient* client,
              std::vector<float>* output) {
   const auto key_array = base::ConstArray<uint64_t>(keys);
   const int dim        = FLAGS_value_size / sizeof(float);
-  if (BenchmarkUsesVectorGet(transport)) {
-    auto* brpc_client = dynamic_cast<BRPCParameterClient*>(client);
-    if (brpc_client != nullptr) {
-      std::vector<std::vector<float>> vectors;
-      return BenchmarkReadSucceeded(
-          transport, brpc_client->GetParameter(key_array, &vectors));
-    }
+  const size_t needed  = keys.size() * static_cast<size_t>(dim);
+  if (output->size() < needed) {
+    output->assign(needed, 0.0f);
   }
-  if (BenchmarkUsesFlatGet(transport)) {
-    auto* local_shm_client = dynamic_cast<recstore::LocalShmPSClient*>(client);
-    if (local_shm_client != nullptr) {
-      return BenchmarkReadSucceeded(
-          transport,
-          local_shm_client->GetParameterFlat(
-              key_array,
-              output->data(),
-              static_cast<int64_t>(keys.size()),
-              static_cast<int64_t>(dim)),
-          ClientReturnsZeroOnSuccess(client));
-    }
-  }
+  base::RecTensor values(output->data(),
+                         {static_cast<int64_t>(keys.size()), dim});
   return BenchmarkReadSucceeded(
       transport,
-      client->GetParameter(key_array, output->data()),
+      client->GetParameter(key_array, values),
       ClientReturnsZeroOnSuccess(client));
 }
 
@@ -567,7 +549,18 @@ bool ConsumePrefetchFlat(
   if (output == nullptr || num_rows == nullptr) {
     return false;
   }
-  return client->GetPrefetchResultFlat(prefetch_id, output, num_rows, dim);
+  base::RecTensor fetched({0, dim}, base::DataType::FLOAT32);
+  if (!client->GetPrefetchResult(prefetch_id, fetched)) {
+    return false;
+  }
+  *num_rows = fetched.shape(0);
+  if (fetched.data() == nullptr || fetched.num_elements() == 0) {
+    output->clear();
+    return true;
+  }
+  output->assign(fetched.data_as<float>(),
+                 fetched.data_as<float>() + fetched.num_elements());
+  return true;
 }
 
 int64_t NsSince(std::chrono::steady_clock::time_point start,
@@ -579,61 +572,15 @@ int64_t NsSince(std::chrono::steady_clock::time_point start,
 using BenchmarkClient = std::unique_ptr<recstore::BasePSClient>;
 
 struct DirectRdmaClient {
-  std::vector<std::unique_ptr<petps::PetPSClient>> shard_clients;
-  std::unique_ptr<AllShardsParameterClientWrapper> multi_client;
-  BaseParameterClient* client = nullptr;
+  std::unique_ptr<recstore::RDMAPSClientAdapter> adapter;
+  std::unique_ptr<recstore::RdmaRawAccess> raw;
 };
 
 DirectRdmaClient
 CreateDirectRdmaClientFromConfig(const nlohmann::json& config) {
   DirectRdmaClient direct;
-  const auto dist_cfg =
-      config.contains("distributed_client")
-          ? config["distributed_client"]
-          : nlohmann::json::object();
-  const auto client_cfg =
-      config.contains("client") ? config["client"] : nlohmann::json::object();
-  const int num_shards = dist_cfg.value("num_shards", FLAGS_num_shards);
-  const std::string hash_method =
-      dist_cfg.value("hash_method", std::string("city_hash"));
-  CHECK_GT(num_shards, 0);
-
-  if (num_shards == 1) {
-    direct.shard_clients.push_back(std::make_unique<petps::PetPSClient>(
-        client_cfg.value("host", FLAGS_host),
-        client_cfg.value("port", FLAGS_port),
-        client_cfg.value("shard", 0)));
-    direct.client = direct.shard_clients.front().get();
-    direct.client->InitThread();
-    return direct;
-  }
-
-  const auto servers_it = dist_cfg.find("servers");
-  CHECK(servers_it != dist_cfg.end() && servers_it->is_array() &&
-        !servers_it->empty())
-      << "RDMA direct async fetch requires distributed_client.servers for "
-         "multi-shard runs";
-
-  std::vector<BaseParameterClient*> raw_clients;
-  std::vector<int> shard_ids;
-  raw_clients.reserve(static_cast<std::size_t>(num_shards));
-  shard_ids.reserve(static_cast<std::size_t>(num_shards));
-  for (const auto& server : *servers_it) {
-    const int shard = server.value("shard", -1);
-    CHECK_GE(shard, 0)
-        << "RDMA direct async fetch requires explicit server shard ids";
-    direct.shard_clients.push_back(std::make_unique<petps::PetPSClient>(
-        server.value("host", std::string("127.0.0.1")),
-        server.value("port", 25000),
-        shard));
-    raw_clients.push_back(direct.shard_clients.back().get());
-    shard_ids.push_back(shard);
-  }
-  CHECK_EQ(static_cast<int>(raw_clients.size()), num_shards);
-  direct.multi_client = std::make_unique<AllShardsParameterClientWrapper>(
-      raw_clients, num_shards, hash_method, shard_ids);
-  direct.client = direct.multi_client.get();
-  direct.client->InitThread();
+  direct.adapter = std::make_unique<recstore::RDMAPSClientAdapter>(config);
+  direct.raw = std::make_unique<recstore::RdmaRawAccess>(direct.adapter.get());
   return direct;
 }
 
@@ -870,7 +817,7 @@ PhaseStats RunPrefetchFetchTransactions(
         const auto consume_begin = std::chrono::steady_clock::now();
         CHECK(ConsumePrefetchFlat(
             client, fetch.prefetch_id, &output, &num_rows, dim))
-            << transport << " GetPrefetchResultFlat failed";
+            << transport << " GetPrefetchResult failed";
         const auto consume_end = std::chrono::steady_clock::now();
         CHECK_EQ(num_rows, static_cast<int64_t>(fetch.keys.size()));
         if (FLAGS_verify_deterministic_values) {
@@ -968,8 +915,8 @@ PhaseStats RunRdmaDirectAsyncFetchTransactions(int dim, int prefetch_depth) {
     threads.emplace_back([&, tid]() {
       base::auto_bind_core();
       DirectRdmaClient direct     = CreateDirectRdmaClientFromConfig(config);
-      BaseParameterClient* client = direct.client;
-      CHECK_NE(client, nullptr);
+      recstore::RdmaRawAccess* raw = direct.raw.get();
+      CHECK_NE(raw, nullptr);
       KeyGenerator key_gen(
           FLAGS_distribution,
           static_cast<uint64_t>(FLAGS_record_count),
@@ -1002,11 +949,12 @@ PhaseStats RunRdmaDirectAsyncFetchTransactions(int dim, int prefetch_depth) {
       auto submit_slot = [&](DirectSlot* slot) {
         fill_keys(&slot->keys);
         const auto submit_begin = std::chrono::steady_clock::now();
-        slot->rpc_id            = client->GetParameter(
+        slot->rpc_id            = raw->SubmitGetParameter(
             base::ConstArray<uint64_t>(slot->keys),
             slot->output.data(),
             true,
-            0);
+            0,
+            dim);
         const auto submit_end = std::chrono::steady_clock::now();
         local_profile.submit_ns +=
             static_cast<uint64_t>(NsSince(submit_begin, submit_end));
@@ -1014,7 +962,7 @@ PhaseStats RunRdmaDirectAsyncFetchTransactions(int dim, int prefetch_depth) {
 
       auto consume_slot = [&](DirectSlot* slot) {
         const auto consume_begin = std::chrono::steady_clock::now();
-        client->WaitRPCFinish(slot->rpc_id);
+        raw->WaitRPCFinish(slot->rpc_id);
         const auto* status_word = petps::FixedSlotStatusWord(
             slot->output.data(), slot->keys.size(), FLAGS_value_size);
         CHECK_EQ(*status_word, static_cast<std::int32_t>(petps::RpcStatus::kOk))
@@ -1022,7 +970,7 @@ PhaseStats RunRdmaDirectAsyncFetchTransactions(int dim, int prefetch_depth) {
         if (FLAGS_verify_deterministic_values) {
           VerifyDeterministicFlatValues(slot->keys, slot->output, dim);
         }
-        client->RevokeRPCResource(slot->rpc_id);
+        raw->RevokeRPCResource(slot->rpc_id);
         const auto consume_end = std::chrono::steady_clock::now();
         local_profile.consume_ns +=
             static_cast<uint64_t>(NsSince(consume_begin, consume_end));
@@ -1339,17 +1287,20 @@ int main(int argc, char** argv) {
       return 0;
     }
 
-    std::vector<std::unique_ptr<petps::PetPSClient>> owned;
-    std::vector<BaseParameterClient*> clients;
+    nlohmann::json config      = nlohmann::json::object();
+    config["client"] = {{"host", FLAGS_host}, {"port", FLAGS_port}, {"shard", 0}};
+    nlohmann::json servers     = nlohmann::json::array();
     for (int shard = 0; shard < FLAGS_num_shards; ++shard) {
-      owned.push_back(
-          std::make_unique<petps::PetPSClient>(FLAGS_host, FLAGS_port, shard));
-      owned.back()->InitThread();
-      clients.push_back(owned.back().get());
+      servers.push_back(
+          {{"host", FLAGS_host}, {"port", FLAGS_port}, {"shard", shard}});
     }
-
-    AllShardsParameterClientWrapper client(clients, FLAGS_num_shards);
-    client.InitThread();
+    config["distributed_client"] = {
+        {"num_shards", FLAGS_num_shards},
+        {"hash_method", "city_hash"},
+        {"servers", servers},
+    };
+    auto adapter = std::make_unique<recstore::RDMAPSClientAdapter>(config);
+    auto raw     = std::make_unique<recstore::RdmaRawAccess>(adapter.get());
     std::vector<int64_t> put_warmup_samples_us;
     std::vector<int64_t> put_measure_samples_us;
     put_warmup_samples_us.reserve(std::max(0, FLAGS_warmup_rounds));
@@ -1363,7 +1314,7 @@ int main(int argc, char** argv) {
         FLAGS_iterations,
         report_mode,
         [&](int iteration) {
-          CHECK_EQ(client.PutParameter(keys, values), 0)
+          CHECK_EQ(adapter->PutParameter(key_array, values), 0)
               << "RDMA(all-shards) PutParameter failed at iteration="
               << iteration;
         },
@@ -1383,11 +1334,13 @@ int main(int argc, char** argv) {
         FLAGS_iterations,
         report_mode,
         [&](int iteration) {
+          const int dim = FLAGS_value_size / sizeof(float);
           std::vector<float> output(
-              keys.size() * (FLAGS_value_size / sizeof(float)) + 1, 0.0f);
-          int rpc_id = client.GetParameter(key_array, output.data(), false, 0);
-          client.WaitRPCFinish(rpc_id);
-          client.RevokeRPCResource(rpc_id);
+              keys.size() * static_cast<std::size_t>(dim) + 1, 0.0f);
+          int rpc_id = raw->SubmitGetParameter(
+              key_array, output.data(), false, 0, dim);
+          raw->WaitRPCFinish(rpc_id);
+          raw->RevokeRPCResource(rpc_id);
           (void)iteration;
         },
         &get_warmup_samples_us,
@@ -1466,21 +1419,16 @@ int main(int argc, char** argv) {
       FLAGS_iterations,
       report_mode,
       [&](int iteration) {
-        if (BenchmarkUsesVectorGet(transport)) {
-          auto* brpc_client = dynamic_cast<BRPCParameterClient*>(client.get());
-          CHECK_NE(brpc_client, nullptr);
-          std::vector<std::vector<float>> output;
-          const int ret = brpc_client->GetParameter(key_array, &output);
-          CHECK(BenchmarkReadSucceeded(transport, ret))
-              << transport << " GetParameter failed at iteration=" << iteration;
-        } else {
-          std::vector<float> output(
-              keys.size() * (FLAGS_value_size / sizeof(float)), 0.0f);
-          const int ret = client->GetParameter(key_array, output.data());
-          CHECK(BenchmarkReadSucceeded(
-              transport, ret, ClientReturnsZeroOnSuccess(client.get())))
-              << transport << " GetParameter failed at iteration=" << iteration;
-        }
+        std::vector<float> output(
+            keys.size() * (FLAGS_value_size / sizeof(float)), 0.0f);
+        base::RecTensor out(
+            output.data(),
+            {static_cast<int64_t>(keys.size()),
+             FLAGS_value_size / static_cast<int>(sizeof(float))});
+        const int ret = client->GetParameter(key_array, out);
+        CHECK(BenchmarkReadSucceeded(
+            transport, ret, ClientReturnsZeroOnSuccess(client.get())))
+            << transport << " GetParameter failed at iteration=" << iteration;
       },
       &get_warmup_samples_us,
       &get_measure_samples_us);

@@ -19,6 +19,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Any, Protocol
+import torch
 
 
 @dataclass(frozen=True)
@@ -153,8 +154,6 @@ def prepare_fused_ids_from_sparse_batch(
     feature_offsets: Any,
 ) -> tuple[Any, Any, int]:
     """CPU unique fused ids from a dense sparse batch (fusion-EBC optimization)."""
-    import torch
-
     if sparse_batch.ndim != 2 or sparse_batch.shape[1] != feature_offsets.numel():
         raise ValueError("sparse batch shape does not match feature offsets")
     fused_ids = (
@@ -204,7 +203,7 @@ class EmbeddingReadPath(Protocol):
         """Post-update hook (window advance / future bagpipe wait)."""
 
     def advance_all(self) -> int:
-        """Drain pending lookahead into ready (end-of-run / drain)."""
+        """Issue reads for all recorded-but-unissued batches (end-of-run drain)."""
 
 
 class DirectReadPath:
@@ -251,7 +250,12 @@ class DirectReadPath:
 
 
 class PrefetchReadPath:
-    """Async embedding read with optional lookahead window.
+    """Async embedding read with a trainer-clock lookahead window.
+
+    With ``prefetch_depth > 0`` the read for step ``i + depth`` is issued at
+    step ``i`` right after the sparse update; the first batches (which have no
+    earlier update hook) are issued at their own lookup as a bootstrap.
+    Consumption attaches the handle issued for the current step.
 
     Overlaps gets with later work and does **not** block on in-flight sparse
     updates, so values may be stale relative to ``direct`` / ``bagpipe``.
@@ -262,37 +266,51 @@ class PrefetchReadPath:
         embedding_module: Any,
         *,
         prefetch_depth: int,
-        embedding_dim: int,
+        embedding_dim: int = 0,
         feature_offsets: Any | None = None,
     ) -> None:
-        if not embedding_module._enable_fusion:
+        del embedding_dim
+        if not bool(getattr(embedding_module, "_enable_fusion", False)):
             raise RuntimeError(
                 "read_mode=prefetch currently requires a fusion-enabled "
                 "embedding module (non-fused async APIs are not wired yet)"
             )
-        if not hasattr(embedding_module, "issue_fused_prefetch"):
+        if not callable(getattr(embedding_module, "issue_fused_prefetch", None)):
             raise RuntimeError(
                 "read_mode=prefetch requires embedding_module.issue_fused_prefetch"
             )
         self._module = embedding_module
         self._feature_offsets = feature_offsets
+        self._depth = max(0, int(prefetch_depth))
+        # step -> sparse_features recorded at prepare time, oldest first
+        self._recorded: dict[int, Any] = {}
+        # step -> (handle, num_ids, issue_ts, fused_ids_cpu, fused_inverse)
+        self._slots: dict[int, Any] = {}
         self._pending_inverse: Any = None
-        self._lookahead = LookaheadPrefetcher(
-            embedding_module,
-            int(prefetch_depth),
-            embedding_dim=int(embedding_dim),
-        )
 
     @property
     def depth(self) -> int:
-        return self._lookahead.depth
+        return self._depth
+
+    def _ensure_issued(self, through_step: int) -> int:
+        """Issue reads for recorded batches up to ``through_step`` (in order)."""
+        issued = 0
+        for step in sorted(list(self._recorded)):
+            if step > through_step:
+                break
+            self._slots[step] = self._module.issue_fused_prefetch(
+                self._recorded.pop(step),
+                record_handle=False,
+            )
+            issued += 1
+        return issued
 
     @property
     def desired_buffer_size(self) -> int:
         # LookaheadPrefetcher has two internal queues (pending + ready),
         # each holding up to ``depth`` items.  The runner must prepare
         # 2*depth batches to fill both.
-        return self._lookahead.depth * 2
+        return self._depth * 2
 
     def on_batch_prepared(
         self,
@@ -301,14 +319,24 @@ class PrefetchReadPath:
         sparse_batch: Any,
         row: dict[str, Any],
     ) -> Any:
-        del step
-        if self._lookahead.depth > 0:
-            self._lookahead.enqueue(sparse_features)
-            while self._lookahead.advance():
-                pass
+        if self._depth > 0:
+            # Record only; issuing is driven by the trainer step clock so the
+            # read for step ``i + depth`` goes out exactly at step ``i``.
+            self._recorded[int(step)] = sparse_features
             return None
 
-        # Same-step async get: optionally prebuild unique fused ids on CPU.
+        del step
+        # Same-step async get: deduplicate on the KJT device.  The backend
+        # still receives CPU unique IDs, while the inverse stays on GPU for
+        # the lookup and pooled-gradient paths.
+        prepare_fused_prefetch = getattr(self._module, "prepare_fused_prefetch", None)
+        if sparse_features is not None and callable(prepare_fused_prefetch):
+            fused_id_start = time.perf_counter()
+            ticket = prepare_fused_prefetch(sparse_features)
+            row["lookup_ids_build_ms"] = (time.perf_counter() - fused_id_start) * 1e3
+            return ticket
+        # Keep the old CPU helper as a compatibility fallback for lightweight
+        # embedding fakes and legacy modules that only expose issue_prepared.
         if (
             sparse_batch is not None
             and self._feature_offsets is not None
@@ -330,15 +358,37 @@ class PrefetchReadPath:
         ticket: Any,
         row: dict[str, Any],
     ) -> None:
-        del step, row
-        if self._lookahead.depth > 0:
-            if not self._lookahead.attach_next():
-                self._module.issue_fused_prefetch(sparse_features)
-            return
-        if isinstance(ticket, PreparedTicket):
-            self._module.issue_prepared_fused_prefetch(
-                ticket.unique_ids, self._pending_inverse, ticket.raw_count
+        del row
+        if self._depth > 0:
+            step = int(step)
+            # Bootstrap: only the earliest steps reach here without a prior
+            # after_sparse_update having issued their read.
+            self._ensure_issued(step)
+            slot = self._slots.pop(step, None)
+            if slot is None:
+                raise RuntimeError(
+                    f"prefetch slot missing for step {step}; "
+                    "on_batch_prepared was not called for this step"
+                )
+            handle, num_ids, issue_ts, fused_ids_cpu, fused_inverse = slot
+            self._module.set_fused_prefetch_handle(
+                handle,
+                num_ids=num_ids,
+                issue_ts=issue_ts,
+                fused_ids_cpu=fused_ids_cpu,
+                fused_inverse=fused_inverse,
+                full_batch=True,
             )
+            return
+        del step
+        # ticket = deduplicated(IDs)
+        if ticket is not None and ticket != "issue_on_lookup":
+            if isinstance(ticket, PreparedTicket):
+                self._module.issue_prepared_fused_prefetch(
+                    ticket.unique_ids, self._pending_inverse, ticket.raw_count
+                )
+            else:
+                self._module.issue_prepared_fused_prefetch(*ticket)
             return
         self._module.issue_fused_prefetch(sparse_features)
 
@@ -349,11 +399,15 @@ class PrefetchReadPath:
         sparse_optimizer: Any,
         row: dict[str, Any],
     ) -> None:
-        del step, sparse_features, sparse_optimizer, row
+        del sparse_features, sparse_optimizer, row
+        if self._depth > 0:
+            self._ensure_issued(int(step) + self._depth)
         # Intentionally no stale repair — that is bagpipe's job.
 
     def advance_all(self) -> int:
-        return self._lookahead.advance_all()
+        if self._depth <= 0 or not self._recorded:
+            return 0
+        return self._ensure_issued(max(self._recorded))
 
 
 class BagPipeReadPath:
@@ -428,7 +482,6 @@ def build_embedding_read_path(
         return PrefetchReadPath(
             embedding_module,
             prefetch_depth=prefetch_depth,
-            embedding_dim=embedding_dim,
             feature_offsets=feature_offsets,
         )
     if mode == "bagpipe":

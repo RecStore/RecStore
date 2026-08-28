@@ -294,7 +294,8 @@ def main(argv: List[str]) -> None:
         dist.init_process_group(backend="nccl")
         rank = dist.get_rank()
         world_size = dist.get_world_size()
-        device = torch.device(f"cuda:{rank}")
+        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+        device = torch.device("cuda", local_rank)
         torch.cuda.set_device(device)
     else:
         dist.init_process_group(backend="gloo")
@@ -323,24 +324,34 @@ def main(argv: List[str]) -> None:
     def custom_collate(batch):
         if not batch:
             return batch
-        
-        dense_features = []
-        sparse_features = []
-        labels = []
-        
-        for dense, sparse, label in batch:
-            dense_features.append(torch.as_tensor(dense, dtype=torch.float32))
-            sparse_features.append(sparse)
-            labels.append(torch.as_tensor(label, dtype=torch.float32))
-        
-        dense_batch = torch.stack(dense_features)
-        labels_batch = torch.stack(labels)
 
         from torchrec import KeyedJaggedTensor
         feature_names = [f"cat_{i}" for i in range(26)]
-        
-        sparse_mat = torch.stack([s.to(torch.long) for s in sparse_features], dim=0) # (B, 26)
-        B = sparse_mat.shape[0]
+
+        # CustomCriteoDataset.__getitems__ already returns batched tensors.
+        if (
+            isinstance(batch, tuple)
+            and len(batch) == 3
+            and torch.is_tensor(batch[0])
+            and batch[0].dim() == 2
+        ):
+            dense_batch, sparse_mat, labels_batch = batch
+            sparse_mat = sparse_mat.to(torch.long)
+            B = sparse_mat.shape[0]
+        else:
+            dense_features = []
+            sparse_features = []
+            labels = []
+
+            for dense, sparse, label in batch:
+                dense_features.append(torch.as_tensor(dense, dtype=torch.float32))
+                sparse_features.append(sparse)
+                labels.append(torch.as_tensor(label, dtype=torch.float32))
+
+            dense_batch = torch.stack(dense_features)
+            labels_batch = torch.stack(labels)
+            sparse_mat = torch.stack([s.to(torch.long) for s in sparse_features], dim=0)
+            B = sparse_mat.shape[0]
         
         with record_function("## dataset_kjt_conversion"):
             values = []
@@ -457,6 +468,16 @@ def main(argv: List[str]) -> None:
     
     # Training Loop
     # Profiler setup
+    class _NullProfiler:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def step(self):
+            pass
+
     def trace_handler(p):
         print(f"DEBUG: trace_handler called. Rank={dist.get_rank()}, trace_file={args.trace_file}")
         if dist.get_rank() == 0:
@@ -467,14 +488,19 @@ def main(argv: List[str]) -> None:
                 print(f"DEBUG: Exporting tensorboard trace")
                 tensorboard_trace_handler("./logs_recstore")(p)
 
-    with profile(
-        activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-        schedule=schedule(wait=1, warmup=3, active=5, repeat=1),
-        on_trace_ready=trace_handler,
-        record_shapes=True,
-        profile_memory=True,
-        with_stack=True
-    ) as prof:
+    profiler_cm = (
+        profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            schedule=schedule(wait=1, warmup=3, active=5, repeat=1),
+            on_trace_ready=trace_handler,
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=True,
+        )
+        if args.trace_file
+        else _NullProfiler()
+    )
+    with profiler_cm as prof:
         for epoch in range(args.epochs):
             model.train()
         
@@ -497,6 +523,7 @@ def main(argv: List[str]) -> None:
                 opt_end = torch.cuda.Event(enable_timing=True)
             
             print(f"Epoch {epoch + 1}/{args.epochs}")
+            auroc.reset()
             
             for batch_idx, (dense_features, sparse_features, labels) in enumerate(tqdm(train_loader, desc="Training")):
                 with record_function("## train_step"):
@@ -599,7 +626,7 @@ def main(argv: List[str]) -> None:
                     report_latency("Dense", nn_ms, args.embedding_storage)
                     
                     train_loss += loss.item()
-                    auroc_score = auroc(torch.sigmoid(outputs.squeeze()), labels)
+                    auroc_score = auroc(torch.sigmoid(outputs.squeeze()), labels.squeeze())
                     train_auroc += auroc_score.item()
                     num_batches += 1
                     
@@ -610,41 +637,41 @@ def main(argv: List[str]) -> None:
             print(f"DEBUG: Calling prof.step() for batch {batch_idx}")
             prof.step()
 
-        avg_train_loss = train_loss / num_batches if num_batches else 0.0
-        avg_train_auroc = train_auroc / num_batches if num_batches else 0.0
-        avg_fwd = forward_time_total / num_batches if num_batches else 0.0
-        avg_bwd = backward_time_total / num_batches if num_batches else 0.0
-        avg_opt = opt_time_total / num_batches if num_batches else 0.0
-        avg_emb = emb_time_total / num_batches if num_batches else 0.0
-        avg_nn = nn_time_total / num_batches if num_batches else 0.0
-        
-        print(f"Epoch {epoch + 1} - Training Loss: {avg_train_loss:.4f}, Training AUROC: {avg_train_auroc:.4f}, AvgFWD(ms): {avg_fwd:.2f} (Emb: {avg_emb:.2f} NN: {avg_nn:.2f}), AvgBWD(ms): {avg_bwd:.2f}, AvgOPT(ms): {avg_opt:.2f}")
-        
-        # Validation
-        model.eval()
-        val_loss = 0.0
-        val_auroc = 0.0
-        val_num_batches = 0
-        
-        with torch.no_grad():
-             for batch in tqdm(val_loader, desc="Validation"):
-                dense_features = batch[0].to(device)
-                sparse_features = batch[1].to(device)
-                labels = batch[2].to(device)
-                
-                outputs = model(dense_features, sparse_features)
-                loss = criterion(outputs, labels.float())
-                
-                val_loss += loss.item()
-                auroc_score = auroc(outputs.squeeze(), labels)
-                val_auroc += auroc_score.item()
-                val_num_batches += 1
-        
-        avg_val_loss = val_loss / val_num_batches if val_num_batches else 0.0
-        avg_val_auroc = val_auroc / val_num_batches if val_num_batches else 0.0
-        
-        print(f"Epoch {epoch + 1} - Validation Loss: {avg_val_loss:.4f}, Validation AUROC: {avg_val_auroc:.4f}")
-        
+            avg_train_loss = train_loss / num_batches if num_batches else 0.0
+            avg_train_auroc = auroc.compute().item()
+            avg_fwd = forward_time_total / num_batches if num_batches else 0.0
+            avg_bwd = backward_time_total / num_batches if num_batches else 0.0
+            avg_opt = opt_time_total / num_batches if num_batches else 0.0
+            avg_emb = emb_time_total / num_batches if num_batches else 0.0
+            avg_nn = nn_time_total / num_batches if num_batches else 0.0
+
+            print(f"Epoch {epoch + 1} - Training Loss: {avg_train_loss:.4f}, Training AUROC: {avg_train_auroc:.4f}, AvgFWD(ms): {avg_fwd:.2f} (Emb: {avg_emb:.2f} NN: {avg_nn:.2f}), AvgBWD(ms): {avg_bwd:.2f}, AvgOPT(ms): {avg_opt:.2f}")
+
+            model.eval()
+            auroc.reset()
+            val_loss = 0.0
+            val_num_batches = 0
+
+            with torch.no_grad():
+                for batch in tqdm(val_loader, desc="Validation"):
+                    dense_features = batch[0].to(device)
+                    sparse_features = batch[1].to(device)
+                    labels = batch[2].to(device)
+
+                    outputs = model(dense_features, sparse_features)
+                    loss = criterion(outputs, labels.float())
+
+                    val_loss += loss.item()
+                    auroc.update(outputs.squeeze(), labels.squeeze())
+                    val_num_batches += 1
+
+            avg_val_loss = val_loss / val_num_batches if val_num_batches else 0.0
+            avg_val_auroc = auroc.compute().item() if val_num_batches else 0.0
+            auroc.reset()
+
+            print(f"Epoch {epoch + 1} - Validation Loss: {avg_val_loss:.4f}, Validation AUROC: {avg_val_auroc:.4f}")
+            model.train()
+ 
     print("Training completed!")
     dist.destroy_process_group()
 

@@ -102,7 +102,14 @@ TEST(RDMAPSClientAdapterTest, FactoryCreatesRdmaClientAndSupportsTableInit) {
   auto client =
       CreatePSClient(ResolvePSClientOptionsFromFrameworkConfig(config));
   ASSERT_NE(client, nullptr);
-  EXPECT_NE(dynamic_cast<RDMAPSClientAdapter*>(client.get()), nullptr);
+  auto* adapter = dynamic_cast<RDMAPSClientAdapter*>(client.get());
+  ASSERT_NE(adapter, nullptr);
+
+  base::ConstArray<uint64_t> empty_keys;
+  base::RecTensor empty_grads({0, 4}, base::DataType::FLOAT32);
+  EXPECT_THROW(adapter->SubmitUpdateParameterAsync(
+                   "table", empty_keys, empty_grads),
+               std::invalid_argument);
 }
 
 } // namespace recstore

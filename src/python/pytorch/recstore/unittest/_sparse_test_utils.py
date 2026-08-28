@@ -20,8 +20,8 @@ class FakeOps:
         self.update_apply_count = 0
         self.last_applied_keys = None
 
-    def init_embedding_table(self, table_name: str, num_embeddings: int, embedding_dim: int) -> bool:
-        return True
+    def init_embedding_table(self, table_name: str, num_embeddings: int, embedding_dim: int, table_id: int = 0) -> int:
+        return int(table_id)
 
     def emb_write(self, keys: torch.Tensor, values: torch.Tensor):
         keys = keys.to(torch.int64).cpu().contiguous()

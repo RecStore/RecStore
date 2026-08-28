@@ -8,9 +8,7 @@
 #include "base/string.h"
 #include "base/timer.h"
 #include "ps/base/Postoffice.h"
-#include "ps/rdma/petps_client.h"
-#include "ps/rdma/allshards_ps_client.h"
-#include "ps/rdma/base_client.h"
+#include "ps/rdma/rdma_ps_client_adapter.h"
 #include "benchmark/dataset/sample_reader.h"
 
 DEFINE_bool(thread_cut_off, false, "thread cut off");
@@ -54,37 +52,23 @@ public:
   }
 
   void Run() {
-    std::vector<std::unique_ptr<BaseParameterClient>> clients;
+    std::vector<std::unique_ptr<recstore::RDMAPSClientAdapter>> clients;
     CHECK_LE(args_.thread_count_, kMaxThread);
+    const int num_servers = XPostoffice::GetInstance()->NumServers();
     for (int _ = 0; _ < args_.thread_count_; _++) {
-      BaseParameterClient* client;
-      if (XPostoffice::GetInstance()->NumServers() == 1) {
-        // client = base::Factory<BaseParameterClient, const std::string &,
-        // int,
-        //                             int>::NewInstance("LJRPCParameterClient",
-        //                                               "127.0.0.1", 1234, 0);
-
-        client =
-            base::Factory<BaseParameterClient, const std::string&, int, int>::
-                NewInstance("PetPSClient", "127.0.0.1", 1234, 0);
-
-        // client = base::Factory<BaseParameterClient, const std::string &,
-        // int,
-        //                             int>::NewInstance("PsLiteParameterClient",
-        //                                               "127.0.0.1", 1234, 0);
-      } else {
-        std::vector<BaseParameterClient*> shard_clients;
-        for (int shard = 0; shard < XPostoffice::GetInstance()->NumServers();
-             shard++) {
-          auto shard_client =
-              base::Factory<BaseParameterClient, const std::string&, int, int>::
-                  NewInstance("PetPSClient", "127.0.0.1", 1234, shard);
-          shard_clients.push_back(shard_client);
-        }
-        client = new AllShardsParameterClientWrapper(
-            shard_clients, XPostoffice::GetInstance()->NumServers());
+      nlohmann::json config      = nlohmann::json::object();
+      config["client"] = {{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}};
+      nlohmann::json servers     = nlohmann::json::array();
+      for (int shard = 0; shard < num_servers; ++shard) {
+        servers.push_back(
+            {{"host", "127.0.0.1"}, {"port", 1234}, {"shard", shard}});
       }
-      clients.emplace_back(client);
+      config["distributed_client"] = {
+          {"num_shards", num_servers},
+          {"hash_method", "city_hash"},
+          {"servers", servers},
+      };
+      clients.emplace_back(std::make_unique<recstore::RDMAPSClientAdapter>(config));
     }
     PetDatasetReader* dataset_reader = nullptr;
     if (args_.dataset_ == "dataset") {
@@ -138,8 +122,6 @@ public:
             << "main client thread, stalled for waiting thread " << i;
     }
     // wait all clients ready
-    clients[0]->Barrier(
-        "clients start", XPostoffice::GetInstance()->NumClients());
     start_flag_ = true;
 
     while (true) {
@@ -178,10 +160,6 @@ public:
             stride,
             stop_thread_id_orders.size());
         sleep(1);
-        // wait for all client processes;
-        clients[0]->Barrier(
-            base::SFormat("clients pause {}", stop_thread_id_orders.size()),
-            XPostoffice::GetInstance()->NumClients());
         // clean Timer
         xmh::Reporter::Clear();
         for (int i = 0; i < args_.thread_count_; ++i) {
@@ -208,17 +186,17 @@ public:
 
 private:
   void
-  clientThreadLoop(int tid, SampleReader* sample, BaseParameterClient* client) {
+  clientThreadLoop(int tid, SampleReader* sample, recstore::RDMAPSClientAdapter* client) {
     base::bind_core(1);
+    recstore::RdmaRawAccess raw(client);
+    const int emb_dim = args_.value_size_ / sizeof(float);
     std::vector<uint64_t> client_keys(
         args_.batch_read_count_ * args_.async_req_num_);
-    std::vector<float*> recv_buffers;
+    std::vector<std::vector<float>> recv_buffers;
     for (int i = 0; i < args_.async_req_num_; i++) {
-      recv_buffers.push_back((float*)client->GetReceiveBuffer(
-          args_.batch_read_count_ * args_.value_size_));
+      recv_buffers.emplace_back(
+          args_.batch_read_count_ * static_cast<std::size_t>(emb_dim) + 1, 0.0f);
     }
-
-    client->InitThread();
 
     std::vector<int> running_rpc_ids(args_.async_req_num_, -1);
     std::vector<bool> isPullRequest(args_.async_req_num_, true);
@@ -240,25 +218,31 @@ private:
           // send a request
           auto keys =
               sample->fillArray(&client_keys[req_i * args_.batch_read_count_]);
-          float* values = recv_buffers[req_i];
+          float* values = recv_buffers[req_i].data();
 
           if (base::Random::rand32(100) <
               static_cast<uint32_t>(args_.read_ratio_)) {
             // read request
             isPullRequest[req_i] = true;
             running_rpc_ids[req_i] =
-                client->GetParameter(keys.ToConstArray(), values, true, req_i);
+                raw.SubmitGetParameter(keys.ToConstArray(), values, true, req_i, emb_dim);
             if (req_i == 0)
               client_get_timer.start();
           } else {
+            // PUT is still synchronous on the adapter; complete the slot
+            // inline so mixed writes actually hit the server.
             isPullRequest[req_i] = false;
-            running_rpc_ids[req_i] =
-                client->FakePutParameter(keys.ToConstArray(), values);
             if (req_i == 0)
               client_put_timer.start();
+            base::RecTensor put_values(
+                values, {static_cast<int64_t>(keys.Size()), emb_dim});
+            CHECK_EQ(client->PutParameter(keys.ToConstArray(), put_values), 0);
+            tp[tid][0] += 1;
+            if (req_i == 0)
+              client_put_timer.end();
           }
         } else {
-          if (client->QueryRPCFinished(running_rpc_ids[req_i])) {
+          if (raw.QueryRPCFinished(running_rpc_ids[req_i])) {
             tp[tid][0] += 1;
             if (req_i == 0) {
               if (isPullRequest[req_i])
@@ -270,13 +254,13 @@ private:
             base::ConstArray<uint64_t> keys(
                 &client_keys[req_i * args_.batch_read_count_],
                 args_.batch_read_count_);
-            int emb_dim   = args_.value_size_ / sizeof(float);
-            float* values = recv_buffers[req_i];
-            CheckEmbDebug(emb_dim, keys, values);
+            int emb_dim2  = args_.value_size_ / sizeof(float);
+            float* values2 = recv_buffers[req_i].data();
+            CheckEmbDebug(emb_dim2, keys, values2);
             RECSTORE_LOG_EVERY_MS(ERROR, 2000)
                 << "successfully ------------------------------";
 #endif
-            client->RevokeRPCResource(running_rpc_ids[req_i]);
+            raw.RevokeRPCResource(running_rpc_ids[req_i]);
             running_rpc_ids[req_i] = -1;
           }
         }

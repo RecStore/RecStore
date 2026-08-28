@@ -5,7 +5,6 @@
 #include "base/zipf.h"
 #include "benchmark/ps/benchmark_client_common.h"
 #include "ps/base/Postoffice.h"
-#include "ps/rdma/base_client.h"
 
 DEFINE_int32(thread_num, 1, "client thread num");
 DEFINE_int32(batch_read_count, 300, "");

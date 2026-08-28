@@ -1,0 +1,4 @@
+train.txt
+test.txt
+processed/
+__pycache__/

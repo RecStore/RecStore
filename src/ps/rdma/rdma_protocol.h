@@ -13,6 +13,7 @@
 #include "base/array.h"
 #include "base/flatc.h"
 #include "base/log.h"
+#include "base/tensor.h"
 #include "ps/base/parameters.h"
 #include "ps/rdma/rdma_status.h"
 
@@ -115,7 +116,7 @@ FixedSlotResponseBytes(std::size_t key_count, std::size_t value_size) {
   return GetResponseBytes(key_count, value_size) + sizeof(std::int32_t);
 }
 
-inline std::size_t InitTablePayloadBytes() { return sizeof(std::uint64_t) * 2; }
+inline std::size_t InitTablePayloadBytes() { return sizeof(std::uint64_t) * 3; }
 
 inline std::size_t PutPayloadBudget(std::size_t request_slot_bytes) {
   if (request_slot_bytes <=
@@ -131,8 +132,9 @@ inline std::size_t ParameterReaderBytes(const ParameterCompressReader& reader) {
 }
 
 inline std::size_t PutPayloadBytes(
-    const std::vector<std::uint64_t>& keys,
-    const std::vector<std::vector<float>>& values,
+    base::ConstArray<std::uint64_t> keys,
+    const float* values,
+    int64_t embedding_dim,
     std::string* payload,
     std::string* error = nullptr) {
   if (payload == nullptr) {
@@ -141,30 +143,54 @@ inline std::size_t PutPayloadBytes(
     }
     return 0;
   }
-  if (keys.size() != values.size()) {
+  if (keys.Size() != 0 && (values == nullptr || embedding_dim <= 0)) {
     if (error != nullptr) {
-      *error = "keys and values size mismatch";
+      *error = "values pointer or embedding dim is invalid";
     }
     return 0;
   }
 
   ParameterCompressor compressor;
-  for (std::size_t i = 0; i < keys.size(); ++i) {
-    ParameterPack pack;
-    pack.key      = keys[i];
-    pack.dim      = static_cast<int>(values[i].size());
-    pack.emb_data = values[i].data();
-    compressor.AddItem(pack, nullptr);
-  }
+  CompressEmbeddingRows(
+      &compressor, keys.Data(), values, keys.Size(), embedding_dim);
 
   payload->clear();
   compressor.ToBlock(payload);
   return payload->size();
 }
 
+inline std::size_t PutPayloadBytes(
+    base::ConstArray<std::uint64_t> keys,
+    const base::RecTensor& values,
+    std::string* payload,
+    std::string* error = nullptr) {
+  if (keys.Size() == 0) {
+    return PutPayloadBytes(keys, nullptr, 0, payload, error);
+  }
+  if (values.dtype() != base::DataType::FLOAT32 || values.dim() != 2 ||
+      values.shape(0) != static_cast<int64_t>(keys.Size()) ||
+      values.data() == nullptr) {
+    if (error != nullptr) {
+      *error = "keys and values size mismatch";
+    }
+    return 0;
+  }
+  return PutPayloadBytes(
+      keys, values.data_as<float>(), values.shape(1), payload, error);
+}
+
 inline std::size_t UpdatePayloadBytes(
-    const std::vector<std::uint64_t>& keys,
-    const std::vector<std::vector<float>>& values,
+    base::ConstArray<std::uint64_t> keys,
+    const float* values,
+    int64_t embedding_dim,
+    std::string* payload,
+    std::string* error = nullptr) {
+  return PutPayloadBytes(keys, values, embedding_dim, payload, error);
+}
+
+inline std::size_t UpdatePayloadBytes(
+    base::ConstArray<std::uint64_t> keys,
+    const base::RecTensor& values,
     std::string* payload,
     std::string* error = nullptr) {
   return PutPayloadBytes(keys, values, payload, error);

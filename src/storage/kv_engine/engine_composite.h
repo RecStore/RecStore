@@ -8,7 +8,6 @@
 #include <fstream>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
 #include <string>
@@ -34,7 +33,8 @@ public:
       : BaseKV(BaseKVConfig{}),
         index_(std::move(index)),
         value_store_(std::move(value_store)),
-        num_threads_(num_threads) {}
+        num_threads_(std::max(num_threads, 1)),
+        checkpoint_keys_by_thread_(static_cast<size_t>(num_threads_)) {}
 
   explicit KVEngineComposite(const BaseKVConfig& config) : BaseKV(config) {
     config_                      = config;
@@ -46,6 +46,8 @@ public:
     index_.reset(IF::NewInstance(index_type, config));
     value_store_.reset(VF::NewInstance(value_type, config));
     num_threads_ = config.num_threads_;
+    checkpoint_keys_by_thread_.resize(
+        static_cast<size_t>(std::max(num_threads_, 1)));
     default_value_size_hint_ =
         j.at("value").value("default_value_size_hint", 0);
     if (!index_ || !value_store_) {
@@ -155,7 +157,7 @@ public:
         value_store_->Retire(old_handle);
       }
     }
-    TrackKeys(keys);
+    TrackKeys(keys, tid);
   }
 
   void BatchGet(base::ConstArray<uint64_t> keys,
@@ -483,7 +485,7 @@ public:
       }
     }
     index_->BatchPut(keys, handles.data(), 0);
-    TrackKeys(keys);
+    TrackKeys(keys, 0);
   }
 
   bool SaveCheckpoint(const std::string& file,
@@ -494,12 +496,7 @@ public:
       return false;
     }
 
-    std::vector<uint64_t> keys;
-    {
-      std::lock_guard<std::mutex> lock(checkpoint_keys_mu_);
-      keys.assign(checkpoint_keys_.begin(), checkpoint_keys_.end());
-    }
-    std::sort(keys.begin(), keys.end());
+    std::vector<uint64_t> keys = CollectCheckpointKeys();
 
     const std::filesystem::path checkpoint_path(file);
     std::filesystem::path temp_path(file);
@@ -570,12 +567,9 @@ public:
   bool LoadCheckpoint(const std::string& file,
                       const std::string& expected_metadata) override {
     std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
-    {
-      std::lock_guard<std::mutex> lock(checkpoint_keys_mu_);
-      if (!checkpoint_keys_.empty()) {
-        LOG(ERROR) << "KVEngine checkpoint load requires an empty engine";
-        return false;
-      }
+    if (HasCheckpointRecords()) {
+      LOG(ERROR) << "KVEngine checkpoint load requires an empty engine";
+      return false;
     }
     if (file.empty()) {
       LOG(ERROR) << "KVEngine checkpoint path is empty";
@@ -678,9 +672,8 @@ public:
   }
 
   uint64_t CheckpointRecordCount() const override {
-    std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
-    std::lock_guard<std::mutex> lock(checkpoint_keys_mu_);
-    return static_cast<uint64_t>(checkpoint_keys_.size());
+    std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
+    return static_cast<uint64_t>(CollectCheckpointKeys().size());
   }
 
   void Util() override {
@@ -749,15 +742,44 @@ private:
     UpdateChecksum(checksum, &value, sizeof(value));
   }
 
-  void TrackKey(uint64_t key) {
-    std::lock_guard<std::mutex> lock(checkpoint_keys_mu_);
-    checkpoint_keys_.insert(key);
+  std::vector<uint64_t> CollectCheckpointKeys() const {
+    size_t count = 0;
+    for (const auto& keys : checkpoint_keys_by_thread_) {
+      count += keys.size();
+    }
+    std::vector<uint64_t> keys;
+    keys.reserve(count);
+    for (const auto& thread_keys : checkpoint_keys_by_thread_) {
+      keys.insert(keys.end(), thread_keys.begin(), thread_keys.end());
+    }
+    std::sort(keys.begin(), keys.end());
+    keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+    return keys;
   }
 
-  void TrackKeys(base::ConstArray<uint64_t> keys) {
-    std::lock_guard<std::mutex> lock(checkpoint_keys_mu_);
+  bool HasCheckpointRecords() const {
+    return std::any_of(checkpoint_keys_by_thread_.begin(),
+                       checkpoint_keys_by_thread_.end(),
+                       [](const auto& keys) { return !keys.empty(); });
+  }
+
+  std::vector<uint64_t>& CheckpointKeysForThread(unsigned tid) {
+    if (tid >= checkpoint_keys_by_thread_.size()) {
+      LOG(FATAL) << "KVEngine checkpoint tid out of range: " << tid << " >= "
+                 << checkpoint_keys_by_thread_.size();
+    }
+    return checkpoint_keys_by_thread_[tid];
+  }
+
+  void TrackKey(uint64_t key, unsigned tid) {
+    CheckpointKeysForThread(tid).push_back(key);
+  }
+
+  void TrackKeys(base::ConstArray<uint64_t> keys, unsigned tid) {
+    auto& thread_keys = CheckpointKeysForThread(tid);
+    thread_keys.reserve(thread_keys.size() + static_cast<size_t>(keys.Size()));
     for (int i = 0; i < keys.Size(); ++i) {
-      checkpoint_keys_.insert(keys[i]);
+      thread_keys.push_back(keys[i]);
     }
   }
 
@@ -778,7 +800,7 @@ private:
     if (old_handle != kValueHandleNone) {
       value_store_->Retire(old_handle);
     }
-    TrackKey(key);
+    TrackKey(key, tid);
   }
 
   inline static constexpr std::array<char, 8> kCheckpointMagic = {
@@ -793,8 +815,7 @@ private:
   int num_threads_                = 0;
   size_t default_value_size_hint_ = 0;
   mutable std::shared_mutex checkpoint_mu_;
-  mutable std::mutex checkpoint_keys_mu_;
-  std::unordered_set<uint64_t> checkpoint_keys_;
+  std::vector<std::vector<uint64_t>> checkpoint_keys_by_thread_;
 };
 
 FACTORY_REGISTER(

@@ -1,8 +1,14 @@
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <iostream>
 #include <random>
+#include <vector>
 
 #include "base/array.h"
 #include "base/factory.h"
 #include "base/init.h"
+#include "base/tensor.h"
 #include "base/timer.h"
 #include "ps/base/base_client.h"
 #include "ps/grpc/grpc_ps_client.h"
@@ -11,77 +17,59 @@
 namespace {
 constexpr int kGrpcTestPort0 = 15123;
 constexpr int kGrpcTestPort1 = 15124;
-} // namespace
 
-static bool
-check_eq_1d(const std::vector<float>& a, const std::vector<float>& b) {
-  if (a.size() != b.size())
-    return false;
-
-  for (int i = 0; i < a.size(); i++) {
-    if (std::abs(a[i] - b[i]) > 1e-6)
-      return false;
+base::RecTensor OwnedEmbedding(int64_t n, int64_t d, const std::vector<float>& flat) {
+  base::RecTensor t({n, d}, base::DataType::FLOAT32);
+  if (t.data() != nullptr && !flat.empty()) {
+    std::memcpy(t.data(),
+                flat.data(),
+                sizeof(float) * std::min(flat.size(),
+                                         static_cast<size_t>(t.num_elements())));
   }
-  return true;
+  return t;
 }
 
-static bool check_eq_2d(std::vector<std::vector<float>>& a,
-                        const std::vector<std::vector<float>>& b) {
-  a.resize(b.size());
+bool TensorEq(const base::RecTensor& a, const std::vector<float>& b) {
+  if (static_cast<size_t>(a.num_elements()) != b.size()) {
+    return false;
+  }
+  if (b.empty()) {
+    return true;
+  }
+  const float* p = a.data_as<float>();
   for (size_t i = 0; i < b.size(); ++i) {
-    a[i].resize(b[i].size());
-  }
-  if (a.size() != b.size())
-    return false;
-  for (int i = 0; i < a.size(); i++) {
-    if (check_eq_1d(a[i], b[i]) == false)
+    if (std::abs(p[i] - b[i]) > 1e-6f) {
       return false;
+    }
   }
   return true;
 }
+} // namespace
 
 void TestFactoryClient(int grpc_port) {
   std::cout << "=== Testing Factory Pattern ===" << std::endl;
 
   json config = {{"host", "127.0.0.1"}, {"port", grpc_port}, {"shard", 0}};
 
-  std::unique_ptr<recstore::BasePSClient> client(
-      base::Factory<recstore::BasePSClient, json>::NewInstance("grpc", config));
+  GRPCParameterClient client(config);
+  std::vector<uint64_t> keys = {1, 2, 3};
+  auto rightvalues           = OwnedEmbedding(3, 3, {1, 0, 0, 2, 2, 0, 3, 3, 3});
+  auto values                = OwnedEmbedding(3, 3, std::vector<float>(9, -1.0f));
+  base::ConstArray<uint64_t> keys_array(keys);
 
-  if (!client) {
-    std::cerr << "Failed to create PS client via factory!" << std::endl;
-    return;
-  }
+  CHECK(client.PutParameter(keys, rightvalues));
+  CHECK(client.GetParameter(keys_array, values) == 0);
+  CHECK(TensorEq(values, {1, 0, 0, 2, 2, 0, 3, 3, 3}));
 
-  std::cout << "Successfully created PS client via factory" << std::endl;
+  client.ClearPS();
+  CHECK(client.GetParameter(keys_array, values) == 0);
 
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<> distrib(1, 200LL * 1e6);
-
-  auto grpc_client = dynamic_cast<GRPCParameterClient*>(client.get());
-  if (grpc_client) {
-    std::vector<uint64_t> keys = {1, 2, 3};
-    std::vector<std::vector<float>> emptyvalues(keys.size());
-    std::vector<std::vector<float>> rightvalues = {{1}, {2, 2}, {3, 3, 3}};
-    std::vector<std::vector<float>> values;
-
-    grpc_client->PutParameter(keys, rightvalues);
-
-    grpc_client->GetParameter(keys, &values);
-    CHECK(check_eq_2d(values, rightvalues));
-
-    grpc_client->ClearPS();
-    grpc_client->GetParameter(keys, &values);
-    CHECK(check_eq_2d(values, emptyvalues));
-
-    std::cout << "load fake data" << std::endl;
-    CHECK(grpc_client->LoadFakeData(100));
-    std::cout << "load fake data done" << std::endl;
-    std::cout << "dump fake data" << std::endl;
-    CHECK(grpc_client->DumpFakeData(100));
-    std::cout << "dump fake data done" << std::endl;
-  }
+  std::cout << "load fake data" << std::endl;
+  CHECK(client.LoadFakeData(100));
+  std::cout << "load fake data done" << std::endl;
+  std::cout << "dump fake data" << std::endl;
+  CHECK(client.DumpFakeData(100));
+  std::cout << "dump fake data done" << std::endl;
 }
 
 void TestAsyncReadWriteConcurrency(int grpc_port) {
@@ -93,7 +81,7 @@ void TestAsyncReadWriteConcurrency(int grpc_port) {
 
   struct CaseData {
     std::vector<uint64_t> keys;
-    std::vector<std::vector<float>> values;
+    base::RecTensor values;
   };
 
   constexpr int kCaseNum     = 4;
@@ -104,28 +92,21 @@ void TestAsyncReadWriteConcurrency(int grpc_port) {
   for (int c = 0; c < kCaseNum; ++c) {
     auto& cs = cases[c];
     cs.keys.reserve(kRowsPerCase);
-    cs.values.reserve(kRowsPerCase);
+    std::vector<float> flat;
+    flat.reserve(kRowsPerCase * kDim);
     for (int i = 0; i < kRowsPerCase; ++i) {
       uint64_t key = 10000 + static_cast<uint64_t>(c * 100 + i);
       cs.keys.push_back(key);
-      cs.values.push_back(
-          {static_cast<float>(key),
-           static_cast<float>(key + 1),
-           static_cast<float>(key + 2),
-           static_cast<float>(key + 3)});
+      flat.push_back(static_cast<float>(key));
+      flat.push_back(static_cast<float>(key + 1));
+      flat.push_back(static_cast<float>(key + 2));
+      flat.push_back(static_cast<float>(key + 3));
     }
+    cs.values = OwnedEmbedding(kRowsPerCase, kDim, flat);
   }
 
-  std::vector<uint64_t> write_ids;
-  write_ids.reserve(cases.size());
   for (const auto& cs : cases) {
-    base::ConstArray<uint64_t> keys_array(cs.keys);
-    uint64_t write_id = client.EmbWriteAsync(keys_array, cs.values);
-    CHECK(write_id != 0);
-    write_ids.push_back(write_id);
-  }
-  for (uint64_t write_id : write_ids) {
-    client.WaitForWrite(write_id);
+    CHECK(client.PutParameter(cs.keys, cs.values));
   }
 
   std::vector<uint64_t> prefetch_ids;
@@ -139,13 +120,14 @@ void TestAsyncReadWriteConcurrency(int grpc_port) {
 
   for (size_t i = 0; i < cases.size(); ++i) {
     client.WaitForPrefetch(prefetch_ids[i]);
-    std::vector<std::vector<float>> fetched_values;
-    CHECK(client.GetPrefetchResult(prefetch_ids[i], &fetched_values));
-    CHECK(check_eq_2d(fetched_values, cases[i].values));
-    CHECK(static_cast<int>(fetched_values.size()) == kRowsPerCase);
-    for (const auto& row : fetched_values) {
-      CHECK(static_cast<int>(row.size()) == kDim);
-    }
+    base::RecTensor fetched({0, kDim}, base::DataType::FLOAT32);
+    CHECK(client.GetPrefetchResult(prefetch_ids[i], fetched));
+    CHECK(fetched.shape(0) == kRowsPerCase);
+    CHECK(fetched.shape(1) == kDim);
+    CHECK(TensorEq(fetched,
+                   {cases[i].values.data_as<float>(),
+                    cases[i].values.data_as<float>() +
+                        cases[i].values.num_elements()}));
   }
 
   CHECK(client.ClearPS());

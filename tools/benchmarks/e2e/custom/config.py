@@ -42,7 +42,6 @@ class BenchmarkConfig:
     batch_size: int = 1024
     embedding_dim: int = 128
     num_embeddings: int = 200000
-    init_rows: int = 50000
     steps: int = 80
     warmup_steps: int = 5
     repeat: int = 3

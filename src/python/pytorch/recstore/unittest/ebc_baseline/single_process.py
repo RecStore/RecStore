@@ -152,13 +152,13 @@ def initialize_backend_from_standard_ebc(
             initial_weights = initial_weights.cpu()
         initial_weights = initial_weights.contiguous().clone()
 
-    success = kv_client.ops.init_embedding_table(
+    tag = kv_client.ops.init_embedding_table(
         config.name,
         int(config.num_embeddings),
         int(config.embedding_dim),
     )
-    if not success:
-        print(f"Warning: init_embedding_table returned False for '{config.name}'")
+    if tag is False or (not isinstance(tag, bool) and int(tag) < 0):
+        print(f"Warning: init_embedding_table failed for '{config.name}'")
 
     all_keys = torch.arange(config.num_embeddings, dtype=torch.int64)
     kv_client.ops.emb_write(all_keys, initial_weights)

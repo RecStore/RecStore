@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
+#include "base/tensor.h"
 #include "ps/rdma/rdma_protocol.h"
 
 namespace {
@@ -21,8 +23,9 @@ TEST(RdmaRcProtocolTest, DescriptorAndStatusAreCachelineAligned) {
 }
 
 TEST(RdmaRcProtocolTest, PutPayloadRoundTripBuildsValidReader) {
-  std::vector<std::uint64_t> keys        = {10, 20};
-  std::vector<std::vector<float>> values = {{1.0f, 2.0f}, {3.0f, 4.0f}};
+  std::vector<std::uint64_t> keys = {10, 20};
+  std::vector<float> value_flat   = {1.0f, 2.0f, 3.0f, 4.0f};
+  base::RecTensor values(value_flat.data(), {2, 2});
   std::string payload;
   std::string error;
   const std::size_t bytes =
@@ -38,16 +41,39 @@ TEST(RdmaRcProtocolTest, PutPayloadRoundTripBuildsValidReader) {
   EXPECT_FLOAT_EQ(reader->item(1)->data()[1], 4.0f);
 }
 
+TEST(RdmaRcProtocolTest, PutPayloadAcceptsConstArraySlice) {
+  std::vector<std::uint64_t> keys = {1, 10, 20, 99};
+  std::vector<float> value_flat   = {
+      0.0f, 0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 0.0f, 0.0f};
+  const base::ConstArray<std::uint64_t> key_slice =
+      base::ConstArray<std::uint64_t>(keys).SubArray(1, 3);
+  base::RecTensor values(value_flat.data() + 2, {2, 2});
+  std::string payload;
+  std::string error;
+  const std::size_t bytes =
+      petps::PutPayloadBytes(key_slice, values, &payload, &error);
+  ASSERT_GT(bytes, 0u) << error;
+  EXPECT_EQ(key_slice.Data(), keys.data() + 1);
+  const auto* reader =
+      reinterpret_cast<const ParameterCompressReader*>(payload.data());
+  ASSERT_TRUE(reader->Valid(static_cast<int>(payload.size())));
+  ASSERT_EQ(reader->item_size(), 2);
+  EXPECT_EQ(reader->item(0)->key, 10u);
+  EXPECT_EQ(reader->item(1)->key, 20u);
+}
+
 TEST(RdmaRcProtocolTest, FlatUpdatePayloadMatchesRowPayload) {
-  std::vector<std::uint64_t> keys        = {10, 20};
-  std::vector<std::vector<float>> values = {{1.0f, 2.0f}, {3.0f, 4.0f}};
+  std::vector<std::uint64_t> keys = {10, 20};
+  std::vector<float> value_flat = {1.0f, 2.0f, 3.0f, 4.0f};
+  base::RecTensor values(value_flat.data(), {2, 2});
   const std::vector<float> flat_values   = {1.0f, 2.0f, 3.0f, 4.0f};
   std::string row_payload;
   std::string flat_payload;
   std::string error;
 
   ASSERT_GT(petps::UpdatePayloadBytes(
-                keys, values, &row_payload, &error),
+                base::ConstArray<std::uint64_t>(keys), values,
+                &row_payload, &error),
             0u)
       << error;
   ASSERT_GT(petps::UpdatePayloadBytesFlat(
@@ -86,9 +112,8 @@ TEST(RdmaRcProtocolTest, FlatUpdatePayloadMatchesRowPayload) {
 }
 
 TEST(RdmaRcProtocolTest, FlatUpdatePayloadStoresContiguousKeysAndValues) {
-  std::vector<std::uint64_t> keys        = {10, 20};
-  std::vector<std::vector<float>> values = {{1.0f, 2.0f}, {3.0f, 4.0f}};
-  const std::vector<float> flat_values   = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<std::uint64_t> keys      = {10, 20};
+  const std::vector<float> flat_values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::string flat_payload;
   std::string error;
 

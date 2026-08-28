@@ -2,11 +2,10 @@
 
 // Shared shard-routing primitives for RDMA parameter clients.
 //
-// Both AllShardsParameterClientWrapper (allshards_ps_client.h) and
-// RDMAPSClientAdapter (rdma_ps_client_adapter.h) fan a batch of keys out to
-// per-shard RPCs and reassemble the responses into a single caller buffer.
-// The structs and the partition/finalize logic below are identical between the
-// two, so they live here instead of being copy-pasted.
+// RDMAPSClientAdapter (rdma_ps_client_adapter.h) fans a batch of keys out to
+// per-shard RPCs and reassembles the responses into a single caller buffer.
+// These structs and the partition/finalize logic are shared by the adapter's
+// sync and raw-async paths, so they live here instead of being copy-pasted.
 
 #include <algorithm>
 #include <cstddef>
@@ -41,6 +40,7 @@ struct BatchRequest {
   float* user_buffer          = nullptr; // Final output buffer owned by caller.
   bool assembled              = false;   // True once shard RPCs are merged.
   std::size_t total_key_count = 0;       // Total keys across all shards.
+  int value_size              = 0;       // Row bytes for this batch.
   std::int32_t status_code =
       static_cast<std::int32_t>(petps::RpcStatus::kPending);
   std::vector<PendingShardRpc> shard_rpcs; // One pending RPC per shard chunk.

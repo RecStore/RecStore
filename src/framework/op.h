@@ -75,8 +75,8 @@ public:
                          const RecTensor& keys,
                          const RecTensor& grads)           = 0;
 
-  virtual bool InitEmbeddingTable(const std::string& table_name,
-                                  const EmbeddingTableConfig& config) = 0;
+  virtual int InitEmbeddingTable(const std::string& table_name,
+                                 const EmbeddingTableConfig& config) = 0;
 
   // Prefetch & write (async)
   virtual uint64_t
@@ -90,12 +90,7 @@ public:
       uint64_t prefetch_id) = 0; // blocks until the prefetch identified by
                                  // prefetch_id is complete.
   virtual void GetPretchResult(uint64_t prefetch_id,
-                               std::vector<std::vector<float>>* values) = 0;
-  virtual void GetPretchResultFlat(
-      uint64_t prefetch_id,
-      std::vector<float>* values,
-      int64_t* num_rows,
-      int64_t embedding_dim) = 0;
+                               RecTensor& values) = 0;
 
   virtual uint64_t
   EmbWriteAsync(const RecTensor& keys,
@@ -139,20 +134,15 @@ public:
                           const base::RecTensor& keys,
                           const base::RecTensor& grads);
   void WaitForEmbUpdate(uint64_t update_id);
-  bool InitEmbeddingTable(const std::string& table_name,
-                          const EmbeddingTableConfig& config) override;
+  int InitEmbeddingTable(const std::string& table_name,
+                         const EmbeddingTableConfig& config) override;
   bool EmbExists(const base::RecTensor& keys) override;
   void EmbDelete(const base::RecTensor& keys) override;
   uint64_t EmbPrefetch(const base::RecTensor& keys,
                        const base::RecTensor& values) override;
   bool IsPrefetchDone(uint64_t prefetch_id) override;
   void WaitForPrefetch(uint64_t prefetch_id) override;
-  void GetPretchResult(uint64_t prefetch_id,
-                       std::vector<std::vector<float>>* values) override;
-  void GetPretchResultFlat(uint64_t prefetch_id,
-                           std::vector<float>* values,
-                           int64_t* num_rows,
-                           int64_t embedding_dim) override;
+  void GetPretchResult(uint64_t prefetch_id, RecTensor& values) override;
   uint64_t EmbWriteAsync(const base::RecTensor& keys,
                          const base::RecTensor& values) override;
   bool IsWriteDone(uint64_t write_id) override;

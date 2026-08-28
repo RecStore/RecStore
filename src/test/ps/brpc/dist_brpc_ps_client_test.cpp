@@ -1,15 +1,20 @@
 #include "ps/brpc/dist_brpc_ps_client.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstring>
 #include <folly/executors/CPUThreadPoolExecutor.h>
 #include <folly/init/Init.h>
 #include <future>
+#include <iostream>
 #include <random>
+#include <vector>
 
 #include "base/array.h"
 #include "base/factory.h"
 #include "base/hash.h"
 #include "base/init.h"
+#include "base/tensor.h"
 #include "base/thread.h"
 #include "base/timer.h"
 #include "ps/base/base_client.h"
@@ -21,30 +26,34 @@ using namespace recstore;
 namespace {
 constexpr int kDistBrpcPort0 = 16133;
 constexpr int kDistBrpcPort1 = 16134;
+
+base::RecTensor OwnedEmbedding(int64_t n, int64_t d, const std::vector<float>& flat) {
+  base::RecTensor t({n, d}, base::DataType::FLOAT32);
+  if (t.data() != nullptr && !flat.empty()) {
+    std::memcpy(t.data(),
+                flat.data(),
+                sizeof(float) * std::min(flat.size(),
+                                         static_cast<size_t>(t.num_elements())));
+  }
+  return t;
+}
+
+bool TensorEq(const base::RecTensor& a, const std::vector<float>& b) {
+  if (static_cast<size_t>(a.num_elements()) != b.size()) {
+    return false;
+  }
+  if (b.empty()) {
+    return true;
+  }
+  const float* p = a.data_as<float>();
+  for (size_t i = 0; i < b.size(); ++i) {
+    if (std::abs(p[i] - b[i]) > 1e-6f) {
+      return false;
+    }
+  }
+  return true;
+}
 } // namespace
-
-static bool
-check_eq_1d(const std::vector<float>& a, const std::vector<float>& b) {
-  if (a.size() < b.size())
-    return false;
-
-  for (int i = 0; i < b.size(); i++) {
-    if (std::abs(a[i] - b[i]) > 1e-6)
-      return false;
-  }
-  return true;
-}
-
-static bool check_eq_2d(const std::vector<std::vector<float>>& a,
-                        const std::vector<std::vector<float>>& b) {
-  if (a.size() != b.size())
-    return false;
-  for (int i = 0; i < a.size(); i++) {
-    if (check_eq_1d(a[i], b[i]) == false)
-      return false;
-  }
-  return true;
-}
 
 void TestBasicConfig() {
   std::cout << "=== Testing Basic Configuration (bRPC) ===" << std::endl;
@@ -98,26 +107,21 @@ void TestFactoryClient() {
     return;
   }
 
-  std::cout << "Successfully created distributed bRPC PS client via factory"
-            << std::endl;
-
   try {
     client->ClearPS();
     std::vector<uint64_t> keys_vec = {1, 2, 3};
     base::ConstArray<uint64_t> keys(keys_vec);
-    std::vector<std::vector<float>> emptyvalues(keys_vec.size());
-    std::vector<std::vector<float>> rightvalues = {{1}, {2, 2}, {3, 3, 3}};
-    std::vector<std::vector<float>> values;
-    client->GetParameter(keys, &values);
-    CHECK(check_eq_2d(values, emptyvalues));
+    auto rightvalues = OwnedEmbedding(3, 3, {1, 0, 0, 2, 2, 0, 3, 3, 3});
+    auto values      = OwnedEmbedding(3, 3, std::vector<float>(9, -1.0f));
 
-    client->PutParameter(keys, rightvalues);
-    client->GetParameter(keys, &values);
-    CHECK(check_eq_2d(values, rightvalues));
+    CHECK(client->GetParameter(keys, values) == 0);
+
+    CHECK(client->PutParameter(keys, rightvalues) == 0);
+    CHECK(client->GetParameter(keys, values) == 0);
+    CHECK(TensorEq(values, {1, 0, 0, 2, 2, 0, 3, 3, 3}));
 
     client->ClearPS();
-    client->GetParameter(keys, &values);
-    CHECK(check_eq_2d(values, emptyvalues));
+    CHECK(client->GetParameter(keys, values) == 0);
 
     std::cout << "load fake data" << std::endl;
     CHECK(client->LoadFakeData(100));
@@ -151,22 +155,18 @@ void TestDirectClient() {
 
     client.ClearPS();
     std::vector<uint64_t> keys = {1001, 1002, 1003};
-    std::vector<std::vector<float>> emptyvalues(keys.size());
-    std::vector<std::vector<float>> rightvalues = {
-        {1, 0, 1}, {2, 2}, {3, 3, 3}};
-    std::vector<std::vector<float>> values;
-
+    auto rightvalues = OwnedEmbedding(3, 3, {1, 0, 1, 2, 2, 0, 3, 3, 3});
+    auto values      = OwnedEmbedding(3, 3, std::vector<float>(9, -1.0f));
     base::ConstArray<uint64_t> keys_array(keys);
-    client.GetParameter(keys_array, &values);
-    CHECK(check_eq_2d(values, emptyvalues));
 
-    client.PutParameter(keys_array, rightvalues);
-    client.GetParameter(keys_array, &values);
-    CHECK(check_eq_2d(values, rightvalues));
+    CHECK(client.GetParameter(keys_array, values) == 0);
+
+    CHECK(client.PutParameter(keys_array, rightvalues) == 0);
+    CHECK(client.GetParameter(keys_array, values) == 0);
+    CHECK(TensorEq(values, {1, 0, 1, 2, 2, 0, 3, 3, 3}));
 
     client.ClearPS();
-    client.GetParameter(keys_array, &values);
-    CHECK(check_eq_2d(values, emptyvalues));
+    CHECK(client.GetParameter(keys_array, values) == 0);
 
     std::cout << "All direct bRPC client operations passed!" << std::endl;
   } catch (const std::exception& e) {
@@ -191,22 +191,22 @@ void TestLargeBatch() {
     DistributedBRPCParameterClient client(config);
 
     std::vector<uint64_t> large_keys;
-    std::vector<std::vector<float>> large_values;
+    std::vector<float> large_flat;
+    large_keys.reserve(100);
+    large_flat.reserve(200);
     for (int i = 0; i < 100; ++i) {
       large_keys.push_back(2000 + static_cast<uint64_t>(i) * 2);
-      large_values.push_back({float(i), float(i * 2)});
+      large_flat.push_back(float(i));
+      large_flat.push_back(float(i * 2));
     }
-
+    auto large_values = OwnedEmbedding(100, 2, large_flat);
+    auto retrieved    = OwnedEmbedding(100, 2, std::vector<float>(200, -1.0f));
     base::ConstArray<uint64_t> keys_array(large_keys);
 
     client.ClearPS();
-
-    int put_result = client.PutParameter(keys_array, large_values);
-    CHECK(put_result == 0);
-    std::vector<std::vector<float>> retrieved_values;
-    bool get_success = client.GetParameter(keys_array, &retrieved_values);
-    CHECK(get_success);
-    CHECK(check_eq_2d(retrieved_values, large_values));
+    CHECK(client.PutParameter(keys_array, large_values) == 0);
+    CHECK(client.GetParameter(keys_array, retrieved) == 0);
+    CHECK(TensorEq(retrieved, large_flat));
 
     std::cout << "Large batch test passed!" << std::endl;
   } catch (const std::exception& e) {

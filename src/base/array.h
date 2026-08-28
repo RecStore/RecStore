@@ -26,7 +26,7 @@ struct ConstArray {
   ConstArray() : list(nullptr), size(0) {}
 
   // [start, end)
-  ConstArray<T> SubArray(int start, int end) {
+  ConstArray<T> SubArray(int start, int end) const {
     return ConstArray<T>(list + start, end - start);
   }
 

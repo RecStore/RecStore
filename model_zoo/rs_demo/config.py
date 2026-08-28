@@ -150,7 +150,6 @@ class RunConfig:
     warmup_steps: int = 5
     seed: int = 20260330
     table_name: str = "mock_perf_table"
-    init_rows: int = 50000
     read_mode: str = "prefetch"
     prefetch_depth: int = 0
     prefetch_issue_depth: int = 20
@@ -364,7 +363,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmup-steps", type=int, default=5)
     parser.add_argument("--seed", type=int, default=20260330)
     parser.add_argument("--table-name", type=str, default="mock_perf_table")
-    parser.add_argument("--init-rows", type=int, default=50000)
     parser.add_argument(
         "--read-mode",
         type=str,

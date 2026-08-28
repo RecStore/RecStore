@@ -31,79 +31,97 @@ void ValidateFlatUpdateArgs(const base::ConstArray<uint64_t>& keys,
   }
 }
 
+void CheckUpdateKeyTag(uint64_t key, TAG_TYPE expected, const std::string& table) {
+  const TAG_TYPE got = ExtractKeyTag(key);
+  if (got != expected) {
+    throw std::runtime_error(
+        "update key tag mismatch for table " + table + ": got " +
+        std::to_string(static_cast<unsigned>(got)) + " expected " +
+        std::to_string(static_cast<unsigned>(expected)));
+  }
+}
+
+int InitOrReuseTensor(
+    std::unordered_map<std::string, SparseTensor*>* tensor_map,
+    const std::string& name,
+    TensorType type,
+    TAG_TYPE tag,
+    std::vector<uint64_t> shape,
+    BaseKV* base_kv) {
+  auto it = tensor_map->find(name);
+  if (it != tensor_map->end()) {
+    if (it->second->Tag() != tag ||
+        it->second->EmbeddingDim() != static_cast<int64_t>(shape[1])) {
+      throw std::runtime_error(
+          "table already registered with a different tag/dim: " + name);
+    }
+    return static_cast<int>(tag);
+  }
+  auto* tensor           = new SparseTensor();
+  std::string mutable_name = name;
+  tensor->init(mutable_name, type, tag, shape, base_kv);
+  (*tensor_map)[name] = tensor;
+  return static_cast<int>(tag);
+}
+
 } // namespace
 
 std::unique_ptr<Optimizer> CreateOptimizer(const json& config) {
   if (!config.is_object()) {
     throw std::invalid_argument("cache_ps.optimizer must be an object");
   }
-
-  const std::string type    = config.value("type", "SGD");
+  const std::string type = config.value("type", "SGD");
   const float learning_rate = config.value("learning_rate", 0.01f);
   if (!std::isfinite(learning_rate) || learning_rate < 0.0f) {
-    throw std::invalid_argument(
-        "cache_ps.optimizer.learning_rate must be finite and non-negative");
+    throw std::invalid_argument("cache_ps.optimizer.learning_rate is invalid");
   }
-
-  if (type == "SGD") {
-    LOG(INFO) << "Configured sparse optimizer: type=SGD learning_rate="
-              << learning_rate;
-    return std::make_unique<SGD>(learning_rate);
-  }
-
+  if (type == "SGD") return std::make_unique<SGD>(learning_rate);
   if (type == "RowWiseAdagrad") {
     const float epsilon = config.value("epsilon", 1e-10f);
     if (!std::isfinite(epsilon) || epsilon < 0.0f) {
-      throw std::invalid_argument(
-          "cache_ps.optimizer.epsilon must be finite and non-negative");
+      throw std::invalid_argument("cache_ps.optimizer.epsilon is invalid");
     }
-    LOG(INFO) << "Configured sparse optimizer: type=RowWiseAdagrad "
-              << "learning_rate=" << learning_rate << " epsilon=" << epsilon;
     return std::make_unique<RowWiseAdaGrad>(learning_rate, epsilon);
   }
-
   if (type == "AdamW") {
-    const float beta1        = config.value("beta1", 0.9f);
-    const float beta2        = config.value("beta2", 0.98f);
-    const float epsilon      = config.value("epsilon", 1e-8f);
+    const float beta1 = config.value("beta1", 0.9f);
+    const float beta2 = config.value("beta2", 0.98f);
+    const float epsilon = config.value("epsilon", 1e-8f);
     const float weight_decay = config.value("weight_decay", 0.0f);
     if (!std::isfinite(beta1) || beta1 < 0.0f || beta1 >= 1.0f ||
-        !std::isfinite(beta2) || beta2 < 0.0f || beta2 >= 1.0f) {
-      throw std::invalid_argument(
-          "cache_ps.optimizer AdamW beta1/beta2 must be finite in [0, 1)");
-    }
-    if (!std::isfinite(epsilon) || epsilon < 0.0f ||
+        !std::isfinite(beta2) || beta2 < 0.0f || beta2 >= 1.0f ||
+        !std::isfinite(epsilon) || epsilon < 0.0f ||
         !std::isfinite(weight_decay) || weight_decay < 0.0f) {
-      throw std::invalid_argument(
-          "cache_ps.optimizer AdamW epsilon/weight_decay must be finite and "
-          "non-negative");
+      throw std::invalid_argument("cache_ps.optimizer AdamW parameters are invalid");
     }
-    LOG(INFO) << "Configured sparse optimizer: type=AdamW learning_rate="
-              << learning_rate << " beta1=" << beta1 << " beta2=" << beta2
-              << " epsilon=" << epsilon << " weight_decay=" << weight_decay;
     return std::make_unique<AdamW>(
         learning_rate, beta1, beta2, epsilon, weight_decay);
   }
-
   throw std::invalid_argument("Unsupported cache_ps.optimizer.type: " + type);
 }
 
-void SGD::Init(const std::vector<std::string> table_name,
-               const EmbeddingTableConfig& config,
-               BaseKV* base_kv) {
+int SGD::Init(const std::vector<std::string> table_name,
+              const EmbeddingTableConfig& config,
+              BaseKV* base_kv) {
   LOG(INFO) << "SGD::Init called with " << table_name.size() << " table(s)";
+  int param_tag = -1;
+  const int k   = TensorsPerTable();
   for (const auto& name : table_name) {
     LOG(INFO) << "  Initializing table: '" << name << "' with shape ["
-              << config.num_embeddings << ", " << config.embedding_dim << "]";
-    SparseTensor* param_tensor  = new SparseTensor();
+              << config.num_embeddings << ", " << config.embedding_dim
+              << "] table_id=" << config.table_id;
     std::vector<uint64_t> shape = {config.num_embeddings, config.embedding_dim};
-    TAG_TYPE tag                = 0; // PARAMETER tag
-    param_tensor->init(
-        const_cast<std::string&>(name), PARAMETER, tag, shape, base_kv);
-    tensor_map_[name] = param_tensor;
+    param_tag                   = InitOrReuseTensor(
+        &tensor_map_,
+        name,
+        PARAMETER,
+        MakeTensorTag(config.table_id, 0, k),
+        shape,
+        base_kv);
   }
   LOG(INFO) << "SGD::Init completed. tensor_map_ now has " << tensor_map_.size()
             << " entries";
+  return param_tag;
 }
 
 void SGD::Update(
@@ -116,6 +134,9 @@ void SGD::Update(
 
   int size                   = reader->item_size();
   std::vector<uint64_t> keys = CollectReaderKeys(reader);
+  if (!keys.empty()) {
+    CheckUpdateKeyTag(keys[0], it->second->Tag(), table);
+  }
 
   std::vector<base::ConstArray<float>> current_values;
   it->second->BatchGet(keys, &current_values, tid);
@@ -161,6 +182,9 @@ void SGD::UpdateFlat(
   if (it->second->EmbeddingDim() != embedding_dim) {
     throw std::runtime_error(
         "SGD::UpdateFlat embedding_dim mismatch for table " + table);
+  }
+  if (keys.Size() > 0) {
+    CheckUpdateKeyTag(keys[0], it->second->Tag(), table);
   }
 
   const auto direct_update_start = std::chrono::steady_clock::now();
@@ -212,27 +236,29 @@ void SGD::UpdateFlat(
       "sgd_update_missing_rows", static_cast<double>(missing_rows));
 }
 
-void AdaGrad::Init(const std::vector<std::string> table_name,
-                   const EmbeddingTableConfig& config,
-                   BaseKV* base_kv) {
+int AdaGrad::Init(const std::vector<std::string> table_name,
+                  const EmbeddingTableConfig& config,
+                  BaseKV* base_kv) {
+  int param_tag = -1;
+  const int k   = TensorsPerTable();
   for (const auto& name : table_name) {
-    SparseTensor* param_tensor  = new SparseTensor();
     std::vector<uint64_t> shape = {config.num_embeddings, config.embedding_dim};
-    TAG_TYPE tag                = 0;
-    param_tensor->init(
-        const_cast<std::string&>(name), PARAMETER, tag, shape, base_kv);
-    tensor_map_[name] = param_tensor;
-
-    std::string acc_table_name = name + "_accumulated_grad";
-    SparseTensor* acc_tensor   = new SparseTensor();
-    acc_tensor->init(
-        const_cast<std::string&>(acc_table_name),
-        MOMENT_1,
-        tag,
+    param_tag                   = InitOrReuseTensor(
+        &tensor_map_,
+        name,
+        PARAMETER,
+        MakeTensorTag(config.table_id, 0, k),
         shape,
         base_kv);
-    tensor_map_[acc_table_name] = acc_tensor;
+    InitOrReuseTensor(
+        &tensor_map_,
+        name + "_accumulated_grad",
+        MOMENT_1,
+        MakeTensorTag(config.table_id, 1, k),
+        shape,
+        base_kv);
   }
+  return param_tag;
 }
 
 void AdaGrad::Update(
@@ -251,6 +277,9 @@ void AdaGrad::Update(
 
   int size                   = reader->item_size();
   std::vector<uint64_t> keys = CollectReaderKeys(reader);
+  if (!keys.empty()) {
+    CheckUpdateKeyTag(keys[0], param_it->second->Tag(), table);
+  }
 
   std::vector<base::ConstArray<float>> current_values;
   std::vector<base::ConstArray<float>> acc_values;
@@ -299,6 +328,9 @@ void AdaGrad::UpdateFlat(
         "Accumulated gradient table not found: " + acc_table);
   }
 
+  if (keys.Size() > 0) {
+    CheckUpdateKeyTag(keys[0], param_it->second->Tag(), table);
+  }
   std::vector<uint64_t> key_vec(keys.Data(), keys.Data() + keys.Size());
   std::vector<base::ConstArray<float>> current_values;
   std::vector<base::ConstArray<float>> acc_values;
@@ -330,30 +362,30 @@ void AdaGrad::UpdateFlat(
   }
 }
 
-void RowWiseAdaGrad::Init(const std::vector<std::string> table_name,
-                          const EmbeddingTableConfig& config,
-                          BaseKV* base_kv) {
+int RowWiseAdaGrad::Init(const std::vector<std::string> table_name,
+                         const EmbeddingTableConfig& config,
+                         BaseKV* base_kv) {
+  int param_tag = -1;
+  const int k   = TensorsPerTable();
   for (const auto& name : table_name) {
-    SparseTensor* param_tensor  = new SparseTensor();
-    std::vector<uint64_t> shape = {config.num_embeddings, config.embedding_dim};
-    TAG_TYPE tag                = 0;
-    param_tensor->init(
-        const_cast<std::string&>(name), PARAMETER, tag, shape, base_kv);
-    tensor_map_[name] = param_tensor;
-
-    std::string acc_table_name      = name + "_rowwise_accumulated_grad";
-    SparseTensor* acc_tensor        = new SparseTensor();
-    std::vector<uint64_t> acc_shape = {
-        config.num_embeddings, 1}; // One value per row
-    TAG_TYPE acc_tag = static_cast<TAG_TYPE>(MOMENT_1);
-    acc_tensor->init(
-        const_cast<std::string&>(acc_table_name),
+    std::vector<uint64_t> shape     = {config.num_embeddings, config.embedding_dim};
+    std::vector<uint64_t> acc_shape = {config.num_embeddings, 1};
+    param_tag                       = InitOrReuseTensor(
+        &tensor_map_,
+        name,
+        PARAMETER,
+        MakeTensorTag(config.table_id, 0, k),
+        shape,
+        base_kv);
+    InitOrReuseTensor(
+        &tensor_map_,
+        name + "_rowwise_accumulated_grad",
         MOMENT_1,
-        acc_tag,
+        MakeTensorTag(config.table_id, 1, k),
         acc_shape,
         base_kv);
-    tensor_map_[acc_table_name] = acc_tensor;
   }
+  return param_tag;
 }
 
 void RowWiseAdaGrad::Update(
@@ -372,6 +404,9 @@ void RowWiseAdaGrad::Update(
 
   int size                   = reader->item_size();
   std::vector<uint64_t> keys = CollectReaderKeys(reader);
+  if (!keys.empty()) {
+    CheckUpdateKeyTag(keys[0], param_it->second->Tag(), table);
+  }
 
   std::vector<base::ConstArray<float>> current_values;
   std::vector<base::ConstArray<float>> acc_values;
@@ -451,6 +486,9 @@ void RowWiseAdaGrad::UpdateFlat(
         "Row-wise accumulated gradient table not found: " + acc_table);
   }
 
+  if (keys.Size() > 0) {
+    CheckUpdateKeyTag(keys[0], param_it->second->Tag(), table);
+  }
   std::vector<uint64_t> key_vec(keys.Data(), keys.Data() + keys.Size());
   std::vector<base::ConstArray<float>> current_values;
   std::vector<base::ConstArray<float>> acc_values;
@@ -517,9 +555,9 @@ constexpr uint64_t kAdamWStepKey = (std::numeric_limits<uint64_t>::max() >> 8);
 
 } // namespace
 
-void AdamW::Init(const std::vector<std::string> table_name,
-                 const EmbeddingTableConfig& config,
-                 BaseKV* base_kv) {
+int AdamW::Init(const std::vector<std::string> table_name,
+                const EmbeddingTableConfig& config,
+                BaseKV* base_kv) {
   for (const auto& name : table_name) {
     const std::vector<uint64_t> shape = {
         config.num_embeddings, config.embedding_dim};
@@ -552,6 +590,7 @@ void AdamW::Init(const std::vector<std::string> table_name,
         mutable_step_name, MOMENT_1, MOMENT_1, step_shape, base_kv);
     tensor_map_[step_name] = step_tensor;
   }
+  return static_cast<int>(PARAMETER);
 }
 
 void AdamW::Update(

@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 
 #include "base/json.h"
+#include "base/tensor.h"
 #define private public
 #include "ps/local_shm/local_shm_client.h"
 #undef private
@@ -193,14 +194,16 @@ TEST_F(LocalShmPSClientTest, LastRequestProfileCapturesTransportStages) {
   LocalShmPSClient client(config["local_shm"]);
   ASSERT_EQ(client.InitEmbeddingTable("table_profile", {128, 4}), 0);
 
-  std::vector<uint64_t> keys             = {1, 3};
-  std::vector<std::vector<float>> values = {
-      {1.0f, 2.0f, 3.0f, 4.0f}, {5.0f, 6.0f, 7.0f, 8.0f}};
+  std::vector<uint64_t> keys = {1, 3};
+  std::vector<float> value_flat = {
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  base::RecTensor values(value_flat.data(), {2, 4});
   base::ConstArray<uint64_t> key_array(keys);
   ASSERT_EQ(client.PutParameter(key_array, values), 0);
 
   std::vector<float> readback(8, 0.0f);
-  ASSERT_EQ(client.GetParameter(key_array, readback.data()), 0);
+  base::RecTensor read_t(readback.data(), {2, 4});
+  ASSERT_EQ(client.GetParameter(key_array, read_t), 0);
 
   const auto profile = client.GetLastRequestProfile();
   EXPECT_EQ(profile.opcode, static_cast<uint32_t>(LocalOpcode::kGet));
@@ -230,9 +233,10 @@ TEST_F(LocalShmPSClientTest, LastRequestProfileCapturesOpcodePerRequestType) {
   EXPECT_EQ(client.GetLastRequestProfile().opcode,
             static_cast<uint32_t>(LocalOpcode::kInitTable));
 
-  std::vector<uint64_t> keys             = {7, 9};
-  std::vector<std::vector<float>> values = {
-      {1.0f, 2.0f, 3.0f, 4.0f}, {5.0f, 6.0f, 7.0f, 8.0f}};
+  std::vector<uint64_t> keys = {7, 9};
+  std::vector<float> value_flat = {
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  base::RecTensor values(value_flat.data(), {2, 4});
   base::ConstArray<uint64_t> key_array(keys);
   ASSERT_EQ(client.PutParameter(key_array, values), 0);
   EXPECT_EQ(client.GetLastRequestProfile().opcode,
@@ -287,14 +291,16 @@ TEST_F(LocalShmPSClientTest, PutGetAndUpdateFlatRoundTrip) {
   LocalShmPSClient client(config["local_shm"]);
   ASSERT_EQ(client.InitEmbeddingTable("table_b", {128, 4}), 0);
 
-  std::vector<uint64_t> keys             = {1, 5};
-  std::vector<std::vector<float>> values = {
-      {1.0f, 2.0f, 3.0f, 4.0f}, {5.0f, 6.0f, 7.0f, 8.0f}};
+  std::vector<uint64_t> keys = {1, 5};
+  std::vector<float> value_flat = {
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  base::RecTensor values(value_flat.data(), {2, 4});
   base::ConstArray<uint64_t> key_array(keys);
   ASSERT_EQ(client.PutParameter(key_array, values), 0);
 
   std::vector<float> readback(8, 0.0f);
-  ASSERT_EQ(client.GetParameter(key_array, readback.data()), 0);
+  base::RecTensor read_t(readback.data(), {2, 4});
+  ASSERT_EQ(client.GetParameter(key_array, read_t), 0);
   EXPECT_EQ(readback[0], 1.0f);
   EXPECT_EQ(readback[1], 2.0f);
   EXPECT_EQ(readback[4], 5.0f);
@@ -303,7 +309,7 @@ TEST_F(LocalShmPSClientTest, PutGetAndUpdateFlatRoundTrip) {
   std::vector<float> grads = {1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f};
   ASSERT_EQ(
       client.UpdateParameterFlat("table_b", key_array, grads.data(), 2, 4), 0);
-  ASSERT_EQ(client.GetParameter(key_array, readback.data()), 0);
+  ASSERT_EQ(client.GetParameter(key_array, read_t), 0);
   EXPECT_FLOAT_EQ(readback[0], 0.99f);
   EXPECT_FLOAT_EQ(readback[1], 1.99f);
   EXPECT_FLOAT_EQ(readback[4], 4.98f);
@@ -355,9 +361,10 @@ TEST_F(LocalShmPSClientTest, GetParameterFlatRoundTripUsesFixedEmbeddingDim) {
   LocalShmPSClient client(config["local_shm"]);
   ASSERT_EQ(client.InitEmbeddingTable("table_flat", {128, 4}), 0);
 
-  std::vector<uint64_t> keys             = {2, 6};
-  std::vector<std::vector<float>> values = {
-      {2.0f, 3.0f, 4.0f, 5.0f}, {6.0f, 7.0f, 8.0f, 9.0f}};
+  std::vector<uint64_t> keys = {2, 6};
+  std::vector<float> value_flat = {
+      2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  base::RecTensor values(value_flat.data(), {2, 4});
   base::ConstArray<uint64_t> key_array(keys);
   ASSERT_EQ(client.PutParameter(key_array, values), 0);
 
@@ -384,8 +391,9 @@ TEST_F(LocalShmPSClientTest, GetParameterFlatZerosMissingRowsOnly) {
   LocalShmPSClient client(config["local_shm"]);
   ASSERT_EQ(client.InitEmbeddingTable("table_partial_hit", {128, 4}), 0);
 
-  std::vector<uint64_t> put_keys             = {2};
-  std::vector<std::vector<float>> put_values = {{2.0f, 3.0f, 4.0f, 5.0f}};
+  std::vector<uint64_t> put_keys = {2};
+  std::vector<float> put_flat    = {2.0f, 3.0f, 4.0f, 5.0f};
+  base::RecTensor put_values(put_flat.data(), {1, 4});
   base::ConstArray<uint64_t> put_key_array(put_keys);
   ASSERT_EQ(client.PutParameter(put_key_array, put_values), 0);
 
@@ -420,9 +428,10 @@ TEST_F(LocalShmPSClientTest,
   LocalShmPSClient client(config["local_shm"]);
   ASSERT_EQ(client.InitEmbeddingTable("table_slot", {128, 4}), 0);
 
-  std::vector<uint64_t> keys             = {9, 13};
-  std::vector<std::vector<float>> values = {
-      {9.0f, 10.0f, 11.0f, 12.0f}, {13.0f, 14.0f, 15.0f, 16.0f}};
+  std::vector<uint64_t> keys = {9, 13};
+  std::vector<float> value_flat = {
+      9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f};
+  base::RecTensor values(value_flat.data(), {2, 4});
   base::ConstArray<uint64_t> key_array(keys);
   ASSERT_EQ(client.PutParameter(key_array, values), 0);
 
@@ -473,8 +482,9 @@ TEST_F(LocalShmPSClientTest, GetParameterFlatRejectsMismatchedEmbeddingDim) {
   LocalShmPSClient client(config["local_shm"]);
   ASSERT_EQ(client.InitEmbeddingTable("table_mismatch", {128, 4}), 0);
 
-  std::vector<uint64_t> keys             = {7};
-  std::vector<std::vector<float>> values = {{7.0f, 8.0f, 9.0f, 10.0f}};
+  std::vector<uint64_t> keys = {7};
+  std::vector<float> value_flat = {7.0f, 8.0f, 9.0f, 10.0f};
+  base::RecTensor values(value_flat.data(), {1, 4});
   base::ConstArray<uint64_t> key_array(keys);
   ASSERT_EQ(client.PutParameter(key_array, values), 0);
 
@@ -497,8 +507,9 @@ TEST_F(LocalShmPSClientTest, UpdateParameterFlatRejectsMismatchedEmbeddingDim) {
   LocalShmPSClient client(config["local_shm"]);
   ASSERT_EQ(client.InitEmbeddingTable("table_update_mismatch", {128, 4}), 0);
 
-  std::vector<uint64_t> keys             = {11};
-  std::vector<std::vector<float>> values = {{1.0f, 2.0f, 3.0f, 4.0f}};
+  std::vector<uint64_t> keys = {11};
+  std::vector<float> value_flat = {1.0f, 2.0f, 3.0f, 4.0f};
+  base::RecTensor values(value_flat.data(), {1, 4});
   base::ConstArray<uint64_t> key_array(keys);
   ASSERT_EQ(client.PutParameter(key_array, values), 0);
 
@@ -530,25 +541,29 @@ TEST_F(LocalShmPSClientTest, MultiClientUsesIndependentReadyQueues) {
   ASSERT_EQ(client0.InitEmbeddingTable("table_c", {128, 4}), 0);
 
   std::thread worker0([&]() {
-    std::vector<uint64_t> keys             = {1, 3};
-    std::vector<std::vector<float>> values = {
-        {1.0f, 1.0f, 1.0f, 1.0f}, {3.0f, 3.0f, 3.0f, 3.0f}};
+    std::vector<uint64_t> keys = {1, 3};
+    std::vector<float> value_flat = {
+        1.0f, 1.0f, 1.0f, 1.0f, 3.0f, 3.0f, 3.0f, 3.0f};
+    base::RecTensor values(value_flat.data(), {2, 4});
     base::ConstArray<uint64_t> key_array(keys);
     EXPECT_EQ(client0.PutParameter(key_array, values), 0);
     std::vector<float> readback(8, 0.0f);
-    EXPECT_EQ(client0.GetParameter(key_array, readback.data()), 0);
+    base::RecTensor read_t(readback.data(), {2, 4});
+    EXPECT_EQ(client0.GetParameter(key_array, read_t), 0);
     EXPECT_FLOAT_EQ(readback[0], 1.0f);
     EXPECT_FLOAT_EQ(readback[4], 3.0f);
   });
 
   std::thread worker1([&]() {
-    std::vector<uint64_t> keys             = {2, 4};
-    std::vector<std::vector<float>> values = {
-        {2.0f, 2.0f, 2.0f, 2.0f}, {4.0f, 4.0f, 4.0f, 4.0f}};
+    std::vector<uint64_t> keys = {2, 4};
+    std::vector<float> value_flat = {
+        2.0f, 2.0f, 2.0f, 2.0f, 4.0f, 4.0f, 4.0f, 4.0f};
+    base::RecTensor values(value_flat.data(), {2, 4});
     base::ConstArray<uint64_t> key_array(keys);
     EXPECT_EQ(client1.PutParameter(key_array, values), 0);
     std::vector<float> readback(8, 0.0f);
-    EXPECT_EQ(client1.GetParameter(key_array, readback.data()), 0);
+    base::RecTensor read_t(readback.data(), {2, 4});
+    EXPECT_EQ(client1.GetParameter(key_array, read_t), 0);
     EXPECT_FLOAT_EQ(readback[0], 2.0f);
     EXPECT_FLOAT_EQ(readback[4], 4.0f);
   });

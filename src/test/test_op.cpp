@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -18,53 +19,60 @@ public:
   RecordingPSClient() : recstore::BasePSClient(json::object()) {}
 
   int GetParameter(const base::ConstArray<uint64_t>& keys,
-                   float* values) override {
+                   base::RecTensor& values) override {
     get_calls++;
     last_get_rows = static_cast<int64_t>(keys.size);
+    if (!recstore::IsFloatEmbeddingValues(values, keys.size)) {
+      return -1;
+    }
+    const int64_t D = values.shape(1);
+    embedding_dim   = D;
+    float* dst      = values.data_as<float>();
     for (int row = 0; row < keys.size; ++row) {
       auto it    = rows.find(keys[row]);
-      float* dst = values + row * embedding_dim;
+      float* out = dst + row * D;
       if (it == rows.end()) {
-        std::fill(dst, dst + embedding_dim, 0.0f);
+        std::fill(out, out + D, 0.0f);
       } else {
-        std::copy(it->second.begin(), it->second.end(), dst);
+        std::copy_n(it->second.begin(),
+                    std::min<int64_t>(D, it->second.size()),
+                    out);
       }
     }
     return read_return;
   }
 
   int PutParameter(const base::ConstArray<uint64_t>& keys,
-                   const std::vector<std::vector<float>>& values) override {
+                   const base::RecTensor& values) override {
     put_calls++;
-    last_put_rows   = static_cast<int64_t>(keys.size);
-    last_put_values = values;
+    last_put_rows = static_cast<int64_t>(keys.size);
+    if (!recstore::IsFloatEmbeddingValues(values, keys.size)) {
+      return -1;
+    }
+    const int64_t D = values.shape(1);
+    embedding_dim   = D;
+    last_put_dim    = D;
+    const float* src = values.data_as<float>();
+    last_put_values.assign(src, src + values.num_elements());
     for (int i = 0; i < keys.size; ++i) {
-      rows[keys[i]] = values[i];
-      embedding_dim = static_cast<int64_t>(values[i].size());
+      rows[keys[i]].assign(src + i * D, src + (i + 1) * D);
     }
     return write_return;
   }
 
   int UpdateParameter(const std::string& table_name,
                       const base::ConstArray<uint64_t>& keys,
-                      const std::vector<std::vector<float>>* grads) override {
-    (void)table_name;
-    (void)keys;
-    (void)grads;
-    return 0;
-  }
-
-  int UpdateParameterFlat(const std::string& table_name,
-                          const base::ConstArray<uint64_t>& keys,
-                          const float* grads,
-                          int64_t num_rows,
-                          int64_t update_embedding_dim) override {
+                      const base::RecTensor& grads) override {
     update_calls++;
     last_update_table = table_name;
-    last_update_rows  = num_rows;
-    last_update_dim   = update_embedding_dim;
+    last_update_rows  = static_cast<int64_t>(keys.size);
+    last_update_dim   = grads.dim() == 2 ? grads.shape(1) : 0;
     last_update_keys.assign(keys.Data(), keys.Data() + keys.size);
-    last_update_grads.assign(grads, grads + num_rows * update_embedding_dim);
+    if (grads.data() != nullptr) {
+      last_update_grads.assign(
+          grads.data_as<float>(),
+          grads.data_as<float>() + grads.num_elements());
+    }
     return update_return;
   }
 
@@ -75,11 +83,6 @@ public:
     last_init_table  = table_name;
     last_init_config = config;
     return init_table_return;
-  }
-
-  int AsyncGetParameter(const base::ConstArray<uint64_t>& keys,
-                        float* values) override {
-    return GetParameter(keys, values);
   }
 
   void Command(recstore::PSCommand command) override { last_command = command; }
@@ -100,33 +103,26 @@ public:
   }
 
   bool GetPrefetchResult(uint64_t prefetch_id,
-                         std::vector<std::vector<float>>* values) override {
+                         base::RecTensor& values) override {
     last_result_prefetch_id = prefetch_id;
-    *values                 = prefetch_result;
-    return true;
-  }
-
-  bool GetPrefetchResultFlat(uint64_t prefetch_id,
-                             std::vector<float>* values,
-                             int64_t* num_rows,
-                             int64_t result_embedding_dim) override {
-    last_flat_result_prefetch_id = prefetch_id;
-    *num_rows                    = static_cast<int64_t>(prefetch_result.size());
-    values->assign(static_cast<size_t>(*num_rows) *
-                       static_cast<size_t>(result_embedding_dim),
-                   0.0f);
-    for (int64_t row = 0; row < *num_rows; ++row) {
-      const auto& src = prefetch_result[static_cast<size_t>(row)];
+    if (!recstore::EnsureEmbeddingOutput(
+            values, static_cast<int64_t>(prefetch_result.size()))) {
+      return false;
+    }
+    const int64_t D = values.shape(1);
+    float* dst      = values.data_as<float>();
+    for (size_t row = 0; row < prefetch_result.size(); ++row) {
+      const auto& src = prefetch_result[row];
       std::copy_n(src.begin(),
-                  std::min<int64_t>(result_embedding_dim, src.size()),
-                  values->begin() + row * result_embedding_dim);
+                  std::min<int64_t>(D, src.size()),
+                  dst + row * static_cast<size_t>(D));
     }
     return true;
   }
 
   int64_t embedding_dim                 = 3;
-  int read_return                       = 1;
-  int write_return                      = 1;
+  int read_return                       = 0;
+  int write_return                      = 0;
   int update_return                     = 0;
   int init_table_return                 = 0;
   bool prefetch_done_return             = true;
@@ -143,7 +139,6 @@ public:
   uint64_t last_prefetch_done_id        = 0;
   uint64_t last_wait_prefetch_id        = 0;
   uint64_t last_result_prefetch_id      = 0;
-  uint64_t last_flat_result_prefetch_id = 0;
   std::string last_update_table;
   std::string last_init_table;
   recstore::EmbeddingTableConfig last_init_config{0, 0};
@@ -151,7 +146,8 @@ public:
   std::vector<uint64_t> last_update_keys;
   std::vector<uint64_t> last_prefetch_keys;
   std::vector<float> last_update_grads;
-  std::vector<std::vector<float>> last_put_values;
+  std::vector<float> last_put_values;
+  int64_t last_put_dim = 0;
   std::vector<std::vector<float>> prefetch_result{{1.0f, 2.0f, 3.0f}};
   std::unordered_map<uint64_t, std::vector<float>> rows;
 };
@@ -323,34 +319,46 @@ TEST_F(OpTest, InitEmbeddingTableSucceedsForMatchingHierKVTable) {
       .embedding_dim  = 3,
   };
 
-  EXPECT_TRUE(op_.InitEmbeddingTable("table_for_op_test", config));
-  EXPECT_TRUE(op_.InitEmbeddingTable("table_for_op_test", config));
+  EXPECT_EQ(op_.InitEmbeddingTable("table_for_op_test", config), 0);
+  EXPECT_EQ(op_.InitEmbeddingTable("table_for_op_test", config), 0);
 }
 
-TEST_F(OpTest, PrefetchVectorAndFlatResultsConsumeCachedRows) {
+TEST_F(OpTest, PrefetchResultsConsumeCachedRows) {
   std::vector<uint64_t> key_values{1101, 1102};
   std::vector<float> values{7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   auto keys = UInt64Tensor(&key_values);
   auto rows = FloatTensor(&values, 2, 3);
   op_.EmbWrite(keys, rows);
 
-  const uint64_t vector_id = op_.EmbPrefetch(keys, rows);
-  EXPECT_TRUE(op_.IsPrefetchDone(vector_id));
-  EXPECT_NO_THROW(op_.WaitForPrefetch(vector_id));
+  const uint64_t prefetch_id = op_.EmbPrefetch(keys, rows);
+  EXPECT_TRUE(op_.IsPrefetchDone(prefetch_id));
+  EXPECT_NO_THROW(op_.WaitForPrefetch(prefetch_id));
 
-  std::vector<std::vector<float>> vector_result;
-  op_.GetPretchResult(vector_id, &vector_result);
-  ASSERT_EQ(vector_result.size(), 2);
-  EXPECT_EQ(vector_result[0], (std::vector<float>{7.0f, 8.0f, 9.0f}));
-  EXPECT_EQ(vector_result[1], (std::vector<float>{10.0f, 11.0f, 12.0f}));
-  EXPECT_FALSE(op_.IsPrefetchDone(vector_id));
+  std::vector<float> fetched_storage(6, -1.0f);
+  auto fetched = FloatTensor(&fetched_storage, 2, 3);
+  op_.GetPretchResult(prefetch_id, fetched);
+  EXPECT_EQ(fetched_storage, values);
+  EXPECT_FALSE(op_.IsPrefetchDone(prefetch_id));
 
-  const uint64_t flat_id = op_.EmbPrefetch(keys, rows);
-  std::vector<float> flat_result;
-  int64_t num_rows = 0;
-  op_.GetPretchResultFlat(flat_id, &flat_result, &num_rows, 3);
-  EXPECT_EQ(num_rows, 2);
-  EXPECT_EQ(flat_result, values);
+  const uint64_t owned_id = op_.EmbPrefetch(keys, rows);
+  base::RecTensor owned_fetched({0, 3}, base::DataType::FLOAT32);
+  op_.GetPretchResult(owned_id, owned_fetched);
+  ASSERT_EQ(owned_fetched.shape(0), 2);
+  ASSERT_EQ(owned_fetched.shape(1), 3);
+  EXPECT_EQ(std::vector<float>(owned_fetched.data_as<float>(),
+                               owned_fetched.data_as<float>() + 6),
+            values);
+
+  std::vector<uint64_t> missing_keys{88001, 88002};
+  base::RecTensor dummy({0, 3}, base::DataType::FLOAT32);
+  const uint64_t missing_id =
+      op_.EmbPrefetch(UInt64Tensor(&missing_keys), dummy);
+  base::RecTensor missing({0, 3}, base::DataType::FLOAT32);
+  op_.GetPretchResult(missing_id, missing);
+  EXPECT_EQ(missing.shape(0), 2);
+  EXPECT_EQ(std::vector<float>(missing.data_as<float>(),
+                               missing.data_as<float>() + 6),
+            (std::vector<float>(6, 0.0f)));
 }
 
 TEST_F(OpTest, TensorValidationRejectsInvalidInputsBeforeBackendMutation) {
@@ -392,13 +400,10 @@ TEST_F(InjectedClientOpTest, NonHierKVWriteCopiesRowsAndRejectsClientFailure) {
   op_->EmbWrite(keys, values);
 
   EXPECT_EQ(client_->put_calls, 1);
-  ASSERT_EQ(client_->last_put_values.size(), 2);
-  EXPECT_EQ(client_->last_put_values[0],
-            (std::vector<float>{1.0f, 2.0f, 3.0f}));
-  EXPECT_EQ(client_->last_put_values[1],
-            (std::vector<float>{4.0f, 5.0f, 6.0f}));
+  EXPECT_EQ(client_->last_put_dim, 3);
+  EXPECT_EQ(client_->last_put_values, value_values);
 
-  client_->write_return = 0;
+  client_->write_return = -1;
   EXPECT_THROW(op_->EmbWrite(keys, values), std::runtime_error);
 }
 
@@ -416,12 +421,22 @@ TEST_F(InjectedClientOpTest, NonHierKVReadClearsOutputAndChecksRows) {
   EXPECT_EQ(value_values,
             (std::vector<float>{9.0f, 8.0f, 7.0f, 0.0f, 0.0f, 0.0f}));
 
-  client_->read_return = 0;
+  client_->read_return = -1;
   EXPECT_THROW(op_->EmbRead(keys, values), std::runtime_error);
 
   std::vector<float> one_row_values(3, 0.0f);
   auto one_row_tensor = FloatTensor(&one_row_values, 1, 3);
   EXPECT_THROW(op_->EmbRead(keys, one_row_tensor), std::invalid_argument);
+}
+
+TEST_F(InjectedClientOpTest, EmbUpdateAsyncRejectsUnsupportedBackend) {
+  std::vector<uint64_t> key_values{2401};
+  std::vector<float> grad_values{0.1f, 0.2f, 0.3f};
+  auto keys  = UInt64Tensor(&key_values);
+  auto grads = FloatTensor(&grad_values, 1, 3);
+
+  EXPECT_THROW(op_->EmbUpdateAsync("table_x", keys, grads), std::runtime_error);
+  EXPECT_THROW(op_->WaitForEmbUpdate(0), std::runtime_error);
 }
 
 TEST_F(InjectedClientOpTest, NonHierKVUpdatePassesTableKeysAndFlatGrads) {
@@ -449,14 +464,14 @@ TEST_F(InjectedClientOpTest, NonHierKVInitEmbeddingTableReturnsClientStatus) {
       .embedding_dim  = 3,
   };
 
-  EXPECT_TRUE(op_->InitEmbeddingTable("table_init", config));
+  EXPECT_EQ(op_->InitEmbeddingTable("table_init", config), 0);
   EXPECT_EQ(client_->init_table_calls, 1);
   EXPECT_EQ(client_->last_init_table, "table_init");
   EXPECT_EQ(client_->last_init_config.num_embeddings, 64);
   EXPECT_EQ(client_->last_init_config.embedding_dim, 3);
 
-  client_->init_table_return = 1;
-  EXPECT_FALSE(op_->InitEmbeddingTable("table_init", config));
+  client_->init_table_return = -1;
+  EXPECT_EQ(op_->InitEmbeddingTable("table_init", config), -1);
 }
 
 TEST_F(InjectedClientOpTest, NonHierKVPrefetchDelegatesStatusAndResults) {
@@ -474,17 +489,18 @@ TEST_F(InjectedClientOpTest, NonHierKVPrefetchDelegatesStatusAndResults) {
   op_->WaitForPrefetch(prefetch_id);
   EXPECT_EQ(client_->last_wait_prefetch_id, prefetch_id);
 
-  std::vector<std::vector<float>> rows;
-  op_->GetPretchResult(prefetch_id, &rows);
+  base::RecTensor rows({0, 3}, base::DataType::FLOAT32);
+  op_->GetPretchResult(prefetch_id, rows);
   EXPECT_EQ(client_->last_result_prefetch_id, prefetch_id);
-  EXPECT_EQ(rows, client_->prefetch_result);
+  ASSERT_EQ(rows.shape(0), 1);
+  ASSERT_EQ(rows.shape(1), 3);
+  EXPECT_EQ(std::vector<float>(rows.data_as<float>(), rows.data_as<float>() + 3),
+            (std::vector<float>{1.0f, 2.0f, 3.0f}));
 
-  std::vector<float> flat;
-  int64_t num_rows = 0;
-  op_->GetPretchResultFlat(prefetch_id, &flat, &num_rows, 3);
-  EXPECT_EQ(client_->last_flat_result_prefetch_id, prefetch_id);
-  EXPECT_EQ(num_rows, 1);
-  EXPECT_EQ(flat, (std::vector<float>{1.0f, 2.0f, 3.0f}));
+  std::vector<float> invalid_storage(6);
+  auto invalid_rows = FloatTensor(&invalid_storage, 2, 3);
+  EXPECT_THROW(op_->GetPretchResult(prefetch_id, invalid_rows),
+               std::runtime_error);
 }
 
 } // namespace

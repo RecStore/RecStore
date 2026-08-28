@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <string>
-#include <vector>
 
 #include <folly/portability/GFlags.h>
 
@@ -43,22 +42,6 @@ inline std::int32_t* FixedSlotStatusWord(
   return reinterpret_cast<std::int32_t*>(
       reinterpret_cast<char*>(buffer) +
       key_count * static_cast<std::size_t>(value_size));
-}
-
-inline void CopyFlatRowsToVectors(
-    const float* flat,
-    std::size_t row_count,
-    std::size_t embedding_dim,
-    std::vector<std::vector<float>>* values) {
-  if (values == nullptr) {
-    return;
-  }
-  values->clear();
-  values->reserve(row_count);
-  for (std::size_t row = 0; row < row_count; ++row) {
-    values->emplace_back(
-        flat + row * embedding_dim, flat + (row + 1) * embedding_dim);
-  }
 }
 
 } // namespace petps

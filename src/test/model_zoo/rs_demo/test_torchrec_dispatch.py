@@ -196,7 +196,7 @@ class TestTorchRecDispatch(unittest.TestCase):
 
         self.assertEqual(plan["token"], "rank0-plan")
         self.assertEqual(planner.calls, 1)
-        self.assertEqual(fake_dist.barrier_calls, 0)
+        self.assertEqual(fake_dist.barrier_calls, 1)
 
     def test_nonzero_rank_loads_shared_sharding_plan(self) -> None:
         fake_dist = _FakeDist()
@@ -216,7 +216,7 @@ class TestTorchRecDispatch(unittest.TestCase):
 
         self.assertEqual(plan["token"], "rank0-plan")
         self.assertEqual(planner.calls, 0)
-        self.assertEqual(fake_dist.barrier_calls, 0)
+        self.assertEqual(fake_dist.barrier_calls, 1)
 
     def test_build_runner_torchrec_requires_dependency(self) -> None:
         cfg = RunConfig(backend="torchrec")
@@ -504,6 +504,7 @@ class TestTorchRecDispatch(unittest.TestCase):
                 run_output / "torchrec_worker_fingerprints.json",
                 run_output / "torchrec_worker_fingerprints.json.lock",
                 run_output / "torchrec_plan.pkl",
+                run_output / "torchrec_nccl_rank0.log",
                 rank_dir / "rank0.csv",
             ]
             for path in stale_paths:
@@ -538,7 +539,11 @@ class TestTorchRecDispatch(unittest.TestCase):
                         }
                     ],
                 )
-                return mock.Mock(returncode=0, stdout="", stderr="")
+                return mock.Mock(
+                    returncode=0,
+                    stdout="NCCL INFO NET/IB : Using [0]mlx5_0:1/IB\n",
+                    stderr="worker warning\n",
+                )
 
             with mock.patch(
                 "model_zoo.rs_demo.runtime.worker_common.pick_socket_ifname",
@@ -551,6 +556,10 @@ class TestTorchRecDispatch(unittest.TestCase):
                 return_value=[],
             ):
                 result = runner._run_distributed(Path("/app/RecStore"), cfg)
+
+            nccl_log = run_output / "torchrec_nccl_rank0.log"
+            self.assertIn("mlx5_0:1/IB", nccl_log.read_text(encoding="utf-8"))
+            self.assertIn("worker warning", nccl_log.read_text(encoding="utf-8"))
 
         self.assertEqual(result["backend"], "torchrec")
 

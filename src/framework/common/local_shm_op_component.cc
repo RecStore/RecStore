@@ -130,8 +130,7 @@ void LocalShmUpdateFlat(BasePSClient* client,
   auto* local_client =
       GetLocalShmClientOrThrow(client, backend_name, "local_update_flat");
   base::ConstArray<uint64_t> key_array(keys.data_as<uint64_t>(), num_rows);
-  const int ret = local_client->UpdateParameterFlat(
-      table_name, key_array, grads.data_as<float>(), num_rows, embedding_dim);
+  const int ret = local_client->UpdateParameter(table_name, key_array, grads);
   if (ret != 0) {
     throw std::runtime_error("Failed to update embeddings via PS client.");
   }

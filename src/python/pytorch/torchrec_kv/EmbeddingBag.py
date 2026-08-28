@@ -303,6 +303,72 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
             }
         )
 
+    def record_pooled_grad(
+        self,
+        features: KeyedJaggedTensor,
+        grad: torch.Tensor,
+        prepared_ids: Tuple[torch.Tensor, torch.Tensor, int] | None = None,
+    ) -> None:
+        """Record row gradients without replaying embedding-bag autograd."""
+        keys = list(features.keys())
+        if grad.dim() != 3 or grad.size(1) != len(keys):
+            raise ValueError("pooled gradient shape does not match sparse features")
+
+        if prepared_ids is not None:
+            if not self._enable_fusion:
+                raise ValueError("prepared fused IDs require fusion")
+            unique_ids, inverse, raw_count = prepared_ids
+            if inverse is None:
+                # A producer may omit the optional inverse metadata; preserve
+                # correctness by using the ordinary length-aware path below.
+                prepared_ids = None
+            else:
+                flat_grads = grad.reshape(-1, grad.size(2))
+                if (
+                    int(raw_count) != flat_grads.size(0)
+                    or inverse.numel() != flat_grads.size(0)
+                ):
+                    raise ValueError("prepared fused IDs require one ID per bag")
+                batch_inverse = inverse.view(len(keys), grad.size(0)).t().reshape(-1)
+                summed_grads = torch.zeros(
+                    (unique_ids.numel(), flat_grads.size(1)),
+                    device=flat_grads.device,
+                    dtype=flat_grads.dtype,
+                )
+                summed_grads.index_add_(
+                    0,
+                    batch_inverse.to(device=flat_grads.device, dtype=torch.long),
+                    flat_grads,
+                )
+                self._append_trace(self._master_config.name, unique_ids, summed_grads)
+                return
+
+        lengths = features.lengths().to(device=grad.device, dtype=torch.long)
+        if lengths.numel() != grad.size(0) * len(keys):
+            raise ValueError("sparse lengths do not match pooled gradient batch size")
+        row_grads = grad.permute(1, 0, 2).reshape(-1, grad.size(2)).repeat_interleave(
+            lengths, dim=0
+        )
+        ids = features.values().to(device=grad.device, dtype=torch.int64)
+        if ids.numel() != row_grads.size(0):
+            raise ValueError("sparse values and expanded pooled gradients differ")
+
+        rows_per_feature = lengths.view(len(keys), grad.size(0)).sum(dim=1)
+        if self._enable_fusion:
+            prefixes = torch.tensor(
+                [self._feature_table_indices[key] << self._fusion_k for key in keys],
+                device=ids.device,
+                dtype=torch.int64,
+            ).repeat_interleave(rows_per_feature)
+            self._append_trace(self._master_config.name, ids + prefixes, row_grads)
+            return
+
+        row_counts = rows_per_feature.cpu().tolist()
+        for key, feature_ids, feature_grads in zip(
+            keys, ids.split(row_counts), row_grads.split(row_counts)
+        ):
+            self._append_trace(self._config_names[key], feature_ids, feature_grads)
+
     def _config_for_feature(self, key: str) -> EmbeddingBagConfig:
         return self._config_by_feature[key]
 
@@ -312,6 +378,15 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
         if fused_ids_cpu.numel() > 0:
             return torch.unique(fused_ids_cpu, return_inverse=True)
         return fused_ids_cpu, fused_ids_cpu
+
+    def _dedupe_fused_ids_for_prefetch(
+        self, fused_ids: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Deduplicate on the source device and return backend IDs on CPU."""
+        if fused_ids.numel() == 0:
+            return fused_ids.detach().to(device="cpu"), fused_ids
+        unique_ids, inverse = torch.unique(fused_ids, return_inverse=True)
+        return unique_ids.detach().to(device="cpu").contiguous(), inverse
 
     def _gpu_cache_prefill_api(self):
         prefill = getattr(self.kv_client, "prefill_gpu_cache", None)
@@ -503,8 +578,7 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
                 fused_values = values + prefix
                 fused_values_list.append(fused_values)
         fused_values_all = torch.cat(fused_values_list, dim=0) if len(fused_values_list) > 0 else torch.empty((0,), dtype=torch.int64, device=device)
-        fused_ids_cpu_full = fused_values_all.to("cpu") if fused_values_all.numel() > 0 else fused_values_all
-        unique_ids, inverse = self._dedupe_fused_ids_cpu(fused_ids_cpu_full)
+        unique_ids, inverse = self._dedupe_fused_ids_for_prefetch(fused_values_all)
         self._perf_add("lookup_ids_build_ms", (perf_counter() - t_build_start) * 1e3)
         return unique_ids, inverse, int(fused_values_all.numel())
 
@@ -932,9 +1006,16 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
             ids_cached = self._fused_ids_cpu
             if inv is not None and ids_cached is not None and all_embeddings.size(0) == ids_cached.numel():
                 if self._fused_prefetch_full_batch:
-                    cached_ids = ids_cached.detach().to(dtype=torch.int64, device="cpu").flatten()
-                    cached_inverse = inv.detach().to(dtype=torch.long, device="cpu").flatten()
-                    current_ids = cpu_ids.detach().to(dtype=torch.int64, device="cpu").flatten()
+                    compare_device = fused_values_all.device
+                    cached_ids = ids_cached.detach().to(
+                        dtype=torch.int64, device=compare_device
+                    ).flatten()
+                    cached_inverse = inv.detach().to(
+                        dtype=torch.long, device=compare_device
+                    ).flatten()
+                    current_ids = fused_values_all.detach().to(
+                        dtype=torch.int64, device=compare_device
+                    ).flatten()
                     slot_matches_current_batch = (
                         cached_inverse.numel() == current_ids.numel()
                         and (

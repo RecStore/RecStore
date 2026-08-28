@@ -42,8 +42,8 @@ inline bool BenchmarkUsesFlatGet(const std::string& transport) {
 }
 
 inline bool BenchmarkWriteReturnsZeroOnSuccess(const std::string& transport) {
-  const auto normalized = NormalizeBenchmarkTransport(transport);
-  return normalized == "RDMA" || normalized == "LOCAL_SHM";
+  (void)transport;
+  return true;
 }
 
 inline bool BenchmarkWriteSucceeded(

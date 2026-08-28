@@ -16,10 +16,10 @@ class _FakeDistributedOps:
         return "distributed_brpc"
 
     def init_embedding_table(
-        self, table_name: str, num_embeddings: int, embedding_dim: int
-    ) -> bool:
+        self, table_name: str, num_embeddings: int, embedding_dim: int, table_id: int = 0
+    ) -> int:
         self.init_calls.append((table_name, num_embeddings, embedding_dim))
-        return True
+        return int(table_id)
 
     def emb_write(self, ids: torch.Tensor, values: torch.Tensor) -> None:
         self.write_calls.append((ids.clone(), values.clone()))
@@ -47,6 +47,8 @@ class TestKVClientNativeDistributed(unittest.TestCase):
         self.client._next_async_handle = 1
         self.client._pending_async_ops = {}
         self.client._gpu_cache_table_name = None
+        self.client._gpu_cache_clear_count = 0
+        self.client._next_table_id = 0
         self.client._initialized = True
 
     def test_init_data_registers_metadata_and_writes_once(self) -> None:

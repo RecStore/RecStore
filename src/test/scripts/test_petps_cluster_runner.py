@@ -416,6 +416,42 @@ class TestPetPSClusterRunner(unittest.TestCase):
         self.assertIn("timed out after 1 seconds", completed.stdout)
         fake_process.terminate.assert_called_once()
 
+    def test_stop_kills_immediately_then_waits(self):
+        runner = PetPSClusterRunner()
+        fake_process = mock.Mock()
+        fake_process.poll.return_value = None
+        fake_process.wait.return_value = 0
+        fake_thread = mock.Mock()
+        runner.processes = [(fake_process, fake_thread)]
+
+        runner.stop()
+
+        fake_process.kill.assert_called_once()
+        fake_process.terminate.assert_not_called()
+        fake_process.wait.assert_called_once_with(timeout=30)
+        fake_thread.join.assert_called_once_with(timeout=1)
+
+    def test_stop_still_waits_if_kill_does_not_reap(self):
+        runner = PetPSClusterRunner()
+        fake_process = mock.Mock()
+        fake_process.poll.return_value = None
+        fake_process.wait.side_effect = [
+            subprocess.TimeoutExpired(cmd=["petps_server"], timeout=30),
+            None,
+        ]
+        fake_thread = mock.Mock()
+        runner.processes = [(fake_process, fake_thread)]
+
+        runner.stop()
+
+        fake_process.kill.assert_called_once()
+        fake_process.terminate.assert_not_called()
+        self.assertEqual(
+            fake_process.wait.call_args_list,
+            [mock.call(timeout=30), mock.call(timeout=5)],
+        )
+        fake_thread.join.assert_called_once_with(timeout=1)
+
 
 if __name__ == "__main__":
     unittest.main()

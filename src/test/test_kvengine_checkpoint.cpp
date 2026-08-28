@@ -6,6 +6,7 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -99,6 +100,39 @@ TEST_F(KVEngineCheckpointTest, RoundTripsParameterAndRowWiseAccumulator) {
   EXPECT_EQ(actual, FloatBytes(batch_parameter));
   restored->Get(accumulator_key, actual, 0);
   EXPECT_EQ(actual, accumulator);
+}
+
+TEST_F(KVEngineCheckpointTest, RoundTripsConcurrentWriterKeys) {
+  constexpr uint64_t keys_per_thread = 100;
+  const std::string metadata = R"({"run_id":"concurrent-writers"})";
+  const std::string value = FloatBytes(std::array<float, 1>{3.5f});
+  const std::filesystem::path checkpoint = root_ / "concurrent.ckpt";
+  auto source = MakeEngine("concurrent-source");
+
+  std::vector<std::thread> writers;
+  for (unsigned tid = 0; tid < 2; ++tid) {
+    writers.emplace_back([&, tid]() {
+      for (uint64_t i = 0; i < keys_per_thread; ++i) {
+        source->Put(tid * keys_per_thread + i, value, tid);
+      }
+    });
+  }
+  for (auto& writer : writers) {
+    writer.join();
+  }
+
+  ASSERT_EQ(source->CheckpointRecordCount(), 2 * keys_per_thread);
+  ASSERT_TRUE(source->SaveCheckpoint(checkpoint.string(), metadata));
+  source.reset();
+
+  auto restored = MakeEngine("concurrent-restored");
+  ASSERT_TRUE(restored->LoadCheckpoint(checkpoint.string(), metadata));
+  EXPECT_EQ(restored->CheckpointRecordCount(), 2 * keys_per_thread);
+  std::string actual;
+  restored->Get(0, actual, 0);
+  EXPECT_EQ(actual, value);
+  restored->Get(2 * keys_per_thread - 1, actual, 1);
+  EXPECT_EQ(actual, value);
 }
 
 TEST_F(KVEngineCheckpointTest, RejectsMetadataMismatchAndMalformedFiles) {

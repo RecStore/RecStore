@@ -108,6 +108,15 @@ target_link_libraries(test_config PUBLIC
 )
 add_test(NAME test_config COMMAND test_config)
 
+add_executable(test_rectensor test_rectensor.cpp)
+target_link_libraries(test_rectensor PUBLIC
+    base
+    gtest
+    gtest_main
+    pthread
+)
+add_test(NAME test_rectensor COMMAND test_rectensor)
+
 add_executable(test_optimizer test_optimizer.cpp)
 target_link_libraries(test_optimizer PUBLIC
     sparse_tensor
@@ -316,7 +325,6 @@ target_sources(test_rdmaps_client_adapter PRIVATE
     ${PROJECT_SOURCE_DIR}/src/framework/common/ps_client_config_adapter.cc
     ${PROJECT_SOURCE_DIR}/src/ps/client_factory.cc
     ${PROJECT_SOURCE_DIR}/src/ps/rdma/rdma_ps_client_adapter.cc
-    ${PROJECT_SOURCE_DIR}/src/ps/rdma/allshards_ps_client.cc
     ${PROJECT_SOURCE_DIR}/src/ps/rdma/petps_client.cc
     ${PROJECT_SOURCE_DIR}/src/ps/rdma/rc_transport.cc
     ${PROJECT_SOURCE_DIR}/src/ps/rdma/rc_options.cc
@@ -529,6 +537,7 @@ if(TARGET recstore_torch_ops)
     add_python_unittest(
         test_hierkv_python_ops_with_torch_ops_py
         src.python.pytorch.recstore.unittest.test_hierkv_integration
+        src.python.pytorch.recstore.unittest.test_multi_table_dims
     )
     set_tests_properties(
         test_hierkv_python_ops_with_torch_ops_py
@@ -646,16 +655,6 @@ target_link_libraries(brpc_ps_server_unit_test PUBLIC
 )
 add_test(NAME brpc_ps_server_unit_test COMMAND brpc_ps_server_unit_test)
 set_tests_properties(brpc_ps_server_unit_test PROPERTIES LABELS "ps_unit")
-
-add_executable(test_allshards_ps_client test_allshards_ps_client.cpp)
-target_link_libraries(test_allshards_ps_client PUBLIC
-    base
-    wq_ps_client
-    gtest
-    gtest_main
-    pthread
-)
-add_test(NAME test_allshards_ps_client COMMAND test_allshards_ps_client)
 
 add_executable(test_rdma_rc_protocol test_rdma_rc_protocol.cpp)
 target_sources(test_rdma_rc_protocol PRIVATE
