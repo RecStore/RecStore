@@ -2174,7 +2174,7 @@
 <td><strong>端到端</strong></td>
 <td>端到端</td>
 <td><a href="../../.agents/skills/benchmark-e2e/SKILL.md">benchmark-e2e</a></td>
-<td><code>tools/benchmarks/run_bench_e2e.py</code></td>
+<td><code>python3 -m tools.benchmarks.e2e.custom.cli</code></td>
 </tr>
 </tbody>
 </table>
@@ -2218,7 +2218,7 @@ RDMA GET <code>batch_keys=500</code>，结论是：</p>
 </div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>该模式无需依赖 ClickHouse/Grafana，可直接在模型训练时采集 `embupdate_stages` 真实链路数据，分析 update 在 OP 层、gRPC 客户端、gRPC 服务端各阶段耗时。
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>```bash title=&quot;开启本地结构化事件落盘（JSONL）&quot;
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>```bash title="开启本地结构化事件落盘（JSONL）"
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>export RECSTORE_REPORT_MODE=local
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>export RECSTORE_REPORT_LOCAL_SINK=jsonl
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>export RECSTORE_REPORT_JSONL_PATH=/tmp/recstore_report_events.jsonl
@@ -2279,13 +2279,13 @@ RDMA GET <code>batch_keys=500</code>，结论是：</p>
 </div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>运行时确保 `recstore_config.json` 中 `report_API` 指向可写入 ClickHouse 的 report 服务，然后启动训练/服务端即可自动上报，可在 Grafana 端口查看看板。
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>??? info &quot;启用 Grafana 和相关上报命令&quot;
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>??? info "启用 Grafana 和相关上报命令"
 </code></pre></div>
-<div class="highlight"><span class="filename">启动 ClickHouse</span><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>systemctl<span class="w"> </span>is-active<span class="w"> </span>--quiet<span class="w"> </span>clickhouse-server<span class="w"> </span><span class="o">||</span><span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>clickhouse-server<span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;✅ ClickHouse is running.&quot;</span>
+<div class="highlight"><span class="filename">启动 ClickHouse</span><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>systemctl<span class="w"> </span>is-active<span class="w"> </span>--quiet<span class="w"> </span>clickhouse-server<span class="w"> </span><span class="o">||</span><span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>clickhouse-server<span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"✅ ClickHouse is running."</span>
 </code></pre></div>
-<div class="highlight"><span class="filename">启动 Grafana</span><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>systemctl<span class="w"> </span>is-active<span class="w"> </span>--quiet<span class="w"> </span>grafana-server<span class="w"> </span><span class="o">||</span><span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>grafana-server<span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;✅ Grafana is running (http://localhost:3000).&quot;</span>
+<div class="highlight"><span class="filename">启动 Grafana</span><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>systemctl<span class="w"> </span>is-active<span class="w"> </span>--quiet<span class="w"> </span>grafana-server<span class="w"> </span><span class="o">||</span><span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>grafana-server<span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"✅ Grafana is running (http://localhost:3000)."</span>
 </code></pre></div>
-<div class="highlight"><span class="filename">启动 Report Service（端口需要和 recstore_config.json 对齐）</span><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>pkill<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;uvicorn report_service:app&quot;</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="p">;</span><span class="w"> </span>nohup<span class="w"> </span>uvicorn<span class="w"> </span>report_service:app<span class="w"> </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span><span class="w"> </span>&gt;<span class="w"> </span>report_service.log<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;✅ Report Service is running (http://127.0.0.1:8080).&quot;</span>
+<div class="highlight"><span class="filename">启动 Report Service（端口需要和 recstore_config.json 对齐）</span><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>pkill<span class="w"> </span>-f<span class="w"> </span><span class="s2">"uvicorn report_service:app"</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="p">;</span><span class="w"> </span>nohup<span class="w"> </span>uvicorn<span class="w"> </span>report_service:app<span class="w"> </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span><span class="w"> </span>&gt;<span class="w"> </span>report_service.log<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"✅ Report Service is running (http://127.0.0.1:8080)."</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>
 </code></pre></div>
@@ -2353,8 +2353,8 @@ RDMA GET <code>batch_keys=500</code>，结论是：</p>
 <a id="__codelineno-16-24" name="__codelineno-16-24" href="#__codelineno-16-24"></a>| | `Client.GetParameter.AsyncWait` | 异步等待网络回包的耗时（反映服务端处理+网络延迟） | |
 <a id="__codelineno-16-25" name="__codelineno-16-25" href="#__codelineno-16-25"></a>| **Server** | `KV BatchGet` | 底层 KV 引擎批量读取耗时 | `docs/storage/composite_kvengine.md` |
 <a id="__codelineno-16-26" name="__codelineno-16-26" href="#__codelineno-16-26"></a>
-<a id="__codelineno-16-27" name="__codelineno-16-27" href="#__codelineno-16-27"></a>??? tip &quot;什么是 Timer?&quot;
-<a id="__codelineno-16-28" name="__codelineno-16-28" href="#__codelineno-16-28"></a>    `xmh::Timer` 是一个高性能的 C++ 计时器工具类。它通过 `Timer::Start(&quot;Name&quot;)` 和 `Timer::Stop(&quot;Name&quot;)` 记录代码块耗时，并自动统计 P50、P99 等分位数值，定期输出到日志文件中。
+<a id="__codelineno-16-27" name="__codelineno-16-27" href="#__codelineno-16-27"></a>??? tip "什么是 Timer?"
+<a id="__codelineno-16-28" name="__codelineno-16-28" href="#__codelineno-16-28"></a>    `xmh::Timer` 是一个高性能的 C++ 计时器工具类。它通过 `Timer::Start("Name")` 和 `Timer::Stop("Name")` 记录代码块耗时，并自动统计 P50、P99 等分位数值，定期输出到日志文件中。
 </code></pre></div>
 <h2 id="3-grafana">3. 新增性能埋点（Grafana，请使用）<a class="headerlink" href="#3-grafana" title="Permanent link">&para;</a></h2>
 <p>RecStore 的 Grafana 看板基于 <code>report()</code> 函数上报链路，完整链路为：</p>
