@@ -17,23 +17,47 @@ pattern='(^|/)(ps_server|petps_server|local_shm_ps_server|benchmark_kv_engine|ps
 
 self=$$
 
-collect_pids() {
+# pgrep -af can emit the same TGID once per thread comm. Kill each PID once.
+collect_from_lines() {
   local line pid
   pids=()
-  mapfile -t lines < <(pgrep -af -- "$pattern" 2>/dev/null || true)
+  local -A seen=()
   for line in "${lines[@]}"; do
     pid=${line%% *}
     [[ "$pid" =~ ^[0-9]+$ ]] || continue
     [[ "$pid" -eq "$self" ]] && continue
+    [[ -n ${seen[$pid]+x} ]] && continue
     [[ "$line" == *kill_bench_procs.sh* ]] && continue
     # Skip log tails / editors that only mention these names in a path arg.
     [[ "$line" == *'tail '* ]] && continue
     [[ "$line" == *'less '* ]] && continue
     [[ "$line" == *'rg '* ]] && continue
+    seen[$pid]=1
     echo "$line"
     pids+=("$pid")
   done
 }
+
+collect_pids() {
+  mapfile -t lines < <(pgrep -af -- "$pattern" 2>/dev/null || true)
+  collect_from_lines
+}
+
+if [[ "${1:-}" == "--self-check" ]]; then
+  lines=(
+    "111111 /app/RecStore/build/bin/petps_server --config_path x"
+    "111111 petps_server"
+    "111111 petps_server"
+    "222222 /app/RecStore/build/bin/petps_server --config_path y"
+  )
+  collect_from_lines >/dev/null
+  if [[ ${#pids[@]} -ne 2 || ${pids[0]} -ne 111111 || ${pids[1]} -ne 222222 ]]; then
+    echo "self-check failed: pids=(${pids[*]})" >&2
+    exit 1
+  fi
+  echo "self-check ok"
+  exit 0
+fi
 
 pids=()
 collect_pids

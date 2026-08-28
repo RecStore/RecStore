@@ -222,7 +222,6 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
                                 "control_plane_port": rdma_runner.rdma_control_plane_port,
                             },
                         )
-                        time.sleep(2.0)
                 group_run_id = (
                     f"{transport_lower}_b{cfg.batch_size}_d{cfg.embedding_dim}"
                     f"_r{repeat_index}"

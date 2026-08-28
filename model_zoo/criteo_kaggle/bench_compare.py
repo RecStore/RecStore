@@ -11,8 +11,8 @@ preflight、清理残留进程、调 e2e CLI、检查 NCCL IB 日志）都在本
      例：--ps "[10.0.2.191, 10.0.2.192]"
      或：--ps 10.0.2.191,10.0.2.192
 
-不带参数运行会交互式询问这两个配置。未识别的参数原样传给
-tools.benchmarks.e2e.custom.cli（如 --steps 40 --no-torchrec --dry-run）。
+未识别的参数原样传给 tools.benchmarks.e2e.custom.cli
+（如 --steps 40 --no-torchrec --dry-run）。
 """
 
 from __future__ import annotations
@@ -88,12 +88,6 @@ def parse_ps(raw: str) -> list[str]:
     return ips
 
 
-def ask(prompt: str) -> str:
-    if not sys.stdin.isatty():
-        raise ConfigError(f"缺少配置且不是交互终端：{prompt}")
-    return input(prompt)
-
-
 # ---------------------------------------------------------------- 本机地址
 
 
@@ -128,10 +122,10 @@ class Ssh:
 
     def enable_sshpass(self) -> None:
         if not self.password:
-            log("SSHPASS 未设置，直接用 ssh（依赖密钥/agent）")
+            log("--ssh-pass 为空，直接用 ssh（依赖密钥/agent）")
             return
         if not shutil.which("sshpass"):
-            raise ConfigError("缺少 sshpass（或清空 SSHPASS 改用密钥登录）")
+            raise ConfigError("缺少 sshpass（或 --ssh-pass '' 改用密钥登录）")
         real_ssh = shutil.which("ssh")
         if not real_ssh:
             raise ConfigError("缺少 ssh")
@@ -230,26 +224,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--clients",
-        default=os.environ.get("CRITEO_CLIENTS", ""),
+        default="10.0.2.191:1,10.0.2.192:3",
         help='计算节点 (IP, GPU) 列表，如 "[(10.0.2.191, 1), (10.0.2.192, 3)]"',
     )
     parser.add_argument(
         "--ps",
-        default=os.environ.get("CRITEO_PS", ""),
+        default="10.0.2.191,10.0.2.192",
         help='参数服务器 IP 列表，如 "[10.0.2.191, 10.0.2.192]"',
     )
-    parser.add_argument("--ssh-user", default=os.environ.get("CRITEO_SSH_USER", "root"))
+    parser.add_argument("--ssh-user", default="root")
+    parser.add_argument("--ssh-port", type=int, default=22222)
+    parser.add_argument("--ssh-pass", default="1234", help="SSH 密码；空字符串则用密钥/agent")
+    parser.add_argument("--ps-port", type=int, default=15000)
+    parser.add_argument("--master-port", type=int, default=29500)
+    parser.add_argument("--data-dir", default=str(CRITEO_DIR / "processed"))
     parser.add_argument(
-        "--ssh-port", type=int, default=int(os.environ.get("CRITEO_REMOTE_SSH_PORT", "22222"))
+        "--output-dir",
+        default=str(REPO_ROOT / "results" / time.strftime("criteo_kaggle_e2e_%m%d%H%M")),
     )
-    parser.add_argument("--ps-port", type=int, default=int(os.environ.get("CRITEO_PS_PORT", "15000")))
-    parser.add_argument(
-        "--master-port", type=int, default=int(os.environ.get("CRITEO_MASTER_PORT", "29500"))
-    )
-    parser.add_argument(
-        "--data-dir", default=os.environ.get("CRITEO_PROCESSED", str(CRITEO_DIR / "processed"))
-    )
-    parser.add_argument("--output-dir", default=os.environ.get("OUTPUT_DIR", ""))
     parser.add_argument("--batch-size", type=int, default=2048)
     parser.add_argument("--num-embeddings", type=int, default=800000)
     parser.add_argument("--steps", type=int, default=80)
@@ -311,12 +303,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args, extra = parser.parse_known_args(argv)
 
-    clients = parse_clients(args.clients or ask("计算节点 (IP:GPU, 逗号分隔): "))
-    ps_ips = parse_ps(args.ps or ask("参数服务器 IP (逗号分隔): "))
+    clients = parse_clients(args.clients)
+    ps_ips = parse_ps(args.ps)
     data_dir = Path(args.data_dir).resolve()
-    output_dir = Path(
-        args.output_dir or REPO_ROOT / "results" / time.strftime("criteo_kaggle_e2e_%m%d%H%M")
-    ).resolve()
+    output_dir = Path(args.output_dir).resolve()
 
     client_specs, ps_specs, hosts = resolve_topology(
         clients,
@@ -336,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # e2e CLI 调的是裸 ssh：密码走 sshpass shim，端口走 spec 里的 ssh_port。
     remote = [host for host in hosts if host not in LOCAL_ALIASES]
-    ssh = Ssh(args.ssh_port, os.environ.get("SSHPASS", "1234") if remote else None)
+    ssh = Ssh(args.ssh_port, args.ssh_pass if remote else None)
     if remote:
         ssh.enable_sshpass()
 

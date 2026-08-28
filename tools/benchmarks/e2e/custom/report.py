@@ -185,7 +185,6 @@ def render_summary_md(cfg: BenchmarkConfig, rows: list[dict[str, Any]]) -> str:
             f"client=[{clients}]，PS=[{servers}]。"
             f"batch_size={cfg.batch_size}，embedding_dim={cfg.embedding_dim}，"
             f"num_embeddings={cfg.num_embeddings}，steps={cfg.steps}，warmup_steps={cfg.warmup_steps}，"
-            f"init_rows={cfg.init_rows}，"
             f"repeat={cfg.repeat}，read_mode={cfg.read_mode}，prefetch_depth={cfg.prefetch_depth}，"
             f"index_type={cfg.index_type}，TorchRec baseline={','.join(cfg.torchrec_baselines) or 'disabled'}，"
             f"dataset={cfg.dataset_path}，runtime={cfg.resolved_runtime_dir}，"

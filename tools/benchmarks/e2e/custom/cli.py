@@ -35,7 +35,6 @@ def _build_config_from_args(args: argparse.Namespace) -> tuple[BenchmarkConfig, 
         batch_size=args.batch_size,
         embedding_dim=args.embedding_dim,
         num_embeddings=args.num_embeddings,
-        init_rows=args.init_rows,
         steps=args.steps,
         warmup_steps=args.warmup_steps,
         repeat=args.repeat,
@@ -62,7 +61,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--batch-size", type=int, default=1024)
     parser.add_argument("--embedding-dim", type=int, default=128)
     parser.add_argument("--num-embeddings", type=int, default=200000)
-    parser.add_argument("--init-rows", type=int, default=50000)
     parser.add_argument("--steps", type=int, default=80)
     parser.add_argument("--warmup-steps", type=int, default=5)
     parser.add_argument("--repeat", type=int, default=3)

@@ -47,6 +47,7 @@ class TestKVClientNativeDistributed(unittest.TestCase):
         self.client._next_async_handle = 1
         self.client._pending_async_ops = {}
         self.client._gpu_cache_table_name = None
+        self.client._gpu_cache_clear_count = 0
         self.client._next_table_id = 0
         self.client._initialized = True
 

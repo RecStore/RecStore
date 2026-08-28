@@ -727,13 +727,13 @@ class PetPSClusterRunner:
         return Completed(returncode, "".join(output_lines))
 
     def stop(self):
+        # SIGTERM waits the full timeout on a 40GB slab unmap; SIGKILL first.
         for process, thread in self.processes:
             if process.poll() is None:
-                process.terminate()
+                process.kill()
                 try:
                     process.wait(timeout=self.server_shutdown_timeout)
                 except subprocess.TimeoutExpired:
-                    process.kill()
                     process.wait(timeout=5)
             thread.join(timeout=1)
         self.processes.clear()

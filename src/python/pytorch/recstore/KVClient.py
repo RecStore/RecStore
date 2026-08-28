@@ -225,7 +225,7 @@ class RecStoreClient:
             initial_data = init_func(shape, dtype)
         else:
             initial_data = torch.zeros(shape, dtype=dtype)
-        
+
         all_keys = torch.arange(shape[0], dtype=torch.int64)
         if base_offset != 0:
             all_keys = all_keys + int(base_offset)

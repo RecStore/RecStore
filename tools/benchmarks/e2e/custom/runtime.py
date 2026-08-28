@@ -18,10 +18,9 @@ def _server_entries(servers: tuple[ServerSpec, ...]) -> list[dict[str, Any]]:
     ]
 
 
-def estimate_runtime_capacity(num_embeddings: int, init_rows: int) -> int:
+def estimate_runtime_capacity(num_embeddings: int) -> int:
     # DLRM uses one sparse id per table, so the PS key space spans all tables.
-    per_table_rows = max(int(num_embeddings), int(init_rows))
-    return max(per_table_rows * SPARSE_FEATURES_PER_SAMPLE * 2, 100_000)
+    return max(int(num_embeddings) * SPARSE_FEATURES_PER_SAMPLE * 2, 100_000)
 
 
 def build_runtime_config(cfg: BenchmarkConfig, *, transport: str, value_path: Path) -> dict[str, Any]:
@@ -30,7 +29,7 @@ def build_runtime_config(cfg: BenchmarkConfig, *, transport: str, value_path: Pa
         raise ValueError(f"unsupported E2E transport: {transport}")
     value_size = int(cfg.embedding_dim) * 4
     servers = _server_entries(cfg.servers)
-    capacity = estimate_runtime_capacity(cfg.num_embeddings, cfg.init_rows)
+    capacity = estimate_runtime_capacity(cfg.num_embeddings)
     capacity_bytes = capacity * value_size * 2
     base_kv = {
         "capacity": capacity,
@@ -201,10 +200,19 @@ def start_rdma_ps_cluster(
 
 
 def stop_rdma_ps_cluster(runner: Any) -> None:
-    if runner is not None:
+    if runner is None:
+        return
+    cleanup = list(getattr(runner, "_rs_demo_remote_cleanup_commands", []))
+    remotes = [subprocess.Popen(cmd) for cmd in cleanup]
+    try:
         runner.stop()
-        for cmd in runner._rs_demo_remote_cleanup_commands:
-            subprocess.run(cmd, check=True)
+    finally:
+        failed = False
+        for proc in remotes:
+            if proc.wait() != 0:
+                failed = True
+        if failed:
+            raise RuntimeError("remote petps cleanup failed")
 
 
 def build_server_command(*, server: ServerSpec, runtime_config: Path, transport: str) -> list[str]:
@@ -322,8 +330,6 @@ def build_client_command(
         str(cfg.embedding_dim),
         "--num-embeddings",
         str(cfg.num_embeddings),
-        "--init-rows",
-        str(cfg.init_rows),
         "--steps",
         str(cfg.steps),
         "--warmup-steps",

@@ -152,7 +152,6 @@ benchmark_args=(
     --batch-size 1024
     --embedding-dim 128
     --num-embeddings 200000
-    --init-rows "${RECSTORE_E2E_INIT_ROWS:-200000}"
     --steps 80
     --warmup-steps 5
     --repeat 3

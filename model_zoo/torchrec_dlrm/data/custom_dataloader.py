@@ -15,9 +15,9 @@ class CustomCriteoDataset(Dataset):
         self.train_ratio = train_ratio
         self.num_embeddings_per_feature = num_embeddings_per_feature
         
-        self.dense_data = np.load(os.path.join(data_dir, "day_0_dense.npy"))
-        self.sparse_data = np.load(os.path.join(data_dir, "day_0_sparse.npy"))
-        self.labels_data = np.load(os.path.join(data_dir, "day_0_labels.npy"))
+        self.dense_data = np.load(os.path.join(data_dir, "day_0_dense.npy"), mmap_mode="c")
+        self.sparse_data = np.load(os.path.join(data_dir, "day_0_sparse.npy"), mmap_mode="c")
+        self.labels_data = np.load(os.path.join(data_dir, "day_0_labels.npy"), mmap_mode="c")
         
         self.num_samples = len(self.dense_data)
         print(f"Loaded {self.num_samples} samples from day_0")
