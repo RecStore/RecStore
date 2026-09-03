@@ -1,4 +1,4 @@
 interface:
   display_name: "Loss Aligned"
   short_description: "Validate aligned RecStore and TorchRec loss trajectories"
-  default_prompt: "Use $rs-loss-aligned to run matched RecStore and TorchRec jobs and verify their per-step loss trajectories."
+  default_prompt: "Use $rs-loss-aligned to run matched RecStore and TorchRec jobs on the default single-node and two-node topologies and verify their per-step loss trajectories."
