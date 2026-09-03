@@ -1,4 +1,0 @@
-interface:
-  display_name: "Benchmark PS"
-  short_description: "Run local/cross-host RecStore PS benchmarks"
-  default_prompt: "Use $benchmark-ps to run RecStore PS benchmarks across local or cross-host topologies, including RDMA, GRPC, and BRPC comparisons."

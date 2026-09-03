@@ -48,7 +48,6 @@ dockerfiles/codex/init_codex.sh
 .cache/
 
 .claude/
-.agents/
 docs/superpowers/
 
 rpc_data/

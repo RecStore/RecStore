@@ -1,5 +1,5 @@
 ---
-name: benchmark-e2e
+name: rs-benchmark-e2e
 description: Use when setting up RecStore end-to-end DLRM/TorchRec benchmarks with explicit client placement, PS placement/type, sharding, runnable commands, and Chinese performance summaries.
 ---
 

@@ -13,9 +13,9 @@ RecStore 内置了完善的性能埋点与分析机制，涵盖了从 PyTorch OP
 
 | 测试层级                    | 测什么                                       | 使用 skill                                                                   | 主要入口                                               |
 | ----------------------- | ----------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------- |
-| **storage-only**        | KVEngine（纯本地，无 PS 传输）                     | [benchmark-kvengine](../../.agents/skills/benchmark-kvengine/SKILL.md)     | `tools/benchmarks/run_kvengine_compare.py`         |
-| **PS/network**          | 本机或指定拓扑上的 GRPC / BRPC / RDMA 等传输          | [benchmark-ps](../../.agents/skills/benchmark-ps/SKILL.md)                 | `tools/benchmarks/run_benchmark_ps.py`             |
-| **端到端**                 | 端到端                                       | [benchmark-e2e](../../.agents/skills/benchmark-e2e/SKILL.md) | `python3 -m tools.benchmarks.e2e.custom.cli`       |
+| **storage-only**        | KVEngine（纯本地，无 PS 传输）                     | [rs-benchmark-kvengine](../../.agents/skills/rs-benchmark-kvengine/SKILL.md)     | `tools/benchmarks/run_kvengine_compare.py`         |
+| **PS/network**          | 本机或指定拓扑上的 GRPC / BRPC / RDMA 等传输          | [rs-benchmark-ps](../../.agents/skills/rs-benchmark-ps/SKILL.md)                 | `tools/benchmarks/run_benchmark_ps.py`             |
+| **端到端**                 | 端到端                                       | [rs-benchmark-e2e](../../.agents/skills/rs-benchmark-e2e/SKILL.md) | `python3 -m tools.benchmarks.e2e.custom.cli`       |
 
 不要把某一层的结果直接扩展成整体架构结论。当前 RDMA GET 的阶段性结论对齐了
 storage-only 的 `BatchGetFlat(500 random keys)` 和 PS/network 的

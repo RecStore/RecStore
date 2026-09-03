@@ -7,11 +7,11 @@ commands, defaults, lanes, or report formats.
 Use the matching benchmark skill first:
 
 - E2E RecStore/TorchRec benchmarks:
-  `.agents/skills/benchmark-e2e/SKILL.md`
+  `.agents/skills/rs-benchmark-e2e/SKILL.md`
 - PS, transport, and RDMA benchmarks:
-  `.agents/skills/benchmark-ps/SKILL.md`
+  `.agents/skills/rs-benchmark-ps/SKILL.md`
 - KVEngine and storage-only benchmarks:
-  `.agents/skills/benchmark-kvengine/SKILL.md`
+  `.agents/skills/rs-benchmark-kvengine/SKILL.md`
 
 When this document disagrees with a matching skill, follow the skill.
 

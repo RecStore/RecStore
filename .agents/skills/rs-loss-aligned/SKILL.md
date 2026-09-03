@@ -1,5 +1,5 @@
 ---
-name: loss-aligned
+name: rs-loss-aligned
 description: Run matched RecStore and TorchRec DLRM jobs, align their embedding and dense-model initialization, and compare per-rank per-step loss values. Use when validating RecStore/TorchRec numerical equivalence, diagnosing loss divergence, checking sparse update visibility or ordering, or verifying changes to rs_demo training semantics.
 ---
 
@@ -19,7 +19,7 @@ rg -n 'row\["loss"\]' \
   model_zoo/rs_demo/runners/torchrec_runner.py
 ```
 
-3. Confirm the dataset and `build/bin/ps_server` exist. Build the server and run the targeted correctness tests for the selected PS backend when needed. For remote, distributed, or non-BRPC placement, read `.agents/skills/benchmark-e2e/SKILL.md` and follow its placement, routing, preflight, and artifact rules.
+3. Confirm the dataset and `build/bin/ps_server` exist. Build the server and run the targeted correctness tests for the selected PS backend when needed. For remote, distributed, or non-BRPC placement, read `.agents/skills/rs-benchmark-e2e/SKILL.md` and follow its placement, routing, preflight, and artifact rules.
 4. Use one shared workload definition for both lanes. Keep these identical: dataset, batch size, embedding dimension, table cardinalities, step count, warmup count, seed, dense architecture, client placement, and rank count.
 5. Keep the validation path synchronous and simple: use `--read-mode direct`, disable GPU cache and lookahead prefetch, and use TorchRec HBM unless the user explicitly asks to validate another path.
 6. Run RecStore first, then TorchRec with `--torchrec-align-recstore-init`. For a local smoke validation, use:
@@ -57,7 +57,7 @@ python3 model_zoo/rs_demo/run_mock_stress.py \
 7. Compare all steps, including warmup-marked rows:
 
 ```bash
-python3 .agents/skills/loss-aligned/scripts/compare_loss.py \
+python3 .agents/skills/rs-loss-aligned/scripts/compare_loss.py \
   "$OUT/outputs/$RUN_ID/recstore_main.csv" \
   "$OUT/outputs/$RUN_ID/torchrec_main.csv"
 ```

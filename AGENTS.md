@@ -7,7 +7,7 @@ more specific instruction.
 
 - Write `AGENTS.md` and agent-facing operating instructions in English.
 - Reply to the user in Chinese by default.
-- Write project documentation in Chinese by default unless requested otherwise.
+- Write project documentation in English by default unless requested otherwise.
 - Write code comments in English by default.
 
 ## Task-Specific Guides
@@ -16,11 +16,13 @@ Read the relevant current guide before doing specialized work. Prefer the
 task-specific skills for benchmark execution details; keep root guidance focused
 on repository-wide rules.
 
-- End-to-end RecStore/TorchRec benchmarks: `.agents/skills/benchmark-e2e/SKILL.md`
+- End-to-end RecStore/TorchRec benchmarks: `.agents/skills/rs-benchmark-e2e/SKILL.md`
 - Parameter Server, transport, or RDMA benchmarks:
-  `.agents/skills/benchmark-ps/SKILL.md`
+  `.agents/skills/rs-benchmark-ps/SKILL.md`
 - KVEngine and storage-only benchmarks:
-  `.agents/skills/benchmark-kvengine/SKILL.md`
+  `.agents/skills/rs-benchmark-kvengine/SKILL.md`
+- RecStore/TorchRec loss alignment:
+  `.agents/skills/rs-loss-aligned/SKILL.md`
 - General performance interpretation and layer-labeling background:
   `docs/agent/perf.md`
 
@@ -54,18 +56,31 @@ For feature work or non-trivial bug fixes:
 Do not claim completion before running verification that actually exercises the
 changed behavior.
 
-## Architecture Boundaries
+## Experimental Results
 
-Keep these boundaries explicit:
+Put one-shot script and experiment outputs under `results/`. Do not write them
+into the repo root, `src/`, skill directories, or another run's directory.
 
-- storage and server behavior
-- Python client protocol and semantics
-- model integration glue
-- training-loop scheduling and optimization logic
+Each run gets its own directory:
 
-Prefer explicit context passing, obvious synchronization points, and loud
-failures when invariants are violated. Avoid hidden shared mutable state,
-misleading async APIs, and broad refactors that obscure behavior changes.
+```text
+results/<topic>_<MMDDHHMM>/
+```
+
+- `<topic>` is a short snake_case label for the experiment or script, for
+  example `e2e`, `benchmark_ps`, `benchmark_kvengine`, `loss_aligned`,
+  `criteo_kaggle_e2e`. Prefer the matching skill default when one exists.
+  Optional tags go in the topic, for example `e2e_rdma` or
+  `criteo_kaggle_local_shm_gpu01`.
+- `<MMDDHHMM>` is local time from `date +%m%d%H%M`.
+- Never reuse an existing directory for a new run. Never use `latest`, `tmp`,
+  a leading underscore, or a name without a timestamp.
+- If the user already gave `--output-dir` or an output path, use that path
+  as-is.
+
+Keep logs, CSVs, plots, and `summary.md` inside that run directory. Nested
+lane or repeat subdirectories are fine. `results/` is gitignored; do not
+commit generated artifacts unless explicitly requested.
 
 ## Review Focus
 
@@ -86,55 +101,3 @@ Prioritize correctness before performance. Pay special attention to:
 - Add comments only for non-obvious intent or invariants.
 - In Python, make submission, wait, and consumption semantics explicit.
 - In C++, preserve surrounding ownership and synchronization style.
-
-## Verified Lessons
-
-- Do not trust README claims without checking the actual code path.
-- Distributed RecStore routing must follow `distributed_client`; treat
-  `hash_method`, `num_shards`, and `servers` as separate fields.
-- Do not assume `shard == sorted_index`; route by explicit shard id.
-- Python wrappers that recreate backend routing must match backend semantics or
-  fail loudly.
-- Async-looking APIs are not automatically safe; verify handle uniqueness and
-  visibility semantics.
-- For correctness, prefer explicit submit, wait, and consume boundaries until an
-  async path has proven handle uniqueness, ordering, and visibility semantics.
-- Treat cross-resource or cross-layer benchmark comparisons as lane observations,
-  not architecture-level proof. Use the benchmark skills for current lane names,
-  ablation definitions, and reporting requirements.
-
-## Testing
-
-- Run the most relevant targeted tests for the changed area.
-- Add tests when behavior is not already covered.
-- If tests cannot run in the current environment, say why.
-
-Useful verification layers:
-
-- Python unit tests under `src/python/pytorch/recstore/unittest`
-- model-zoo integration checks under `model_zoo/torchrec_dlrm`
-- `model_zoo/rs_demo` smoke and benchmark runs
-- compiled targets in `build/`
-- server/client smoke tests against `ps_server`
-- benchmark-specific tests and preflight commands from the matching skill
-
-## PyTorch Client Verification
-
-When asked to validate baseline PyTorch client operability:
-
-1. Confirm `build/` exists.
-2. Run `make -j` inside `build/`.
-3. Start `./build/bin/ps_server --config_path ./recstore_config.json`.
-4. Confirm shards listen on the ports in `recstore_config.json`.
-5. Inspect available tests with `ctest -N | rg pytorch_client`.
-6. Run the narrow matching `pytorch_client` test with `ctest -R ... -VV`.
-7. Stop the manually started server.
-
-## Editing Safety
-
-- Read relevant code before editing.
-- Never overwrite or revert user changes just to simplify your patch.
-- Work with unexpected changes unless they directly block correctness.
-- Ask only when conflicting changes make the right resolution unclear.
-- Keep patches scoped to the task.
-- Do not present hypothetical fixes as completed work.

@@ -319,4 +319,4 @@ FACTORY_REGISTER(IOBackend, MY_IO, MyIoBackend, const BaseKVConfig&);
 | ValueStore / DRAM allocator | `test_kvengine` |
 | SSD allocator / IO | `test_io_backend` + SSD value 相关 `test_kvengine` |
 | 配置校验行为 | `KVEngineCompositeConfigTest` |
-| YCSB / 对比 | `.agents/skills/benchmark-kvengine/SKILL.md` |
+| YCSB / 对比 | `.agents/skills/rs-benchmark-kvengine/SKILL.md` |

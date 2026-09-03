@@ -1,5 +1,5 @@
 ---
-name: benchmark-ps
+name: rs-benchmark-ps
 description: Configure, run, validate, and report RecStore Parameter Server benchmarks with tools/benchmarks/run_benchmark_ps.py, covering local and cross-host topologies from explicit IP lists, RDMA/GRPC/BRPC comparison runs, RDMA module correctness checks, SSH/container execution, optimized DRAM_PET_HASH RDMA GET auto/staging-copy mode, and Chinese summary.md output.
 ---
 

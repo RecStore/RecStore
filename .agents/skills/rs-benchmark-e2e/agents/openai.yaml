@@ -1,0 +1,4 @@
+interface:
+  display_name: "Benchmark E2E"
+  short_description: "Run RecStore BRPC/GRPC and TorchRec E2E benchmark workflows"
+  default_prompt: "Use $rs-benchmark-e2e to set up RecStore BRPC/GRPC end-to-end DLRM benchmarks with matched TorchRec baselines and explicit client/PS placement."

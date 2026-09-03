@@ -103,4 +103,4 @@ base_kv_.reset(base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
 | Composite 组合 | `ctest -R test_kvengine` |
 | 外部引擎 | `test_external_kv_engine` / `KVEngineExternalEngineTest`（需对应 CMake 宏） |
 | SSD IO | `test_io_backend` |
-| YCSB 对比 | `.agents/skills/benchmark-kvengine/SKILL.md` |
+| YCSB 对比 | `.agents/skills/rs-benchmark-kvengine/SKILL.md` |

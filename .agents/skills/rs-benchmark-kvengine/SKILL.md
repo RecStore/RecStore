@@ -1,5 +1,5 @@
 ---
-name: benchmark-kvengine
+name: rs-benchmark-kvengine
 description: Run RecStore KVEngine correctness, YCSB, and storage-only batch lookup benchmark workflows, including read_mode=batch_get_flat for aligning KVEngine limits with PS RDMA batch GET. Use when Codex needs to validate src/test/test_kvengine.cpp, run tools/benchmarks/run_kvengine_compare.py, prompt for thread count, SSD benchmark path, results directory, read mode, and batch keys, then generate a Chinese summary.md.
 ---
 

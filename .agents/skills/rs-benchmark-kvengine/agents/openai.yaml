@@ -1,4 +1,4 @@
 interface:
   display_name: "Benchmark KVEngine"
   short_description: "Run RecStore KVEngine YCSB benchmarks"
-  default_prompt: "Use $benchmark-kvengine to run RecStore KVEngine correctness and YCSB tests."
+  default_prompt: "Use $rs-benchmark-kvengine to run RecStore KVEngine correctness and YCSB tests."
