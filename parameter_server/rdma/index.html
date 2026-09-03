@@ -3443,7 +3443,7 @@ Debug/O0 适合调试，不适合作为吞吐上限；2026-06-03 的 p4/t3/q16/d
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>results/benchmark_ps_matrix_0529
 </code></pre></div>
 <p>这组历史矩阵仅作为本页内的早期基线快照保留；新的吞吐结论以本页后续
-<code>DRAM_PET_HASH + auto/staging_copy</code> 路径和 <code>benchmark-ps</code> 执行手册为准。</p>
+<code>DRAM_PET_HASH + auto/staging_copy</code> 路径和 <code>rs-benchmark-ps</code> 执行手册为准。</p>
 <p>总吞吐矩阵如下，单位为 <code>M keys/s</code>：</p>
 <table>
 <thead>
@@ -3775,7 +3775,7 @@ Debug/O0 适合调试，不适合作为吞吐上限；2026-06-03 的 p4/t3/q16/d
 GET response path”。早期阶段从 <code>~2M keys/s</code> 提升到 <code>qps=16</code> repeat 平均
 <code>~41.64M keys/s</code>、单轮最高 <code>45.62M keys/s</code>，以及 <code>qps=20</code> tuning profile
 最高 <code>~46.69M keys/s</code>；这些数字只作为历史性能基线，新的 benchmark 复现方式以
-本页和 <code>.agents/skills/benchmark-ps/SKILL.md</code> 为准。</p>
+本页和 <code>.agents/skills/rs-benchmark-ps/SKILL.md</code> 为准。</p>
 <h3 id="81-pet-staging-copy">8.1 第一优先级：固化 PET staging-copy 主线<a class="headerlink" href="#81-pet-staging-copy" title="Permanent link">&para;</a></h3>
 <p>现阶段推荐把下面的组合视为 RDMA GET 默认性能 case：</p>
 <ul>
