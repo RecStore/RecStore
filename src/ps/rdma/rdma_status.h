@@ -11,6 +11,7 @@ enum class RpcStatus : std::int32_t {
   kWrongShard        = -2,
   kBatchTooLarge     = -3,
   kValueSizeMismatch = -4,
+  kServerDraining    = -5,
 };
 
 inline const char* RpcStatusToString(RpcStatus status) {
@@ -27,6 +28,8 @@ inline const char* RpcStatusToString(RpcStatus status) {
     return "batch_too_large";
   case RpcStatus::kValueSizeMismatch:
     return "value_size_mismatch";
+  case RpcStatus::kServerDraining:
+    return "server_draining";
   }
   return "unknown";
 }

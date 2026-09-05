@@ -27,6 +27,7 @@ target_link_libraries(local_shm_ps_server_runtime PUBLIC
     local_shm_common
     base
     ps_base
+    kv_engine
 )
 
 target_link_libraries(local_shm_ps_server_runtime PRIVATE

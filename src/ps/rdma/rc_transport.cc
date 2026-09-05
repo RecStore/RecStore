@@ -13,10 +13,6 @@
 #include "ps/rdma/rdma_common.h"
 #include "ps/rdma/rc_options.h"
 
-DECLARE_int32(global_id);
-DECLARE_int32(num_server_processes);
-DECLARE_int32(num_client_processes);
-
 namespace petps {
 namespace {
 
@@ -131,18 +127,18 @@ std::size_t ClientLaneBytes(const RcTransportConfig& config) {
 }
 
 int LogicalClientsPerProcess(const RcTransportConfig& config) {
-  if (FLAGS_num_client_processes <= 0) {
-    throw std::runtime_error("num_client_processes must be positive");
+  if (config.num_os_clients <= 0) {
+    throw std::runtime_error("num_os_clients must be positive");
   }
-  if (config.num_clients < FLAGS_num_client_processes) {
+  if (config.num_clients < config.num_os_clients) {
     throw std::runtime_error(
         "logical client count smaller than OS client process count");
   }
-  if (config.num_clients % FLAGS_num_client_processes != 0) {
+  if (config.num_clients % config.num_os_clients != 0) {
     throw std::runtime_error(
         "logical client count must be divisible by OS client process count");
   }
-  return config.num_clients / FLAGS_num_client_processes;
+  return config.num_clients / config.num_os_clients;
 }
 
 int OsClientIndexForLogicalClient(const RcTransportConfig& config,
@@ -395,6 +391,19 @@ void ValidateSlotInQp(const RcTransportConfig& config, int slot_in_qp) {
   }
 }
 
+void ValidateTransportConfig(const RcTransportConfig& config) {
+  if (config.node_id < 0 || config.num_servers <= 0 ||
+      config.num_os_clients <= 0 || config.num_clients <= 0) {
+    throw std::runtime_error(
+        "RDMA transport deployment identity is incomplete");
+  }
+  if (config.request_slot_bytes <=
+          Align64(sizeof(RequestDescriptor)) + Align64(sizeof(CommitWord)) ||
+      config.response_slot_bytes <= Align64(sizeof(StatusWord))) {
+    throw std::runtime_error("RDMA request/response slot bytes are too small");
+  }
+}
+
 RawVerbsConfig MakeRawConfig(
     const RcTransportConfig& config,
     int local_lane,
@@ -402,14 +411,24 @@ RawVerbsConfig MakeRawConfig(
     bool is_client,
     int only_node_id) {
   RawVerbsConfig raw;
-  raw.global_id    = FLAGS_global_id;
-  raw.local_lane   = local_lane;
-  raw.remote_lane  = local_lane;
-  raw.only_node_id = only_node_id;
-  raw.num_servers  = FLAGS_num_server_processes;
-  raw.num_clients  = FLAGS_num_client_processes;
-  raw.numa_id =
-      is_client ? FLAGS_rdma_rc_client_numa_id : FLAGS_rdma_rc_server_numa_id;
+  raw.global_id        = config.node_id;
+  raw.local_lane       = local_lane;
+  raw.remote_lane      = local_lane;
+  raw.only_node_id     = only_node_id;
+  raw.num_servers      = config.num_servers;
+  raw.num_clients      = config.num_os_clients;
+  raw.device_name      = config.fabric.device;
+  raw.port_num         = static_cast<std::uint8_t>(config.fabric.port);
+  raw.fabric_mode      = config.fabric.mode;
+  raw.gid_index        = config.fabric.gid_index;
+  raw.hop_limit        = static_cast<std::uint8_t>(config.fabric.hop_limit);
+  raw.traffic_class    = static_cast<std::uint8_t>(config.fabric.traffic_class);
+  raw.flow_label       = config.fabric.flow_label;
+  raw.deployment_id    = config.deployment_id;
+  raw.deployment_epoch = config.deployment_epoch;
+  raw.protocol_version = config.protocol_version;
+  raw.configuration_digest = config.configuration_digest;
+  raw.fabric_digest        = config.fabric_digest;
   raw.max_inline_data =
       static_cast<std::uint32_t>(std::max(0, FLAGS_rdma_rc_inline_bytes));
   raw.connect_to_servers       = is_client;
@@ -425,11 +444,12 @@ RawVerbsConfig MakeRawConfig(
 
 RcShardClientTransport::RcShardClientTransport(const RcTransportConfig& config)
     : config_(config), server_node_id_(config.shard_id) {
+  ValidateTransportConfig(config_);
   ValidateClientId(config_, config_.client_id);
   if (config_.slots_per_qp <= 0) {
     throw std::runtime_error("slots_per_qp must be positive");
   }
-  if (server_node_id_ < 0 || server_node_id_ >= FLAGS_num_server_processes) {
+  if (server_node_id_ < 0 || server_node_id_ >= config_.num_servers) {
     throw std::runtime_error("server shard id out of global node range");
   }
   lanes_.reserve(static_cast<std::size_t>(config_.qps_per_client_per_shard));
@@ -438,7 +458,7 @@ RcShardClientTransport::RcShardClientTransport(const RcTransportConfig& config)
     const int raw_lane =
         RawLaneForLogicalClient(config_, config_.client_id, qp);
     const std::size_t local_bytes =
-        static_cast<std::size_t>(FLAGS_num_server_processes) *
+        static_cast<std::size_t>(config_.num_servers) *
         static_cast<std::size_t>(RawLanesPerOsClient(config_)) *
         ClientLaneBytes(config_);
     RawVerbsConfig raw =
@@ -447,7 +467,7 @@ RcShardClientTransport::RcShardClientTransport(const RcTransportConfig& config)
     raw.reserved_region_bytes  = ClientLaneBytes(config_);
     lane.verbs                 = std::make_unique<RawVerbsTransport>(raw);
     lane.lane_base             = lane.verbs->LocalPointer(GlobalAddress{
-        static_cast<std::uint16_t>(FLAGS_global_id),
+        static_cast<std::uint16_t>(config_.node_id),
         static_cast<std::uint64_t>(ClientShardLaneOffset(config_, raw_lane)),
     });
     std::memset(lane.lane_base, 0, ClientLaneBytes(config_));
@@ -627,7 +647,8 @@ void RcShardClientTransport::ClearRequestSlot(const RcClientQpView& view) {
 
 RcShardServerTransport::RcShardServerTransport(const RcTransportConfig& config)
     : config_(config) {
-  if (FLAGS_global_id < 0 || FLAGS_global_id >= FLAGS_num_server_processes) {
+  ValidateTransportConfig(config_);
+  if (config_.node_id < 0 || config_.node_id >= config_.num_servers) {
     throw std::runtime_error("server global_id out of range");
   }
   if (config_.slots_per_qp <= 0) {
@@ -677,8 +698,7 @@ RcShardServerTransport::~RcShardServerTransport() {
       const int qp_index = static_cast<int>(
           raw_lane_index %
           static_cast<std::size_t>(config_.qps_per_client_per_shard));
-      for (int os_client = 0; os_client < FLAGS_num_client_processes;
-           ++os_client) {
+      for (int os_client = 0; os_client < config_.num_os_clients; ++os_client) {
         const int client =
             os_client * logical_clients_per_process + local_logical_client;
         for (int slot_in_qp = 0; slot_in_qp < config_.slots_per_qp;
@@ -686,7 +706,7 @@ RcShardServerTransport::~RcShardServerTransport() {
           const int raw_lane =
               RawLaneForLogicalClient(config_, client, qp_index);
           const int client_node_id =
-              FLAGS_num_server_processes +
+              config_.num_servers +
               OsClientIndexForLogicalClient(config_, client);
           const int response_slot =
               ResponseSlotOrdinal(config_, client, slot_in_qp);
@@ -820,8 +840,7 @@ void RcShardServerTransport::CompleteResponse(
   const int response_slot = ResponseSlotOrdinal(config_, client_id, slot_in_qp);
   const int raw_lane = RawLaneForLogicalClient(config_, client_id, qp_index);
   const int client_node_id =
-      FLAGS_num_server_processes +
-      OsClientIndexForLogicalClient(config_, client_id);
+      config_.num_servers + OsClientIndexForLogicalClient(config_, client_id);
   auto& counters = TransportProfile();
   DrainTrackedPendingWrite(
       lane.verbs.get(),
@@ -904,8 +923,7 @@ void RcShardServerTransport::WriteResponsePayloadSg(
   Lane& lane         = LaneAt(client_id, qp_index);
   const int raw_lane = RawLaneForLogicalClient(config_, client_id, qp_index);
   const int client_node_id =
-      FLAGS_num_server_processes +
-      OsClientIndexForLogicalClient(config_, client_id);
+      config_.num_servers + OsClientIndexForLogicalClient(config_, client_id);
   lane.verbs->WriteSg(
       sges,
       GlobalAddress{
@@ -939,8 +957,7 @@ void RcShardServerTransport::CompleteResponseStatusOnly(
   const int response_slot = ResponseSlotOrdinal(config_, client_id, slot_in_qp);
   const int raw_lane = RawLaneForLogicalClient(config_, client_id, qp_index);
   const int client_node_id =
-      FLAGS_num_server_processes +
-      OsClientIndexForLogicalClient(config_, client_id);
+      config_.num_servers + OsClientIndexForLogicalClient(config_, client_id);
   auto& counters = TransportProfile();
   DrainTrackedPendingWrite(
       lane.verbs.get(),

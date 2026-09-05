@@ -3,12 +3,15 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 
 #include "base/array.h"
 #include "base/flatc.h"
@@ -28,10 +31,10 @@ inline constexpr std::uint32_t kRcFlagGetDirectSg          = 1U << 0;
 inline constexpr std::uint32_t kRcFlagGetAllowFallbackCopy = 1U << 1;
 
 enum class RcOp : std::uint16_t {
-  kGet       = 1,
-  kPut       = 2,
-  kUpdate    = 3,
-  kInitTable = 4,
+  kGet        = 1,
+  kPut        = 2,
+  kUpdate     = 3,
+  kInitTable  = 4,
   kUpdateFlat = 5,
 };
 
@@ -196,12 +199,13 @@ inline std::size_t UpdatePayloadBytes(
   return PutPayloadBytes(keys, values, payload, error);
 }
 
-inline std::size_t FlatUpdatePayloadBytes(
-    std::size_t key_count, std::size_t embedding_dim) {
-  constexpr std::size_t kKeyBytes = sizeof(std::uint64_t);
+inline std::size_t
+FlatUpdatePayloadBytes(std::size_t key_count, std::size_t embedding_dim) {
+  constexpr std::size_t kKeyBytes   = sizeof(std::uint64_t);
   constexpr std::size_t kFloatBytes = sizeof(float);
-  const std::size_t max_size = std::numeric_limits<std::size_t>::max();
-  if (embedding_dim == 0 || embedding_dim > (max_size - kKeyBytes) / kFloatBytes) {
+  const std::size_t max_size        = std::numeric_limits<std::size_t>::max();
+  if (embedding_dim == 0 ||
+      embedding_dim > (max_size - kKeyBytes) / kFloatBytes) {
     return 0;
   }
   const std::size_t row_bytes = kKeyBytes + embedding_dim * kFloatBytes;
@@ -229,7 +233,7 @@ inline std::size_t UpdatePayloadBytesFlat(
     }
     return 0;
   }
-  const std::size_t key_bytes = keys.Size() * sizeof(std::uint64_t);
+  const std::size_t key_bytes   = keys.Size() * sizeof(std::uint64_t);
   const std::size_t value_bytes = keys.Size() * embedding_dim * sizeof(float);
   payload->resize(payload_bytes);
   if (key_bytes > 0) {
@@ -266,7 +270,7 @@ inline std::size_t PackFlatUpdatePayloadGather(
     return 0;
   }
 
-  auto* payload_keys = static_cast<std::uint64_t*>(payload);
+  auto* payload_keys   = static_cast<std::uint64_t*>(payload);
   auto* payload_values = reinterpret_cast<float*>(
       static_cast<char*>(payload) + row_count * sizeof(std::uint64_t));
   const std::size_t row_bytes = embedding_dim * sizeof(float);
@@ -279,10 +283,9 @@ inline std::size_t PackFlatUpdatePayloadGather(
       return 0;
     }
     payload_keys[row] = keys[source_row];
-    std::memcpy(
-        payload_values + row * embedding_dim,
-        values + source_row * embedding_dim,
-        row_bytes);
+    std::memcpy(payload_values + row * embedding_dim,
+                values + source_row * embedding_dim,
+                row_bytes);
   }
   return payload_bytes;
 }
@@ -352,5 +355,69 @@ inline bool StatusWordDone(const StatusWord& status, std::uint64_t seq) {
   return status.state.load(std::memory_order_acquire) == kRcSlotDone &&
          status.seq.load(std::memory_order_acquire) == seq;
 }
+
+class RdmaRequestTimeout : public std::runtime_error {
+public:
+  using std::runtime_error::runtime_error;
+};
+
+inline std::int32_t
+WaitStatusWord(const StatusWord& status,
+               std::uint64_t seq,
+               int timeout_ms,
+               int spin_iterations) {
+  const auto start = std::chrono::steady_clock::now();
+  int spins        = 0;
+  while (!StatusWordDone(status, seq)) {
+    if (spins < spin_iterations) {
+      ++spins;
+    } else {
+      spins = 0;
+      std::this_thread::yield();
+    }
+    if (timeout_ms > 0 &&
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start)
+                .count() > timeout_ms) {
+      throw RdmaRequestTimeout("RDMA request wait timeout");
+    }
+  }
+  return status.status;
+}
+
+class RequestSlotLifecycle {
+public:
+  bool TryAcquire(const StatusWord& status) {
+    if (state_ == State::kQuarantined && StatusWordDone(status, seq_)) {
+      state_ = State::kIdle;
+      seq_   = 0;
+    }
+    if (state_ != State::kIdle) {
+      return false;
+    }
+    state_ = State::kInFlight;
+    return true;
+  }
+
+  void Release() {
+    state_ = State::kIdle;
+    seq_   = 0;
+  }
+
+  void Quarantine(std::uint64_t seq) {
+    // ponytail: transport teardown recovers slots whose completion never
+    // arrives.
+    state_ = State::kQuarantined;
+    seq_   = seq;
+  }
+
+  bool IsQuarantined() const { return state_ == State::kQuarantined; }
+
+private:
+  enum class State : std::uint8_t { kIdle, kInFlight, kQuarantined };
+
+  State state_       = State::kIdle;
+  std::uint64_t seq_ = 0;
+};
 
 } // namespace petps

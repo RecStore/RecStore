@@ -509,9 +509,19 @@ void RDMAPSClientAdapter::WaitRPCFinish(int rpc_id) {
     std::lock_guard<std::mutex> guard(batches_mu_);
     auto it = batches_.find(rpc_id);
     CHECK(it != batches_.end());
-    shard_routing::FinalizeBatchIfNeeded(
+    it->second.status_code = shard_routing::DecodeBatchStatus(
+        it->second, it->second.value_size > 0 ? it->second.value_size
+                                               : FLAGS_value_size);
+    if (it->second.status_code ==
+        static_cast<std::int32_t>(petps::RpcStatus::kOk)) {
+      shard_routing::MergeBatchRows(
+          &it->second,
+          it->second.value_size > 0 ? it->second.value_size : FLAGS_value_size);
+    }
+    shard_routing::WriteBatchStatus(
         &it->second,
         it->second.value_size > 0 ? it->second.value_size : FLAGS_value_size);
+    it->second.assembled = true;
   }
 }
 
