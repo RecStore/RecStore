@@ -15,9 +15,25 @@ TEST(PSClientFactoryTest, AllowsRdmaForFrameworkUsage) {
       {"distributed_client",
        {{"num_shards", 1},
         {"hash_method", "city_hash"},
+        {"max_keys_per_request", 1},
         {"servers",
          json::array(
              {{{"host", "127.0.0.1"}, {"port", 25000}, {"shard", 0}}})}}},
+      {"rdma_deployment",
+       {{"num_clients", 1},
+        {"nodes",
+         json::array({json{{"node_id", 0},
+                           {"role", "server"},
+                           {"device", "mlx5_0"},
+                           {"port", 1},
+                           {"gid_index", 0},
+                           {"mode", "ib"}},
+                      json{{"node_id", 1},
+                           {"role", "client"},
+                           {"device", "mlx5_0"},
+                           {"port", 1},
+                           {"gid_index", 0},
+                           {"mode", "ib"}}})}}},
   };
 
   EXPECT_EQ(ResolveFrameworkPSClientType(config), PSClientType::kRdma);

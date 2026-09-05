@@ -3,13 +3,15 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
-#include <stdexcept>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
 #include "base/array.h"
 #include "base/tensor.h"
+#include "base/json.h"
 #include "benchmark/ps/rdma_rc_transport_benchmark_values.h"
 #include "ps/rdma/rdma_ps_client_adapter.h"
 #include "ps/rdma/petps_client.h"
@@ -19,6 +21,8 @@
 DECLARE_int32(value_size);
 DECLARE_int32(global_id);
 DECLARE_int32(num_server_processes);
+DECLARE_int32(num_client_processes);
+DECLARE_int32(rdma_rc_client_id_base);
 DECLARE_int32(rdma_rc_qps_per_client_per_shard);
 DECLARE_int32(rdma_rc_slots_per_qp);
 DECLARE_string(rdma_get_response_mode);
@@ -83,9 +87,32 @@ void ExpectHashedFlatSlots(const float* buffer,
   }
 }
 
+recstore::ResolvedRdmaFabric TestFabric() {
+  const char* config_path = std::getenv("RECSTORE_CONFIG");
+  if (config_path == nullptr || *config_path == '\0') {
+    throw std::runtime_error(
+        "RECSTORE_CONFIG is required for RDMA integration");
+  }
+  const auto deployment =
+      recstore::ParseResolvedRdmaDeploymentConfig(ParseFile2Json(config_path));
+  return recstore::LocalRdmaFabric(deployment, FLAGS_global_id);
+}
+
 petps::PetPSClient& SingleShardClient() {
   static auto* client = []() {
-    auto* created = new petps::PetPSClient("127.0.0.1", 1234, 0);
+    const auto fabric = TestFabric();
+    const int logical_client_id =
+        FLAGS_rdma_rc_client_id_base >= 0
+            ? FLAGS_rdma_rc_client_id_base
+            : fabric.logical_id;
+    auto* created = new petps::PetPSClient(
+        "127.0.0.1",
+        1234,
+        0,
+        logical_client_id,
+        fabric,
+        1,
+        FLAGS_num_client_processes);
     created->InitThread();
     return created;
   }();
@@ -193,26 +220,21 @@ TEST(PetPSIntegrationTest, HashedValueBatchGetTransferSingleShard) {
 }
 
 TEST(PetPSIntegrationTest, AdapterSplitGetRoundTripMultiShard) {
-  const int embedding_dim       = FLAGS_value_size / sizeof(float);
-  json config                   = json::object();
-  config["cache_ps"]["ps_type"] = "RDMA";
-  config["cache_ps"]["base_kv_config"]["value"]["default_value_size_hint"] =
-      FLAGS_value_size;
-  config["client"] = json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}};
-  config["distributed_client"] = {
-      {"num_shards", 2},
-      {"hash_method", "simple_mod"},
-      {"max_keys_per_request", 2},
-      {"servers",
-       json::array(
-           {json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}},
-            json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 1}}})},
-  };
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  const char* config_path = std::getenv("RECSTORE_CONFIG");
+  ASSERT_NE(config_path, nullptr);
+  json config = ParseFile2Json(config_path);
+  ASSERT_TRUE(config.contains("distributed_client"));
   recstore::RDMAPSClientAdapter adapter(config);
+  ASSERT_EQ(adapter.InitEmbeddingTable(
+                "split_get",
+                recstore::EmbeddingTableConfig{
+                    10000000, static_cast<uint64_t>(embedding_dim)}),
+            0);
 
   std::vector<std::uint64_t> keys;
-  keys.reserve(10);
-  for (std::uint64_t key = 0; key < 10; ++key) {
+  keys.reserve(1000);
+  for (std::uint64_t key = 0; key < 1000; ++key) {
     keys.push_back(5000000ULL + key);
   }
   auto values = MakeValues(keys, embedding_dim);
@@ -233,26 +255,15 @@ TEST(PetPSIntegrationTest, AdapterSplitGetRoundTripMultiShard) {
 }
 
 TEST(PetPSIntegrationTest, AdapterFlatUpdateRoundTripMultiShard) {
-  const int embedding_dim       = FLAGS_value_size / sizeof(float);
-  json config                   = json::object();
-  config["cache_ps"]["ps_type"] = "RDMA";
-  config["cache_ps"]["base_kv_config"]["value"]["default_value_size_hint"] =
-      FLAGS_value_size;
-  config["client"] = json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}};
-  config["distributed_client"] = {
-      {"num_shards", 2},
-      {"hash_method", "simple_mod"},
-      {"max_keys_per_request", 2},
-      {"servers",
-       json::array(
-           {json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}},
-            json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 1}}})},
-  };
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  const char* config_path = std::getenv("RECSTORE_CONFIG");
+  ASSERT_NE(config_path, nullptr);
+  json config = ParseFile2Json(config_path);
   recstore::RDMAPSClientAdapter adapter(config);
   ASSERT_EQ(adapter.InitEmbeddingTable(
                 "flat_update",
-                recstore::EmbeddingTableConfig{10000000,
-                                               static_cast<uint64_t>(embedding_dim)}),
+                recstore::EmbeddingTableConfig{
+                    10000000, static_cast<uint64_t>(embedding_dim)}),
             0);
 
   std::vector<std::uint64_t> keys;
@@ -363,6 +374,11 @@ TEST(PetPSIntegrationTest, RepeatedPutGetStressMultiShard) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);
   const int client_id     = FLAGS_global_id - FLAGS_num_server_processes;
   ASSERT_GE(client_id, 0);
+  const auto fabric = TestFabric();
+  const int logical_client_id =
+      FLAGS_rdma_rc_client_id_base >= 0
+          ? FLAGS_rdma_rc_client_id_base
+          : fabric.logical_id;
 
   json config                   = json::object();
   config["cache_ps"]["ps_type"] = "RDMA";

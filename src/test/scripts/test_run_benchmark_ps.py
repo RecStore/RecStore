@@ -22,6 +22,7 @@ from tools.benchmarks.run_benchmark_ps import (  # noqa: E402
     parse_args,
     parse_csv_list,
     parse_client_plan,
+    parse_rdma_fabric_plan,
     parse_server_plan,
     recommended_dram_capacity_bytes,
     recommended_ssd_capacity_bytes,
@@ -189,6 +190,88 @@ class TestRunBenchmarkPS(unittest.TestCase):
             ssd_queue_depth=512,
         )
         self.assertEqual(config["cache_ps"]["ps_type"], "RDMA")
+        deployment = config["rdma_deployment"]
+        self.assertEqual(deployment["num_clients"], 1)
+        self.assertEqual(
+            [(node["node_id"], node["role"]) for node in deployment["nodes"]],
+            [(0, "server"), (1, "client")],
+        )
+
+    def test_build_runtime_config_aligns_rdma_nodes_with_topology(self):
+        topology = build_topology_plan(
+            "RDMA",
+            server_shard_ips=["server-a", "server-b"],
+            client_ips=["client-a", "client-b"],
+            client_processes_per_ip=2,
+            base_port=25000,
+        )
+        config = build_runtime_config(
+            transport="RDMA",
+            topology=topology,
+            capacity=1024,
+            value_size=64,
+            max_keys_per_request=64,
+            num_threads=2,
+            index_type="DRAM_PET_HASH",
+            value_store_type="DRAM_VALUE_STORE",
+            dram_allocator="PERSIST_LOOP_SLAB",
+            data_root="/tmp/rdma/value",
+            ssd_data_root="/tmp/rdma/ssd",
+            ssd_capacity_bytes=268435456,
+            ssd_io_backend="IOURING",
+            ssd_queue_depth=512,
+        )
+        nodes = config["rdma_deployment"]["nodes"]
+        self.assertEqual(config["rdma_deployment"]["num_clients"], 4)
+        self.assertEqual(
+            [(node["node_id"], node["role"]) for node in nodes],
+            [(0, "server"), (1, "server"), (2, "client"), (3, "client"),
+             (4, "client"), (5, "client")],
+        )
+
+    def test_build_runtime_config_rejects_non_dense_rdma_server_ids(self):
+        topology = build_topology_plan(
+            "RDMA",
+            server_shard_ips=["server-a"],
+            client_ips=["client-a"],
+            client_processes_per_ip=1,
+            base_port=25000,
+            server_plan="2:server-a:25000:0",
+        )
+        with self.assertRaisesRegex(ValueError, "dense"):
+            build_runtime_config(
+                transport="RDMA",
+                topology=topology,
+                capacity=1024,
+                value_size=64,
+                max_keys_per_request=64,
+                num_threads=2,
+                index_type="DRAM_PET_HASH",
+                value_store_type="DRAM_VALUE_STORE",
+                dram_allocator="PERSIST_LOOP_SLAB",
+                data_root="/tmp/rdma/value",
+                ssd_data_root="/tmp/rdma/ssd",
+                ssd_capacity_bytes=268435456,
+                ssd_io_backend="IOURING",
+                ssd_queue_depth=512,
+            )
+
+    def test_parse_rdma_fabric_plan_requires_all_nodes(self):
+        plan = parse_rdma_fabric_plan(
+            "0:mlx5_0:1:0:ib,1:mlx5_1:2:3:rocev1", 2
+        )
+        self.assertEqual(plan[1]["device"], "mlx5_1")
+        self.assertEqual(plan[1]["port"], 2)
+        with self.assertRaisesRegex(ValueError, "cover every"):
+            parse_rdma_fabric_plan("0:mlx5_0:1:0:ib", 2)
+
+    def test_parse_rdma_fabric_plan_requires_rocev2_network_fields(self):
+        with self.assertRaisesRegex(ValueError, "rocev2"):
+            parse_rdma_fabric_plan("0:mlx5_0:1:0:rocev2", 1)
+        plan = parse_rdma_fabric_plan(
+            "0:mlx5_0:1:0:rocev2:64:16:123", 1
+        )
+        self.assertEqual(plan[0]["hop_limit"], 64)
 
     def test_build_runtime_config_adds_slab_metadata_capacity(self):
         topology = build_topology_plan(

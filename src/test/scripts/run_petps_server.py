@@ -22,14 +22,24 @@ def infer_server_count(config_path):
     with resolve_repo_path(config_path).open() as fh:
         config = json.load(fh)
     distributed = config.get("distributed_client", {})
-    cache_ps = config.get("cache_ps", {})
-    return (
-        distributed.get("num_shards")
-        or cache_ps.get("num_shards")
-        or len(distributed.get("servers", []))
-        or len(cache_ps.get("servers", []))
-        or 1
-    )
+    deployment = config.get("rdma_deployment")
+    if not isinstance(distributed, dict) or not isinstance(deployment, dict):
+        raise ValueError(
+            "RDMA runner requires explicit distributed_client and rdma_deployment"
+        )
+    server_count = distributed.get("num_shards")
+    nodes = deployment.get("nodes")
+    if not isinstance(server_count, int) or server_count <= 0:
+        raise ValueError("RDMA runner requires positive distributed_client.num_shards")
+    if not isinstance(nodes, list) or not nodes:
+        raise ValueError("RDMA runner requires explicit rdma_deployment.nodes")
+    if not isinstance(deployment.get("deployment_id"), str) or not deployment["deployment_id"]:
+        raise ValueError("RDMA runner requires explicit rdma_deployment.deployment_id")
+    if not isinstance(deployment.get("epoch"), int) or deployment["epoch"] <= 0:
+        raise ValueError("RDMA runner requires positive rdma_deployment.epoch")
+    if deployment.get("protocol_version") != 1:
+        raise ValueError("RDMA runner requires protocol_version=1")
+    return server_count
 
 
 def main():
