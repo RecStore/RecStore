@@ -49,7 +49,7 @@ TEST(RDMAPSClientAdapterTest, ResolveEmbeddedIdentityFromTorchEnv) {
   ScopedEnvVar rank("RANK", "1");
   ScopedEnvVar world_size("WORLD_SIZE", "2");
 
-  const auto identity = ResolveEmbeddedRdmaClientIdentity(1);
+  const auto identity = ResolveEmbeddedRdmaClientIdentity(1, 2);
   EXPECT_EQ(identity.client_index, 1);
   EXPECT_EQ(identity.num_client_processes, 2);
   EXPECT_EQ(identity.global_id, 2);
@@ -61,7 +61,7 @@ TEST(RDMAPSClientAdapterTest, ResolveEmbeddedIdentityPrefersExplicitOverride) {
   ScopedEnvVar rank("RANK", "2");
   ScopedEnvVar world_size("WORLD_SIZE", "2");
 
-  const auto identity = ResolveEmbeddedRdmaClientIdentity(1);
+  const auto identity = ResolveEmbeddedRdmaClientIdentity(1, 3);
   EXPECT_EQ(identity.client_index, 0);
   EXPECT_EQ(identity.num_client_processes, 3);
   EXPECT_EQ(identity.global_id, 1);
@@ -71,7 +71,15 @@ TEST(RDMAPSClientAdapterTest, ResolveEmbeddedIdentityRejectsOutOfRangeIndex) {
   ScopedEnvVar rank("RANK", "2");
   ScopedEnvVar world_size("WORLD_SIZE", "2");
 
-  EXPECT_THROW(ResolveEmbeddedRdmaClientIdentity(1), std::runtime_error);
+  EXPECT_THROW(ResolveEmbeddedRdmaClientIdentity(1, 2), std::runtime_error);
+}
+
+TEST(RDMAPSClientAdapterTest,
+     ResolveEmbeddedIdentityRejectsDeploymentClientCountMismatch) {
+  ScopedEnvVar rank("RANK", "0");
+  ScopedEnvVar world_size("WORLD_SIZE", "2");
+
+  EXPECT_THROW(ResolveEmbeddedRdmaClientIdentity(1, 1), std::runtime_error);
 }
 
 TEST(RDMAPSClientAdapterTest, RuntimeReadsGetResponseModeFromEnv) {
@@ -83,10 +91,7 @@ TEST(RDMAPSClientAdapterTest, RuntimeReadsGetResponseModeFromEnv) {
 }
 
 TEST(RDMAPSClientAdapterTest, SingleShardClientRejectsUnknownRpcHandles) {
-  ResolvedRdmaFabric fabric;
-  fabric.role       = RdmaNodeRole::kClient;
-  fabric.logical_id = 0;
-  petps::PetPSClient client("127.0.0.1", 25000, 0, 0, fabric, 1, 1);
+  petps::PetPSClient client("127.0.0.1", 25000, 0, 0);
 
   EXPECT_THROW(client.QueryRPCFinished(7), std::runtime_error);
   EXPECT_THROW(client.WaitRPCFinish(7), std::runtime_error);
@@ -186,10 +191,10 @@ json FabricDeploymentConfig() {
 TEST(RDMAPSClientAdapterTest, EmptyWritesDoNotInitializeRdmaTransport) {
   RDMAPSClientAdapter adapter(FabricDeploymentConfig());
   const base::ConstArray<uint64_t> empty_keys(nullptr, 0);
-  const std::vector<std::vector<float>> empty_values;
+  base::RecTensor empty_values({0, 4}, base::DataType::FLOAT32);
 
   EXPECT_EQ(adapter.PutParameter(empty_keys, empty_values), 0);
-  EXPECT_EQ(adapter.UpdateParameter("table", empty_keys, &empty_values), 0);
+  EXPECT_EQ(adapter.UpdateParameter("table", empty_keys, empty_values), 0);
 }
 
 TEST(ResolvedRdmaDeploymentTest, RejectsNonPositiveShardAndRequestLimits) {

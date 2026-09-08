@@ -79,18 +79,20 @@ int RdmaDistributedExecutor::RegisterBatch(shard_routing::BatchRequest batch) {
 int RdmaDistributedExecutor::SubmitGetParameter(
     const std::vector<shard_routing::ShardChunk>& chunks,
     std::size_t total_key_count,
+    int value_size,
     float* values,
     bool is_async,
     int async_req_id,
     std::size_t max_in_flight) {
-  if (values == nullptr || max_in_flight == 0) {
+  if (values == nullptr || value_size <= 0 || max_in_flight == 0) {
     throw std::invalid_argument("invalid RDMA GET request");
   }
 
   shard_routing::BatchRequest batch;
   batch.user_buffer     = values;
   batch.total_key_count = total_key_count;
-  shard_routing::WriteBatchStatus(&batch, value_size_);
+  batch.value_size      = value_size;
+  shard_routing::WriteBatchStatus(&batch, value_size);
   batch.receive_buffers.reserve(chunks.size());
   batch.shard_rpcs.reserve(chunks.size());
   std::vector<shard_routing::PendingShardRpc> window;
@@ -120,7 +122,7 @@ int RdmaDistributedExecutor::SubmitGetParameter(
       }
       auto* client = ClientAt(chunk.client_index);
       batch.receive_buffers.emplace_back(
-          chunk.keys.size() * static_cast<std::size_t>(value_size_) +
+          chunk.keys.size() * static_cast<std::size_t>(value_size) +
               sizeof(std::int32_t),
           0);
       void* recv = batch.receive_buffers.back().data();
@@ -137,7 +139,7 @@ int RdmaDistributedExecutor::SubmitGetParameter(
           static_cast<float*>(recv),
           is_async,
           async_req_id,
-          value_size_ / static_cast<int>(sizeof(float)));
+          value_size / static_cast<int>(sizeof(float)));
       if (pending.rpc_id < 0) {
         throw std::runtime_error("failed to submit RDMA GET");
       }
@@ -168,11 +170,12 @@ bool RdmaDistributedExecutor::FinalizeBatch(
     return batch->status_code ==
            static_cast<std::int32_t>(petps::RpcStatus::kOk);
   }
-  batch->status_code = shard_routing::DecodeBatchStatus(*batch, value_size_);
+  batch->status_code =
+      shard_routing::DecodeBatchStatus(*batch, batch->value_size);
   if (batch->status_code == static_cast<std::int32_t>(petps::RpcStatus::kOk)) {
-    shard_routing::MergeBatchRows(batch, value_size_);
+    shard_routing::MergeBatchRows(batch, batch->value_size);
   }
-  shard_routing::WriteBatchStatus(batch, value_size_);
+  shard_routing::WriteBatchStatus(batch, batch->value_size);
   batch->assembled = true;
   return batch->status_code == static_cast<std::int32_t>(petps::RpcStatus::kOk);
 }
@@ -228,6 +231,7 @@ std::uint64_t RdmaDistributedExecutor::SubmitPrefetch(
     const std::vector<shard_routing::ShardChunk>& chunks,
     std::size_t key_count,
     std::int64_t embedding_dim,
+    int value_size,
     std::size_t max_in_flight) {
   if (key_count == 0 || embedding_dim <= 0) {
     throw std::invalid_argument("invalid RDMA prefetch request");
@@ -236,7 +240,7 @@ std::uint64_t RdmaDistributedExecutor::SubmitPrefetch(
       key_count * static_cast<std::size_t>(embedding_dim);
   auto buffer = std::make_shared<std::vector<float>>(value_count + 1, 0.0f);
   const int batch_id = SubmitGetParameter(
-      chunks, key_count, buffer->data(), true, 0, max_in_flight);
+      chunks, key_count, value_size, buffer->data(), true, 0, max_in_flight);
   std::lock_guard<std::mutex> guard(prefetches_mu_);
   const std::uint64_t prefetch_id = next_prefetch_id_++;
   prefetches_.emplace(
@@ -244,7 +248,8 @@ std::uint64_t RdmaDistributedExecutor::SubmitPrefetch(
       PendingPrefetch{buffer,
                       batch_id,
                       static_cast<std::int64_t>(key_count),
-                      embedding_dim});
+                      embedding_dim,
+                      value_size});
   return prefetch_id;
 }
 
@@ -294,10 +299,10 @@ RdmaDistributedExecutor::ReadPrefetch(std::uint64_t prefetch_id) {
     const auto* status_word = petps::FixedSlotStatusWord(
         state.buffer->data(),
         static_cast<std::size_t>(state.key_count),
-        value_size_);
+        state.value_size);
     result.status_code    = *status_word;
     result.response_bytes = static_cast<std::size_t>(state.key_count) *
-                            static_cast<std::size_t>(value_size_);
+                            static_cast<std::size_t>(state.value_size);
     result.payload = state.buffer->data();
   }
   return result;

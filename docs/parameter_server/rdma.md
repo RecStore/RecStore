@@ -34,9 +34,9 @@ RecStore 有两条 RDMA 入口：
 - Op-layer / Python client 使用环境变量和测试配置。
 - 不要将某个 runner 的参数复制到另一条入口。
 
-Op-layer RDMA 目前不是 gRPC/bRPC 的完整替代：`AsyncGetParameter` 和 `Command`
-尚未实现，`UpdateParameter` 使用同步 read-modify-write。它主要用于 correctness /
-integration，而不是完整性能替代路径。
+Op-layer RDMA 目前不是 gRPC/bRPC 的完整替代：`AsyncGetParameter` 已复用统一的
+`RdmaDistributedExecutor`，`Command` 当前只通过首个 shard 的 `Barrier` 提供同步语义；
+它主要用于 correctness / integration，而不是完整性能替代路径。
 
 ## 2. 架构
 

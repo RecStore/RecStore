@@ -10,6 +10,8 @@
 
 #include "base/json.h"
 #include "ps/base/base_client.h"
+#include "ps/rdma/rdma_deployment.h"
+#include "ps/rdma/rdma_distributed_executor.h"
 #include "ps/rdma/petps_client.h"
 #include "ps/rdma/shard_routing.h"
 
@@ -22,7 +24,8 @@ struct EmbeddedRdmaClientIdentity {
 };
 
 // Derives per-process RDMA mesh identity for embedded PyTorch clients.
-EmbeddedRdmaClientIdentity ResolveEmbeddedRdmaClientIdentity(int num_shards);
+EmbeddedRdmaClientIdentity
+ResolveEmbeddedRdmaClientIdentity(int num_shards, int configured_num_clients);
 
 void InitializeRdmaProcessRuntime();
 
@@ -63,23 +66,7 @@ private:
     int tag = 0;
   };
 
-  using PendingShardRpc = shard_routing::PendingShardRpc;
-  using BatchRequest    = shard_routing::BatchRequest;
-  using ShardChunk      = shard_routing::ShardChunk;
-
-  struct PrefetchState {
-    std::shared_ptr<std::vector<float>> buffer;
-    int rpc_id             = -1;
-    int64_t key_count      = 0;
-    int64_t embedding_dim  = 0;
-    bool borrowed_response = false;
-    bool batch_response    = false;
-  };
-
-  struct PendingUpdate {
-    std::vector<std::pair<int, int>> shard_rpcs;
-    std::thread::id owner;
-  };
+  using ShardChunk = shard_routing::ShardChunk;
 
   void EnsureClientInitialized();
   void EnsureThreadInitialized();
@@ -91,8 +78,6 @@ private:
   std::size_t MaxInFlightGetRpcs() const;
   std::vector<ShardChunk> BuildChunks(base::ConstArray<uint64_t> keys,
                                       std::size_t max_keys_per_rpc) const;
-  void
-  WaitShardRpcsCooperatively(const std::vector<PendingShardRpc>& shard_rpcs);
   int SubmitGetParameter(base::ConstArray<uint64_t> keys,
                          float* values,
                          bool isAsync,
@@ -101,11 +86,6 @@ private:
   bool QueryRPCFinished(int rpc_id);
   void WaitRPCFinish(int rpc_id);
   void RevokeRPCResource(int rpc_id);
-  const float* BorrowPrefetchResult(const PrefetchState& state,
-                                    std::int32_t* status_code,
-                                    std::size_t* response_bytes);
-  PrefetchState GetPrefetchState(uint64_t prefetch_id);
-  void MarkPrefetchConsumed(uint64_t prefetch_id);
 
   json config_;
   std::mutex init_mu_;
@@ -113,25 +93,12 @@ private:
   mutable std::mutex state_mu_;
   bool initialized_ = false;
   std::unordered_set<std::thread::id> initialized_threads_;
+  ResolvedRdmaDeployment deployment_;
   std::vector<std::unique_ptr<petps::PetPSClient>> shard_clients_;
   petps::PetPSClient* client_ = nullptr;
-  int num_shards_              = 1;
-  std::string hash_method_     = "city_hash";
-  std::unordered_map<int, int> shard_to_client_index_;
-  int batch_rpc_id_acc_ = -1;
-  mutable std::mutex batches_mu_;
-  std::unordered_map<int, BatchRequest> batches_;
   std::unordered_map<std::string, TableState> tables_;
   std::unordered_map<int, int64_t> tag_to_dim_;
-  std::unordered_map<uint64_t, PrefetchState> prefetches_;
-  // Reusable prefetch response buffers. A prefetch allocates ~MBs of host
-  // memory (mmap + zero-fill + page faults) every batch on the submit path;
-  // pooling the buffer across batches removes that from before_lookup. The
-  // result is copied out at consume time so the adapter keeps ownership.
-  std::vector<std::shared_ptr<std::vector<float>>> prefetch_buffer_pool_;
-  uint64_t next_prefetch_id_ = 1;
-  std::unordered_map<uint64_t, PendingUpdate> pending_updates_;
-  uint64_t next_update_id_ = 1;
+  std::unique_ptr<RdmaDistributedExecutor> executor_;
 };
 
 // Friend accessor for the low-level RDMA benchmarks. Forwards the adapter's

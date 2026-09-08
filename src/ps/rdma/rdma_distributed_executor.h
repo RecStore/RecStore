@@ -37,6 +37,7 @@ public:
   int SubmitGetParameter(
       const std::vector<shard_routing::ShardChunk>& chunks,
       std::size_t total_key_count,
+      int value_size,
       float* values,
       bool is_async,
       int async_req_id,
@@ -65,6 +66,7 @@ public:
   SubmitPrefetch(const std::vector<shard_routing::ShardChunk>& chunks,
                  std::size_t key_count,
                  std::int64_t embedding_dim,
+                 int value_size,
                  std::size_t max_in_flight);
   bool IsPrefetchDone(std::uint64_t prefetch_id);
   void WaitForPrefetch(std::uint64_t prefetch_id);
@@ -83,6 +85,7 @@ private:
     int batch_id               = 0;
     std::int64_t key_count     = 0;
     std::int64_t embedding_dim = 0;
+    int value_size             = 0;
   };
 
   petps::PetPSClient* ClientAt(int client_index) const;
