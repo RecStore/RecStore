@@ -31,9 +31,8 @@ namespace {
 
 base::RecTensor
 MakeValues(const std::vector<std::uint64_t>& keys, int embedding_dim) {
-  base::RecTensor values(
-      {static_cast<int64_t>(keys.size()), embedding_dim},
-      base::DataType::FLOAT32);
+  base::RecTensor values({static_cast<int64_t>(keys.size()), embedding_dim},
+                         base::DataType::FLOAT32);
   float* dst = values.data_as<float>();
   for (std::size_t row = 0; row < keys.size(); ++row) {
     for (int d = 0; d < embedding_dim; ++d) {
@@ -44,24 +43,22 @@ MakeValues(const std::vector<std::uint64_t>& keys, int embedding_dim) {
   return values;
 }
 
-void ExpectFlatSlots(const float* buffer,
-                     const base::RecTensor& expected,
-                     int embedding_dim) {
-  const float* src = expected.data_as<float>();
+void ExpectFlatSlots(
+    const float* buffer, const base::RecTensor& expected, int embedding_dim) {
+  const float* src   = expected.data_as<float>();
   const int64_t rows = expected.shape(0);
   for (int64_t row = 0; row < rows; ++row) {
     for (int col = 0; col < embedding_dim; ++col) {
-      EXPECT_FLOAT_EQ(buffer[row * embedding_dim + col],
-                      src[row * embedding_dim + col]);
+      EXPECT_FLOAT_EQ(
+          buffer[row * embedding_dim + col], src[row * embedding_dim + col]);
     }
   }
 }
 
 base::RecTensor
 MakeHashedValues(const std::vector<std::uint64_t>& keys, int embedding_dim) {
-  base::RecTensor values(
-      {static_cast<int64_t>(keys.size()), embedding_dim},
-      base::DataType::FLOAT32);
+  base::RecTensor values({static_cast<int64_t>(keys.size()), embedding_dim},
+                         base::DataType::FLOAT32);
   float* dst = values.data_as<float>();
   for (std::size_t row = 0; row < keys.size(); ++row) {
     for (int col = 0; col < embedding_dim; ++col) {
@@ -105,14 +102,8 @@ petps::PetPSClient& SingleShardClient() {
         FLAGS_rdma_rc_client_id_base >= 0
             ? FLAGS_rdma_rc_client_id_base
             : fabric.logical_id;
-    auto* created = new petps::PetPSClient(
-        "127.0.0.1",
-        1234,
-        0,
-        logical_client_id,
-        fabric,
-        1,
-        FLAGS_num_client_processes);
+    auto* created =
+        new petps::PetPSClient("127.0.0.1", 1234, 0, logical_client_id);
     created->InitThread();
     return created;
   }();
@@ -245,11 +236,9 @@ TEST(PetPSIntegrationTest, AdapterSplitGetRoundTripMultiShard) {
   std::vector<float> output(
       keys.size() * static_cast<std::size_t>(embedding_dim), 0.0f);
   base::RecTensor output_t(
-      output.data(),
-      {static_cast<int64_t>(keys.size()), embedding_dim});
-  ASSERT_EQ(adapter.GetParameter(
-                base::ConstArray<std::uint64_t>(keys), output_t),
-            0);
+      output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
+  ASSERT_EQ(
+      adapter.GetParameter(base::ConstArray<std::uint64_t>(keys), output_t), 0);
 
   ExpectFlatSlots(output.data(), values, embedding_dim);
 }
@@ -278,8 +267,7 @@ TEST(PetPSIntegrationTest, AdapterFlatUpdateRoundTripMultiShard) {
   }
 
   base::RecTensor grads_t(
-      grads.data(),
-      {static_cast<int64_t>(keys.size()), embedding_dim});
+      grads.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
   const uint64_t update_id = adapter.SubmitUpdateParameterAsync(
       "flat_update", base::ConstArray<std::uint64_t>(keys), grads_t);
   ASSERT_GT(update_id, 0);
@@ -288,11 +276,9 @@ TEST(PetPSIntegrationTest, AdapterFlatUpdateRoundTripMultiShard) {
 
   std::vector<float> output(grads.size(), 0.0f);
   base::RecTensor output_t(
-      output.data(),
-      {static_cast<int64_t>(keys.size()), embedding_dim});
-  ASSERT_EQ(adapter.GetParameter(
-                base::ConstArray<std::uint64_t>(keys), output_t),
-            0);
+      output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
+  ASSERT_EQ(
+      adapter.GetParameter(base::ConstArray<std::uint64_t>(keys), output_t), 0);
   for (std::size_t index = 0; index < grads.size(); ++index) {
     EXPECT_FLOAT_EQ(output[index], -0.01f * grads[index]);
   }
@@ -394,6 +380,31 @@ TEST(PetPSIntegrationTest, RepeatedPutGetStressMultiShard) {
            {json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}},
             json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 1}}})},
   };
+  config["rdma_deployment"] = {
+      {"deployment_id", "rdma-multishard-inline-test"},
+      {"epoch", 1},
+      {"protocol_version", 1},
+      {"num_clients", FLAGS_num_client_processes},
+      {"nodes", json::array()},
+  };
+  for (int shard = 0; shard < 2; ++shard) {
+    config["rdma_deployment"]["nodes"].push_back(json{
+        {"node_id", shard},
+        {"role", "server"},
+        {"device", "mlx5_0"},
+        {"port", 1},
+        {"gid_index", 0},
+        {"mode", "ib"}});
+  }
+  for (int client = 0; client < FLAGS_num_client_processes; ++client) {
+    config["rdma_deployment"]["nodes"].push_back(json{
+        {"node_id", 2 + client},
+        {"role", "client"},
+        {"device", "mlx5_0"},
+        {"port", 1},
+        {"gid_index", 0},
+        {"mode", "ib"}});
+  }
   recstore::RDMAPSClientAdapter adapter(config);
 
   for (int round = 0; round < 50; ++round) {
@@ -415,9 +426,9 @@ TEST(PetPSIntegrationTest, RepeatedPutGetStressMultiShard) {
         keys.size() * static_cast<std::size_t>(embedding_dim), 0.0f);
     base::RecTensor output_t(
         output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
-    ASSERT_EQ(adapter.GetParameter(base::ConstArray<std::uint64_t>(keys),
-                                   output_t),
-              0)
+    ASSERT_EQ(
+        adapter.GetParameter(base::ConstArray<std::uint64_t>(keys), output_t),
+        0)
         << "round=" << round;
 
     ExpectFlatSlots(output.data(), values, embedding_dim);

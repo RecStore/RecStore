@@ -197,9 +197,8 @@ ResolveEmbeddedRdmaClientIdentity(int num_shards, int configured_num_clients) {
   return identity;
 }
 
-std::vector<RDMAPSClientAdapter::ShardChunk>
-RDMAPSClientAdapter::BuildChunks(base::ConstArray<uint64_t> keys,
-                                 std::size_t max_keys_per_rpc) const {
+std::vector<RDMAPSClientAdapter::ShardChunk> RDMAPSClientAdapter::BuildChunks(
+    base::ConstArray<uint64_t> keys, std::size_t max_keys_per_rpc) const {
   return shard_routing::BuildChunks(
       keys,
       deployment_.num_shards,
@@ -294,14 +293,11 @@ void RDMAPSClientAdapter::EnsureClientInitialized() {
         client_cfg.value("port", 25000),
         client_cfg.value("shard", 0),
         logical_client_id));
-    client_                   = shard_clients_.front().get();
+    client_ = shard_clients_.front().get();
   } else {
     for (const auto& endpoint : deployment_.endpoints) {
       shard_clients_.push_back(std::make_unique<petps::PetPSClient>(
-          endpoint.host,
-          endpoint.port,
-          endpoint.shard,
-          logical_client_id));
+          endpoint.host, endpoint.port, endpoint.shard, logical_client_id));
     }
   }
 
@@ -309,7 +305,8 @@ void RDMAPSClientAdapter::EnsureClientInitialized() {
       [&]() {
         std::vector<petps::PetPSClient*> clients;
         clients.reserve(shard_clients_.size());
-        for (auto& client : shard_clients_) clients.push_back(client.get());
+        for (auto& client : shard_clients_)
+          clients.push_back(client.get());
         return clients;
       }(),
       FLAGS_value_size,
@@ -442,7 +439,7 @@ int RDMAPSClientAdapter::SubmitGetParameter(
   EnsureThreadInitialized();
   if (keys.Size() == 0) {
     auto* status = reinterpret_cast<std::int32_t*>(values);
-    *status = static_cast<std::int32_t>(petps::RpcStatus::kOk);
+    *status      = static_cast<std::int32_t>(petps::RpcStatus::kOk);
     return 0;
   }
   const int value_size =
@@ -476,8 +473,7 @@ int RDMAPSClientAdapter::GetParameter(const base::ConstArray<uint64_t>& keys,
       (response_bytes + sizeof(float) - 1) / sizeof(float), 0.0f);
   float* recv = recv_storage.data();
 
-  const int rpc_id =
-      SubmitGetParameter(keys, recv, false, 0, embedding_dim);
+  const int rpc_id = SubmitGetParameter(keys, recv, false, 0, embedding_dim);
   WaitRPCFinish(rpc_id);
   const auto* status_word =
       petps::FixedSlotStatusWord(recv, keys.Size(), value_size);
@@ -486,16 +482,15 @@ int RDMAPSClientAdapter::GetParameter(const base::ConstArray<uint64_t>& keys,
     return -1;
   }
 
-  std::memcpy(
-      values.data_as<float>(),
-      recv,
-      keys.Size() * static_cast<std::size_t>(value_size));
+  std::memcpy(values.data_as<float>(),
+              recv,
+              keys.Size() * static_cast<std::size_t>(value_size));
   RevokeRPCResource(rpc_id);
   return 0;
 }
 
-int RDMAPSClientAdapter::PutParameter(
-    const base::ConstArray<uint64_t>& keys, const base::RecTensor& values) {
+int RDMAPSClientAdapter::PutParameter(const base::ConstArray<uint64_t>& keys,
+                                      const base::RecTensor& values) {
   if (!IsFloatEmbeddingValues(values, static_cast<int64_t>(keys.Size()))) {
     return -1;
   }
@@ -507,10 +502,12 @@ int RDMAPSClientAdapter::PutParameter(
       BuildChunks(keys, MaxPutKeysPerRpc(values.shape(1))), values);
 }
 
-int RDMAPSClientAdapter::UpdateParameter(
-    const std::string& table_name,
-    const base::ConstArray<uint64_t>& keys,
-    const base::RecTensor& grads) {
+int RDMAPSClientAdapter::UpdateParameter(const std::string& table_name,
+                                         const base::ConstArray<uint64_t>& keys,
+                                         const base::RecTensor& grads) {
+  if (keys.Size() == 0) {
+    return 0;
+  }
   return WaitUpdateParameter(
       SubmitUpdateParameterAsync(table_name, keys, grads));
 }
@@ -547,7 +544,10 @@ int RDMAPSClientAdapter::InitEmbeddingTable(
   int tag = -1;
   for (auto& shard_client : shard_clients_) {
     const int rc = shard_client->InitEmbeddingTable(
-        table_name, config.num_embeddings, config.embedding_dim, config.table_id);
+        table_name,
+        config.num_embeddings,
+        config.embedding_dim,
+        config.table_id);
     if (rc < 0) {
       return rc;
     }
@@ -560,10 +560,9 @@ int RDMAPSClientAdapter::InitEmbeddingTable(
   std::lock_guard<std::mutex> guard(state_mu_);
   const auto [it, inserted] =
       tables_.emplace(table_name, TableState{config, tag});
-  if (!inserted &&
-      (it->second.config.embedding_dim != config.embedding_dim ||
-       it->second.config.num_embeddings != config.num_embeddings ||
-       it->second.tag != tag)) {
+  if (!inserted && (it->second.config.embedding_dim != config.embedding_dim ||
+                    it->second.config.num_embeddings != config.num_embeddings ||
+                    it->second.tag != tag)) {
     return -1;
   }
   tag_to_dim_[tag] = static_cast<int64_t>(config.embedding_dim);
@@ -612,9 +611,9 @@ void RDMAPSClientAdapter::WaitForPrefetch(uint64_t prefetch_id) {
   executor_->WaitForPrefetch(prefetch_id);
 }
 
-bool RDMAPSClientAdapter::GetPrefetchResult(
-    uint64_t prefetch_id, base::RecTensor& values) {
-  const auto result = executor_->ReadPrefetch(prefetch_id);
+bool RDMAPSClientAdapter::GetPrefetchResult(uint64_t prefetch_id,
+                                            base::RecTensor& values) {
+  const auto result  = executor_->ReadPrefetch(prefetch_id);
   const bool discard = values.data() == nullptr && values.dim() == 0;
   if (!discard && !EnsureEmbeddingOutput(values, result.key_count)) {
     executor_->ReleasePrefetch(prefetch_id);

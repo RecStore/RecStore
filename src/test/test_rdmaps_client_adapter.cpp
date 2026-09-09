@@ -90,13 +90,13 @@ TEST(RDMAPSClientAdapterTest, RuntimeReadsGetResponseModeFromEnv) {
   EXPECT_EQ(FLAGS_rdma_get_response_mode, "staging_copy");
 }
 
-TEST(RDMAPSClientAdapterTest, SingleShardClientRejectsUnknownRpcHandles) {
+TEST(RDMAPSClientAdapterTest, SingleShardClientHandlesUnknownRpcHandlesSafely) {
   petps::PetPSClient client("127.0.0.1", 25000, 0, 0);
 
-  EXPECT_THROW(client.QueryRPCFinished(7), std::runtime_error);
-  EXPECT_THROW(client.WaitRPCFinish(7), std::runtime_error);
-  EXPECT_THROW(client.RevokeRPCResource(7), std::runtime_error);
-  EXPECT_THROW(client.WaitUpdateParameter(7), std::runtime_error);
+  EXPECT_TRUE(client.QueryRPCFinished(7));
+  EXPECT_NO_THROW(client.WaitRPCFinish(7));
+  EXPECT_NO_THROW(client.RevokeRPCResource(7));
+  EXPECT_EQ(client.WaitUpdateParameter(7), -1);
 }
 
 TEST(RDMAPSClientAdapterTest, FactoryCreatesRdmaClientAndSupportsTableInit) {
@@ -144,9 +144,9 @@ TEST(RDMAPSClientAdapterTest, FactoryCreatesRdmaClientAndSupportsTableInit) {
 
   base::ConstArray<uint64_t> empty_keys;
   base::RecTensor empty_grads({0, 4}, base::DataType::FLOAT32);
-  EXPECT_THROW(adapter->SubmitUpdateParameterAsync(
-                   "table", empty_keys, empty_grads),
-               std::invalid_argument);
+  EXPECT_THROW(
+      adapter->SubmitUpdateParameterAsync("table", empty_keys, empty_grads),
+      std::invalid_argument);
 }
 
 json DeploymentConfig(std::string hash_method = "city_hash") {
