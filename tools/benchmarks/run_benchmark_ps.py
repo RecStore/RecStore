@@ -332,6 +332,7 @@ def build_runtime_config(
     ssd_capacity_bytes: int,
     ssd_io_backend: str,
     ssd_queue_depth: int,
+    rdma_fabric_plan: dict[int, dict] | None = None,
 ) -> dict:
     capacity_bytes = recommended_dram_capacity_bytes(
         capacity=capacity,
@@ -379,7 +380,91 @@ def build_runtime_config(
             "shard": topology.server_plan[0].shard,
         },
     }
+    if transport == "RDMA":
+        # RDMA startup consumes one explicit deployment contract. Keep the
+        # generated benchmark config self-contained and aligned with the
+        # process topology instead of relying on legacy flags.
+        server_count = len(topology.server_plan)
+        expected_server_ids = list(range(server_count))
+        actual_server_ids = [server.server_index for server in topology.server_plan]
+        actual_shards = [server.shard for server in topology.server_plan]
+        if actual_server_ids != expected_server_ids or actual_shards != expected_server_ids:
+            raise ValueError(
+                "RDMA server plan must use dense server_index and shard ids "
+                "0..num_shards-1"
+            )
+        config["rdma_deployment"] = {
+            "deployment_id": "benchmark-ps-rdma",
+            "epoch": 1,
+            "protocol_version": 1,
+            "num_clients": len(topology.client_plan),
+            "nodes": [],
+        }
+        nodes = []
+        for server in topology.server_plan:
+            node_id = server.server_index
+            fabric = (rdma_fabric_plan or {}).get(node_id, {})
+            nodes.append({"node_id": node_id, "role": "server", **fabric})
+        for client in topology.client_plan:
+            node_id = server_count + client.client_index
+            fabric = (rdma_fabric_plan or {}).get(node_id, {})
+            nodes.append({"node_id": node_id, "role": "client", **fabric})
+        for node in nodes:
+            node.setdefault("device", "mlx5_0")
+            node.setdefault("port", 1)
+            node.setdefault("gid_index", 0)
+            node.setdefault("mode", "ib")
+        config["rdma_deployment"]["nodes"] = nodes
     return config
+
+
+def parse_rdma_fabric_plan(value: str, node_count: int) -> dict[int, dict]:
+    """Parse node_id:device:port:gid_index:mode[:hop_limit:traffic_class:flow_label]."""
+    if not value:
+        return {}
+    if node_count <= 0:
+        raise ValueError("RDMA fabric plan requires a positive node count")
+    result = {}
+    for item in parse_csv_list(value):
+        parts = item.split(":")
+        if len(parts) not in (5, 8):
+            raise ValueError(
+                "rdma_fabric_plan entries must be "
+                "node_id:device:port:gid_index:mode or include RoCE v2 fields"
+            )
+        node_id, device, port, gid_index, mode = parts[:5]
+        node_id = int(node_id)
+        if node_id in result or node_id < 0 or node_id >= node_count:
+            raise ValueError("rdma_fabric_plan node ids must be unique and dense")
+        if not device or mode not in {"ib", "rocev1", "rocev2"}:
+            raise ValueError("rdma_fabric_plan has invalid device or mode")
+        fabric = {
+            "device": device,
+            "port": int(port),
+            "gid_index": int(gid_index),
+            "mode": mode,
+        }
+        if fabric["port"] < 1 or fabric["port"] > 255 or fabric["gid_index"] < 0:
+            raise ValueError("rdma_fabric_plan port/gid_index is out of range")
+        if mode == "rocev2":
+            if len(parts) != 8:
+                raise ValueError(
+                    "rocev2 rdma_fabric_plan entries require hop_limit, "
+                    "traffic_class, and flow_label"
+                )
+            fabric.update(
+                hop_limit=int(parts[5]),
+                traffic_class=int(parts[6]),
+                flow_label=int(parts[7]),
+            )
+            if not 1 <= fabric["hop_limit"] <= 255 or not 0 <= fabric["traffic_class"] <= 255 or not 0 <= fabric["flow_label"] <= 0xFFFFF:
+                raise ValueError("rdma_fabric_plan RoCE v2 fields are out of range")
+        elif len(parts) != 5:
+            raise ValueError("RoCE v1/IB fabric entries do not accept v2 fields")
+        result[node_id] = fabric
+    if set(result) != set(range(node_count)):
+        raise ValueError("rdma_fabric_plan must cover every dense node id")
+    return result
 
 
 def recommended_ssd_capacity_bytes(*, capacity: int, value_size: int) -> int:
@@ -2146,6 +2231,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rdma-namespace", default="auto")
     parser.add_argument("--rdma-control-plane-host", default="")
     parser.add_argument("--rdma-control-plane-port", type=int)
+    parser.add_argument(
+        "--rdma-fabric-plan",
+        default="",
+        help=(
+            "Per-node RDMA fabric entries: "
+            "node_id:device:port:gid_index:mode; RoCE v2 adds "
+            ":hop_limit:traffic_class:flow_label."
+        ),
+    )
     parser.add_argument("--rdma-wait-timeout-ms", type=int)
     parser.add_argument("--rdma-rc-qps-per-client-per-shard", type=int)
     parser.add_argument("--rdma-rc-slots-per-qp", type=int)
@@ -2354,6 +2448,14 @@ def main() -> int:
                 ssd_capacity_bytes=ssd_capacity_bytes,
                 ssd_io_backend=args.ssd_io_backend,
                 ssd_queue_depth=args.ssd_queue_depth,
+                rdma_fabric_plan=(
+                    parse_rdma_fabric_plan(
+                        args.rdma_fabric_plan,
+                        len(topology.server_plan) + len(topology.client_plan),
+                    )
+                    if transport == "RDMA"
+                    else None
+                ),
             )
             config["cache_ps"]["base_kv_config"]["value"]["dram_allocator"][
                 "capacity_bytes"

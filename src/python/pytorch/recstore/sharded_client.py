@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import ctypes.util
 import json
 import struct
 from dataclasses import dataclass
@@ -87,7 +88,10 @@ def _load_cache_servers(cache_cfg: dict) -> list[ShardServer]:
 
 
 def _load_hash_method(distributed_cfg: dict) -> str:
-    return str(distributed_cfg.get("hash_method", "city_hash"))
+    method = str(distributed_cfg.get("hash_method", "city_hash"))
+    if method not in {"city_hash", "simple_mod"}:
+        raise ValueError(f"unsupported shard hash method: {method}")
+    return method
 
 
 def _load_max_keys_per_request(distributed_cfg: dict) -> int:
@@ -106,15 +110,28 @@ def _get_cityhash64_func():
     global _CITYHASH_LIB_HANDLE, _CITYHASH64_FUNC
     if _CITYHASH64_FUNC is not None:
         return _CITYHASH64_FUNC
-    lib_path = Path(__file__).resolve().parents[4] / "third_party/cityhash/src/.libs/libcityhash.so.0.0.0"
-    try:
-        _CITYHASH_LIB_HANDLE = ctypes.CDLL(str(lib_path))
-    except OSError as exc:
-        raise RuntimeError(f"failed to load cityhash library: {lib_path}") from exc
+    repo_lib = (
+        Path(__file__).resolve().parents[4]
+        / "third_party/cityhash/src/.libs/libcityhash.so.0.0.0"
+    )
+    system_lib = ctypes.util.find_library("cityhash")
+    candidates = [str(repo_lib)]
+    if system_lib:
+        candidates.append(system_lib)
+    for candidate in candidates:
+        try:
+            _CITYHASH_LIB_HANDLE = ctypes.CDLL(candidate)
+            break
+        except OSError:
+            continue
+    if _CITYHASH_LIB_HANDLE is None:
+        raise RuntimeError(
+            "failed to load cityhash library: " + ", ".join(candidates)
+        )
     try:
         func = _CITYHASH_LIB_HANDLE._Z10CityHash64PKcm
     except AttributeError as exc:
-        raise RuntimeError(f"missing CityHash64 symbol in library: {lib_path}") from exc
+        raise RuntimeError("missing CityHash64 symbol in cityhash library") from exc
     func.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
     func.restype = ctypes.c_uint64
     _CITYHASH64_FUNC = func

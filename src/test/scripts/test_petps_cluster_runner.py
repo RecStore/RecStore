@@ -101,6 +101,7 @@ class TestPetPSClusterRunner(unittest.TestCase):
         runner = PetPSClusterRunner(validate_routing=True)
         env = runner.build_env()
         self.assertEqual(env["RECSTORE_RDMA_VALIDATE_ROUTING"], "1")
+        self.assertEqual(env["RECSTORE_CONFIG"], str(runner.config_path))
         self.assertNotIn("RECSTORE_MEMCACHED_HOST", env)
 
     def test_build_env_supports_bind_core_offset(self):

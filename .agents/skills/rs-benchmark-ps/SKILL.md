@@ -74,6 +74,20 @@ Workload profiles:
 | `fair-small` | 10000 | 128 | 64 | 1 | 1 | RDMA/GRPC/BRPC with aligned client threads |
 | `rdma-capacity` | 1000000 | 512 | 500 | 5 | 1 | Current PET_HASH RDMA GET capacity lane |
 
+### LOCAL_SHM comparison lane
+
+`run_benchmark_ps.py` covers RDMA/GRPC/BRPC. For a same-host PS/network
+comparison against RecStore's shared-memory transport, use
+`tools/benchmarks/run_ps_dram_transport_benchmark.py` with
+`--transports LOCAL_SHM --backends dram_pet_dram`. Keep the PET_HASH workload
+aligned where possible (value size, batch size, capacity, runtime, client
+process/thread counts, and DRAM allocator), and read the aggregate row from
+`ps_dram_transport_benchmark.csv` / the printed `M keys/s` summary. LOCAL_SHM
+is a local-only transport observation: do not present it as a cross-host
+architecture comparison. Check per-process rows and CPU binding because the
+runner can expose ready-queue and shared-core contention that materially
+changes aggregate throughput.
+
 Concurrency defaults:
 
 - RPC small comparison: `client-processes-per-ip=1`,
@@ -204,6 +218,51 @@ ctest --test-dir build -L rdma_integration -VV
 If `ctest` returns skip code `77`, report the skip reason instead of treating
 it as a pass.
 
+## RDMA Integration and Op-layer Validation
+
+Use these checks when validating the PetPS integration or Python/op-layer
+wrapper. They are correctness checks, not throughput measurements.
+
+PetPS single-shard integration:
+
+```bash
+python3 src/test/scripts/run_petps_integration.py \
+  --server-count 1 \
+  --config-path ./src/test/configs/recstore_config.rdma_test.json \
+  --test-binary ./build/bin/petps_integration_test \
+  --gtest-filter=PetPSIntegrationTest.PutGetRoundTripSingleShard:PetPSIntegrationTest.UpdateGetRoundTripSingleShard \
+  --rdma-control-plane-host=127.0.0.1 \
+  --show-runner-logs \
+  --client-timeout=20 \
+  --cluster-timeout=35
+```
+
+For multi-shard routing, use `recstore_config.rdma_multishard_test.json`,
+`--server-count 2`, and the `PutGetRoundTripMultiShard` filter. Verify
+`distributed_client.num_shards`, `distributed_client.servers`, server count,
+and key-to-shard routing before diagnosing transport behavior.
+
+Op-layer and PyTorch wrapper checks use
+`src/test/configs/recstore_config.op_rdma.json`:
+
+```bash
+ctest --test-dir ./build -R '^test_op_runtime_support$|^test_op$' -VV
+ctest --test-dir ./build -R '^pytorch_client_test_rdma_basic$' -VV
+ctest --test-dir ./build -R '^pytorch_client_test_rdma$|^pytorch_client_test_rdma_auto$' -VV
+```
+
+Script plumbing checks:
+
+```bash
+python3 -m unittest src/test/scripts/test_petps_cluster_runner.py
+python3 -m unittest src/test/scripts/test_run_rdma_rc_transport_benchmark.py
+python3 -m unittest src/test/scripts/test_run_rdma_transport_benchmarks.py
+```
+
+These checks do not prove that RDMA hardware is available. Tests with
+`SKIP_RETURN_CODE=77` must be reported as skipped with their preflight reason.
+Run a real minimum RDMA benchmark only when verbs devices are present.
+
 ## Command Templates
 
 Local RDMA smoke:
@@ -221,6 +280,7 @@ python3 tools/benchmarks/run_benchmark_ps.py \
   --client-load-threads-per-process 1 \
   --runtime-seconds 1 \
   --repeat 1 \
+  --prefetch-depth 4 \
   --rdma-wait-timeout-ms 8000 \
   --rdma-rc-qps-per-client-per-shard 4 \
   --rdma-rc-slots-per-qp 1 \
@@ -419,6 +479,9 @@ python3 tools/benchmarks/run_benchmark_ps.py \
 - `--rdma-rc-qps-per-client-per-shard` is RC QP pool size, not target QPS.
 - For async paths, require
   `qps-per-client-per-shard * slots-per-qp >= async-depth`.
+- The runner default prefetch depth is 16. When using the smoke profile's
+  `qps=4` and `slots-per-qp=1`, set `--prefetch-depth 4` explicitly (or raise
+  QP/slot capacity); otherwise argument validation rejects the run.
 - `--prefetch-depth` overrides the default RDMA fetch pipeline depth. Use it
   with transaction fetch runs.
 - RDMA GET response mode is layout-dependent. Use
@@ -480,22 +543,21 @@ scan. It does not by itself prove clients are slow.
 ## Summary Format
 
 Write `<output_dir>/summary.md` in Chinese after the benchmark finishes. The
-first two lines of `summary.md` must be the current git commit hash and
-hostname from the RecStore checkout / host used for the run (`git rev-parse
-HEAD` on line 1, `hostname` on line 2), then a blank line, then the report
-body. Include:
+current `run_benchmark_ps.py` writer emits this structure:
 
-1. `配置说明`: mode, transports, endpoint IPs, role mapping, backend, build
-   directory/build type, remote repo/container when used, output directory
-2. `Workload 说明`: record count, value size, batch keys, runtime seconds,
-   repeat, distribution, mode/read ratio, index type, allocator, prefetch depth
-3. `并发与 RDMA 参数`: client processes, client threads, load threads, server
-   worker threads, server RDMA threads, QP pool, slots per QP, response mode,
-   profile interval, NUMA/core binding when set
-4. `结果表`: rows from `summary.csv`, with throughput shown in M keys/s when
-   applicable
-5. `失败与跳过`: failed rows, skipped RDMA rows, missing verbs, timeout, or
-   nonzero exit reasons
+1. `# Benchmark PS Summary`
+2. `Workload 说明`: layer, mode/transports, topology, workload, concurrency,
+   storage and runtime parameters, plus links to `run_config.json` and
+   `summary.csv`
+3. `成功结果`: rows parsed from the benchmark output, with throughput shown in
+   M keys/s when applicable
+4. `Skip / Failure`: failed or skipped rows and their messages/log paths
+
+Do not require the commit hash or hostname to be the first two lines: the
+current writer starts with the Markdown title. Provenance is recorded in
+`run_config.json` (`git.commit`, `git.dirty`); record the host separately when
+an external report needs it. Keep generated configs, logs, CSV, and Markdown
+together under the output directory.
 
 If any row exits nonzero, still write `summary.md` from available artifacts and
 state failures clearly in the final response.
@@ -511,12 +573,3 @@ state failures clearly in the final response.
 - Always include the exact command or command file path.
 - Separate fair comparisons, capacity checks, and diagnostic fake-mode rows.
 - Keep generated project-facing report text in Chinese.
-
-## Current Bring-up Notes
-
-- On the 2026-06-03 p4/t3/q16/d16 Release/O3 lane, local profile-disabled
-  PET_HASH RDMA GET throughput was about `45.720 M keys/s`.
-- On the same lane, cross-host profile-disabled throughput was about
-  `45.523 M keys/s`.
-- Do not compare Release/O3 runs against older Debug/O0 baselines without
-  labeling the build type.

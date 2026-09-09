@@ -1,4 +1,5 @@
 import sys
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,6 +16,7 @@ from ps_test_config import (
     DEFAULT_RDMA_MULTI_SHARD_CONFIG,
     DEFAULT_RDMA_SINGLE_SHARD_CONFIG,
     load_client_endpoint,
+    materialize_rdma_config,
     resolve_rdma_integration_config,
     resolve_repo_path,
 )
@@ -74,10 +76,57 @@ class TestPSTestConfig(unittest.TestCase):
             DEFAULT_RDMA_MULTI_SHARD_CONFIG,
         )
 
+    def test_default_rdma_configs_have_explicit_deployment_nodes(self):
+        for config_path, expected_shards in (
+            (DEFAULT_RDMA_SINGLE_SHARD_CONFIG, 1),
+            (DEFAULT_RDMA_MULTI_SHARD_CONFIG, 2),
+        ):
+            config = json.loads(resolve_repo_path(config_path).read_text())
+            deployment = config["rdma_deployment"]
+            self.assertTrue(deployment["deployment_id"])
+            self.assertGreater(deployment["epoch"], 0)
+            self.assertEqual(deployment["protocol_version"], 1)
+            self.assertEqual(config["distributed_client"]["num_shards"], expected_shards)
+            self.assertEqual(deployment["num_clients"], 1)
+            nodes = deployment["nodes"]
+            self.assertEqual(len(nodes), expected_shards + deployment["num_clients"])
+            self.assertEqual(
+                {node["node_id"] for node in nodes},
+                set(range(len(nodes))),
+            )
+            for node in nodes:
+                self.assertIn(node["role"], {"server", "client"})
+                self.assertTrue(node["device"])
+                self.assertGreater(node["port"], 0)
+                self.assertGreaterEqual(node["gid_index"], 0)
+                self.assertIn(node["mode"], {"ib", "rocev1", "rocev2"})
+
     def test_load_client_endpoint_for_default_grpc_config(self):
         host, port = load_client_endpoint(DEFAULT_GRPC_MAIN_CONFIG)
         self.assertEqual(host, "127.0.0.1")
         self.assertEqual(port, 15000)
+
+    def test_materialize_rdma_config_expands_client_nodes(self):
+        with tempfile.TemporaryDirectory() as runtime_dir:
+            path = materialize_rdma_config(
+                DEFAULT_RDMA_SINGLE_SHARD_CONFIG, 1, 3, runtime_dir
+            )
+            config = json.loads(Path(path).read_text())
+        deployment = config["rdma_deployment"]
+        self.assertEqual(deployment["num_clients"], 3)
+        self.assertEqual(
+            [(node["node_id"], node["role"]) for node in deployment["nodes"]],
+            [(0, "server"), (1, "client"), (2, "client"), (3, "client")],
+        )
+
+    def test_materialize_rdma_config_rejects_non_dense_servers(self):
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as runtime_dir:
+            source = Path(source_dir) / "config.json"
+            config = json.loads(Path(resolve_repo_path(DEFAULT_RDMA_SINGLE_SHARD_CONFIG)).read_text())
+            config["rdma_deployment"]["nodes"][0]["node_id"] = 2
+            source.write_text(json.dumps(config))
+            with self.assertRaisesRegex(ValueError, "dense"):
+                materialize_rdma_config(str(source), 1, 1, runtime_dir)
 
     def test_load_client_endpoint_for_brpc_benchmark_config(self):
         host, port = load_client_endpoint(DEFAULT_BRPC_BENCHMARK_CONFIG)

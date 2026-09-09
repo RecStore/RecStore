@@ -11,14 +11,18 @@
 
 #include "base/array.h"
 #include "ps/rdma/raw_verbs_transport.h"
+#include "ps/rdma/rdma_deployment.h"
 #include "ps/rdma/rdma_protocol.h"
 
 namespace petps {
 
 struct RcTransportConfig {
-  int shard_id    = 0;  // Logical shard served by this transport.
-  int client_id   = -1; // Logical client id for response slot selection.
-  int num_clients = 1;  // Total client count expected by the server.
+  int node_id        = -1; // Dense deployment node id for this process.
+  int num_servers    = 0;  // Number of server nodes in the deployment.
+  int num_os_clients = 0;  // Number of client processes in the deployment.
+  int shard_id       = 0;  // Logical shard served by this transport.
+  int client_id      = -1; // Logical client id for response slot selection.
+  int num_clients    = 1;  // Total client count expected by the server.
   int qps_per_client_per_shard   = 32; // Number of lanes per client per shard.
   int slots_per_qp               = 1; // Logical slots multiplexed on each lane.
   std::size_t request_slot_bytes = 1 << 20;  // Bytes per server request slot.
@@ -28,6 +32,12 @@ struct RcTransportConfig {
   int control_plane_timeout_ms    = 30000;
   std::string namespace_token =
       "default"; // Shared-memory namespace for this run.
+  std::string deployment_id;
+  std::uint64_t deployment_epoch = 0;
+  std::uint32_t protocol_version = recstore::kRdmaDeploymentProtocolVersion;
+  std::string configuration_digest;
+  std::string fabric_digest;
+  recstore::ResolvedRdmaFabric fabric;
 };
 
 struct RcClientQpView {

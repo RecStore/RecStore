@@ -11,79 +11,37 @@
 
 #include "base/array.h"
 #include "ps/rdma/global_address.h"
+#include "ps/rdma/rdma_deployment.h"
 
 namespace petps {
 
-inline int SelectRawVerbsDeviceIndex(int numa_id,
-                                     const std::vector<int>& device_numa_nodes,
-                                     const std::vector<bool>& usable_devices) {
-  if (device_numa_nodes.size() != usable_devices.size()) {
-    return -1;
-  }
-  int fallback = -1;
-  for (std::size_t i = 0; i < usable_devices.size(); ++i) {
-    if (!usable_devices[i]) {
-      continue;
-    }
-    if (fallback < 0) {
-      fallback = static_cast<int>(i);
-    }
-    if (numa_id >= 0 && device_numa_nodes[i] == numa_id) {
-      return static_cast<int>(i);
-    }
-  }
-  return fallback;
-}
-
-inline int SelectRawVerbsGidIndex(const std::vector<ibv_gid>& gids,
-                                  const std::vector<bool>& roce_v2_gids) {
-  if (!roce_v2_gids.empty() && gids.size() != roce_v2_gids.size()) {
-    return -1;
-  }
-  int fallback = -1;
-  int ipv4_mapped_index = -1;
-  for (std::size_t i = 0; i < gids.size(); ++i) {
-    const auto* bytes = gids[i].raw;
-    bool nonzero      = false;
-    for (int j = 0; j < 16; ++j) {
-      nonzero = nonzero || bytes[j] != 0;
-    }
-    if (!nonzero) {
-      continue;
-    }
-    if (fallback < 0) {
-      fallback = static_cast<int>(i);
-    }
-    bool ipv4_mapped = true;
-    for (int j = 0; j < 10; ++j) {
-      ipv4_mapped = ipv4_mapped && bytes[j] == 0;
-    }
-    if (ipv4_mapped && bytes[10] == 0xff && bytes[11] == 0xff) {
-      ipv4_mapped_index = static_cast<int>(i);
-      if (!roce_v2_gids.empty() && roce_v2_gids[i]) {
-        return static_cast<int>(i);
-      }
-    }
-  }
-  return ipv4_mapped_index >= 0 ? ipv4_mapped_index : fallback;
-}
-
 struct RawVerbsConfig {
-  int global_id                  = 0;
-  int local_lane                 = 0;
-  int remote_lane                = 0;
-  int only_node_id               = -1; // Optional single peer node filter.
-  int num_servers                = 1;
-  int num_clients                = 1;
-  int numa_id                    = 0;
-  std::uint32_t max_inline_data  = 0;
-  bool connect_to_servers        = true;
-  bool connect_to_clients        = true;
-  std::size_t local_region_bytes = 128 * 1024 * 1024;
-  std::uint64_t local_base_addr  = 0;
-  std::string control_plane_host = "127.0.0.1";
-  int control_plane_port         = 25100;
-  int control_plane_timeout_ms   = 30000;
+  int global_id    = 0;
+  int local_lane   = 0;
+  int remote_lane  = 0;
+  int only_node_id = -1; // Optional single peer node filter.
+  int num_servers  = 1;
+  int num_clients  = 1;
+  std::string device_name;
+  std::uint8_t port_num                = 0;
+  recstore::RdmaFabricMode fabric_mode = recstore::RdmaFabricMode::kIb;
+  int gid_index                        = -1;
+  std::uint8_t hop_limit               = 0;
+  std::uint8_t traffic_class           = 0;
+  std::uint32_t flow_label             = 0;
+  std::string deployment_id;
+  std::uint64_t deployment_epoch = 0;
+  std::uint32_t protocol_version = recstore::kRdmaDeploymentProtocolVersion;
+  std::string configuration_digest;
+  std::string fabric_digest;
+  std::uint32_t max_inline_data         = 0;
+  bool connect_to_servers               = true;
+  bool connect_to_clients               = true;
+  std::size_t local_region_bytes        = 128 * 1024 * 1024;
+  std::uint64_t local_base_addr         = 0;
+  std::string control_plane_host        = "127.0.0.1";
+  int control_plane_port                = 25100;
+  int control_plane_timeout_ms          = 30000;
   std::uint64_t allocation_start_offset = 0;
   std::uint64_t reserved_region_offset  = 0;
   std::uint64_t reserved_region_bytes   = 0;
@@ -253,13 +211,25 @@ private:
 };
 
 struct RawVerbsNodeMeta {
-  std::uint16_t node_id   = 0;
-  std::uint16_t lid       = 0;
-  std::uint32_t qpn       = 0;
-  std::uint32_t psn       = 3185;
-  std::uint32_t rkey      = 0;
-  std::uint64_t base_addr = 0;
-  std::uint8_t gid[16]    = {};
+  std::string deployment_id;
+  std::string configuration_digest;
+  std::string fabric_digest;
+  std::uint16_t node_id          = 0;
+  std::int32_t logical_id        = -1;
+  std::uint16_t lid              = 0;
+  std::uint32_t qpn              = 0;
+  std::uint32_t psn              = 3185;
+  std::uint32_t rkey             = 0;
+  std::uint64_t base_addr        = 0;
+  std::uint8_t gid[16]           = {};
+  std::uint32_t protocol_version = recstore::kRdmaDeploymentProtocolVersion;
+  std::uint64_t deployment_epoch = 0;
+  std::uint8_t node_role         = 0;
+  std::uint8_t port_num          = 0;
+  std::uint8_t link_layer        = 0;
+  std::int32_t gid_index         = -1;
+  std::uint8_t active_mtu        = 0;
+  std::uint8_t fabric_mode       = 0;
 };
 
 class RawVerbsTransport {
@@ -270,7 +240,6 @@ public:
   RawVerbsTransport(const RawVerbsTransport&)            = delete;
   RawVerbsTransport& operator=(const RawVerbsTransport&) = delete;
 
-  void RegisterThread();
   void RegisterMemoryRegion(void* base, std::size_t bytes);
   void* AllocateRegistered(std::size_t bytes);
   std::uint64_t SaveAllocationState() const;

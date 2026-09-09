@@ -28,6 +28,7 @@
 #include "base/timer.h"
 #include "memory/shm_file.h"
 #include "ps/rdma/rdma_common.h"
+#include "ps/rdma/rdma_deployment.h"
 #include "ps/base/cache_ps_impl.h"
 #include "ps/rdma/control_plane.h"
 #include "ps/rdma/rc_options.h"
@@ -40,8 +41,6 @@ DEFINE_int32(thread_num, 1, "RC write poll thread count");
 DECLARE_int32(global_id);
 DECLARE_int32(num_server_processes);
 DECLARE_int32(num_client_processes);
-DEFINE_int32(value_size, 128, "embedding row bytes");
-DEFINE_int32(max_kv_num_per_request, 500, "max keys per request");
 DEFINE_bool(use_dram, false, "unused compatibility flag");
 DEFINE_int32(numa_id, 0, "NUMA node id for mmap and core binding");
 
@@ -122,17 +121,21 @@ public:
   PetPSServer(CachePS* cache_ps,
               int thread_count,
               int shard_id,
-              const std::string& namespace_token)
+              const std::string& namespace_token,
+              const petps::RdmaControlPlaneEndpoint& control_plane_endpoint,
+              const recstore::ResolvedRdmaDeployment& deployment,
+              const recstore::ResolvedRdmaFabric& fabric)
       : cache_ps_(cache_ps),
         thread_count_(thread_count),
         shard_id_(shard_id),
-        control_plane_client_(petps::RdmaControlPlaneEndpoint{
-            FLAGS_rdma_control_plane_host,
-            FLAGS_rdma_control_plane_port,
-            FLAGS_rdma_control_plane_timeout_ms,
-        }) {
+        deployment_(deployment),
+        fabric_(fabric),
+        control_plane_client_(control_plane_endpoint) {
     petps::RcTransportConfig config;
-    config.shard_id = shard_id_;
+    config.node_id        = FLAGS_global_id;
+    config.num_servers    = deployment_.num_shards;
+    config.num_os_clients = deployment_.num_clients;
+    config.shard_id       = shard_id_;
     config.num_clients =
         FLAGS_rdma_rc_num_logical_clients >= 0
             ? FLAGS_rdma_rc_num_logical_clients
@@ -147,6 +150,12 @@ public:
     config.control_plane_port       = FLAGS_rdma_control_plane_port;
     config.control_plane_timeout_ms = FLAGS_rdma_control_plane_timeout_ms;
     config.namespace_token          = namespace_token;
+    config.deployment_id            = deployment_.deployment_id;
+    config.deployment_epoch         = deployment_.epoch;
+    config.protocol_version         = deployment_.protocol_version;
+    config.configuration_digest     = deployment_.configuration_digest;
+    config.fabric_digest            = deployment_.fabric_digest;
+    config.fabric                   = fabric_;
     transport_ = std::make_unique<petps::RcShardServerTransport>(config);
     const auto backing = cache_ps_->GetRDMABackingRegion();
     if (backing.data != nullptr && backing.size > 0) {
@@ -846,10 +855,10 @@ private:
                         petps::RcShardServerTransport::ResponseView* response,
                         int thread_id) {
     const std::string_view table_name = petps::DescriptorTableName(descriptor);
-    const std::size_t expected_bytes = petps::FlatUpdatePayloadBytes(
+    const std::size_t expected_bytes  = petps::FlatUpdatePayloadBytes(
         descriptor.key_count, descriptor.embedding_dim);
-    if (table_name.empty() || descriptor.key_count == 0 || expected_bytes == 0 ||
-        descriptor.payload_bytes != expected_bytes) {
+    if (table_name.empty() || descriptor.key_count == 0 ||
+        expected_bytes == 0 || descriptor.payload_bytes != expected_bytes) {
       response->status->status =
           static_cast<std::int32_t>(petps::RpcStatus::kInvalidPayload);
       response->status->response_bytes = 0;
@@ -858,9 +867,9 @@ private:
 
     const std::size_t key_bytes =
         static_cast<std::size_t>(descriptor.key_count) * sizeof(std::uint64_t);
-    const auto* keys = reinterpret_cast<const std::uint64_t*>(payload);
+    const auto* keys  = reinterpret_cast<const std::uint64_t*>(payload);
     const auto* grads = reinterpret_cast<const float*>(payload + key_bytes);
-    const bool ok = cache_ps_->UpdateParameterFlat(
+    const bool ok     = cache_ps_->UpdateParameterFlat(
         std::string(table_name),
         base::ConstArray<std::uint64_t>(keys, descriptor.key_count),
         grads,
@@ -898,8 +907,7 @@ private:
         std::string(table_name), num_embeddings, embedding_dim, table_id);
     response->status->status = static_cast<std::int32_t>(
         tag >= 0 ? petps::RpcStatus::kOk : petps::RpcStatus::kInvalidPayload);
-    response->status->reserved =
-        tag >= 0 ? static_cast<std::uint32_t>(tag) : 0;
+    response->status->reserved = tag >= 0 ? static_cast<std::uint32_t>(tag) : 0;
     response->status->response_bytes = 0;
   }
 
@@ -1255,6 +1263,8 @@ private:
   CachePS* cache_ps_ = nullptr;
   int thread_count_  = 1;
   int shard_id_      = 0;
+  recstore::ResolvedRdmaDeployment deployment_;
+  recstore::ResolvedRdmaFabric fabric_;
   std::unique_ptr<petps::RcShardServerTransport> transport_;
   petps::RdmaControlPlaneClient control_plane_client_;
   std::vector<std::thread> threads_;
@@ -1322,13 +1332,21 @@ int main(int argc, char* argv[]) {
     NormalizeDramValuePath(&config["distributed_client"]["base_kv_config"]);
   }
   std::unique_ptr<petps::RdmaControlPlaneServer> control_plane_server;
+  const auto deployment = recstore::ParseResolvedRdmaDeploymentConfig(config);
+  const auto& fabric = recstore::LocalRdmaFabric(deployment, FLAGS_global_id);
+  petps::RdmaControlPlaneEndpoint control_plane_endpoint{
+      FLAGS_rdma_control_plane_host,
+      FLAGS_rdma_control_plane_port,
+      FLAGS_rdma_control_plane_timeout_ms,
+      deployment.deployment_id,
+      deployment.epoch,
+      deployment.protocol_version,
+      deployment.configuration_digest,
+      deployment.fabric_digest,
+      deployment.num_shards};
   if (FLAGS_global_id == 0) {
-    control_plane_server = std::make_unique<petps::RdmaControlPlaneServer>(
-        petps::RdmaControlPlaneEndpoint{
-            FLAGS_rdma_control_plane_host,
-            FLAGS_rdma_control_plane_port,
-            FLAGS_rdma_control_plane_timeout_ms,
-        });
+    control_plane_server =
+        std::make_unique<petps::RdmaControlPlaneServer>(control_plane_endpoint);
     control_plane_server->Start();
     LOG(INFO) << "component=rdma_control_plane event=listening"
               << " server_id=0"
@@ -1338,7 +1356,13 @@ int main(int argc, char* argv[]) {
   auto cache_ps      = std::make_unique<CachePS>(config["cache_ps"]);
   const int shard_id = ResolveShardId(config);
   auto ps            = std::make_unique<PetPSServer>(
-      cache_ps.get(), FLAGS_thread_num, shard_id, NamespaceToken());
+      cache_ps.get(),
+      FLAGS_thread_num,
+      shard_id,
+      NamespaceToken(),
+      control_plane_endpoint,
+      deployment,
+      fabric);
   ps->Run();
   while (!g_stop_requested.load()) {
     std::this_thread::sleep_for(std::chrono::seconds(1));

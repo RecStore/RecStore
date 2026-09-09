@@ -325,9 +325,6 @@ target_sources(test_rdmaps_client_adapter PRIVATE
     ${PROJECT_SOURCE_DIR}/src/framework/common/ps_client_config_adapter.cc
     ${PROJECT_SOURCE_DIR}/src/ps/client_factory.cc
     ${PROJECT_SOURCE_DIR}/src/ps/rdma/rdma_ps_client_adapter.cc
-    ${PROJECT_SOURCE_DIR}/src/ps/rdma/petps_client.cc
-    ${PROJECT_SOURCE_DIR}/src/ps/rdma/rc_transport.cc
-    ${PROJECT_SOURCE_DIR}/src/ps/rdma/rc_options.cc
 )
 target_link_libraries(test_rdmaps_client_adapter PUBLIC
     base
