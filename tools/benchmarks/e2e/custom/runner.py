@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -68,10 +69,10 @@ def _checked_run(cmd: list[str], *, cwd: Path) -> None:
         raise subprocess.CalledProcessError(code, cmd)
 
 
-def _collect_remote_rank_csvs(cfg: BenchmarkConfig, run_id: str) -> None:
+def _collect_remote_rank_csvs(cfg: BenchmarkConfig, run_id: str, *, backend: str) -> None:
     # Pull rank CSVs written by remote training hosts back to the local
-    # output tree so the rank-0 host can merge the full job results.
-    rank_dir = cfg.output_dir / "outputs" / run_id / "recstore_ranks"
+    # output tree so the driver can merge the full job results.
+    rank_dir = cfg.output_dir / "outputs" / run_id / f"{backend}_ranks"
     for client in cfg.clients:
         host = client.ssh_host
         if host in {"", "local", "localhost"} or client.node_rank == 0:
@@ -85,6 +86,29 @@ def _collect_remote_rank_csvs(cfg: BenchmarkConfig, run_id: str) -> None:
             remote_dir, f"{rank_dir}/",
         ]
         _checked_run(cmd, cwd=ROOT)
+
+
+def _merge_rank_csvs(cfg: BenchmarkConfig, run_id: str, *, backend: str) -> None:
+    # Without a shared filesystem no host can see every rank CSV while the
+    # training process runs, so rs_demo skips the merge and the driver does
+    # it here after the remote rank CSVs have been collected.
+    # worker_common imports python.pytorch.recstore.* (namespace package
+    # under src/), so src/ must be on sys.path before importing it.
+    src_dir = str(ROOT / "src")
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
+    from model_zoo.rs_demo.runtime.worker_common import merge_rank_outputs
+
+    world_size = sum(max(int(client.nproc_per_node), 1) for client in cfg.clients)
+    rank_dir = cfg.output_dir / "outputs" / run_id / f"{backend}_ranks"
+    rank_csvs = [rank_dir / f"rank{rank}.csv" for rank in range(world_size)]
+    missing = [str(path) for path in rank_csvs if not path.exists()]
+    if missing:
+        print(f"[benchmark-e2e] {run_id}: rank csv merge skipped, missing: {missing}")
+        return
+    main_csv = cfg.output_dir / "outputs" / run_id / f"{backend}_main.csv"
+    merge_rank_outputs(rank_csvs, main_csv)
+    print(f"[benchmark-e2e] {run_id}: merged {len(rank_csvs)} rank csvs -> {main_csv}")
 
 
 def _sync_runtime_dir(cfg: BenchmarkConfig, runtime_dir: Path) -> None:
@@ -318,7 +342,8 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
                 # its own rank CSVs; pull the remote ones back so the merge
                 # on the rank-0 host succeeds.
                 if not dry_run:
-                    _collect_remote_rank_csvs(cfg, group_run_id)
+                    _collect_remote_rank_csvs(cfg, group_run_id, backend="recstore")
+                    _merge_rank_csvs(cfg, group_run_id, backend="recstore")
         finally:
             stop_rdma_ps_cluster(rdma_runner)
             _stop_processes(processes)
@@ -370,6 +395,9 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
                 commands=commands,
                 manifest=manifest,
             )
+            if not dry_run:
+                _collect_remote_rank_csvs(cfg, group_run_id, backend="torchrec")
+                _merge_rank_csvs(cfg, group_run_id, backend="torchrec")
 
     (cfg.output_dir / "commands.sh").write_text("\n".join(commands) + "\n", encoding="utf-8")
     os.chmod(cfg.output_dir / "commands.sh", 0o755)
