@@ -183,6 +183,13 @@ if(brpc_FOUND)
         stdc++fs
     )
     add_test(NAME dist_brpc_ps_client_test COMMAND $<TARGET_FILE:dist_brpc_ps_client_test>)
+    # libbrpc_ps_client.so must precede libpthread.so.0 in DT_NEEDED order:
+    # bRPC interposes pthread_mutex_* and resolves the glibc one via
+    # dlsym(RTLD_NEXT), which fails on glibc < 2.34 where the symbol lives
+    # only in libpthread. Pin the .so to the front of the link line.
+    target_link_options(dist_brpc_ps_client_test PRIVATE
+        "-Wl,--no-as-needed,$<TARGET_FILE:brpc_ps_client>,--as-needed"
+    )
     set_tests_properties(dist_brpc_ps_client_test PROPERTIES LABELS "ps_integration")
 
     # Export brpc_FOUND to parent scope for unified ps_server
