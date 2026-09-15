@@ -68,6 +68,25 @@ def _checked_run(cmd: list[str], *, cwd: Path) -> None:
         raise subprocess.CalledProcessError(code, cmd)
 
 
+def _collect_remote_rank_csvs(cfg: BenchmarkConfig, run_id: str) -> None:
+    # Pull rank CSVs written by remote training hosts back to the local
+    # output tree so the rank-0 host can merge the full job results.
+    rank_dir = cfg.output_dir / "outputs" / run_id / "recstore_ranks"
+    for client in cfg.clients:
+        host = client.ssh_host
+        if host in {"", "local", "localhost"} or client.node_rank == 0:
+            continue
+        local_dir = (client.repo_root / rank_dir).resolve()
+        remote_dir = f"{host}:{local_dir}/"
+        mkdir_cmd = wrap_remote_command(["mkdir", "-p", str(local_dir)], host, cwd=client.repo_root, ssh_port=client.ssh_port)
+        _checked_run(mkdir_cmd, cwd=ROOT)
+        cmd = [
+            "rsync", "-a", "-e", f"ssh -p {client.ssh_port}",
+            remote_dir, f"{rank_dir}/",
+        ]
+        _checked_run(cmd, cwd=ROOT)
+
+
 def _sync_runtime_dir(cfg: BenchmarkConfig, runtime_dir: Path) -> None:
     # Remote clients read the runtime config (recstore_config.json) from the
     # same path as the local runner. Without a shared filesystem the file
@@ -295,6 +314,11 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
                     commands=commands,
                     manifest=manifest,
                 )
+                # Without a shared filesystem the rank-0 host can only see
+                # its own rank CSVs; pull the remote ones back so the merge
+                # on the rank-0 host succeeds.
+                if not dry_run:
+                    _collect_remote_rank_csvs(cfg, group_run_id)
         finally:
             stop_rdma_ps_cluster(rdma_runner)
             _stop_processes(processes)
