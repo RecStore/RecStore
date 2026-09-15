@@ -75,6 +75,7 @@ namespace {
 // (consistent with the RECSTORE_RDMA_* convention used by the raw-verbs path).
 //   RECSTORE_BRPC_USE_RDMA=1        -> enable RDMA transport
 //   RECSTORE_BRPC_RDMA_DEVICE=mlx5_0 -> select the HCA (maps to brpc -rdma_device)
+//   RECSTORE_BRPC_TIMEOUT_MS=60000   -> request timeout (maps to -brpc_timeout_ms)
 bool ResolveBrpcUseRdmaFromEnv(bool fallback) {
   const char* value = std::getenv("RECSTORE_BRPC_USE_RDMA");
   if (value == nullptr || *value == '\0') {
@@ -90,6 +91,18 @@ void ApplyBrpcRdmaDeviceFromEnv() {
   }
 }
 
+int BrpcTimeoutMsFromEnv(int fallback) {
+  const char* ms = std::getenv("RECSTORE_BRPC_TIMEOUT_MS");
+  if (ms == nullptr || *ms == '\0') {
+    return fallback;
+  }
+  try {
+    return std::stoi(ms);
+  } catch (...) {
+    return fallback;
+  }
+}
+
 } // namespace
 
 // New constructor that takes JSON config
@@ -97,7 +110,7 @@ BRPCParameterClient::BRPCParameterClient(json config) {
   host_       = config.value("host", "localhost");
   port_       = config.value("port", 15000);
   shard_      = config.value("shard", 0);
-  timeout_ms_ = config.value("timeout_ms", FLAGS_brpc_timeout_ms);
+  timeout_ms_ = BrpcTimeoutMsFromEnv(config.value("timeout_ms", FLAGS_brpc_timeout_ms));
   max_retry_  = config.value("max_retry", FLAGS_brpc_max_retry);
 
   Initialize();
@@ -131,7 +144,7 @@ BRPCParameterClient::BRPCParameterClient(
     : host_(host),
       port_(port),
       shard_(shard),
-      timeout_ms_(FLAGS_brpc_timeout_ms),
+      timeout_ms_(BrpcTimeoutMsFromEnv(FLAGS_brpc_timeout_ms)),
       max_retry_(FLAGS_brpc_max_retry) {
   Initialize();
 

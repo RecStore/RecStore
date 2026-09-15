@@ -280,9 +280,12 @@ def _brpc_rdma_env() -> dict[str, str]:
     # RDMA is off by default here so the benchmark works over plain TCP on
     # clusters without a matching HCA; set RECSTORE_BRPC_USE_RDMA=1 (and
     # RECSTORE_BRPC_RDMA_DEVICE) in the environment to enable it.
+    # The final sparse-update flush can exceed the 5s default RPC timeout on
+    # slower clusters; allow a larger override (also overridable via env).
     return {
         "RECSTORE_BRPC_USE_RDMA": os.environ.get("RECSTORE_BRPC_USE_RDMA", "0"),
         "RECSTORE_BRPC_RDMA_DEVICE": os.environ.get("RECSTORE_BRPC_RDMA_DEVICE", ""),
+        "RECSTORE_BRPC_TIMEOUT_MS": os.environ.get("RECSTORE_BRPC_TIMEOUT_MS", "60000"),
     }
 
 
