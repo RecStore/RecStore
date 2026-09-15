@@ -226,6 +226,15 @@ def main(argv: list[str] | None = None) -> int:
         if cfg.backend == "torchrec":
             if is_torchrec_worker:
                 return 0
+            # In multi-host runs without a shared filesystem no host can see
+            # every rank CSV, so rs_demo skips the merge (the e2e driver
+            # collects remote rank CSVs and merges); only aggregate when the
+            # merged main csv actually exists.
+            if not Path(cfg.torchrec_main_csv).exists():
+                print(
+                    f"[rs_demo] no merged main csv ({cfg.torchrec_main_csv}), skipping aggregation"
+                )
+                return 0
             print(f"[rs_demo] torchrec main csv: {cfg.torchrec_main_csv}")
             agg = aggregate_torchrec_main_csv(Path(cfg.torchrec_main_csv))
             write_aggregate_csv(Path(cfg.torchrec_main_agg_csv), agg)
@@ -286,10 +295,15 @@ def main(argv: list[str] | None = None) -> int:
                 extra_inputs=extra_inputs,
             )
             print(local_shm_output)
-        agg = aggregate_torchrec_main_csv(Path(cfg.recstore_main_csv))
-        write_aggregate_csv(Path(cfg.recstore_main_agg_csv), agg)
-        print(f"[rs_demo] recstore main csv: {cfg.recstore_main_csv}")
-        print(f"[rs_demo] recstore main aggregate csv: {cfg.recstore_main_agg_csv}")
+        # In multi-host runs without a shared filesystem no host can see
+        # every rank CSV, so rs_demo skips the merge (the e2e driver
+        # collects remote rank CSVs and merges); only aggregate when the
+        # merged main csv actually exists.
+        if Path(cfg.recstore_main_csv).exists():
+            agg = aggregate_torchrec_main_csv(Path(cfg.recstore_main_csv))
+            write_aggregate_csv(Path(cfg.recstore_main_agg_csv), agg)
+            print(f"[rs_demo] recstore main csv: {cfg.recstore_main_csv}")
+            print(f"[rs_demo] recstore main aggregate csv: {cfg.recstore_main_agg_csv}")
 
         print(f"[rs_demo] jsonl: {cfg.jsonl}")
         print(f"[rs_demo] csv:   {cfg.csv}")

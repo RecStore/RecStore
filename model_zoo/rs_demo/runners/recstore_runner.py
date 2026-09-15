@@ -239,9 +239,28 @@ class RecStoreRunner(BenchmarkRunner):
 
         world_size = cfg.nnodes * cfg.nproc_per_node
         rank_csvs = [rank_dir / f"rank{rank}.csv" for rank in range(world_size)]
+        # Without a shared filesystem each host can only see its own rank
+        # CSVs; verify the local ranks and merge everything only when all
+        # ranks are visible (e.g. shared FS or single host). The e2e driver
+        # collects remote rank CSVs and produces the merged main csv itself.
+        local_ranks = range(
+            cfg.node_rank * cfg.nproc_per_node,
+            (cfg.node_rank + 1) * cfg.nproc_per_node,
+        )
+        missing_local = [
+            str(rank_dir / f"rank{rank}.csv")
+            for rank in local_ranks
+            if not (rank_dir / f"rank{rank}.csv").exists()
+        ]
+        if missing_local:
+            raise RuntimeError(f"missing local rank csv outputs: {missing_local}")
         missing = [str(path) for path in rank_csvs if not path.exists()]
         if missing:
-            raise RuntimeError(f"missing rank csv outputs: {missing}")
+            print(
+                "[rs_demo] remote rank csvs not visible on this host "
+                f"(no shared filesystem?); skipping merge: {missing}"
+            )
+            return {"backend": "recstore", "rows": []}
         rows = _merge_rank_outputs(rank_csvs, Path(cfg.recstore_main_csv))
         return {"backend": "recstore", "rows": rows}
 

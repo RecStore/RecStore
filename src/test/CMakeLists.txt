@@ -318,6 +318,16 @@ target_link_libraries(test_ps_client_factory PUBLIC
     pthread
 )
 target_link_options(test_ps_client_factory PUBLIC -Wl,--no-as-needed)
+# bRPC (static libbrpc.a linked into libbrpc_ps_client.so) interposes
+# pthread_mutex_* and locates the real glibc one via dlsym(RTLD_NEXT).
+# On glibc < 2.34 pthread_mutex_trylock lives only in libpthread, so
+# libbrpc_ps_client.so must precede libpthread.so.0 in DT_NEEDED order;
+# referencing the .so as a raw link option pins it to the front of the
+# link line (CMake places LINK_OPTIONS before libraries and dedup keeps
+# the first occurrence).
+target_link_options(test_ps_client_factory PRIVATE
+    "-Wl,--no-as-needed,$<TARGET_FILE:brpc_ps_client>,--as-needed"
+)
 add_test(NAME test_ps_client_factory COMMAND test_ps_client_factory)
 
 add_executable(test_rdmaps_client_adapter test_rdmaps_client_adapter.cpp)
@@ -342,6 +352,11 @@ target_link_libraries(test_rdmaps_client_adapter PUBLIC
     pthread
 )
 target_link_options(test_rdmaps_client_adapter PUBLIC -Wl,--no-as-needed)
+# Same bRPC RTLD_NEXT / glibc < 2.34 constraint as test_ps_client_factory:
+# pin libbrpc_ps_client.so ahead of libpthread in DT_NEEDED order.
+target_link_options(test_rdmaps_client_adapter PRIVATE
+    "-Wl,--no-as-needed,$<TARGET_FILE:brpc_ps_client>,--as-needed"
+)
 add_test(NAME test_rdmaps_client_adapter COMMAND test_rdmaps_client_adapter)
 
 add_executable(test_local_shm_protocol test_local_shm_protocol.cpp)

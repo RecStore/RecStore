@@ -116,6 +116,8 @@ def _compute_or_load_shared_sharding_plan(
     planner,
     plan_path: Path,
 ):
+    # Distribute the sharding plan via a broadcast instead of a shared file:
+    # without a shared filesystem rank1 cannot read a plan written by rank0.
     plan_path.parent.mkdir(parents=True, exist_ok=True)
     if rank == 0:
         plan = planner.plan(embedding_module, sharders)
@@ -125,10 +127,11 @@ def _compute_or_load_shared_sharding_plan(
             f.flush()
             os.fsync(f.fileno())
         os.replace(pending_path, plan_path)
-    dist.barrier()
-    with plan_path.open("rb") as f:
-        plan = pickle.load(f)
-    return plan
+        payload = [plan]
+    else:
+        payload = [None]
+    dist.broadcast_object_list(payload, src=0)
+    return payload[0]
 
 
 def _remove_stale_distributed_outputs(cfg: RunConfig, rank_dir: Path) -> None:
@@ -590,9 +593,28 @@ class TorchRecRunner(BenchmarkRunner):
 
         world_size = cfg.nnodes * cfg.nproc_per_node
         rank_csvs = [rank_dir / f"rank{rank}.csv" for rank in range(world_size)]
+        # Without a shared filesystem each host can only see its own rank
+        # CSVs; verify the local ranks and merge everything only when all
+        # ranks are visible. The e2e driver collects remote rank CSVs and
+        # produces the merged main csv itself.
+        local_ranks = range(
+            cfg.node_rank * cfg.nproc_per_node,
+            (cfg.node_rank + 1) * cfg.nproc_per_node,
+        )
+        missing_local = [
+            str(rank_dir / f"rank{rank}.csv")
+            for rank in local_ranks
+            if not (rank_dir / f"rank{rank}.csv").exists()
+        ]
+        if missing_local:
+            raise RuntimeError(f"missing local rank csv outputs: {missing_local}")
         missing = [str(path) for path in rank_csvs if not path.exists()]
         if missing:
-            raise RuntimeError(f"missing rank csv outputs: {missing}")
+            print(
+                "[rs_demo] remote rank csvs not visible on this host "
+                f"(no shared filesystem?); skipping merge: {missing}"
+            )
+            return {"backend": "torchrec", "rows": []}
         rows = _merge_rank_outputs(rank_csvs, Path(cfg.torchrec_main_csv))
         return {"backend": "torchrec", "rows": rows}
 
