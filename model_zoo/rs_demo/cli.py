@@ -286,10 +286,14 @@ def main(argv: list[str] | None = None) -> int:
                 extra_inputs=extra_inputs,
             )
             print(local_shm_output)
-        agg = aggregate_torchrec_main_csv(Path(cfg.recstore_main_csv))
-        write_aggregate_csv(Path(cfg.recstore_main_agg_csv), agg)
-        print(f"[rs_demo] recstore main csv: {cfg.recstore_main_csv}")
-        print(f"[rs_demo] recstore main aggregate csv: {cfg.recstore_main_agg_csv}")
+        # In multi-host runs without a shared filesystem only the rank-0
+        # host has the merged recstore_main.csv (rank CSVs from other hosts
+        # are collected by the e2e driver); skip aggregation elsewhere.
+        if cfg.node_rank == 0 or Path(cfg.recstore_main_csv).exists():
+            agg = aggregate_torchrec_main_csv(Path(cfg.recstore_main_csv))
+            write_aggregate_csv(Path(cfg.recstore_main_agg_csv), agg)
+            print(f"[rs_demo] recstore main csv: {cfg.recstore_main_csv}")
+            print(f"[rs_demo] recstore main aggregate csv: {cfg.recstore_main_agg_csv}")
 
         print(f"[rs_demo] jsonl: {cfg.jsonl}")
         print(f"[rs_demo] csv:   {cfg.csv}")

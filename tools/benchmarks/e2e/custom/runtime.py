@@ -276,10 +276,13 @@ def _recstore_nccl_env() -> dict[str, str]:
 
 
 def _brpc_rdma_env() -> dict[str, str]:
-    # Patched RecStore brpc client/server read these to enable RDMA over mlx5_0.
+    # The brpc PS client/server read these env vars to enable RDMA transport.
+    # RDMA is off by default here so the benchmark works over plain TCP on
+    # clusters without a matching HCA; set RECSTORE_BRPC_USE_RDMA=1 (and
+    # RECSTORE_BRPC_RDMA_DEVICE) in the environment to enable it.
     return {
-        "RECSTORE_BRPC_USE_RDMA": "1",
-        "RECSTORE_BRPC_RDMA_DEVICE": "mlx5_0",
+        "RECSTORE_BRPC_USE_RDMA": os.environ.get("RECSTORE_BRPC_USE_RDMA", "0"),
+        "RECSTORE_BRPC_RDMA_DEVICE": os.environ.get("RECSTORE_BRPC_RDMA_DEVICE", ""),
     }
 
 

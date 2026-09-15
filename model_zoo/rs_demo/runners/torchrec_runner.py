@@ -116,6 +116,8 @@ def _compute_or_load_shared_sharding_plan(
     planner,
     plan_path: Path,
 ):
+    # Distribute the sharding plan via a broadcast instead of a shared file:
+    # without a shared filesystem rank1 cannot read a plan written by rank0.
     plan_path.parent.mkdir(parents=True, exist_ok=True)
     if rank == 0:
         plan = planner.plan(embedding_module, sharders)
@@ -125,10 +127,11 @@ def _compute_or_load_shared_sharding_plan(
             f.flush()
             os.fsync(f.fileno())
         os.replace(pending_path, plan_path)
-    dist.barrier()
-    with plan_path.open("rb") as f:
-        plan = pickle.load(f)
-    return plan
+        payload = [plan]
+    else:
+        payload = [None]
+    dist.broadcast_object_list(payload, src=0)
+    return payload[0]
 
 
 def _remove_stale_distributed_outputs(cfg: RunConfig, rank_dir: Path) -> None:
