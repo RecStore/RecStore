@@ -8,6 +8,9 @@ target_include_directories(ps_server_mgr PUBLIC
 )
 
 target_link_libraries(ps_server_mgr PUBLIC
+    # ps_server_launcher.cpp includes base/json.h, so the nlohmann include
+    # path from the base target is required here.
+    base
     pthread
     stdc++fs
 )

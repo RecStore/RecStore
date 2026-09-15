@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..commands import _run, format_command
+from ..commands import _run, format_command, wrap_remote_command
 from ..common import ROOT, _has_rdma, _load_manifest, _write_csv
 from .config import BenchmarkConfig, infer_client_deployment, infer_ps_deployment, torchrec_label
 from .report import collect_summary_rows, render_summary_md
@@ -66,6 +66,28 @@ def _checked_run(cmd: list[str], *, cwd: Path) -> None:
     code = _run(cmd, cwd=cwd)
     if code != 0:
         raise subprocess.CalledProcessError(code, cmd)
+
+
+def _sync_runtime_dir(cfg: BenchmarkConfig, runtime_dir: Path) -> None:
+    # Remote clients read the runtime config (recstore_config.json) from the
+    # same path as the local runner. Without a shared filesystem the file
+    # must be pushed to every remote client host before launch. The remote
+    # path must be absolute: a relative destination would resolve against
+    # the SSH login directory, not the runner's cwd.
+    for client in cfg.clients:
+        host = client.ssh_host
+        if host in {"", "local", "localhost"}:
+            continue
+        local_dir = runtime_dir.resolve()
+        # rsync only creates the last path component; create the parents
+        # on the remote side first.
+        mkdir_cmd = wrap_remote_command(["mkdir", "-p", str(local_dir)], host, cwd=client.repo_root, ssh_port=client.ssh_port)
+        _checked_run(mkdir_cmd, cwd=ROOT)
+        cmd = [
+            "rsync", "-a", "-e", f"ssh -p {client.ssh_port}",
+            f"{local_dir}/", f"{host}:{local_dir}/",
+        ]
+        _checked_run(cmd, cwd=ROOT)
 
 
 def _start_process(cmd: list[str], *, log_path: Path, cwd: Path) -> subprocess.Popen[Any]:
@@ -184,6 +206,8 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
             value_path=runtime_dir / "value",
         )
         _write_json(config_path, runtime)
+        if not dry_run:
+            _sync_runtime_dir(cfg, runtime_dir)
         processes: list[subprocess.Popen[Any]] = []
         rdma_runner = None
         try:

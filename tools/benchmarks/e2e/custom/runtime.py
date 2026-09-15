@@ -236,7 +236,26 @@ def _nccl_socket_ifnames() -> str:
     # NCCL/GLOO match by subnet, so listing both is safe on either host and
     # avoids picking a docker/flannel interface (which crashed earlier runs
     # with "socketFinalizeAccept: wrong type 4 != 3").
-    return "enp3s0f0,eno8303"
+    # RS_DEMO_NCCL_IFNAME overrides the default for clusters with different
+    # interface names (the default list is not valid there).
+    return os.environ.get("RS_DEMO_NCCL_IFNAME", "enp3s0f0,eno8303")
+
+
+def _nccl_env() -> dict[str, str]:
+    # Base NCCL/GLOO settings shared by the RecStore and TorchRec lanes.
+    # Every key can be overridden by an environment variable of the same
+    # name, so clusters with different NICs/HCAs do not need code edits.
+    ifnames = _nccl_socket_ifnames()
+    defaults = {
+        "NCCL_SOCKET_IFNAME": ifnames,
+        "GLOO_SOCKET_IFNAME": ifnames,
+        "NCCL_SOCKET_FAMILY": "AF_INET",
+        "NCCL_IB_DISABLE": "0",
+        "NCCL_IB_HCA": "mlx5_0",
+        "NCCL_DEBUG": "INFO",
+        "NCCL_DEBUG_SUBSYS": "NET",
+    }
+    return {key: os.environ.get(key, value) for key, value in defaults.items()}
 
 
 def _dataloader_env() -> dict[str, str]:
@@ -250,16 +269,9 @@ def _dataloader_env() -> dict[str, str]:
 
 def _recstore_nccl_env() -> dict[str, str]:
     # Embedding traffic uses the RecStore PS transport; dense DDP uses NCCL-IB.
-    ifnames = _nccl_socket_ifnames()
     return {
         **_dataloader_env(),
-        "NCCL_SOCKET_IFNAME": ifnames,
-        "GLOO_SOCKET_IFNAME": ifnames,
-        "NCCL_SOCKET_FAMILY": "AF_INET",
-        "NCCL_IB_DISABLE": "0",
-        "NCCL_IB_HCA": "mlx5_0",
-        "NCCL_DEBUG": "INFO",
-        "NCCL_DEBUG_SUBSYS": "NET",
+        **_nccl_env(),
     }
 
 
@@ -273,16 +285,9 @@ def _brpc_rdma_env() -> dict[str, str]:
 
 def _torchrec_nccl_env() -> dict[str, str]:
     # TorchRec's embedding all-reduce IS the traffic we want on the IB NIC.
-    ifnames = _nccl_socket_ifnames()
     return {
         **_dataloader_env(),
-        "NCCL_SOCKET_IFNAME": ifnames,
-        "GLOO_SOCKET_IFNAME": ifnames,
-        "NCCL_SOCKET_FAMILY": "AF_INET",
-        "NCCL_IB_DISABLE": "0",
-        "NCCL_IB_HCA": "mlx5_0",
-        "NCCL_DEBUG": "INFO",
-        "NCCL_DEBUG_SUBSYS": "NET",
+        **_nccl_env(),
     }
 
 

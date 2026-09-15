@@ -22,7 +22,9 @@ collect_from_lines() {
   local line pid
   pids=()
   local -A seen=()
-  for line in "${lines[@]}"; do
+  # bash 4.2 (CentOS 7) errors on expanding a never-declared array under
+  # `set -u`; the `${var+x}` guard keeps this working when lines is unset.
+  for line in ${lines[@]+"${lines[@]}"}; do
     pid=${line%% *}
     [[ "$pid" =~ ^[0-9]+$ ]] || continue
     [[ "$pid" -eq "$self" ]] && continue
@@ -39,6 +41,9 @@ collect_from_lines() {
 }
 
 collect_pids() {
+  # bash 4.2 (CentOS 7) errors on expanding an empty array under `set -u`;
+  # `${var+x}` keeps it defined even when pgrep matches nothing.
+  lines=()
   mapfile -t lines < <(pgrep -af -- "$pattern" 2>/dev/null || true)
   collect_from_lines
 }
