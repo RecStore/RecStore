@@ -154,6 +154,10 @@ class ShardedRecstoreClient:
         self._active_shard: int | None = None
         self._next_prefetch_id = 1
         self._prefetch_contexts: dict[int, tuple[int, list[tuple[int, torch.Tensor, Any]]]] = {}
+        # Output-buffer cache: avoids torch.empty() + page-fault overhead
+        # on every emb_read / emb_wait_result.  Keyed by (num_rows, dim).
+        # Disable with RECSTORE_OUTPUT_CACHE=0.
+        self._read_cache: dict[tuple[int, int], torch.Tensor] = {}
         self._kv_prefetch_next_id = 1
         self._kv_prefetch_contexts: dict[int, tuple[int, list[tuple[int, torch.Tensor, Any]]]] = {}
         self._kv_prefetch_ready_results: dict[int, torch.Tensor] = {}
@@ -346,7 +350,14 @@ class ShardedRecstoreClient:
             return torch.empty((0, embedding_dim), dtype=torch.float32)
         if self._uses_native_distributed_backend():
             return self._client.emb_read(self._normalize_ids(keys), embedding_dim)
-        out = torch.empty((keys.shape[0], embedding_dim), dtype=torch.float32)
+        key_rc = (int(keys.shape[0]), int(embedding_dim))
+        _rc_enabled = os.environ.get("RECSTORE_OUTPUT_CACHE", "1") != "0"
+        if _rc_enabled and key_rc in self._read_cache:
+            out = self._read_cache[key_rc]
+        else:
+            out = torch.empty(key_rc, dtype=torch.float32)
+            if _rc_enabled:
+                self._read_cache[key_rc] = out
         for shard, index_tensor in self._group_indices(keys):
             self._activate_shard(shard)
             shard_keys = keys.index_select(0, index_tensor).contiguous()
@@ -384,7 +395,14 @@ class ShardedRecstoreClient:
         total_rows, shard_requests = context
         if total_rows == 0:
             return torch.empty((0, embedding_dim), dtype=torch.float32)
-        out = torch.empty((total_rows, embedding_dim), dtype=torch.float32)
+        key_rc = (int(total_rows), int(embedding_dim))
+        _rc_enabled = os.environ.get("RECSTORE_OUTPUT_CACHE", "1") != "0"
+        if _rc_enabled and key_rc in self._read_cache:
+            out = self._read_cache[key_rc]
+        else:
+            out = torch.empty(key_rc, dtype=torch.float32)
+            if _rc_enabled:
+                self._read_cache[key_rc] = out
         for shard, index_tensor, request in shard_requests:
             self._activate_shard(shard)
             if isinstance(request, torch.Tensor):
@@ -967,7 +985,14 @@ class ShardedRecstoreClient:
             return out
         if total_rows == 0:
             return torch.empty((0, embedding_dim), dtype=torch.float32, device=device)
-        out = torch.empty((total_rows, embedding_dim), dtype=torch.float32)
+        key_rc = (int(total_rows), int(embedding_dim))
+        _rc_enabled = os.environ.get("RECSTORE_OUTPUT_CACHE", "1") != "0"
+        if _rc_enabled and key_rc in self._read_cache:
+            out = self._read_cache[key_rc]
+        else:
+            out = torch.empty(key_rc, dtype=torch.float32)
+            if _rc_enabled:
+                self._read_cache[key_rc] = out
         for shard, index_tensor, request in shard_requests:
             self._activate_shard(shard)
             if isinstance(request, torch.Tensor):
