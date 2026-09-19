@@ -465,8 +465,8 @@ bool GetFlat(recstore::BasePSClient* client,
   if (output->size() < needed) {
     output->assign(needed, 0.0f);
   }
-  base::RecTensor values(output->data(),
-                         {static_cast<int64_t>(keys.size()), dim});
+  base::RecTensor values(
+      output->data(), {static_cast<int64_t>(keys.size()), dim});
   return BenchmarkReadSucceeded(
       transport,
       client->GetParameter(key_array, values),
@@ -544,23 +544,14 @@ bool ConsumePrefetchFlat(
     recstore::BasePSClient* client,
     uint64_t prefetch_id,
     std::vector<float>* output,
-    int64_t* num_rows,
+    int64_t num_rows,
     int dim) {
-  if (output == nullptr || num_rows == nullptr) {
+  if (output == nullptr || num_rows < 0 || dim <= 0) {
     return false;
   }
-  base::RecTensor fetched({0, dim}, base::DataType::FLOAT32);
-  if (!client->GetPrefetchResult(prefetch_id, fetched)) {
-    return false;
-  }
-  *num_rows = fetched.shape(0);
-  if (fetched.data() == nullptr || fetched.num_elements() == 0) {
-    output->clear();
-    return true;
-  }
-  output->assign(fetched.data_as<float>(),
-                 fetched.data_as<float>() + fetched.num_elements());
-  return true;
+  output->resize(static_cast<size_t>(num_rows) * static_cast<size_t>(dim));
+  base::RecTensor fetched(output->data(), {num_rows, dim});
+  return client->GetPrefetchResult(prefetch_id, fetched);
 }
 
 int64_t NsSince(std::chrono::steady_clock::time_point start,
@@ -785,7 +776,6 @@ PhaseStats RunPrefetchFetchTransactions(
           FLAGS_seed + static_cast<uint64_t>(tid));
       std::deque<PendingFetch> pending;
       std::vector<float> output;
-      int64_t num_rows = 0;
       PhaseStats local;
       TransactionProfileStats local_profile;
 
@@ -816,10 +806,13 @@ PhaseStats RunPrefetchFetchTransactions(
         pending.pop_front();
         const auto consume_begin = std::chrono::steady_clock::now();
         CHECK(ConsumePrefetchFlat(
-            client, fetch.prefetch_id, &output, &num_rows, dim))
+            client,
+            fetch.prefetch_id,
+            &output,
+            static_cast<int64_t>(fetch.keys.size()),
+            dim))
             << transport << " GetPrefetchResult failed";
         const auto consume_end = std::chrono::steady_clock::now();
-        CHECK_EQ(num_rows, static_cast<int64_t>(fetch.keys.size()));
         if (FLAGS_verify_deterministic_values) {
           VerifyDeterministicFlatValues(fetch.keys, output, dim);
         }
@@ -914,7 +907,7 @@ PhaseStats RunRdmaDirectAsyncFetchTransactions(int dim, int prefetch_depth) {
   for (int tid = 0; tid < FLAGS_thread_num; ++tid) {
     threads.emplace_back([&, tid]() {
       base::auto_bind_core();
-      DirectRdmaClient direct     = CreateDirectRdmaClientFromConfig(config);
+      DirectRdmaClient direct      = CreateDirectRdmaClientFromConfig(config);
       recstore::RdmaRawAccess* raw = direct.raw.get();
       CHECK_NE(raw, nullptr);
       KeyGenerator key_gen(
@@ -1287,9 +1280,10 @@ int main(int argc, char** argv) {
       return 0;
     }
 
-    nlohmann::json config      = nlohmann::json::object();
-    config["client"] = {{"host", FLAGS_host}, {"port", FLAGS_port}, {"shard", 0}};
-    nlohmann::json servers     = nlohmann::json::array();
+    nlohmann::json config = nlohmann::json::object();
+    config["client"]      = {
+             {"host", FLAGS_host}, {"port", FLAGS_port}, {"shard", 0}};
+    nlohmann::json servers = nlohmann::json::array();
     for (int shard = 0; shard < FLAGS_num_shards; ++shard) {
       servers.push_back(
           {{"host", FLAGS_host}, {"port", FLAGS_port}, {"shard", shard}});
@@ -1337,8 +1331,8 @@ int main(int argc, char** argv) {
           const int dim = FLAGS_value_size / sizeof(float);
           std::vector<float> output(
               keys.size() * static_cast<std::size_t>(dim) + 1, 0.0f);
-          int rpc_id = raw->SubmitGetParameter(
-              key_array, output.data(), false, 0, dim);
+          int rpc_id =
+              raw->SubmitGetParameter(key_array, output.data(), false, 0, dim);
           raw->WaitRPCFinish(rpc_id);
           raw->RevokeRPCResource(rpc_id);
           (void)iteration;

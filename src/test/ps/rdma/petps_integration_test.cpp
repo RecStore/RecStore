@@ -3,13 +3,15 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
-#include <stdexcept>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
 #include "base/array.h"
 #include "base/tensor.h"
+#include "base/json.h"
 #include "benchmark/ps/rdma_rc_transport_benchmark_values.h"
 #include "ps/rdma/rdma_ps_client_adapter.h"
 #include "ps/rdma/petps_client.h"
@@ -19,6 +21,8 @@
 DECLARE_int32(value_size);
 DECLARE_int32(global_id);
 DECLARE_int32(num_server_processes);
+DECLARE_int32(num_client_processes);
+DECLARE_int32(rdma_rc_client_id_base);
 DECLARE_int32(rdma_rc_qps_per_client_per_shard);
 DECLARE_int32(rdma_rc_slots_per_qp);
 DECLARE_string(rdma_get_response_mode);
@@ -27,9 +31,8 @@ namespace {
 
 base::RecTensor
 MakeValues(const std::vector<std::uint64_t>& keys, int embedding_dim) {
-  base::RecTensor values(
-      {static_cast<int64_t>(keys.size()), embedding_dim},
-      base::DataType::FLOAT32);
+  base::RecTensor values({static_cast<int64_t>(keys.size()), embedding_dim},
+                         base::DataType::FLOAT32);
   float* dst = values.data_as<float>();
   for (std::size_t row = 0; row < keys.size(); ++row) {
     for (int d = 0; d < embedding_dim; ++d) {
@@ -40,24 +43,22 @@ MakeValues(const std::vector<std::uint64_t>& keys, int embedding_dim) {
   return values;
 }
 
-void ExpectFlatSlots(const float* buffer,
-                     const base::RecTensor& expected,
-                     int embedding_dim) {
-  const float* src = expected.data_as<float>();
+void ExpectFlatSlots(
+    const float* buffer, const base::RecTensor& expected, int embedding_dim) {
+  const float* src   = expected.data_as<float>();
   const int64_t rows = expected.shape(0);
   for (int64_t row = 0; row < rows; ++row) {
     for (int col = 0; col < embedding_dim; ++col) {
-      EXPECT_FLOAT_EQ(buffer[row * embedding_dim + col],
-                      src[row * embedding_dim + col]);
+      EXPECT_FLOAT_EQ(
+          buffer[row * embedding_dim + col], src[row * embedding_dim + col]);
     }
   }
 }
 
 base::RecTensor
 MakeHashedValues(const std::vector<std::uint64_t>& keys, int embedding_dim) {
-  base::RecTensor values(
-      {static_cast<int64_t>(keys.size()), embedding_dim},
-      base::DataType::FLOAT32);
+  base::RecTensor values({static_cast<int64_t>(keys.size()), embedding_dim},
+                         base::DataType::FLOAT32);
   float* dst = values.data_as<float>();
   for (std::size_t row = 0; row < keys.size(); ++row) {
     for (int col = 0; col < embedding_dim; ++col) {
@@ -83,9 +84,26 @@ void ExpectHashedFlatSlots(const float* buffer,
   }
 }
 
+recstore::ResolvedRdmaFabric TestFabric() {
+  const char* config_path = std::getenv("RECSTORE_CONFIG");
+  if (config_path == nullptr || *config_path == '\0') {
+    throw std::runtime_error(
+        "RECSTORE_CONFIG is required for RDMA integration");
+  }
+  const auto deployment =
+      recstore::ParseResolvedRdmaDeploymentConfig(ParseFile2Json(config_path));
+  return recstore::LocalRdmaFabric(deployment, FLAGS_global_id);
+}
+
 petps::PetPSClient& SingleShardClient() {
   static auto* client = []() {
-    auto* created = new petps::PetPSClient("127.0.0.1", 1234, 0);
+    const auto fabric = TestFabric();
+    const int logical_client_id =
+        FLAGS_rdma_rc_client_id_base >= 0
+            ? FLAGS_rdma_rc_client_id_base
+            : fabric.logical_id;
+    auto* created =
+        new petps::PetPSClient("127.0.0.1", 1234, 0, logical_client_id);
     created->InitThread();
     return created;
   }();
@@ -193,26 +211,21 @@ TEST(PetPSIntegrationTest, HashedValueBatchGetTransferSingleShard) {
 }
 
 TEST(PetPSIntegrationTest, AdapterSplitGetRoundTripMultiShard) {
-  const int embedding_dim       = FLAGS_value_size / sizeof(float);
-  json config                   = json::object();
-  config["cache_ps"]["ps_type"] = "RDMA";
-  config["cache_ps"]["base_kv_config"]["value"]["default_value_size_hint"] =
-      FLAGS_value_size;
-  config["client"] = json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}};
-  config["distributed_client"] = {
-      {"num_shards", 2},
-      {"hash_method", "simple_mod"},
-      {"max_keys_per_request", 2},
-      {"servers",
-       json::array(
-           {json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}},
-            json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 1}}})},
-  };
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  const char* config_path = std::getenv("RECSTORE_CONFIG");
+  ASSERT_NE(config_path, nullptr);
+  json config = ParseFile2Json(config_path);
+  ASSERT_TRUE(config.contains("distributed_client"));
   recstore::RDMAPSClientAdapter adapter(config);
+  ASSERT_EQ(adapter.InitEmbeddingTable(
+                "split_get",
+                recstore::EmbeddingTableConfig{
+                    10000000, static_cast<uint64_t>(embedding_dim)}),
+            0);
 
   std::vector<std::uint64_t> keys;
-  keys.reserve(10);
-  for (std::uint64_t key = 0; key < 10; ++key) {
+  keys.reserve(1000);
+  for (std::uint64_t key = 0; key < 1000; ++key) {
     keys.push_back(5000000ULL + key);
   }
   auto values = MakeValues(keys, embedding_dim);
@@ -223,36 +236,23 @@ TEST(PetPSIntegrationTest, AdapterSplitGetRoundTripMultiShard) {
   std::vector<float> output(
       keys.size() * static_cast<std::size_t>(embedding_dim), 0.0f);
   base::RecTensor output_t(
-      output.data(),
-      {static_cast<int64_t>(keys.size()), embedding_dim});
-  ASSERT_EQ(adapter.GetParameter(
-                base::ConstArray<std::uint64_t>(keys), output_t),
-            0);
+      output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
+  ASSERT_EQ(
+      adapter.GetParameter(base::ConstArray<std::uint64_t>(keys), output_t), 0);
 
   ExpectFlatSlots(output.data(), values, embedding_dim);
 }
 
 TEST(PetPSIntegrationTest, AdapterFlatUpdateRoundTripMultiShard) {
-  const int embedding_dim       = FLAGS_value_size / sizeof(float);
-  json config                   = json::object();
-  config["cache_ps"]["ps_type"] = "RDMA";
-  config["cache_ps"]["base_kv_config"]["value"]["default_value_size_hint"] =
-      FLAGS_value_size;
-  config["client"] = json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}};
-  config["distributed_client"] = {
-      {"num_shards", 2},
-      {"hash_method", "simple_mod"},
-      {"max_keys_per_request", 2},
-      {"servers",
-       json::array(
-           {json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}},
-            json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 1}}})},
-  };
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  const char* config_path = std::getenv("RECSTORE_CONFIG");
+  ASSERT_NE(config_path, nullptr);
+  json config = ParseFile2Json(config_path);
   recstore::RDMAPSClientAdapter adapter(config);
   ASSERT_EQ(adapter.InitEmbeddingTable(
                 "flat_update",
-                recstore::EmbeddingTableConfig{10000000,
-                                               static_cast<uint64_t>(embedding_dim)}),
+                recstore::EmbeddingTableConfig{
+                    10000000, static_cast<uint64_t>(embedding_dim)}),
             0);
 
   std::vector<std::uint64_t> keys;
@@ -267,8 +267,7 @@ TEST(PetPSIntegrationTest, AdapterFlatUpdateRoundTripMultiShard) {
   }
 
   base::RecTensor grads_t(
-      grads.data(),
-      {static_cast<int64_t>(keys.size()), embedding_dim});
+      grads.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
   const uint64_t update_id = adapter.SubmitUpdateParameterAsync(
       "flat_update", base::ConstArray<std::uint64_t>(keys), grads_t);
   ASSERT_GT(update_id, 0);
@@ -277,11 +276,9 @@ TEST(PetPSIntegrationTest, AdapterFlatUpdateRoundTripMultiShard) {
 
   std::vector<float> output(grads.size(), 0.0f);
   base::RecTensor output_t(
-      output.data(),
-      {static_cast<int64_t>(keys.size()), embedding_dim});
-  ASSERT_EQ(adapter.GetParameter(
-                base::ConstArray<std::uint64_t>(keys), output_t),
-            0);
+      output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
+  ASSERT_EQ(
+      adapter.GetParameter(base::ConstArray<std::uint64_t>(keys), output_t), 0);
   for (std::size_t index = 0; index < grads.size(); ++index) {
     EXPECT_FLOAT_EQ(output[index], -0.01f * grads[index]);
   }
@@ -363,6 +360,11 @@ TEST(PetPSIntegrationTest, RepeatedPutGetStressMultiShard) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);
   const int client_id     = FLAGS_global_id - FLAGS_num_server_processes;
   ASSERT_GE(client_id, 0);
+  const auto fabric = TestFabric();
+  const int logical_client_id =
+      FLAGS_rdma_rc_client_id_base >= 0
+          ? FLAGS_rdma_rc_client_id_base
+          : fabric.logical_id;
 
   json config                   = json::object();
   config["cache_ps"]["ps_type"] = "RDMA";
@@ -378,6 +380,31 @@ TEST(PetPSIntegrationTest, RepeatedPutGetStressMultiShard) {
            {json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 0}},
             json{{"host", "127.0.0.1"}, {"port", 1234}, {"shard", 1}}})},
   };
+  config["rdma_deployment"] = {
+      {"deployment_id", "rdma-multishard-inline-test"},
+      {"epoch", 1},
+      {"protocol_version", 1},
+      {"num_clients", FLAGS_num_client_processes},
+      {"nodes", json::array()},
+  };
+  for (int shard = 0; shard < 2; ++shard) {
+    config["rdma_deployment"]["nodes"].push_back(json{
+        {"node_id", shard},
+        {"role", "server"},
+        {"device", "mlx5_0"},
+        {"port", 1},
+        {"gid_index", 0},
+        {"mode", "ib"}});
+  }
+  for (int client = 0; client < FLAGS_num_client_processes; ++client) {
+    config["rdma_deployment"]["nodes"].push_back(json{
+        {"node_id", 2 + client},
+        {"role", "client"},
+        {"device", "mlx5_0"},
+        {"port", 1},
+        {"gid_index", 0},
+        {"mode", "ib"}});
+  }
   recstore::RDMAPSClientAdapter adapter(config);
 
   for (int round = 0; round < 50; ++round) {
@@ -399,9 +426,9 @@ TEST(PetPSIntegrationTest, RepeatedPutGetStressMultiShard) {
         keys.size() * static_cast<std::size_t>(embedding_dim), 0.0f);
     base::RecTensor output_t(
         output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
-    ASSERT_EQ(adapter.GetParameter(base::ConstArray<std::uint64_t>(keys),
-                                   output_t),
-              0)
+    ASSERT_EQ(
+        adapter.GetParameter(base::ConstArray<std::uint64_t>(keys), output_t),
+        0)
         << "round=" << round;
 
     ExpectFlatSlots(output.data(), values, embedding_dim);

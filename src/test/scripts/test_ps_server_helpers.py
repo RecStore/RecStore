@@ -63,6 +63,36 @@ class TestPSServerHelpers(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "partially available"):
                 ps_server_helpers.should_skip_server_start()
 
+    def test_get_rdma_runner_config_requires_explicit_deployment(self):
+        config = {
+            "cache_ps": {"base_kv_config": {"value": {"default_value_size_hint": 16}}},
+            "distributed_client": {
+                "num_shards": 1,
+                "max_keys_per_request": 8,
+            },
+        }
+        with mock.patch.object(ps_server_helpers, "load_config", return_value=("cfg", config)):
+            with self.assertRaisesRegex(ValueError, "rdma_deployment"):
+                ps_server_helpers.get_rdma_runner_config()
+
+    def test_get_rdma_runner_config_uses_explicit_values(self):
+        config = {
+            "cache_ps": {"base_kv_config": {"value": {"default_value_size_hint": 16}}},
+            "distributed_client": {"num_shards": 2, "max_keys_per_request": 8},
+            "rdma_deployment": {
+                "deployment_id": "test",
+                "epoch": 1,
+                "protocol_version": 1,
+                "num_clients": 1,
+                "nodes": [{"node_id": 0, "role": "server"}],
+            },
+        }
+        with mock.patch.object(ps_server_helpers, "load_config", return_value=("cfg", config)):
+            result = ps_server_helpers.get_rdma_runner_config()
+        self.assertEqual(result["num_servers"], 2)
+        self.assertEqual(result["max_kv_num_per_request"], 8)
+        self.assertEqual(result["num_clients"], 1)
+
 
 if __name__ == '__main__':
     unittest.main()

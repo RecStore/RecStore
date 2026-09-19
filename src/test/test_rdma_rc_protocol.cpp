@@ -87,7 +87,8 @@ TEST(RdmaRcProtocolTest, FlatUpdatePayloadMatchesRowPayload) {
 
   // Flat and row payloads use different serialization formats (flat stores
   // keys + values contiguously; row uses ParameterCompressor with per-row
-  // dim fields). Verify each independently instead of requiring binary equality.
+  // dim fields). Verify each independently instead of requiring binary
+  // equality.
   const auto* flat_keys =
       reinterpret_cast<const std::uint64_t*>(flat_payload.data());
   const auto* flat_values_ptr = reinterpret_cast<const float*>(
@@ -130,7 +131,9 @@ TEST(RdmaRcProtocolTest, FlatUpdatePayloadStoresContiguousKeysAndValues) {
       reinterpret_cast<const std::uint64_t*>(flat_payload.data());
   const auto* payload_values = reinterpret_cast<const float*>(
       flat_payload.data() + keys.size() * sizeof(std::uint64_t));
-  EXPECT_EQ(std::vector<std::uint64_t>(payload_keys, payload_keys + keys.size()), keys);
+  EXPECT_EQ(
+      std::vector<std::uint64_t>(payload_keys, payload_keys + keys.size()),
+      keys);
   EXPECT_EQ(
       std::vector<float>(payload_values, payload_values + flat_values.size()),
       flat_values);
@@ -144,9 +147,8 @@ TEST(RdmaRcProtocolTest, FlatUpdatePayloadRejectsOverflow) {
 
 TEST(RdmaRcProtocolTest, FlatUpdateGatherPacksSelectedRowsInOrder) {
   const std::vector<std::uint64_t> keys = {10, 20, 30};
-  const std::vector<float> values = {
-      1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  const std::vector<std::size_t> rows = {2, 0};
+  const std::vector<float> values       = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  const std::vector<std::size_t> rows   = {2, 0};
   std::vector<char> payload(petps::FlatUpdatePayloadBytes(rows.size(), 2));
   std::string error;
 
@@ -175,8 +177,8 @@ TEST(RdmaRcProtocolTest, FlatUpdateGatherPacksSelectedRowsInOrder) {
 
 TEST(RdmaRcProtocolTest, FlatUpdateGatherRejectsOutOfRangeRows) {
   const std::vector<std::uint64_t> keys = {10};
-  const std::vector<float> values = {1.0f, 2.0f};
-  const std::size_t row = 1;
+  const std::vector<float> values       = {1.0f, 2.0f};
+  const std::size_t row                 = 1;
   std::vector<char> payload(petps::FlatUpdatePayloadBytes(1, 2));
   std::string error;
 
@@ -204,6 +206,46 @@ TEST(RdmaRcProtocolTest, StatusWordDoneRequiresMatchingSeq) {
   EXPECT_FALSE(petps::StatusWordDone(status, 7));
   status.seq.store(7, std::memory_order_release);
   EXPECT_TRUE(petps::StatusWordDone(status, 7));
+}
+
+TEST(RdmaRcProtocolTest, QuarantinedSlotWaitsForMatchingLateCompletion) {
+  petps::StatusWord status;
+  petps::ResetStatusWord(&status, 7);
+  petps::RequestSlotLifecycle lifecycle;
+
+  ASSERT_TRUE(lifecycle.TryAcquire(status));
+  lifecycle.Quarantine(7);
+  EXPECT_TRUE(lifecycle.IsQuarantined());
+  EXPECT_FALSE(lifecycle.TryAcquire(status));
+
+  status.seq.store(6, std::memory_order_release);
+  status.state.store(petps::kRcSlotDone, std::memory_order_release);
+  EXPECT_FALSE(lifecycle.TryAcquire(status));
+
+  status.seq.store(7, std::memory_order_release);
+  EXPECT_TRUE(lifecycle.TryAcquire(status));
+  EXPECT_FALSE(lifecycle.IsQuarantined());
+}
+
+TEST(RdmaRcProtocolTest, CompletedSlotStillRequiresExplicitRelease) {
+  petps::StatusWord status;
+  petps::ResetStatusWord(&status, 3);
+  petps::RequestSlotLifecycle lifecycle;
+
+  ASSERT_TRUE(lifecycle.TryAcquire(status));
+  status.state.store(petps::kRcSlotDone, std::memory_order_release);
+  EXPECT_FALSE(lifecycle.TryAcquire(status));
+  lifecycle.Release();
+  EXPECT_TRUE(lifecycle.TryAcquire(status));
+}
+
+TEST(RdmaRcProtocolTest, WaitTimeoutHasDistinctErrorType) {
+  petps::StatusWord status;
+  petps::ResetStatusWord(&status, 9);
+
+  EXPECT_THROW(
+      petps::WaitStatusWord(status, 9, /*timeout_ms=*/1, /*spin_iterations=*/0),
+      petps::RdmaRequestTimeout);
 }
 
 } // namespace

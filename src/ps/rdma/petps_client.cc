@@ -3,13 +3,16 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
 
 #include <folly/portability/GFlags.h>
 
+#include "base/config.h"
 #include "ps/rdma/control_plane.h"
+#include "ps/rdma/rdma_deployment.h"
 #include "ps/rdma/rdma_common.h"
 #include "ps/rdma/rc_options.h"
 
@@ -138,11 +141,41 @@ void PetPSClient::InitializeTransport() {
   config_.control_plane_timeout_ms = FLAGS_rdma_control_plane_timeout_ms;
   config_.namespace_token          = namespace_token_;
 
+  const char* configured_path = std::getenv("RECSTORE_CONFIG");
+  const std::string config_path =
+      configured_path != nullptr && *configured_path != '\0'
+          ? std::string(configured_path)
+          : base::ResolveRecStoreConfigPath().string();
+  std::ifstream config_file(config_path);
+  if (!config_file.is_open()) {
+    throw std::runtime_error("cannot open RDMA client config: " + config_path);
+  }
+  nlohmann::json config_json;
+  config_file >> config_json;
+  const auto deployment =
+      recstore::ParseResolvedRdmaDeploymentConfig(config_json);
+  const auto& fabric  = recstore::LocalRdmaFabric(deployment, FLAGS_global_id);
+  config_.node_id     = FLAGS_global_id;
+  config_.num_servers = deployment.num_shards;
+  config_.num_os_clients       = deployment.num_clients;
+  config_.deployment_id        = deployment.deployment_id;
+  config_.deployment_epoch     = deployment.epoch;
+  config_.protocol_version     = deployment.protocol_version;
+  config_.configuration_digest = deployment.configuration_digest;
+  config_.fabric_digest        = deployment.fabric_digest;
+  config_.fabric               = fabric;
+
   transport_ = std::make_unique<RcShardClientTransport>(config_);
   RdmaControlPlaneClient control_plane({
       config_.control_plane_host,
       config_.control_plane_port,
       config_.control_plane_timeout_ms,
+      config_.deployment_id,
+      config_.deployment_epoch,
+      config_.protocol_version,
+      config_.configuration_digest,
+      config_.fabric_digest,
+      config_.num_servers,
   });
   control_plane.WaitServer(shard_, config_.control_plane_timeout_ms);
   qps_.clear();
@@ -194,8 +227,8 @@ void* PetPSClient::GetReceiveBuffer(size_t size) {
     return buf.data();
   }
   receive_buffers_.emplace_back(size, 0);
-  receive_buffer_index_.emplace(receive_buffers_.back().data(),
-                                receive_buffers_.size() - 1);
+  receive_buffer_index_.emplace(
+      receive_buffers_.back().data(), receive_buffers_.size() - 1);
   return receive_buffers_.back().data();
 }
 
@@ -204,8 +237,8 @@ void PetPSClient::ReturnGetReceiveBuffer(const float* buffer) {
     return;
   }
   std::lock_guard<std::mutex> guard(mu_);
-  const auto it = receive_buffer_index_.find(
-      reinterpret_cast<const char*>(buffer));
+  const auto it =
+      receive_buffer_index_.find(reinterpret_cast<const char*>(buffer));
   if (it != receive_buffer_index_.end()) {
     receive_buffer_free_.push_back(it->second);
   }
@@ -250,8 +283,8 @@ const float* PetPSClient::BorrowGetResultPayload(
         pending.key_count == 0
             ? FLAGS_value_size
             : static_cast<int>(pending.response_bytes / pending.key_count);
-    auto* user_status = FixedSlotStatusWord(
-        pending.recv_buffer, pending.key_count, value_size);
+    auto* user_status =
+        FixedSlotStatusWord(pending.recv_buffer, pending.key_count, value_size);
     *user_status = rc_status;
   }
   MaybeReportProfile();
@@ -317,8 +350,8 @@ bool PetPSClient::RequestPayloadFitsSlot(std::size_t payload_bytes) const {
 
 float* PetPSClient::AllocateStatusReceiveBufferLocked() {
   receive_buffers_.emplace_back(sizeof(std::int32_t), 0);
-  receive_buffer_index_.emplace(receive_buffers_.back().data(),
-                                receive_buffers_.size() - 1);
+  receive_buffer_index_.emplace(
+      receive_buffers_.back().data(), receive_buffers_.size() - 1);
   return reinterpret_cast<float*>(receive_buffers_.back().data());
 }
 
@@ -519,23 +552,20 @@ int PetPSClient::SubmitRpcLocked(
 
 int PetPSClient::GetParameter(const base::ConstArray<uint64_t>& keys,
                               base::RecTensor& values) {
-  if (!recstore::IsFloatEmbeddingValues(values,
-                                        static_cast<int64_t>(keys.Size()))) {
+  if (!recstore::IsFloatEmbeddingValues(
+          values, static_cast<int64_t>(keys.Size()))) {
     return -1;
   }
   if (keys.Size() == 0) {
     return 0;
   }
   const int embedding_dim = static_cast<int>(values.shape(1));
-  const int value_size =
-      embedding_dim * static_cast<int>(sizeof(float));
+  const int value_size    = embedding_dim * static_cast<int>(sizeof(float));
   const std::size_t response_bytes =
       FixedSlotResponseBytes(keys.Size(), value_size);
-  float* recv = static_cast<float*>(GetReceiveBuffer(response_bytes));
-  const int rpc_id =
-      GetParameter(keys, recv, false, 0, embedding_dim);
-  const auto* status =
-      FixedSlotStatusWord(recv, keys.Size(), value_size);
+  float* recv        = static_cast<float*>(GetReceiveBuffer(response_bytes));
+  const int rpc_id   = GetParameter(keys, recv, false, 0, embedding_dim);
+  const auto* status = FixedSlotStatusWord(recv, keys.Size(), value_size);
   if (*status != static_cast<std::int32_t>(RpcStatus::kOk)) {
     RevokeRPCResource(rpc_id);
     return -1;
@@ -578,8 +608,8 @@ PetPSClient::PrefetchParameter(const base::ConstArray<uint64_t>& keys) {
 
   std::lock_guard<std::mutex> guard(prefetch_mu_);
   const uint64_t prefetch_id = next_prefetch_id_++;
-  prefetches_.emplace(prefetch_id,
-                      PrefetchState{rpc_id, recv, keys.Size(), embedding_dim});
+  prefetches_.emplace(
+      prefetch_id, PrefetchState{rpc_id, recv, keys.Size(), embedding_dim});
   return prefetch_id;
 }
 
@@ -605,8 +635,8 @@ void PetPSClient::WaitForPrefetch(uint64_t prefetch_id) {
   WaitRPCFinish(rpc_id);
 }
 
-bool PetPSClient::GetPrefetchResult(
-    uint64_t prefetch_id, base::RecTensor& values) {
+bool PetPSClient::GetPrefetchResult(uint64_t prefetch_id,
+                                    base::RecTensor& values) {
   PrefetchState state;
   {
     std::lock_guard<std::mutex> guard(prefetch_mu_);
@@ -617,14 +647,13 @@ bool PetPSClient::GetPrefetchResult(
     state = it->second;
     prefetches_.erase(it);
   }
-  const auto* status = FixedSlotStatusWord(
-      state.recv_buffer, state.key_count, FLAGS_value_size);
+  const auto* status =
+      FixedSlotStatusWord(state.recv_buffer, state.key_count, FLAGS_value_size);
   if (*status != static_cast<std::int32_t>(RpcStatus::kOk)) {
     RevokeRPCResource(state.rpc_id);
     return false;
   }
-  const bool discard =
-      values.data() == nullptr && values.dim() == 0;
+  const bool discard = values.data() == nullptr && values.dim() == 0;
   if (!discard) {
     if (!recstore::EnsureEmbeddingOutput(
             values, static_cast<int64_t>(state.key_count)) ||
@@ -632,11 +661,11 @@ bool PetPSClient::GetPrefetchResult(
       RevokeRPCResource(state.rpc_id);
       return false;
     }
-    std::memcpy(values.data_as<float>(),
-                state.recv_buffer,
-                state.key_count *
-                    static_cast<std::size_t>(state.embedding_dim) *
-                    sizeof(float));
+    std::memcpy(
+        values.data_as<float>(),
+        state.recv_buffer,
+        state.key_count * static_cast<std::size_t>(state.embedding_dim) *
+            sizeof(float));
   }
   RevokeRPCResource(state.rpc_id);
   return true;
@@ -655,8 +684,9 @@ int PetPSClient::GetParameter(
     return 0;
   }
   const std::size_t value_size =
-      embedding_dim > 0 ? static_cast<std::size_t>(embedding_dim) * sizeof(float)
-                        : static_cast<std::size_t>(FLAGS_value_size);
+      embedding_dim > 0
+          ? static_cast<std::size_t>(embedding_dim) * sizeof(float)
+          : static_cast<std::size_t>(FLAGS_value_size);
   int rpc_id = 0;
   {
     std::lock_guard<std::mutex> guard(mu_);
@@ -749,8 +779,8 @@ void PetPSClient::WaitRPCFinish(int rpc_id) {
       pending.key_count == 0
           ? FLAGS_value_size
           : static_cast<int>(pending.response_bytes / pending.key_count);
-  auto* user_status = FixedSlotStatusWord(
-      pending.recv_buffer, pending.key_count, value_size);
+  auto* user_status =
+      FixedSlotStatusWord(pending.recv_buffer, pending.key_count, value_size);
   *user_status = status_code;
   MaybeReportProfile();
 }
@@ -784,10 +814,10 @@ void PetPSClient::RevokeRPCResource(int rpc_id) {
   }
 }
 
-int PetPSClient::PutParameter(
-    const base::ConstArray<uint64_t>& keys, const base::RecTensor& values) {
-  if (!recstore::IsFloatEmbeddingValues(values,
-                                        static_cast<int64_t>(keys.Size()))) {
+int PetPSClient::PutParameter(const base::ConstArray<uint64_t>& keys,
+                              const base::RecTensor& values) {
+  if (!recstore::IsFloatEmbeddingValues(
+          values, static_cast<int64_t>(keys.Size()))) {
     return -1;
   }
   if (keys.Size() == 0) {
@@ -850,10 +880,11 @@ int PetPSClient::PutParameter(
   return 0;
 }
 
-int PetPSClient::InitEmbeddingTable(const std::string& table_name,
-                                    std::uint64_t num_embeddings,
-                                    std::uint64_t embedding_dim,
-                                    std::uint64_t table_id) {
+int PetPSClient::InitEmbeddingTable(
+    const std::string& table_name,
+    std::uint64_t num_embeddings,
+    std::uint64_t embedding_dim,
+    std::uint64_t table_id) {
   const std::array<std::uint64_t, 3> payload_words = {
       num_embeddings,
       embedding_dim,
@@ -888,8 +919,9 @@ int PetPSClient::InitEmbeddingTable(const std::string& table_name,
 
   WaitRPCFinish(rpc_id);
   PendingRpc pending;
-  std::int32_t rpc_status = static_cast<std::int32_t>(RpcStatus::kInvalidPayload);
-  std::uint32_t tag_word  = 0;
+  std::int32_t rpc_status =
+      static_cast<std::int32_t>(RpcStatus::kInvalidPayload);
+  std::uint32_t tag_word = 0;
   {
     std::lock_guard<std::mutex> guard(mu_);
     if (PendingRpcLocked(rpc_id, &pending)) {
@@ -911,8 +943,8 @@ int PetPSClient::UpdateParameter(const std::string& table_name,
   if (keys.Size() == 0) {
     return 0;
   }
-  if (!recstore::IsFloatEmbeddingValues(grads,
-                                        static_cast<int64_t>(keys.Size()))) {
+  if (!recstore::IsFloatEmbeddingValues(
+          grads, static_cast<int64_t>(keys.Size()))) {
     return -1;
   }
   const int64_t D  = grads.shape(1);
@@ -1079,14 +1111,7 @@ int PetPSClient::SubmitUpdateParameterFlatGather(
       slot.view);
   float* recv = AllocateStatusReceiveBufferLocked();
   return SubmitRpcLocked(
-      &slot,
-      descriptor,
-      slot.view.payload,
-      payload_bytes,
-      recv,
-      0,
-      0,
-      true);
+      &slot, descriptor, slot.view.payload, payload_bytes, recv, 0, 0, true);
 }
 
 int PetPSClient::WaitUpdateParameter(int rpc_id) {
@@ -1110,8 +1135,8 @@ int PetPSClient::WaitUpdateParameter(int rpc_id) {
 int PetPSClient::FakePutParameter(base::ConstArray<uint64_t> keys,
                                   float* values) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);
-  base::RecTensor tensor(values,
-                         {static_cast<int64_t>(keys.Size()), embedding_dim});
+  base::RecTensor tensor(
+      values, {static_cast<int64_t>(keys.Size()), embedding_dim});
   return PutParameter(keys, tensor);
 }
 

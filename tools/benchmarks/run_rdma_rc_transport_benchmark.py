@@ -136,6 +136,7 @@ def print_aggregate_table(rows):
 def build_benchmark_cmd(args):
     cmd = [
         args.benchmark_binary,
+        f"--config_path={args.config_path}",
         f"--num_shards={args.server_count}",
         f"--iterations={args.iterations}",
         f"--rounds={args.rounds}",
@@ -222,6 +223,36 @@ def write_runtime_config(args, source_config_path, runtime_dir):
             },
         },
     }
+    deployment = config.get("rdma_deployment")
+    if not isinstance(deployment, dict):
+        raise ValueError("RDMA benchmark config requires rdma_deployment")
+    nodes = deployment.get("nodes")
+    if not isinstance(nodes, list):
+        raise ValueError("rdma_deployment.nodes must be an array")
+    server_count = int(args.server_count)
+    client_count = int(args.client_count)
+    server_nodes = [node for node in nodes if node.get("role") == "server"]
+    client_nodes = [node for node in nodes if node.get("role") == "client"]
+    if len(server_nodes) != server_count:
+        raise ValueError(
+            "rdma_deployment server node count does not match --server-count"
+        )
+    if [node.get("node_id") for node in server_nodes] != list(range(server_count)):
+        raise ValueError(
+            "rdma_deployment server node ids must be dense 0..num_shards-1"
+        )
+    template = client_nodes[0] if client_nodes else {
+        "role": "client",
+        "device": "mlx5_0",
+        "port": 1,
+        "gid_index": 0,
+        "mode": "ib",
+    }
+    deployment["num_clients"] = client_count
+    deployment["nodes"] = server_nodes + [
+        {**template, "node_id": server_count + client_index, "role": "client"}
+        for client_index in range(client_count)
+    ]
 
     runtime_config_path = (
         f"{runtime_dir}/recstore_config.rdma_runtime.json"
@@ -554,6 +585,7 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix="recstore_rdma_rc_benchmark_") as tmpdir:
         config_path = write_runtime_config(args, source_config_path, tmpdir)
+        args.config_path = config_path
         runner = PetPSClusterRunner(
             config_path=config_path,
             num_servers=args.server_count,

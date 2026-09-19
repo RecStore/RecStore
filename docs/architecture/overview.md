@@ -1,5 +1,7 @@
 # RecStore 架构总览
 
+RDMA 多机部署和整理方案的设计草稿位于 `tmp/rdma_architecture/`，不纳入正式文档导航。
+
 RecStore 采用分层架构设计，旨在支撑万亿级稀疏参数的存储与高效更新。整个系统从逻辑上分为三层：**计算层 (Calculation Layer)**、**参数服务器层 (Parameter Server Layer)** 和 **存储层 (Storage Layer)**。
 
 ## 架构简图

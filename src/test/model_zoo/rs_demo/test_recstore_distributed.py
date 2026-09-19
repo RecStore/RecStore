@@ -387,6 +387,20 @@ class TestShardedRecstoreClient(unittest.TestCase):
         self.assertEqual(sorted(fake_client.writes[20000].keys()), sorted(expected_port_to_keys[20000]))
         self.assertEqual(sorted(fake_client.writes[20001].keys()), sorted(expected_port_to_keys[20001]))
 
+    def test_city_hash_matches_cpp_golden_vectors(self) -> None:
+        vectors = {
+            0: 1457330246272086660,
+            1: 5925585971146611297,
+            2: 3353244675891348105,
+            4: 3255232038643208583,
+            5: 3312746975386716960,
+            7: 13480157459181078539,
+            42: 15591584478111741110,
+            0xFFFFFFFFFFFFFFFF: 3458737730936475989,
+        }
+        for key, expected in vectors.items():
+            self.assertEqual(_city_hash64_of_uint64(key), expected)
+
     def test_prefers_distributed_client_servers_over_cache_ps(self) -> None:
         runtime_dir = self._make_runtime_dir(
             hash_method="simple_mod",
@@ -451,23 +465,11 @@ class TestShardedRecstoreClient(unittest.TestCase):
         self.assertEqual(sorted(fake_client.writes[23000].keys()), [0])
         self.assertEqual(sorted(fake_client.writes[23002].keys()), [2, 5])
 
-    def test_unknown_hash_method_falls_back_to_city_hash(self) -> None:
+    def test_unknown_hash_method_is_rejected(self) -> None:
         runtime_dir = self._make_runtime_dir(hash_method="unknown_hash_name", distributed_num_shards=2)
         fake_client = _FakeClient()
-        client = ShardedRecstoreClient(fake_client, runtime_dir)
-
-        keys = torch.tensor([2, 4, 5, 7], dtype=torch.int64)
-        values = torch.arange(16, dtype=torch.float32).reshape(4, 4)
-        client.emb_write(keys, values)
-
-        expected_port_to_keys: dict[int, list[int]] = {20000: [], 20001: []}
-        for key in keys.tolist():
-            shard = self._cityhash_shard_for_key(int(key), 2)
-            port = 20000 if shard == 0 else 20001
-            expected_port_to_keys[port].append(int(key))
-
-        self.assertEqual(sorted(fake_client.writes[20000].keys()), sorted(expected_port_to_keys[20000]))
-        self.assertEqual(sorted(fake_client.writes[20001].keys()), sorted(expected_port_to_keys[20001]))
+        with self.assertRaisesRegex(ValueError, "unsupported shard hash method"):
+            ShardedRecstoreClient(fake_client, runtime_dir)
 
     def test_cityhash_library_is_loaded_lazily(self) -> None:
         with mock.patch("ctypes.CDLL", side_effect=OSError("lib load boom")):

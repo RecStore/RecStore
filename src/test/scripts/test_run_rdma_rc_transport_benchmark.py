@@ -10,6 +10,7 @@ from tools.benchmarks.run_rdma_rc_transport_benchmark import (  # noqa: E402
     collect_summary_rows,
     local_numa_node_count,
     parse_client_numa_ids,
+    write_runtime_config,
 )
 
 
@@ -59,6 +60,7 @@ class TestRunRDMARCTransportBenchmark(unittest.TestCase):
     def test_build_benchmark_cmd_uses_normalized_argument_names(self):
         args = SimpleNamespace(
             benchmark_binary="./build/bin/rdma_rc_transport_benchmark",
+            config_path="./src/test/configs/recstore_config.rdma_test.json",
             server_count=1,
             iterations=20,
             rounds=5,
@@ -122,6 +124,53 @@ class TestRunRDMARCTransportBenchmark(unittest.TestCase):
 
     def test_local_numa_node_count_is_positive(self):
         self.assertGreaterEqual(local_numa_node_count(), 1)
+
+    def test_write_runtime_config_aligns_client_nodes(self):
+        import json
+        import tempfile
+        from types import SimpleNamespace
+
+        source = (
+            Path(__file__).resolve().parents[3]
+            / "src"
+            / "test"
+            / "configs"
+            / "recstore_config.rdma_test.json"
+        )
+        args = SimpleNamespace(server_count=1, client_count=3, value_size=16)
+        with tempfile.TemporaryDirectory() as runtime_dir:
+            path = write_runtime_config(args, str(source), runtime_dir)
+            config = json.loads(Path(path).read_text())
+        deployment = config["rdma_deployment"]
+        self.assertEqual(deployment["num_clients"], 3)
+        self.assertEqual(
+            [(node["node_id"], node["role"]) for node in deployment["nodes"]],
+            [(0, "server"), (1, "client"), (2, "client"), (3, "client")],
+        )
+
+    def test_write_runtime_config_rejects_non_dense_server_nodes(self):
+        import json
+        import tempfile
+        from types import SimpleNamespace
+
+        source = (
+            Path(__file__).resolve().parents[3]
+            / "src"
+            / "test"
+            / "configs"
+            / "recstore_config.rdma_test.json"
+        )
+        config = json.loads(source.read_text())
+        config["rdma_deployment"]["nodes"][0]["node_id"] = 2
+        with tempfile.TemporaryDirectory() as runtime_dir:
+            source_path = Path(runtime_dir) / "source.json"
+            source_path.write_text(json.dumps(config))
+            with self.assertRaisesRegex(ValueError, "dense"):
+                write_runtime_config(
+                    SimpleNamespace(server_count=1, client_count=1, value_size=16),
+                    str(source_path),
+                    runtime_dir,
+                )
 
 
 if __name__ == "__main__":
