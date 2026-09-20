@@ -65,20 +65,48 @@ class gpu_cache : public gpu_cache_api<key_type> {
              key_type* d_missing_keys, size_t* d_missing_len, cudaStream_t stream,
              const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
 
+  // Read-only hit-only API. Every key must be resident; misses are undefined.
+  void GetAssumingHits(const key_type* d_keys, const size_t len, float* d_values,
+                       cudaStream_t stream,
+                       const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
+
+  // Read-only membership API. d_success[key index] is true iff the key is
+  // resident. Like GetAssumingHits, this does not lock or copy values.
+  void Contains(const key_type* d_keys, const size_t len, bool* d_success,
+                cudaStream_t stream,
+                const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
+
   // Replace API, i.e. Follow the Query API to update the content of the cache to Most Recent.
   // Input keys must not equal the reserved cache sentinel values described above.
   void Replace(const key_type* d_keys, const size_t len, const float* d_values, cudaStream_t stream,
                const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
+
+  // Insert only into empty/tombstone slots. Existing entries are kept. The
+  // caller owns eviction and must not use Replace on the same cache.
+  void TryInsertNoEvict(const key_type* d_keys, const size_t len,
+                        const float* d_values, bool* d_success, cudaStream_t stream,
+                        const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
 
   // Update API, i.e. update the embeddings which exist in the cache.
   // Input keys must not equal the reserved cache sentinel values described above.
   void Update(const key_type* d_keys, const size_t len, const float* d_values, cudaStream_t stream,
               const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
 
+  // ApplySgd API: in-place SGD step (value -= lr * grad) on the embeddings
+  // which exist in the cache.  Missing keys are silently skipped.
+  void ApplySgd(const key_type* d_keys, const size_t len, const float* d_grads, const float lr,
+                cudaStream_t stream,
+                const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
+
   // Remove API, i.e. invalidate existing embeddings from the cache.
   // Input keys must not equal the reserved cache sentinel values described above.
   void Remove(const key_type* d_keys, const size_t len, cudaStream_t stream,
               const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
+
+  // Remove API with an authoritative per-key success mask.
+  void RemoveWithMask(const key_type* d_keys, const size_t len,
+                      bool* d_success, cudaStream_t stream,
+                      const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
 
   // Dump API, i.e. dump some slabsets' keys from the cache
   void Dump(key_type* d_keys, size_t* d_dump_counter, const size_t start_set_index,

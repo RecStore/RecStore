@@ -487,6 +487,33 @@ class RecStoreClient:
         self._ensure_gpu_cache_table(name)
         self.ops.prefill_gpu_cache(ids, values)
 
+    def prefill_gpu_cache_no_evict(
+        self, name: str, ids: torch.Tensor, values: torch.Tensor
+    ) -> torch.Tensor:
+        """Insert rows without evicting other cache entries.
+
+        Returns a bool tensor aligned with ``ids``; true means the row is
+        resident after this stream-ordered operation.
+        """
+        if name not in self._tensor_meta:
+            raise RuntimeError(f"Tensor '{name}' has not been initialized.")
+        ids = self._normalize_ids(ids, preserve_device=True, name=name)
+        if values.dim() != 2:
+            raise ValueError("values must be a 2-dimensional tensor")
+        if ids.size(0) != values.size(0):
+            raise ValueError("ids and values must have the same number of rows")
+        if ids.device.type == "cpu":
+            self._reject_gpu_cache_reserved_ids(ids)
+        self._ensure_gpu_cache_table(name)
+        return self.ops.prefill_gpu_cache_no_evict(ids, values)
+
+    def contains_gpu_cache(self, keys: torch.Tensor) -> torch.Tensor:
+        """Return a bool residency mask for fused keys."""
+        keys = self._normalize_ids(keys, preserve_device=True)
+        if not keys.is_contiguous():
+            keys = keys.contiguous()
+        return self.ops.contains_gpu_cache(keys)
+
     def invalidate_gpu_cache(self, name: str, ids: torch.Tensor) -> None:
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
@@ -498,6 +525,23 @@ class RecStoreClient:
             else:
                 raise RuntimeError("invalidate_gpu_cache requires CUDA ids")
         self.ops.invalidate_gpu_cache(ids)
+
+    def invalidate_gpu_cache_with_mask(
+        self, name: str, ids: torch.Tensor
+    ) -> torch.Tensor:
+        """Invalidate rows and return the authoritative removal mask."""
+        if name not in self._tensor_meta:
+            raise RuntimeError(f"Tensor '{name}' has not been initialized.")
+        self._ensure_gpu_cache_table(name)
+        ids = self._normalize_ids(ids, preserve_device=True, name=name)
+        if ids.device.type == "cpu":
+            if torch.cuda.is_available():
+                ids = ids.to(torch.device("cuda", torch.cuda.current_device()))
+            else:
+                raise RuntimeError(
+                    "invalidate_gpu_cache_with_mask requires CUDA ids"
+                )
+        return self.ops.invalidate_gpu_cache_with_mask(ids)
 
     def apply_sgd_update_gpu_cache(
         self,
@@ -519,6 +563,32 @@ class RecStoreClient:
         if ids.device.type == "cpu":
             self._reject_gpu_cache_reserved_ids(ids)
         return bool(self.ops.apply_sgd_update_gpu_cache(ids, grads, float(learning_rate)))
+
+    def apply_sgd_update_gpu_cache_best_effort(
+        self,
+        name: str,
+        ids: torch.Tensor,
+        grads: torch.Tensor,
+        *,
+        learning_rate: float,
+    ) -> None:
+        """Best-effort in-place SGD on the GPU cache: value -= lr * grad on
+        present keys only; missing keys silently skipped.  No Query, no
+        missing report, no device synchronization."""
+        if name not in self._tensor_meta:
+            raise RuntimeError(f"Tensor '{name}' has not been initialized.")
+        self._ensure_gpu_cache_table(name)
+        ids = self._normalize_ids(ids, preserve_device=True)
+        grads = self._normalize_grads(grads, preserve_device=True)
+        if grads.dim() != 2:
+            raise ValueError("grads must be a 2-dimensional tensor")
+        if ids.size(0) != grads.size(0):
+            raise ValueError("ids and grads must have the same number of rows")
+        if ids.device.type == "cpu":
+            self._reject_gpu_cache_reserved_ids(ids)
+        self.ops.apply_sgd_update_gpu_cache_best_effort(
+            ids, grads, float(learning_rate)
+        )
 
     def set_gpu_cache_lookup_bypass_enabled(self, enabled: bool) -> None:
         self.ops.set_gpu_cache_lookup_bypass_enabled(bool(enabled))
@@ -572,6 +642,41 @@ class RecStoreClient:
         if not keys.is_contiguous():
             keys = keys.contiguous()
         return self.ops.gpu_cache_lookup_flat(keys, int(embedding_dim))
+
+    def gpu_cache_lookup_flat_no_evict(
+        self, keys: torch.Tensor, embedding_dim: int
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Lookup rows and fill misses without evicting residents.
+
+        Returns ``(values, resident_mask)``; the mask is authoritative C++
+        residency state after the stream-ordered fill.
+        """
+        keys = self._normalize_ids(keys, preserve_device=True)
+        if not keys.is_contiguous():
+            keys = keys.contiguous()
+        return self.ops.gpu_cache_lookup_flat_no_evict(keys, int(embedding_dim))
+
+    def get_gpu_cache_generation(self) -> int:
+        """Return a generation that changes whenever the C++ cache is reset."""
+        return int(self.ops.get_gpu_cache_generation())
+
+    def gpu_cache_lookup_flat_assuming_hits(
+        self, keys: torch.Tensor, embedding_dim: int
+    ) -> torch.Tensor:
+        """Cache-only lookup for a caller-verified all-hit key set.
+
+        Unlike :meth:`gpu_cache_lookup_flat`, this path does not synchronize
+        to materialize missing keys.  The caller must have prefilled every key
+        or otherwise proved that all keys are resident.
+        """
+        keys = self._normalize_ids(
+            keys, preserve_device=True, name=self._gpu_cache_table_name
+        )
+        if not keys.is_contiguous():
+            keys = keys.contiguous()
+        return self.ops.gpu_cache_lookup_flat_assuming_hits(
+            keys, int(embedding_dim)
+        )
 
     def query_gpu_cache(self, keys: torch.Tensor, embedding_dim: int) -> tuple[torch.Tensor, torch.Tensor]:
         """Query GPU cache. Returns (values, missing_keys).
