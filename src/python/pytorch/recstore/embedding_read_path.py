@@ -428,7 +428,7 @@ class BagPipeReadPath:
 
     @property
     def desired_buffer_size(self) -> int:
-        return self._plugin.lookahead_depth * 2
+        return self._plugin.prefetch_buffer_depth
 
     def on_batch_prepared(
         self,
@@ -437,9 +437,14 @@ class BagPipeReadPath:
         sparse_batch: Any,
         row: dict[str, Any],
     ) -> Any:
-        del step, sparse_batch, row
-        self._plugin.on_prepare(sparse_features)
-        return None  # no ticket — bagpipe manages its own prefetch internally
+        del step, sparse_batch
+        # ticket = (unique_ids, inverse, raw_count) 由 controller 的 enqueue
+        # 产生 (设备端), 训练循环把它透传给 record_pooled_grad 的 prepared
+        # 路径, 免去第二次 unique。
+        enqueue_start = time.perf_counter()
+        ticket = self._plugin.on_prepare(sparse_features)
+        row["bagpipe_enqueue_ms"] = (time.perf_counter() - enqueue_start) * 1e3
+        return ticket
 
     def before_lookup(
         self,

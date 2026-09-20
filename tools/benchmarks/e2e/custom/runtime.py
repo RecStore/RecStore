@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ..commands import wrap_remote_command
-from ..common import SPARSE_FEATURES_PER_SAMPLE, _dense_arch_for_embedding_dim
+from ..common import ROOT, SPARSE_FEATURES_PER_SAMPLE, _dense_arch_for_embedding_dim
 from .config import BenchmarkConfig, ClientSpec, ServerSpec
 
 
@@ -162,7 +162,9 @@ def start_rdma_ps_cluster(
         rdma_wait_timeout_ms=120000,
         rdma_control_plane_timeout_ms=300000,
         rdma_qps_per_client_per_shard=32,
-        rdma_slots_per_qp=1,
+        rdma_slots_per_qp=int(
+            os.getenv("RECSTORE_E2E_RDMA_SLOTS_PER_QP", "4")
+        ),
         rdma_server_coroutines_per_thread=1,
         rdma_server_get_workers=0,
         rdma_profile_interval_ms=int(
@@ -188,7 +190,7 @@ def start_rdma_ps_cluster(
         cleanup_hosts.add(host)
         cleanup_commands.append(
             _wrap_remote(
-                [str(server.repo_root / "tools/benchmarks/kill_bench_procs.sh")],
+                ["bash", "-s"],
                 ssh_host=server.ssh_host,
                 ssh_port=server.ssh_port,
                 cwd=server.repo_root,
@@ -203,7 +205,12 @@ def stop_rdma_ps_cluster(runner: Any) -> None:
     if runner is None:
         return
     cleanup = list(getattr(runner, "_rs_demo_remote_cleanup_commands", []))
-    remotes = [subprocess.Popen(cmd) for cmd in cleanup]
+    script_path = ROOT / "tools/benchmarks/kill_bench_procs.sh"
+    script_files = [script_path.open("rb") for _ in cleanup]
+    remotes = [
+        subprocess.Popen(cmd, stdin=script_file)
+        for cmd, script_file in zip(cleanup, script_files)
+    ]
     try:
         runner.stop()
     finally:
@@ -211,6 +218,8 @@ def stop_rdma_ps_cluster(runner: Any) -> None:
         for proc in remotes:
             if proc.wait() != 0:
                 failed = True
+        for script_file in script_files:
+            script_file.close()
         if failed:
             raise RuntimeError("remote petps cleanup failed")
 
@@ -349,34 +358,45 @@ def build_client_command(
         cfg.read_mode,
         "--prefetch-depth",
         str(cfg.prefetch_depth),
-        "--dense-arch-layer-sizes",
-        _dense_arch_for_embedding_dim(cfg.embedding_dim),
-        "--data-dir",
-        str(cfg.dataset_path),
-        "--output-root",
-        str(cfg.output_dir),
-        "--run-id",
-        run_id,
-        "--recstore-runtime-dir",
-        str(cfg.resolved_runtime_dir / transport.lower()),
-        "--no-start-server",
-        "--server-host",
-        first_server.ip,
-        "--server-port0",
-        str(first_server.port),
-        "--nnodes",
-        str(_client_node_count(cfg.clients)),
-        "--node-rank",
-        str(client.node_rank),
-        "--nproc-per-node",
-        str(client.nproc_per_node),
-        "--master-addr",
-        cfg.clients[0].ip,
-        "--master-port",
-        str(cfg.master_port),
-        "--rdzv-id",
-        rdzv_id or run_id,
     ]
+    if cfg.optimization_cache_capacity > 0:
+        cmd.extend(
+            [
+                "--optimization-cache-capacity",
+                str(cfg.optimization_cache_capacity),
+            ]
+        )
+    cmd.extend(
+        [
+            "--dense-arch-layer-sizes",
+            _dense_arch_for_embedding_dim(cfg.embedding_dim),
+            "--data-dir",
+            str(cfg.dataset_path),
+            "--output-root",
+            str(cfg.output_dir),
+            "--run-id",
+            run_id,
+            "--recstore-runtime-dir",
+            str(cfg.resolved_runtime_dir / transport.lower()),
+            "--no-start-server",
+            "--server-host",
+            first_server.ip,
+            "--server-port0",
+            str(first_server.port),
+            "--nnodes",
+            str(_client_node_count(cfg.clients)),
+            "--node-rank",
+            str(client.node_rank),
+            "--nproc-per-node",
+            str(client.nproc_per_node),
+            "--master-addr",
+            cfg.clients[0].ip,
+            "--master-port",
+            str(cfg.master_port),
+            "--rdzv-id",
+            rdzv_id or run_id,
+        ]
+    )
     return _wrap_remote(cmd, ssh_host=client.ssh_host, ssh_port=client.ssh_port, cwd=client.repo_root)
 
 

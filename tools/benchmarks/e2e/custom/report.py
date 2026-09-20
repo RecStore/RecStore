@@ -163,6 +163,11 @@ def render_summary_md(cfg: BenchmarkConfig, rows: list[dict[str, Any]]) -> str:
     transports = sorted(
         {str(row["transport"]) for row in rows if row.get("backend") == "recstore" and row.get("transport")}
     )
+    bagpipe_capacity = (
+        f"BagPipe GPU cache capacity={cfg.optimization_cache_capacity or 160000}，"
+        if cfg.read_mode == "bagpipe"
+        else ""
+    )
 
     def table(metrics: list[tuple[str, list[str]]]) -> list[str]:
         return [
@@ -186,7 +191,8 @@ def render_summary_md(cfg: BenchmarkConfig, rows: list[dict[str, Any]]) -> str:
             f"batch_size={cfg.batch_size}，embedding_dim={cfg.embedding_dim}，"
             f"num_embeddings={cfg.num_embeddings}，steps={cfg.steps}，warmup_steps={cfg.warmup_steps}，"
             f"repeat={cfg.repeat}，read_mode={cfg.read_mode}，prefetch_depth={cfg.prefetch_depth}，"
-            f"index_type={cfg.index_type}，TorchRec baseline={','.join(cfg.torchrec_baselines) or 'disabled'}，"
+            f"index_type={cfg.index_type}，{bagpipe_capacity}"
+            f"TorchRec baseline={','.join(cfg.torchrec_baselines) or 'disabled'}，"
             f"dataset={cfg.dataset_path}，runtime={cfg.resolved_runtime_dir}，"
             f"output={cfg.output_dir}。"
         ),
