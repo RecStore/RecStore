@@ -65,8 +65,9 @@ class gpu_cache : public gpu_cache_api<key_type> {
              key_type* d_missing_keys, size_t* d_missing_len, cudaStream_t stream,
              const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
 
-  // Read-only hit-only API. Every key must be resident; misses are undefined.
-  void GetAssumingHits(const key_type* d_keys, const size_t len, float* d_values,
+  // Read-only hit-only API. d_miss[key index] is set for keys that are not
+  // resident (optional, pass nullptr to ignore). No lock or LRU touch.
+  void GetAssumingHits(const key_type* d_keys, const size_t len, float* d_values, bool* d_miss,
                        cudaStream_t stream,
                        const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) override;
 

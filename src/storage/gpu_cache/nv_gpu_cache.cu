@@ -565,7 +565,7 @@ template <typename key_type, typename slabset, typename set_hasher,
           typename slab_hasher, key_type empty_key, int set_associativity,
           int warp_size>
 __global__ void get_assuming_hits_kernel(
-    const key_type* d_keys, const size_t len, float* d_values,
+    const key_type* d_keys, const size_t len, float* d_values, bool* d_miss,
     const size_t embedding_vec_size, const size_t capacity_in_set,
     const slabset* keys, const float* vals, const size_t task_per_warp_tile) {
   cg::thread_block_tile<warp_size> warp_tile =
@@ -581,6 +581,9 @@ __global__ void get_assuming_hits_kernel(
   bool active = false;
   if (lane_idx < task_per_warp_tile && key_idx < len) {
     active = true;
+    if (d_miss != nullptr) {
+      d_miss[key_idx] = false;
+    }
     key = d_keys[key_idx];
     set = set_hasher::hash(key) % capacity_in_set;
     slab = slab_hasher::hash(key) % set_associativity;
@@ -594,7 +597,8 @@ __global__ void get_assuming_hits_kernel(
     size_t next_set = warp_tile.shfl(set, next_lane);
     size_t next_slab = warp_tile.shfl(slab, next_lane);
 
-    for (size_t counter = 0; counter < set_associativity; ++counter) {
+    size_t counter = 0;
+    for (; counter < set_associativity; ++counter) {
       const key_type read_key = keys[next_set].set_[next_slab].slab_[lane_idx];
       const int found_lane =
           __ffs(warp_tile.ballot(read_key == next_key)) - 1;
@@ -614,12 +618,28 @@ __global__ void get_assuming_hits_kernel(
       }
       if (warp_tile.ballot(read_key == empty_key) != 0) {
         if (lane_idx == static_cast<size_t>(next_lane)) {
+          // An empty slot ends the probe sequence, so the key is absent:
+          // report it, otherwise the caller consumes an uninitialised row.
+          if (d_miss != nullptr) {
+            d_miss[next_idx] = true;
+          }
           active = false;
         }
         active_mask = warp_tile.ballot(active);
         break;
       }
       next_slab = (next_slab + 1) % set_associativity;
+    }
+    // Absent key in a set with no empty slot left: report the miss and finish.
+    // Leaving the task active here spun the outer loop forever.
+    if (counter >= set_associativity) {
+      if (lane_idx == static_cast<size_t>(next_lane)) {
+        if (d_miss != nullptr) {
+          d_miss[next_idx] = true;
+        }
+        active = false;
+      }
+      active_mask = warp_tile.ballot(active);
     }
   }
 }
@@ -628,7 +648,7 @@ template <typename key_type, typename slabset, typename set_hasher,
           typename slab_hasher, key_type empty_key, int set_associativity,
           int warp_size>
 __global__ void get_assuming_hits_kernel(
-    const key_type* d_keys, const size_t len, float* d_values,
+    const key_type* d_keys, const size_t len, float* d_values, bool* d_miss,
     const size_t embedding_vec_size, const size_t capacity_in_set,
     const volatile slabset* keys, const volatile float* vals,
     const size_t task_per_warp_tile) {
@@ -645,6 +665,9 @@ __global__ void get_assuming_hits_kernel(
   bool active = false;
   if (lane_idx < task_per_warp_tile && key_idx < len) {
     active = true;
+    if (d_miss != nullptr) {
+      d_miss[key_idx] = false;
+    }
     key = d_keys[key_idx];
     set = set_hasher::hash(key) % capacity_in_set;
     slab = slab_hasher::hash(key) % set_associativity;
@@ -658,7 +681,8 @@ __global__ void get_assuming_hits_kernel(
     size_t next_set = warp_tile.shfl(set, next_lane);
     size_t next_slab = warp_tile.shfl(slab, next_lane);
 
-    for (size_t counter = 0; counter < set_associativity; ++counter) {
+    size_t counter = 0;
+    for (; counter < set_associativity; ++counter) {
       const key_type read_key =
           ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[lane_idx];
       const int found_lane =
@@ -679,12 +703,26 @@ __global__ void get_assuming_hits_kernel(
       }
       if (warp_tile.ballot(read_key == empty_key) != 0) {
         if (lane_idx == static_cast<size_t>(next_lane)) {
+          // See the libcudacxx variant: an empty slot means a definitive miss.
+          if (d_miss != nullptr) {
+            d_miss[next_idx] = true;
+          }
           active = false;
         }
         active_mask = warp_tile.ballot(active);
         break;
       }
       next_slab = (next_slab + 1) % set_associativity;
+    }
+    // See the libcudacxx variant: report the miss instead of spinning.
+    if (counter >= set_associativity) {
+      if (lane_idx == static_cast<size_t>(next_lane)) {
+        if (d_miss != nullptr) {
+          d_miss[next_idx] = true;
+        }
+        active = false;
+      }
+      active_mask = warp_tile.ballot(active);
     }
   }
 }
@@ -726,7 +764,8 @@ __global__ void contains_kernel(const key_type* d_keys, const size_t len,
     size_t next_set = warp_tile.shfl(set, next_lane);
     size_t next_slab = warp_tile.shfl(slab, next_lane);
 
-    for (size_t counter = 0; counter < set_associativity; ++counter) {
+    size_t counter = 0;
+    for (; counter < set_associativity; ++counter) {
       const key_type read_key = keys[next_set].set_[next_slab].slab_[lane_idx];
       const int found_lane =
           __ffs(warp_tile.ballot(read_key == next_key)) - 1;
@@ -746,6 +785,15 @@ __global__ void contains_kernel(const key_type* d_keys, const size_t len,
         break;
       }
       next_slab = (next_slab + 1) % set_associativity;
+    }
+    // Whole set probed with no hit and no empty slot (the set is full of
+    // residents and tombstones): finish the task as a miss. Without this the
+    // outer loop would re-enter with an unchanged active_mask forever.
+    if (counter >= set_associativity) {
+      if (lane_idx == static_cast<size_t>(next_lane)) {
+        active = false;
+      }
+      active_mask = warp_tile.ballot(active);
     }
   }
 }
@@ -784,7 +832,8 @@ __global__ void contains_kernel(const key_type* d_keys, const size_t len,
     size_t next_set = warp_tile.shfl(set, next_lane);
     size_t next_slab = warp_tile.shfl(slab, next_lane);
 
-    for (size_t counter = 0; counter < set_associativity; ++counter) {
+    size_t counter = 0;
+    for (; counter < set_associativity; ++counter) {
       const key_type read_key =
           ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[lane_idx];
       const int found_lane =
@@ -805,6 +854,14 @@ __global__ void contains_kernel(const key_type* d_keys, const size_t len,
         break;
       }
       next_slab = (next_slab + 1) % set_associativity;
+    }
+    // See the libcudacxx variant: a full set with an absent key must finish as
+    // a miss instead of spinning in the outer loop.
+    if (counter >= set_associativity) {
+      if (lane_idx == static_cast<size_t>(next_lane)) {
+        active = false;
+      }
+      active_mask = warp_tile.ballot(active);
     }
   }
 }
@@ -1974,7 +2031,7 @@ template <typename key_type, typename ref_counter_type, key_type empty_key, int 
           int warp_size, typename set_hasher, typename slab_hasher>
 void gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_size, set_hasher,
                slab_hasher>::GetAssumingHits(const key_type* d_keys, const size_t len,
-                                             float* d_values, cudaStream_t stream,
+                                             float* d_values, bool* d_miss, cudaStream_t stream,
                                              const size_t task_per_warp_tile) {
   if (len == 0) {
     return;
@@ -1989,8 +2046,8 @@ void gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_si
   get_assuming_hits_kernel<key_type, slabset, set_hasher, slab_hasher, empty_key,
                            set_associativity, warp_size>
       <<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-          d_keys, len, d_values, embedding_vec_size_, capacity_in_set_, keys_,
-          vals_, task_per_warp_tile);
+          d_keys, len, d_values, d_miss, embedding_vec_size_, capacity_in_set_,
+          keys_, vals_, task_per_warp_tile);
   CUDA_CHECK(cudaGetLastError());
 }
 

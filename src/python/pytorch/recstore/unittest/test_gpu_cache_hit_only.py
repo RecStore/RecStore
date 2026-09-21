@@ -47,9 +47,10 @@ class TestGpuCacheHitOnlyLookup(unittest.TestCase):
         ids = torch.tensor([1, 3, 5], dtype=torch.int64, device="cuda")
 
         expected = self.client.local_lookup_flat(table_name, ids)
-        actual = self.client.gpu_cache_lookup_flat_assuming_hits(ids, 4)
+        actual, miss = self.client.gpu_cache_lookup_flat_assuming_hits(ids, 4)
 
         self.assertTrue(torch.equal(actual, expected))
+        self.assertFalse(bool(miss.any().item()))
 
     def test_no_evict_prefill_reports_authoritative_residency(self) -> None:
         table_name = f"gpu_cache_no_evict_{time.time_ns()}"
@@ -66,14 +67,11 @@ class TestGpuCacheHitOnlyLookup(unittest.TestCase):
 
         self.assertTrue(torch.equal(inserted, resident))
         self.assertTrue(bool(inserted.any().item()))
-        self.assertTrue(
-            torch.equal(
-                self.client.gpu_cache_lookup_flat_assuming_hits(
-                    keys[inserted], 4
-                ),
-                values[inserted],
-            )
+        hit_values, miss = self.client.gpu_cache_lookup_flat_assuming_hits(
+            keys[inserted], 4
         )
+        self.assertTrue(torch.equal(hit_values, values[inserted]))
+        self.assertFalse(bool(miss.any().item()))
 
         # A no-evict insert must never remove an already resident row.
         old_keys = keys[inserted]
@@ -87,12 +85,11 @@ class TestGpuCacheHitOnlyLookup(unittest.TestCase):
         self.client.prefill_gpu_cache_no_evict(
             table_name, more_keys, more_values
         )
-        self.assertTrue(
-            torch.equal(
-                self.client.gpu_cache_lookup_flat_assuming_hits(old_keys, 4),
-                old_values,
-            )
+        old_hit_values, old_miss = (
+            self.client.gpu_cache_lookup_flat_assuming_hits(old_keys, 4)
         )
+        self.assertTrue(torch.equal(old_hit_values, old_values))
+        self.assertFalse(bool(old_miss.any().item()))
 
     def test_no_evict_lookup_returns_values_and_residency_mask(self) -> None:
         table_name = f"gpu_cache_no_evict_lookup_{time.time_ns()}"
@@ -114,10 +111,77 @@ class TestGpuCacheHitOnlyLookup(unittest.TestCase):
             100, 140, dtype=torch.int64, device="cuda"
         )
         self.client.gpu_cache_lookup_flat_no_evict(more_keys, 4)
-        old_values = self.client.gpu_cache_lookup_flat_assuming_hits(
+        old_values, old_miss = self.client.gpu_cache_lookup_flat_assuming_hits(
             keys[resident], 4
         )
         self.assertTrue(torch.equal(old_values, expected[resident]))
+        self.assertFalse(bool(old_miss.any().item()))
+
+    def test_absent_key_in_full_set_terminates(self) -> None:
+        """A full set with no empty slot must still answer an absent key.
+
+        Regression: contains_kernel / get_assuming_hits_kernel had no terminal
+        transition after probing every slab, so the outer warp loop spun forever
+        (observed as a 0%-utilization hang).
+        """
+        table_name = f"gpu_cache_full_set_{time.time_ns()}"
+        self.client.init_data(
+            name=table_name, shape=(256, 4), dtype=torch.float32
+        )
+        keys = torch.arange(64, dtype=torch.int64, device="cuda")
+        values = torch.ones((64, 4), dtype=torch.float32, device="cuda")
+        inserted = self.client.prefill_gpu_cache_no_evict(
+            table_name, keys, values
+        )
+        self.assertTrue(bool(inserted.all().item()))
+
+        absent = torch.tensor([100000], dtype=torch.int64, device="cuda")
+        resident = self.client.contains_gpu_cache(absent)
+        self.assertFalse(bool(resident.any().item()))
+
+    def test_absent_key_after_eviction_terminates(self) -> None:
+        """An evicted slot is a tombstone, not an empty slot.
+
+        Regression: once a set had been filled and then evicted, every absent
+        key hashing into it hung the membership kernel.
+        """
+        table_name = f"gpu_cache_tombstone_{time.time_ns()}"
+        self.client.init_data(
+            name=table_name, shape=(256, 4), dtype=torch.float32
+        )
+        keys = torch.arange(64, dtype=torch.int64, device="cuda")
+        values = torch.ones((64, 4), dtype=torch.float32, device="cuda")
+        self.client.prefill_gpu_cache_no_evict(table_name, keys, values)
+        removed = self.client.invalidate_gpu_cache_with_mask(
+            table_name, keys[:1]
+        )
+        self.assertTrue(bool(removed.all().item()))
+
+        absent = torch.tensor([100000], dtype=torch.int64, device="cuda")
+        resident = self.client.contains_gpu_cache(absent)
+        self.assertFalse(bool(resident.any().item()))
+
+    def test_hit_only_reports_miss_instead_of_returning_undefined_rows(self) -> None:
+        """A stale all-hit decision must be reported, not silently consumed."""
+        table_name = f"gpu_cache_hit_only_miss_{time.time_ns()}"
+        self.client.init_data(
+            name=table_name, shape=(256, 4), dtype=torch.float32
+        )
+        keys = torch.tensor([1, 3], dtype=torch.int64, device="cuda")
+        values = torch.tensor(
+            [[1, 2, 3, 4], [5, 6, 7, 8]], dtype=torch.float32, device="cuda"
+        )
+        self.assertTrue(
+            bool(
+                self.client.prefill_gpu_cache_no_evict(
+                    table_name, keys, values
+                ).all().item()
+            )
+        )
+        self.client.invalidate_gpu_cache_with_mask(table_name, keys[1:])
+
+        _, miss = self.client.gpu_cache_lookup_flat_assuming_hits(keys, 4)
+        self.assertEqual(miss.tolist(), [False, True])
 
     def test_gpu_cache_generation_changes_on_clear(self) -> None:
         before = self.client.get_gpu_cache_generation()

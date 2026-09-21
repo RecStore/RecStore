@@ -38,6 +38,10 @@ class BagPipeEvictionMixin:
         """Evict expired cache entries + dynamic lookahead adjustment."""
         t_start = time.perf_counter()
 
+        # 共享集构建是集合通信, 因此从步骤对齐的钩子触发 (on_step_end 每步每
+        # rank 都会走到), 而不是在 update_grads 里按各 rank 自己的批计数触发。
+        self._maybe_build_shared_id_set(current_batch)
+
         if self._cached_dev is not None:
             # 到期判定: 驻留且 ttl < 当前批 (向量化全空间扫描)
             expired_mask = self._cached_dev & (self._ttl_dev < current_batch)

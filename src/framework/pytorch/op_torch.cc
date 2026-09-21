@@ -1368,8 +1368,9 @@ torch::Tensor invalidate_gpu_cache_with_mask_torch(const torch::Tensor& keys) {
 #endif
 }
 
-torch::Tensor gpu_cache_lookup_flat_assuming_hits_torch(
-    const torch::Tensor& keys, int64_t embedding_dim) {
+std::tuple<torch::Tensor, torch::Tensor>
+gpu_cache_lookup_flat_assuming_hits_torch(const torch::Tensor& keys,
+                                          int64_t embedding_dim) {
 #ifdef RECSTORE_ENABLE_GPU_CACHE
   TORCH_CHECK(keys.dim() == 1, "Keys tensor must be 1-dimensional");
   TORCH_CHECK(keys.scalar_type() == torch::kInt64,

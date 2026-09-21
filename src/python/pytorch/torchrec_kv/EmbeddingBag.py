@@ -946,10 +946,32 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
             except OSError:
                 pass
         if assume_hits:
-            embeddings = self.kv_client.gpu_cache_lookup_flat_assuming_hits(
+            embeddings, miss = self.kv_client.gpu_cache_lookup_flat_assuming_hits(
                 ids_for_query, embedding_dim
             )
             resident = None
+            if bool(miss.any().item()):
+                # Residency changed after the all-hit decision (eviction or
+                # writeback invalidation).  The rows reported as misses hold
+                # undefined values, so redo the lookup through the path that
+                # backfills from the PS instead of feeding them to the model.
+                logger.warning(
+                    "[EBC] BagPipe hit-only lookup missed %d/%d rows; "
+                    "backfilling through the no-evict lookup",
+                    int(miss.sum().item()),
+                    int(miss.numel()),
+                )
+                lookup_no_evict = getattr(
+                    self.kv_client, "gpu_cache_lookup_flat_no_evict", None
+                )
+                if callable(lookup_no_evict):
+                    embeddings, resident = lookup_no_evict(
+                        ids_for_query, embedding_dim
+                    )
+                else:
+                    embeddings = self.kv_client.gpu_cache_lookup_flat(
+                        ids_for_query, embedding_dim
+                    )
         else:
             lookup_no_evict = getattr(
                 self.kv_client, "gpu_cache_lookup_flat_no_evict", None

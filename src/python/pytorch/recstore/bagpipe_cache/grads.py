@@ -8,12 +8,20 @@ launched in the previous step's update_grads call.
 
 - local-only id:  立即 best-effort 原位 SGD 落本地 cache（无 Query、无同步、
                    缺 key 静默跳过），PS 持久化走 dirty 标记 + eviction 写回。
+                   **前提是该 id 确实不会被其它 rank 触碰**：只有 oracle
+                   预扫描 (_shared_ids_complete) 能证明这一点，因此回退集
+                   之外的 id 不算 local-only。
 - shared id:      本地不 apply（避免本地梯度与聚合梯度双重计入）；梯度进
                    单次 dense all_reduce（侧流发射，与主流计算重叠），
                    **所有 rank** 在下一步 prefill 的 barrier 处用聚合梯度
                    best-effort 原位落 cache。副本收敛 =
                    同一 PS 初值 + 同一聚合增量序列。rank0 推 PS 降级为
                    持久化（深度-1 异步流水线），不在一致性关键路径上。
+- unknown id:     集合不完整时，不在已知共享集里的 id 归属未知：走 sparse
+                   all_gather 聚合（与 shared 同一 barrier 消费），既不本地
+                   apply 也不标 dirty —— 否则各 rank 独立 apply 自己的梯度、
+                   再在 eviction 值写回时互相覆盖（last-writer-wins 丢增量，
+                   副本永久分叉）。
 - 失效:           每步不再失效共享 id（原实现 rank≠0 每步 invalidate ~3.6K
                    热门共享 id，是 embed_lookup 41ms 的主因）。barrier 先于
                    prefill 执行，填充读到的已是推送后的 PS 值；残余的 RDMA
@@ -47,8 +55,10 @@ class BagPipeGradMixin:
         - self._sync_later_stream, self._pending_ps_push_handle
         - self._pending_sync_now_work, self._pending_sync_now_lr
         - self._anti_entropy_step, _anti_entropy_interval, _anti_entropy_ids
-        - self._shared_ids, self._shared_ids_tensor, self._stats
-        - self._dense_all_reduce_async(), _maybe_build_shared_id_set()
+        - self._shared_ids, self._shared_ids_tensor, self._shared_ids_complete,
+          self._stats
+        - self._dense_all_reduce_async(), _all_gather_sparse_async(),
+          _record_shared_id_candidates()
         - self._hot_add(), self._is_distributed(), _get_rank()
     """
 
@@ -160,8 +170,8 @@ class BagPipeGradMixin:
         """
         self._anti_entropy_maybe()
 
-        work = self._pending_sync_now_work
-        if work is None:
+        works = self._pending_sync_now_work
+        if works is None:
             self._pending_sync_now_lr = None
             return
         self._pending_sync_now_work = None
@@ -169,11 +179,26 @@ class BagPipeGradMixin:
         self._pending_sync_now_lr = None
 
         t_start = time.perf_counter()
-        work.wait()
+        if not isinstance(works, (list, tuple)):
+            works = (works,)
+        ids_parts = []
+        grads_parts = []
+        for work in works:
+            work.wait()
+            agg_ids, agg_grads = work.result
+            if agg_ids.numel() > 0:
+                ids_parts.append(agg_ids)
+                grads_parts.append(agg_grads)
         if self._sync_later_stream is not None:
             self._sync_later_stream.synchronize()
-        agg_ids, agg_grads = work.result
-        self._apply_aggregated(agg_ids, agg_grads, lr)
+        if ids_parts:
+            # dense (已知共享) 与 sparse (归属未知) 的聚合结果合并成一次
+            # _apply_aggregated: 一个 PS 推送句柄, 一次深度-1 等待。
+            agg_ids = ids_parts[0] if len(ids_parts) == 1 else torch.cat(ids_parts)
+            agg_grads = (
+                grads_parts[0] if len(grads_parts) == 1 else torch.cat(grads_parts)
+            )
+            self._apply_aggregated(agg_ids, agg_grads, lr)
         self._stats["bagpipe_sync_now_overlap_ms"] += (time.perf_counter() - t_start) * 1e3
 
     # ------------------------------------------------------------------
@@ -188,8 +213,9 @@ class BagPipeGradMixin:
         lr: float,
         batch_num: int,
     ) -> None:
-        """Split gradients into local-only (immediate best-effort SGD) and
-        shared (dense all_reduce, aggregated apply at the next barrier).
+        """Split gradients into local-only (immediate best-effort SGD),
+        shared (dense all_reduce) and unknown (sparse all_gather); aggregated
+        paths are applied at the next prefill barrier.
 
         Note: the deferred barrier is consumed in prefill_cache (before the
         forward lookup), NOT here.
@@ -235,7 +261,7 @@ class BagPipeGradMixin:
 
         self._stats["bagpipe_sgd_cache_success"] += 1
 
-        self._maybe_build_shared_id_set(ids_cuda)
+        self._record_shared_id_candidates(ids_cuda)
 
         # ---- shared / local-only 向量化切分 (sorted 张量 + searchsorted,
         #      与 _dense_all_reduce_async 同构, 无 .item()) ----
@@ -246,7 +272,14 @@ class BagPipeGradMixin:
             shared_mask = shared_t[pos_clamped] == ids_cuda
         else:
             shared_mask = torch.zeros_like(ids_cuda, dtype=torch.bool)
+        # 回退集只覆盖前几个 step, 集合外的 id 可能是共享的: 只要集合不完整
+        # (没有 oracle 预扫描), 它们就归入 unknown 走聚合路径, 而不是 local-only。
+        aggregate_unknown = self._is_distributed() and not self._shared_ids_complete
         local_mask = ~shared_mask
+        unknown_mask = None
+        if aggregate_unknown:
+            unknown_mask = local_mask
+            local_mask = torch.zeros_like(local_mask)
         residency_mask = None
         all_resident = False
         if last_lookup is not None and last_lookup[0] is ids_cuda:
@@ -284,46 +317,41 @@ class BagPipeGradMixin:
                 )
             except Exception as exc:
                 logger.warning("[BagPipe] local best-effort apply failed: %s", exc)
-            if self._shared_ids is None:
-                # 共享集合尚未构建（前 lookahead 个 step）：直接推 PS
-                try:
-                    self.kv_client.update(
-                        self.master_table_name, local_ids, local_grads
-                    )
-                except Exception as exc:
-                    logger.warning("[BagPipe] no_sync push failed: %s", exc)
-                # The in-place local apply already made these rows current;
-                # they stay resident while the PS push only persists them.
-                local_compact = self._compact_in_range(
-                    self._to_compact(local_ids)
-                )
-                self._dirty_dev[local_compact] = False
-            else:
-                # PS 持久化走 dirty 张量 + eviction 值写回 (scatter, 无 tolist)。
-                # local_mask already excludes rows whose no-evict insert
-                # failed, so best-effort apply and the dirty mark agree.
-                local_compact = self._compact_in_range(
-                    self._to_compact(local_ids)
-                )
-                self._dirty_dev[local_compact] = True
-                self._cached_dev[local_compact] = True
-                self._ttl_dev[local_compact] = batch_num + self._ttl_margin
+            # PS 持久化走 dirty 张量 + eviction 值写回 (scatter, 无 tolist)。
+            # local_mask already excludes rows whose no-evict insert failed,
+            # so best-effort apply and the dirty mark agree.
+            local_compact = self._compact_in_range(self._to_compact(local_ids))
+            self._dirty_dev[local_compact] = True
+            self._cached_dev[local_compact] = True
+            self._ttl_dev[local_compact] = batch_num + self._ttl_margin
 
-        # ---- shared: 本地不 apply；单次 dense all_reduce (侧流, 与主流
-        #      计算重叠), 聚合后全 rank 在下一步 prefill 落 cache ----
-        shared_ids = ids_cuda[shared_mask]
-        if shared_ids.numel() == 0:
-            self._pending_sync_now_work = None
-            self._pending_sync_now_lr = None
-            self._stats["bagpipe_update_ms"] += (time.perf_counter() - t_start) * 1e3
-            return
+        # ---- 聚合路径: 已知共享走 dense all_reduce, 归属未知走 sparse
+        #      all_gather；两者都在侧流发射 (与主流计算重叠), 聚合结果由全
+        #      rank 在下一步 prefill 的 barrier 处一起落 cache ----
         self._hot_add("bagpipe_sync_now_ids", shared_mask.sum())
-
-        shared_grads = grads_cuda[shared_mask]
-        _, _, work = self._dense_all_reduce_async(
-            shared_ids, shared_grads, stream=self._sync_later_stream
-        )
-        self._pending_sync_now_work = work
-        self._pending_sync_now_lr = lr
+        works = []
+        if self._is_distributed():
+            # 集合通信无条件发射: 本 rank 的空桶不能跳过其它 rank 会进入的
+            # collective (按 numel 早退会让对端永久等待)。
+            _, _, dense_work = self._dense_all_reduce_async(
+                ids_cuda[shared_mask],
+                grads_cuda[shared_mask],
+                stream=self._sync_later_stream,
+            )
+            if dense_work is not None:
+                works.append(dense_work)
+            if unknown_mask is not None:
+                self._hot_add(
+                    "bagpipe_unknown_aggregated_ids", unknown_mask.sum()
+                )
+                _, _, sparse_work = self._all_gather_sparse_async(
+                    ids_cuda[unknown_mask],
+                    grads_cuda[unknown_mask],
+                    stream=self._sync_later_stream,
+                )
+                if sparse_work is not None:
+                    works.append(sparse_work)
+        self._pending_sync_now_work = works or None
+        self._pending_sync_now_lr = lr if works else None
 
         self._stats["bagpipe_update_ms"] += (time.perf_counter() - t_start) * 1e3

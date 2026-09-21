@@ -22,10 +22,10 @@ class BagPipeCommMixin:
     """Mixin providing cross-GPU gradient synchronization primitives.
 
     Expects the host class to provide: ``device``, ``_shared_ids``,
-    ``_shared_ids_tensor`` (sorted int64 tensor), ``_global_id_to_index``,
-    ``_global_unique_count``, ``_init_unique_ids``,
-    ``_init_batches_seen``, ``_prescan_done``, ``_prescan_unique_ids``,
-    ``_stats``, ``lookahead_value``.
+    ``_shared_ids_tensor`` (sorted int64 tensor), ``_shared_ids_complete``
+    (True only for an oracle set), ``_global_id_to_index``,
+    ``_global_unique_count``, ``_init_unique_ids``, ``_prescan_done``,
+    ``_prescan_unique_ids``, ``_stats``, ``lookahead_value``.
     """
 
     def _is_distributed(self) -> bool:
@@ -81,43 +81,68 @@ class BagPipeCommMixin:
     #  Shared-ID set construction (opt 1, opt 8 prescan)
     # ------------------------------------------------------------------
 
-    def _maybe_build_shared_id_set(self, unique_ids: torch.Tensor) -> None:
-        """One-time all_gather of unique IDs to determine which IDs are
-        shared across ranks (need all_reduce) vs local-only (no_sync).
+    def _record_shared_id_candidates(self, unique_ids: torch.Tensor) -> None:
+        """Accumulate a batch's unique IDs for the fallback shared-ID set.
 
-        Skipped if oracle prescan (opt 8) already built the complete set.
+        Pure bookkeeping: the all_gather happens in
+        :meth:`_maybe_build_shared_id_set`, which is driven from the
+        step-aligned ``cleanup`` hook.  Triggering the collective from the
+        hot path instead would let ranks that skip a batch (empty table,
+        uneven shard) enter the all_gather at different steps and hang.
+        """
+        if self._shared_ids is not None or unique_ids.numel() == 0:
+            return
+        self._init_unique_ids.update(unique_ids.tolist())
+
+    def _maybe_build_shared_id_set(self, current_step: int) -> None:
+        """Build the fallback shared-ID set once, at a step boundary.
+
+        The fallback set only covers the first ``max(lookahead, 2)`` steps, so
+        it is a *fast-path hint*, never a proof of locality:
+        ``_shared_ids_complete`` stays False and ``update_grads`` aggregates
+        every ID outside the set through the sparse path.  Only the oracle
+        prescan (:meth:`prescan_batch` + :meth:`finalize_prescan`) yields a set
+        complete enough to skip synchronization for its local-only IDs.
         """
         if self._shared_ids is not None:
             return
         if not self._is_distributed():
             self._shared_ids = set()
             self._shared_ids_tensor = torch.empty(0, dtype=torch.int64)
+            self._shared_ids_complete = True
             return
 
-        id_list = unique_ids.tolist() if unique_ids.numel() > 0 else []
-        self._init_unique_ids.update(id_list)
-        self._init_batches_seen += 1
-
-        if self._init_batches_seen < max(self.lookahead_value, 2):
+        if current_step < max(self.lookahead_value, 2):
             return
 
-        self._build_shared_id_set_from(self._init_unique_ids)
-        logger.info(
-            "[BagPipe] no_sync: %d shared IDs (appear on >1 rank), "
-            "%d local-only IDs (skip all_reduce)",
+        self._build_shared_id_set_from(self._init_unique_ids, complete=False)
+        logger.warning(
+            "[BagPipe] shared-ID hint set built from the first %d steps: "
+            "%d IDs known shared, %d IDs still unknown (aggregated via the "
+            "sparse path).  A prefix sample cannot prove an ID is local-only; "
+            "run the oracle prescan to enable the local-only fast path.",
+            int(current_step),
             len(self._shared_ids),
             len(self._init_unique_ids) - len(self._shared_ids),
         )
         self._stats["bagpipe_shared_ids"] = float(len(self._shared_ids))
         self._init_unique_ids = set()
 
-    def _build_shared_id_set_from(self, local_id_set: set) -> None:
-        """Build the shared-ID set + global index mapping via all_gather."""
+    def _build_shared_id_set_from(
+        self, local_id_set: set, *, complete: bool
+    ) -> None:
+        """Build the shared-ID set + global index mapping via all_gather.
+
+        ``complete`` records whether ``local_id_set`` covers every ID this rank
+        can ever touch (oracle prescan) or is only a prefix sample (fallback);
+        it is what licenses the local-only fast path in ``update_grads``.
+        """
         if not self._is_distributed():
             self._shared_ids = set()
             self._shared_ids_tensor = torch.empty(0, dtype=torch.int64)
             self._global_id_to_index = {}
             self._global_unique_count = 0
+            self._shared_ids_complete = True
             return
 
         local_ids = torch.tensor(sorted(local_id_set),
@@ -152,12 +177,13 @@ class BagPipeCommMixin:
         )
         self._global_id_to_index = {fid: i for i, fid in enumerate(all_shared)}
         self._global_unique_count = len(all_shared)
+        self._shared_ids_complete = bool(complete)
 
     def finalize_prescan(self) -> None:
         """After all batches pre-scanned, build the complete shared-ID set."""
         if self._prescan_done:
             return
-        self._build_shared_id_set_from(self._prescan_unique_ids)
+        self._build_shared_id_set_from(self._prescan_unique_ids, complete=True)
         self._prescan_done = True
         self._stats["bagpipe_shared_ids"] = float(len(self._shared_ids))
         total_unique = len(self._prescan_unique_ids)

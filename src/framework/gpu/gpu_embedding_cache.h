@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <tuple>
 
 #include <torch/extension.h>
 
@@ -44,8 +45,11 @@ struct GpuCacheLookupResult {
 
 GpuCacheLookupResult
 QueryGpuCache(const torch::Tensor& keys, int64_t embedding_dim);
-torch::Tensor LookupGpuCacheAssumingHits(const torch::Tensor& keys,
-                                          int64_t embedding_dim);
+// Returns (values, miss_mask). A true entry in miss_mask means the key was not
+// resident when the kernel ran, and the corresponding values row is undefined;
+// the caller must backfill those keys through the ordinary lookup path.
+std::tuple<torch::Tensor, torch::Tensor>
+LookupGpuCacheAssumingHits(const torch::Tensor& keys, int64_t embedding_dim);
 torch::Tensor ContainsGpuCache(const torch::Tensor& keys);
 void FillGpuCache(const torch::Tensor& keys_cuda,
                   const torch::Tensor& values_cuda);

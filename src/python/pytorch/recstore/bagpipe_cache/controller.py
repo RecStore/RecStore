@@ -165,6 +165,7 @@ class BagPipeCacheController(
             for k in (
                 "bagpipe_no_sync_ids",
                 "bagpipe_sync_now_ids",
+                "bagpipe_unknown_aggregated_ids",
                 "bagpipe_prefetch_skip_cached",
             )
         }
@@ -196,16 +197,19 @@ class BagPipeCacheController(
         self._anti_entropy_interval = 50
         self._anti_entropy_ids = 200
 
-        # ---- no_sync: shared vs local-only IDs ----
+        # ---- no_sync: shared / unknown / local-only IDs ----
         self._shared_ids: Optional[Set[int]] = None
         self._shared_ids_tensor: Optional[torch.Tensor] = None
+        # True only when the set came from the oracle prescan: the fallback set
+        # is a prefix sample, and an ID missing from it is unknown, not local.
+        self._shared_ids_complete: bool = False
         self._global_id_to_index: Optional[Dict[int, int]] = None
         self._global_unique_count: int = 0
         self._init_unique_ids: Set[int] = set()
-        self._init_batches_seen: int = 0
         self._prescan_done: bool = False
         self._prescan_unique_ids: Set[int] = set()
         self._stats["bagpipe_no_sync_ids"] = 0.0
+        self._stats["bagpipe_unknown_aggregated_ids"] = 0.0
         self._stats["bagpipe_shared_ids"] = 0.0
 
     # ------------------------------------------------------------------
@@ -243,6 +247,7 @@ class BagPipeCacheController(
             "bagpipe_prefetch_pruned": 0.0,
             "bagpipe_prefetch_local_nosync_kept": 0.0,
             "bagpipe_prefetch_throttled": 0.0,
+            "bagpipe_all_hit_revalidations": 0.0,
             "bagpipe_insert_failures": 0.0,
             "bagpipe_sync_now_overlap_ms": 0.0,
             "bagpipe_sync_now_ids": 0.0,
@@ -251,6 +256,7 @@ class BagPipeCacheController(
             # reset_stats() (called every step via consume_stats) drop the
             # keys and the next update_grads raise KeyError.
             "bagpipe_no_sync_ids": 0.0,
+            "bagpipe_unknown_aggregated_ids": 0.0,
             "bagpipe_shared_ids": 0.0,
             "bagpipe_evicted_ids": 0.0,
             "bagpipe_writeback_ids": 0.0,

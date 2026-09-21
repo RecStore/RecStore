@@ -296,14 +296,15 @@ GpuCacheLookupResult QueryGpuCache(const torch::Tensor& keys,
   return MaterializeGpuCacheLookup(*lookup, keys.numel());
 }
 
-torch::Tensor LookupGpuCacheAssumingHits(const torch::Tensor& keys,
-                                          int64_t embedding_dim) {
+std::tuple<torch::Tensor, torch::Tensor>
+LookupGpuCacheAssumingHits(const torch::Tensor& keys, int64_t embedding_dim) {
   RequireCudaTensor(keys, "keys");
   TORCH_CHECK(keys.scalar_type() == torch::kInt64, "keys must be dtype int64");
 
   c10::cuda::CUDAGuard device_guard(keys.device());
   const auto stream = at::cuda::getCurrentCUDAStream();
   torch::Tensor values;
+  torch::Tensor miss;
   std::shared_ptr<CacheImpl> cache;
   {
     std::lock_guard<std::mutex> guard(g_mu);
@@ -316,15 +317,20 @@ torch::Tensor LookupGpuCacheAssumingHits(const torch::Tensor& keys,
     values = torch::empty(
         {keys.numel(), embedding_dim},
         keys.options().dtype(torch::kFloat32));
+    // Residency can change between the caller's decision and this kernel (the
+    // eviction/writeback threads invalidate keys concurrently), so report the
+    // keys this lookup could not serve instead of leaving them undefined.
+    miss = torch::empty({keys.numel()}, keys.options().dtype(torch::kBool));
 
     WaitForPriorCacheOpOnStreamLocked(stream.stream());
     cache->GetAssumingHits(keys.data_ptr<int64_t>(),
                            static_cast<size_t>(keys.numel()),
-                           values.data_ptr<float>(), stream.stream());
+                           values.data_ptr<float>(),
+                           miss.data_ptr<bool>(), stream.stream());
     RetainCacheUntilStreamCompletes(cache, stream.stream());
     RecordLastCacheOpOnStreamLocked(stream.stream());
   }
-  return values;
+  return {values, miss};
 }
 
 void FillGpuCache(const torch::Tensor& keys_cuda,

@@ -99,9 +99,14 @@ class _GradHarness(BagPipeGradMixin):
         self._ttl_margin = 256
         self._shared_ids = {10, 30}
         self._shared_ids_tensor = torch.tensor([10, 30], dtype=torch.int64)
+        # harness 声明的是 oracle 集合 (id 20 确实只在本 rank 出现), 因此
+        # 集合外的 id 允许走 local-only 快路径。集合不完整的场景由
+        # test_unknown_ids_are_aggregated_when_set_is_incomplete 单独覆盖。
+        self._shared_ids_complete = True
         # 无 GPU 热累加器 → _hot_add 回退 host float (直接进 _stats)
         self._hot_stats_dev = {}
         self.dense_calls = []
+        self.sparse_calls = []
         self._stats = {
             "bagpipe_update_ms": 0.0,
             "bagpipe_sgd_cache_success": 0.0,
@@ -111,6 +116,7 @@ class _GradHarness(BagPipeGradMixin):
             "bagpipe_sync_now_ids": 0.0,
             "bagpipe_sync_later_ids": 0.0,
             "bagpipe_no_sync_ids": 0.0,
+            "bagpipe_unknown_aggregated_ids": 0.0,
             "bagpipe_anti_entropy_ids": 0.0,
         }
 
@@ -130,7 +136,7 @@ class _GradHarness(BagPipeGradMixin):
     def _compact_in_range(self, compact):
         return compact[compact < self._cached_dev.numel()]
 
-    def _maybe_build_shared_id_set(self, _ids):
+    def _record_shared_id_candidates(self, _ids):
         return None
 
     def _hot_add(self, key, count):
@@ -143,6 +149,13 @@ class _GradHarness(BagPipeGradMixin):
     def _dense_all_reduce_async(self, ids, grads, stream=None):
         self.dense_calls.append((ids.clone(), grads.clone(), stream))
         return ids, grads, _DenseWork(ids, grads)
+
+    def _all_gather_sparse_async(self, ids, grads, stream=None):
+        self.sparse_calls.append((ids.clone(), grads.clone(), stream))
+        if ids.numel() == 0:
+            return ids, grads, None
+        # 聚合结果 = 本 rank 贡献 (单进程 harness 无对端)
+        return ids, grads, _DenseWork(ids.clone(), grads.clone())
 
 
 class TestBagPipeDenseReduce(unittest.TestCase):
@@ -187,6 +200,204 @@ class TestBagPipeDenseReduce(unittest.TestCase):
         self.assertEqual(dense[2].tolist(), [1.0, 2.0])
         self.assertEqual(dense[0].tolist(), [5.0, 6.0])
         self.assertEqual(dense[1].tolist(), [0.0, 0.0])
+
+
+class _SharedIdSetHarness(BagPipeCommMixin):
+    """BagPipeCommMixin 的最小宿主: 只测共享集构建/完整性标志。"""
+
+    def __init__(self):
+        self.device = torch.device("cpu")
+        self._shared_ids = None
+        self._shared_ids_tensor = None
+        self._shared_ids_complete = False
+        self._global_id_to_index = None
+        self._global_unique_count = 0
+        self._init_unique_ids = set()
+        self._prescan_done = False
+        self._prescan_unique_ids = set()
+        self._dynamic_lookahead = 4
+        self._stats = {
+            "bagpipe_shared_ids": 0.0,
+            "bagpipe_prescan_batches": 0.0,
+            "bagpipe_prescan_ids": 0.0,
+        }
+
+    @property
+    def lookahead_value(self):
+        return self._dynamic_lookahead
+
+    def _is_distributed(self):
+        return True
+
+
+def _fake_two_rank_all_gather(out_list, tensor, async_op=False):
+    """伪 2-rank all_gather: rank1 贡献与 rank0 相同 (所有 id 都是共享的)。"""
+    for out in out_list:
+        out.copy_(tensor)
+    return _DoneWork()
+
+
+class TestBagPipeSharedIdSetBuild(unittest.TestCase):
+    def test_candidates_accumulate_without_collective(self):
+        harness = _SharedIdSetHarness()
+        with mock.patch.object(comm_module.dist, "all_gather") as ag:
+            harness._record_shared_id_candidates(
+                torch.tensor([10, 20], dtype=torch.int64)
+            )
+            harness._record_shared_id_candidates(
+                torch.tensor([20, 30], dtype=torch.int64)
+            )
+        ag.assert_not_called()
+        self.assertEqual(harness._init_unique_ids, {10, 20, 30})
+
+    def test_build_waits_for_the_step_boundary_and_stays_incomplete(self):
+        harness = _SharedIdSetHarness()
+        harness._record_shared_id_candidates(
+            torch.tensor([10, 20], dtype=torch.int64)
+        )
+        with mock.patch.object(comm_module.dist, "get_world_size", return_value=2), \
+             mock.patch.object(
+                 comm_module.dist, "all_gather",
+                 side_effect=_fake_two_rank_all_gather,
+             ):
+            harness._maybe_build_shared_id_set(3)
+            self.assertIsNone(harness._shared_ids)  # 3 < max(lookahead, 2)
+            harness._maybe_build_shared_id_set(4)
+        self.assertEqual(harness._shared_ids, {10, 20})
+        # 回退集只是前缀采样 → 不能授权 local-only 快路径
+        self.assertFalse(harness._shared_ids_complete)
+        self.assertEqual(harness._global_unique_count, 2)
+
+    def test_finalize_prescan_marks_the_set_complete(self):
+        harness = _SharedIdSetHarness()
+        harness._prescan_unique_ids = {10, 20}
+        with mock.patch.object(comm_module.dist, "get_world_size", return_value=2), \
+             mock.patch.object(
+                 comm_module.dist, "all_gather",
+                 side_effect=_fake_two_rank_all_gather,
+             ):
+            harness.finalize_prescan()
+        self.assertEqual(harness._shared_ids, {10, 20})
+        self.assertTrue(harness._shared_ids_complete)
+
+    def test_single_rank_set_is_complete_and_empty(self):
+        harness = _SharedIdSetHarness()
+        harness._is_distributed = lambda: False
+        harness._maybe_build_shared_id_set(0)
+        self.assertEqual(harness._shared_ids, set())
+        self.assertTrue(harness._shared_ids_complete)
+
+
+class TestCleanupTriggersSharedIdBuild(unittest.TestCase):
+    def test_cleanup_builds_the_set_at_the_step_boundary(self):
+        """构建点是 cleanup (每步每 rank 都走到), 不是各 rank 自己的批计数。"""
+        from ..bagpipe_cache.eviction import BagPipeEvictionMixin
+
+        seen = []
+
+        class _Harness(BagPipeEvictionMixin):
+            def __init__(self):
+                self._cached_dev = None
+                self.cache_capacity = 0
+                self._stats = {"bagpipe_cleanup_ms": 0.0}
+
+            def _maybe_build_shared_id_set(self, current_step):
+                seen.append(current_step)
+
+            def _maybe_adjust_lookahead(self, current_batch):
+                return None
+
+        _Harness().cleanup(7)
+        self.assertEqual(seen, [7])
+
+
+class TestBagPipeUnknownIdAggregation(unittest.TestCase):
+    """集合不完整时, 集合外的 id 是 unknown, 不能当作 local-only。
+
+    回退集只覆盖前 max(lookahead, 2) 个 step, 因此集合外的 id 仍可能在别的
+    rank 上出现: 若按 local-only 立即原位 apply 并标 dirty, eviction 的值写回
+    会让最后写入的 rank 覆盖掉其它 rank 的增量, 副本永久分叉。
+    """
+
+    def _incomplete_harness(self):
+        harness = _GradHarness(rank=0)
+        harness._shared_ids_complete = False
+        return harness
+
+    def test_unknown_ids_are_aggregated_when_set_is_incomplete(self):
+        harness = self._incomplete_harness()
+        ids = torch.tensor([10, 20], dtype=torch.int64)
+        grads = torch.tensor([[1.0, 1.0], [2.0, 2.0]])
+
+        harness.update_grads("table", ids, grads, lr=0.1, batch_num=5)
+
+        # id 20 不在已知共享集里 → 不本地 apply、不标 dirty (写回会互相覆盖)
+        self.assertEqual(harness.kv_client.best_effort_applies, [])
+        self.assertFalse(bool(harness._dirty_dev[20].item()))
+        # 而是走 sparse 聚合路径, 与 dense 路径同一 barrier 消费
+        self.assertEqual(len(harness.sparse_calls), 1)
+        s_ids, s_grads, _ = harness.sparse_calls[0]
+        self.assertEqual(s_ids.tolist(), [20])
+        self.assertEqual(s_grads.tolist(), [[2.0, 2.0]])
+        self.assertEqual(harness._stats["bagpipe_unknown_aggregated_ids"], 1.0)
+        self.assertEqual(harness._stats["bagpipe_no_sync_ids"], 0.0)
+        # 已知共享的 id 10 仍走 dense
+        d_ids, _, _ = harness.dense_calls[0]
+        self.assertEqual(d_ids.tolist(), [10])
+
+    def test_oracle_set_keeps_local_only_fast_path(self):
+        harness = _GradHarness(rank=0)
+        self.assertTrue(harness._shared_ids_complete)
+        ids = torch.tensor([10, 20], dtype=torch.int64)
+        grads = torch.tensor([[1.0, 1.0], [2.0, 2.0]])
+
+        harness.update_grads("table", ids, grads, lr=0.1, batch_num=5)
+
+        # oracle 集合证明 id 20 只在本 rank 出现 → 快路径仍然可用
+        self.assertEqual(len(harness.kv_client.best_effort_applies), 1)
+        self.assertTrue(bool(harness._dirty_dev[20].item()))
+        self.assertEqual(harness.sparse_calls, [])
+
+    def test_dense_and_sparse_collectives_are_both_issued(self):
+        """空桶也不能跳过集合通信: 对端会进入, 早退即挂死。"""
+        harness = self._incomplete_harness()
+        harness._shared_ids = set()
+        harness._shared_ids_tensor = torch.empty(0, dtype=torch.int64)
+        ids = torch.tensor([20], dtype=torch.int64)
+        grads = torch.tensor([[2.0, 2.0]])
+
+        harness.update_grads("table", ids, grads, lr=0.1, batch_num=5)
+
+        # dense 桶为空仍然发射 (对齐对端的 all_reduce), sparse 携带 unknown id
+        self.assertEqual(len(harness.dense_calls), 1)
+        self.assertEqual(harness.dense_calls[0][0].numel(), 0)
+        self.assertEqual(len(harness.sparse_calls), 1)
+        self.assertEqual(harness.sparse_calls[0][0].tolist(), [20])
+
+    def test_barrier_applies_dense_and_sparse_aggregates_together(self):
+        harness = _GradHarness(rank=0)
+        harness._pending_sync_now_work = [
+            _DenseWork(
+                torch.tensor([10], dtype=torch.int64),
+                torch.tensor([[1.0, 1.0]]),
+            ),
+            _DenseWork(
+                torch.tensor([20], dtype=torch.int64),
+                torch.tensor([[2.0, 2.0]]),
+            ),
+        ]
+        harness._pending_sync_now_lr = 0.25
+
+        harness._wait_pending_sync_now()
+
+        # 两路聚合结果合成一次原位 apply + 一次 PS 推送
+        self.assertEqual(len(harness.kv_client.best_effort_applies), 1)
+        _, a_ids, a_grads, a_lr = harness.kv_client.best_effort_applies[0]
+        self.assertEqual(sorted(a_ids.tolist()), [10, 20])
+        self.assertEqual(a_grads.shape, (2, 2))
+        self.assertEqual(a_lr, 0.25)
+        self.assertEqual(len(harness.kv_client.async_updates), 1)
+        self.assertEqual(harness._pending_sync_now_work, None)
 
 
 class TestBagPipeAggregatedApply(unittest.TestCase):

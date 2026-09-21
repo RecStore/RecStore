@@ -149,6 +149,20 @@ class BagPipePrefetchMixin:
         all_hits = bool(self._prefetch_all_hits.pop(batch_num, False))
         if slot is not None:
             all_hits = self._fill_from_preissued(slot, compute_device)
+        elif all_hits and unique_ids.numel() > 0:
+            # The all-hit decision was taken at enqueue time, but TTL/capacity
+            # eviction, anti-entropy, and the writeback thread can invalidate
+            # these ids before they are consumed.  Re-validate immediately
+            # ahead of the lock-free hit-only lookup; a stale flag would make
+            # the lookup read rows that are no longer resident.
+            resident = self.kv_client.contains_gpu_cache(unique_ids)
+            if not bool(resident.all().item()):
+                all_hits = False
+                self._stats["bagpipe_all_hit_revalidations"] += 1.0
+                compact = self._to_compact(unique_ids)
+                in_range = compact < self._latest_dev.numel()
+                compact = compact[in_range]
+                self._cached_dev[compact[~resident[in_range]]] = False
         self.embedding_module._bagpipe_all_cache_hits = all_hits
         probe_path = os.environ.get("RS_DEMO_BAGPIPE_PROBE_LOG")
         if probe_path:

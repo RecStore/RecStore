@@ -508,8 +508,15 @@ class RecStoreClient:
         return self.ops.prefill_gpu_cache_no_evict(ids, values)
 
     def contains_gpu_cache(self, keys: torch.Tensor) -> torch.Tensor:
-        """Return a bool residency mask for fused keys."""
-        keys = self._normalize_ids(keys, preserve_device=True)
+        """Return a bool residency mask for fused keys.
+
+        Encodes the active GPU-cache table tag like the prefill and hit-only
+        lookup paths do; without it the probe would use a different key space
+        than the rows that were inserted whenever the table tag is non-zero.
+        """
+        keys = self._normalize_ids(
+            keys, preserve_device=True, name=self._gpu_cache_table_name
+        )
         if not keys.is_contiguous():
             keys = keys.contiguous()
         return self.ops.contains_gpu_cache(keys)
@@ -578,7 +585,10 @@ class RecStoreClient:
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
         self._ensure_gpu_cache_table(name)
-        ids = self._normalize_ids(ids, preserve_device=True)
+        # Must encode the table tag: the cache stores tagged keys, so an
+        # untagged update would look up a disjoint key space and the
+        # best-effort kernel would silently skip every row.
+        ids = self._normalize_ids(ids, preserve_device=True, name=name)
         grads = self._normalize_grads(grads, preserve_device=True)
         if grads.dim() != 2:
             raise ValueError("grads must be a 2-dimensional tensor")
@@ -651,7 +661,9 @@ class RecStoreClient:
         Returns ``(values, resident_mask)``; the mask is authoritative C++
         residency state after the stream-ordered fill.
         """
-        keys = self._normalize_ids(keys, preserve_device=True)
+        keys = self._normalize_ids(
+            keys, preserve_device=True, name=self._gpu_cache_table_name
+        )
         if not keys.is_contiguous():
             keys = keys.contiguous()
         return self.ops.gpu_cache_lookup_flat_no_evict(keys, int(embedding_dim))
@@ -662,12 +674,14 @@ class RecStoreClient:
 
     def gpu_cache_lookup_flat_assuming_hits(
         self, keys: torch.Tensor, embedding_dim: int
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Cache-only lookup for a caller-verified all-hit key set.
 
         Unlike :meth:`gpu_cache_lookup_flat`, this path does not synchronize
-        to materialize missing keys.  The caller must have prefilled every key
-        or otherwise proved that all keys are resident.
+        to materialize missing keys.  Returns ``(values, miss_mask)``; a true
+        entry in the mask means that key was not resident when the kernel ran
+        (residency can change between the caller's check and this call), so the
+        caller must backfill it instead of using the corresponding row.
         """
         keys = self._normalize_ids(
             keys, preserve_device=True, name=self._gpu_cache_table_name

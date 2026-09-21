@@ -34,10 +34,11 @@ class gpu_cache_api {
                      cudaStream_t stream,
                      const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) = 0;
 
-  // Read-only hit-only API. The caller guarantees every key is resident; no
-  // lock, LRU touch, miss reporting, or device synchronization is performed.
+  // Read-only hit-only API for keys the caller believes are resident. No lock,
+  // LRU touch, or device synchronization is performed. When d_miss is non-null
+  // it receives a per-key "was not resident" flag so the caller can fall back.
   virtual void GetAssumingHits(const key_type* d_keys, const size_t len, float* d_values,
-                               cudaStream_t stream,
+                               bool* d_miss, cudaStream_t stream,
                                const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) {}
 
   // Read-only membership API. d_success[key index] is true iff the key is
