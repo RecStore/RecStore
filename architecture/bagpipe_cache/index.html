@@ -12,13 +12,9 @@
         <meta name="author" content="RecStore Team">
       
       
-        <link rel="canonical" href="https://RecStore.github.io/RecStore/architecture/overview/">
+        <link rel="canonical" href="https://RecStore.github.io/RecStore/architecture/bagpipe_cache/">
       
       
-        <link rel="prev" href="../../config/">
-      
-      
-        <link rel="next" href="../../calc/">
       
       
         
@@ -29,7 +25,7 @@
     
     
       
-        <title>总览 - RecStore Documentation</title>
+        <title>BagPipe GPU cache ownership - RecStore Documentation</title>
       
     
     
@@ -80,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#recstore" class="md-skip">
+        <a href="#bagpipe-gpu-cache-ownership" class="md-skip">
           跳转至
         </a>
       
@@ -114,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              总览
+              BagPipe GPU cache ownership
             
           </span>
         </div>
@@ -265,13 +261,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="./" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../overview/" class="md-tabs__link">
           
   
   
@@ -680,31 +674,26 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
@@ -722,7 +711,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -737,37 +726,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    总览
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
         
   
   
@@ -783,70 +745,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="目录">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      目录
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        架构简图
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#1-calculation-layer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        1. 计算层 (Calculation Layer)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2-parameter-server-layer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        2. 参数服务器层 (Parameter Server Layer)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-storage-layer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3. 存储层 (Storage Layer)
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -865,20 +763,17 @@
       
       
         
-          
-          
-        
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
         
           
-          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
             
   
   
@@ -1012,20 +907,17 @@
       
       
         
-          
-          
-        
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
         
           
-          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
             
   
   
@@ -1243,20 +1135,17 @@
       
       
         
-          
-          
-        
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
         
           
-          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
             
   
   
@@ -1958,10 +1847,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#_1" class="md-nav__link">
+  <a href="#state-ownership" class="md-nav__link">
     <span class="md-ellipsis">
       
-        架构简图
+        State ownership
       
     </span>
   </a>
@@ -1969,10 +1858,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#1-calculation-layer" class="md-nav__link">
+  <a href="#eviction" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. 计算层 (Calculation Layer)
+        Eviction
       
     </span>
   </a>
@@ -1980,21 +1869,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-parameter-server-layer" class="md-nav__link">
+  <a href="#failure-policy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. 参数服务器层 (Parameter Server Layer)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-storage-layer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3. 存储层 (Storage Layer)
+        Failure policy
       
     </span>
   </a>
@@ -2018,7 +1896,7 @@
 
 
   
-    <a href="https://github.com/RecStore/RecStore/edit/main/docs/architecture/overview.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/RecStore/RecStore/edit/main/docs/architecture/bagpipe_cache.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2026,65 +1904,46 @@
   
 
 
-<h1 id="recstore">RecStore 架构总览<a class="headerlink" href="#recstore" title="Permanent link">&para;</a></h1>
-<p>RecStore 采用分层架构设计，旨在支撑万亿级稀疏参数的存储与高效更新。整个系统从逻辑上分为三层：<strong>计算层 (Calculation Layer)</strong>、<strong>参数服务器层 (Parameter Server Layer)</strong> 和 <strong>存储层 (Storage Layer)</strong>。</p>
-<h2 id="_1">架构简图<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>graph TD
-    subgraph Calculation ["1. 计算层 (Calculation Layer)"]
-        Model[推荐模型 PyTorch] --&gt; KVClient["Python KVClient&lt;br/&gt;src/python/pytorch/recstore/KVClient.py"]
-        KVClient --&gt; TorchBinding["PyTorch 扩展&lt;br/&gt;src/framework/pytorch/op_torch.cc"]
-        TorchBinding --&gt; CommonOp["C++ Interface (CommonOp)&lt;br/&gt;src/framework/op.h"]
-    end
-
-    subgraph PS ["2. 参数服务器层 (Parameter Server Layer)"]
-        CommonOp --&gt; PSClient["PS Client&lt;br/&gt;src/ps/grpc/dist_grpc_ps_client.cpp"]
-        PSClient -- "RPC (gRPC/bRPC)" --&gt; PSServer["PS Server&lt;br/&gt;src/ps/grpc/grpc_ps_server.cpp"]
-    end
-
-    subgraph Storage ["3. 存储层 (Storage Layer)"]
-        PSServer --&gt; CachePS["CachePS 核心逻辑&lt;br/&gt;src/ps/base/cache_ps_impl.h"]
-        CachePS --&gt; BaseKV["BaseKV 抽象层&lt;br/&gt;src/storage/kv_engine/base_kv.h"]
-        BaseKV --&gt; KVEngine["KV 引擎 (Composite/PetKV/External)&lt;br/&gt;src/storage/kv_engine/"]
-        KVEngine --&gt; MemMgr["内存管理器&lt;br/&gt;src/memory/"]
-    end
-
-    style Calculation fill:#5c6bc01a,stroke:#5c6bc0,stroke-width:2px,stroke-dasharray: 5 5
-    style PS fill:#9e9e9e1a,stroke:#9e9e9e,stroke-width:2px,stroke-dasharray: 5 5
-    style Storage fill:#689f381a,stroke:#689f38,stroke-width:2px,stroke-dasharray: 5 5</code></pre>
-<hr />
-<h2 id="1-calculation-layer">1. 计算层 (Calculation Layer)<a class="headerlink" href="#1-calculation-layer" title="Permanent link">&para;</a></h2>
-<p>计算层是 RecStore 与深度学习框架（如 PyTorch）的交界面，负责将模型的前向查询和反向更新请求转换为 RecStore 内部的 Tensor 操作。</p>
+<h1 id="bagpipe-gpu-cache-ownership">BagPipe GPU cache ownership<a class="headerlink" href="#bagpipe-gpu-cache-ownership" title="Permanent link">&para;</a></h1>
+<p>BagPipe mode treats the C++ GPU cache as owned storage. The Python controller
+may plan prefetches, but it never assumes that a replace-style insert succeeded
+or that an invalidation removed a row.</p>
+<h2 id="state-ownership">State ownership<a class="headerlink" href="#state-ownership" title="Permanent link">&para;</a></h2>
+<p>The C++ hash table is the residency authority. The Python flat tensors are a
+mirror that is updated only from authoritative C++ results:</p>
 <ul>
-<li><strong>Python Client</strong>: 提供面向用户的 <a href="src/python/pytorch/recstore/KVClient.py">RecStoreClient</a> 接口。</li>
-<li><strong>PyTorch Binding</strong>: 在 <a href="src/framework/pytorch/op_torch.cc">op_torch.cc</a> 中定义了 <code>torch.ops.recstore_ops</code> 扩展。</li>
-<li><strong>C++ Interface</strong>: <a href="src/framework/op.h">CommonOp</a> 是客户端的核心抽象，<code>KVClientOp</code> 实现了跨组件的调用转发。</li>
-<li><strong>BagPipe GPU Cache</strong>: <a href="../bagpipe_cache/">BagPipe ownership</a> 说明 C++ GPU cache 与 Python residency mirror 的单一写者协议。</li>
+<li><code>prefill_gpu_cache_no_evict</code> returns a per-key insert mask. Only true rows
+  are marked cached.</li>
+<li><code>gpu_cache_lookup_flat_no_evict</code> returns values and a post-fill residency
+  mask. Failed inserts remain uncached and are retried later.</li>
+<li><code>invalidate_gpu_cache_with_mask</code> returns a per-key removal mask. Only rows
+  reported as removed are cleared from the Python mirror.</li>
+<li><code>contains_gpu_cache</code> validates a policy all-hit decision immediately before
+  the lock-free <code>gpu_cache_lookup_flat_assuming_hits</code> path.</li>
+<li><code>get_gpu_cache_generation</code> changes whenever the C++ cache is reset. BagPipe
+  fails loudly if another component resets its owned cache.</li>
 </ul>
-<hr />
-<h2 id="2-parameter-server-layer">2. 参数服务器层 (Parameter Server Layer)<a class="headerlink" href="#2-parameter-server-layer" title="Permanent link">&para;</a></h2>
-<p>参数服务器层负责分布式环境下参数的分发与通信。它屏蔽了底层的网络细节，支持多种通信协议。</p>
-<ul>
-<li><strong>RPC 通信</strong>: 支持 gRPC 和 bRPC。例如 <a href="src/ps/grpc/dist_grpc_ps_client.cpp">DistGRPCPSClient</a> 负责序列化数据并发送请求。</li>
-<li><strong>服务端分发</strong>: <a href="src/ps/grpc/grpc_ps_server.cpp">GRPCPS_Server</a> 接收请求并将其路由给后端的存储逻辑。</li>
-<li><strong>协议定义</strong>: <a href="src/ps/proto/ps.proto">ps.proto</a> 定义了 <code>GetParameter</code>、<code>UpdateParameter</code> 等核心接口。</li>
-</ul>
-<hr />
-<h2 id="3-storage-layer">3. 存储层 (Storage Layer)<a class="headerlink" href="#3-storage-layer" title="Permanent link">&para;</a></h2>
-<p>存储层是 RecStore 的核心，负责参数在异构存储介质（DRAM, NVM, SSD）上的高效读写与管理。</p>
-<ul>
-<li><strong>核心逻辑 (CachePS)</strong>: <a href="src/ps/base/cache_ps_impl.h">CachePS</a> 是存储层的入口，负责处理来自 RPC Server 的请求。</li>
-<li><strong>引擎抽象 (BaseKV)</strong>: <a href="src/storage/kv_engine/base_kv.h">BaseKV</a> 定义了统一的操作接口。</li>
-<li><strong>组合引擎</strong>: <a href="src/storage/kv_engine/engine_composite.h">KVEngineComposite</a> 通过 <code>index.type</code> + <code>value.type</code> 组合 DRAM 索引与 DRAM/SSD/Tiered 值存储；仓库默认组合为 <code>DRAM_PET_HASH</code> + <code>DRAM_VALUE_STORE</code> + <code>CONCURRENT_SLAB_MEMORY_POOL</code>。</li>
-<li><strong>内存管理</strong>: 提供 <a href="src/memory/persist_simple_malloc.h">PersistSimpleMalloc</a> 等组件，实现对持久化内存的直接管理。</li>
-</ul>
-<hr />
-<details class="tip" open="open">
-<summary>开发参考：添加算子流转</summary>
-<p>可以参考 <a href="../../dev/feature/add_operator/">添加算子</a> 文档来追踪一个新功能是如何从 Python 层一步步渗透到存储层的。</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">EmbRead</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">EmbUpdate</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">grads</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<p>The mirror therefore has one writer protocol:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>C++ no-evict insert success -&gt; cached=true, TTL refresh
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>C++ lookup fill success    -&gt; cached=true, TTL refresh
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>C++ removal success        -&gt; cached=false, dirty=false, TTL=0
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>C++ insert/removal failure -&gt; previous state is retained
 </code></pre></div>
-</details>
+<h2 id="eviction">Eviction<a class="headerlink" href="#eviction" title="Permanent link">&para;</a></h2>
+<p>Only BagPipe evicts rows. C++ no-evict fills never replace a resident key.
+Python chooses expired or low-TTL candidates, reads dirty values for PS
+writeback, and invalidates them explicitly. Bookkeeping changes only for keys
+that the C++ removal mask confirms. If a no-evict fill fails because hash sets
+are saturated, the next cleanup retires a broader low-TTL slice and retries.</p>
+<p>This mirrors upstream BagPipe's <code>BagCache</code> invariant: insertion fills known
+empty storage, eviction is explicit, and the mapping and occupancy state change
+together. RecStore keeps the physical slots inside the C++ set-associative hash
+table, so the Python mirror is keyed by embedding ID rather than by local slot.</p>
+<h2 id="failure-policy">Failure policy<a class="headerlink" href="#failure-policy" title="Permanent link">&para;</a></h2>
+<p>BagPipe requires the authoritative APIs above. Missing APIs are configuration
+errors, not reasons to fall back to replace-style fills: a fallback could evict
+a key without updating the mirror. An external cache reset is also a hard error
+because dirty local updates cannot be reconstructed safely after the reset.</p>
 
 
 
