@@ -103,6 +103,23 @@ class TestDlrmSourceFallback(unittest.TestCase):
         self.assertTrue(torch.equal(unique_ids, expected_unique))
         self.assertTrue(torch.equal(inverse, expected_inverse))
 
+    def test_device_fused_ids_match_cpu_extraction(self) -> None:
+        sparse = torch.arange(3 * 26, dtype=torch.int64).reshape(3, 26)
+        names = [f"cat_{idx}" for idx in range(26)]
+        offsets = {name: idx << 10 for idx, name in enumerate(names)}
+        _, sparse_features = dlrm_source.build_kjt_batch_from_dense_sparse_labels(
+            torch.zeros((3, 13)), sparse, torch.zeros((3, 1))
+        )
+
+        cpu_ids = dlrm_source.convert_kjt_ids_to_fused_ids(
+            sparse_features, offsets
+        )
+        device_ids = dlrm_source.convert_kjt_ids_to_fused_ids_device(
+            sparse_features, offsets
+        )
+
+        self.assertTrue(torch.equal(cpu_ids, device_ids))
+
     def test_resolve_default_table_sizes_uses_cap_instead_of_uniform_size(self) -> None:
         sizes = dlrm_source.resolve_num_embeddings_per_feature(5000)
 

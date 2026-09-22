@@ -34,19 +34,50 @@ class gpu_cache_api {
                      cudaStream_t stream,
                      const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) = 0;
 
+  // Read-only hit-only API for keys the caller believes are resident. No lock,
+  // LRU touch, or device synchronization is performed. When d_miss is non-null
+  // it receives a per-key "was not resident" flag so the caller can fall back.
+  virtual void GetAssumingHits(const key_type* d_keys, const size_t len, float* d_values,
+                               bool* d_miss, cudaStream_t stream,
+                               const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) {}
+
+  // Read-only membership API. d_success[key index] is true iff the key is
+  // resident. Like GetAssumingHits, this does not lock or copy values.
+  virtual void Contains(const key_type* d_keys, const size_t len, bool* d_success,
+                        cudaStream_t stream,
+                        const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) {}
+
   // Replace API, i.e. Follow the Query API to update the content of the cache to Most Recent
   virtual void Replace(const key_type* d_keys, const size_t len, const float* d_values,
                        cudaStream_t stream,
                        const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) = 0;
+
+  // Insert only into empty/tombstone slots. Existing entries are kept. The
+  // caller owns eviction and must not use Replace on the same cache.
+  virtual void TryInsertNoEvict(const key_type* d_keys, const size_t len,
+                                const float* d_values, bool* d_success, cudaStream_t stream,
+                                const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) {}
 
   // Update API, i.e. update the embeddings which exist in the cache
   virtual void Update(const key_type* d_keys, const size_t len, const float* d_values,
                       cudaStream_t stream,
                       const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) = 0;
 
+  // ApplySgd API: in-place SGD step (value -= lr * grad) on the embeddings
+  // which exist in the cache.  Missing keys are silently skipped (best-effort,
+  // no insertion, no host-side missing report).
+  virtual void ApplySgd(const key_type* d_keys, const size_t len, const float* d_grads,
+                        const float lr, cudaStream_t stream,
+                        const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) {}
+
   // Remove API, i.e. invalidate existing embeddings from the cache
   virtual void Remove(const key_type* d_keys, const size_t len, cudaStream_t stream,
-                      const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) = 0;
+                       const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) = 0;
+
+  // Remove API with an authoritative per-key success mask.
+  virtual void RemoveWithMask(const key_type* d_keys, const size_t len,
+                              bool* d_success, cudaStream_t stream,
+                              const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) {}
 
   // Dump API, i.e. dump some slabsets' keys from the cache
   virtual void Dump(key_type* d_keys, size_t* d_dump_counter, const size_t start_set_index,

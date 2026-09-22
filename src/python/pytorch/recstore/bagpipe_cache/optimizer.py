@@ -77,22 +77,28 @@ class BagPipeSparseSGD:
                     for name, entries in traces_by_name.items():
                         if not entries:
                             continue
-                        all_ids = torch.cat(
-                            [ids for ids, _ in entries], dim=0
-                        )
-                        all_grads = torch.cat(
-                            [grads for _, grads in entries], dim=0
-                        )
-
-                        unique_ids, inverse_indices = torch.unique(
-                            all_ids, return_inverse=True
-                        )
-                        summed_grads = torch.zeros(
-                            (len(unique_ids), all_grads.size(1)),
-                            device=all_grads.device,
-                            dtype=all_grads.dtype,
-                        )
-                        summed_grads.index_add_(0, inverse_indices, all_grads)
+                        # record_pooled_grad appends one already-deduplicated
+                        # trace.  Avoid a second GPU unique/index_add pass.
+                        if len(entries) == 1:
+                            unique_ids, summed_grads = entries[0]
+                        else:
+                            all_ids = torch.cat(
+                                [ids for ids, _ in entries], dim=0
+                            )
+                            all_grads = torch.cat(
+                                [grads for _, grads in entries], dim=0
+                            )
+                            unique_ids, inverse_indices = torch.unique(
+                                all_ids, return_inverse=True
+                            )
+                            summed_grads = torch.zeros(
+                                (len(unique_ids), all_grads.size(1)),
+                                device=all_grads.device,
+                                dtype=all_grads.dtype,
+                            )
+                            summed_grads.index_add_(
+                                0, inverse_indices, all_grads
+                            )
 
                         self.controller.update_grads(
                             name,

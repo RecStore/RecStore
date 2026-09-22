@@ -902,9 +902,102 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
             ids_for_query = ids_for_query.to(compute_device)
         if not ids_for_query.is_contiguous():
             ids_for_query = ids_for_query.contiguous()
-        embeddings = self.kv_client.gpu_cache_lookup_flat(
-            ids_for_query, embedding_dim
+
+        # BagPipe's enqueue already deduplicated this exact batch. Query the
+        # unique rows once, then expand back to raw feature-major order.
+        prepared = getattr(self, "_bagpipe_current_prepared_ids", None)
+        gather_inverse = None
+        if prepared is not None:
+            prepared_ids, prepared_inverse, raw_count = prepared
+            if int(raw_count) != ids_for_query.numel():
+                raise RuntimeError(
+                    "BagPipe prepared-ID count does not match the lookup batch"
+                )
+            if prepared_ids.device != ids_for_query.device:
+                raise RuntimeError(
+                    "BagPipe prepared IDs and lookup IDs are on different devices"
+                )
+            ids_for_query = prepared_ids
+            gather_inverse = prepared_inverse
+
+        assume_hits = bool(getattr(self, "_bagpipe_all_cache_hits", False))
+        self._bagpipe_all_cache_hits = False
+        expected_generation = getattr(self, "_bagpipe_cache_generation", None)
+        generation_getter = getattr(
+            self.kv_client, "get_gpu_cache_generation", None
         )
+        if (
+            assume_hits
+            and expected_generation is not None
+            and callable(generation_getter)
+            and int(generation_getter()) != int(expected_generation)
+        ):
+            assume_hits = False
+            self._bagpipe_cache_generation_mismatch = True
+
+        probe_path = os.environ.get("RS_DEMO_BAGPIPE_PROBE_LOG")
+        if probe_path:
+            try:
+                with open(probe_path, "a", encoding="utf-8") as probe_file:
+                    probe_file.write(
+                        "[EBC-probe] gpu_cache_lookup "
+                        f"assume_hits={assume_hits} num_ids={ids_for_query.numel()}\n"
+                    )
+            except OSError:
+                pass
+        if assume_hits:
+            embeddings, miss = self.kv_client.gpu_cache_lookup_flat_assuming_hits(
+                ids_for_query, embedding_dim
+            )
+            resident = None
+            if bool(miss.any().item()):
+                # Residency changed after the all-hit decision (eviction or
+                # writeback invalidation).  The rows reported as misses hold
+                # undefined values, so redo the lookup through the path that
+                # backfills from the PS instead of feeding them to the model.
+                logger.warning(
+                    "[EBC] BagPipe hit-only lookup missed %d/%d rows; "
+                    "backfilling through the no-evict lookup",
+                    int(miss.sum().item()),
+                    int(miss.numel()),
+                )
+                lookup_no_evict = getattr(
+                    self.kv_client, "gpu_cache_lookup_flat_no_evict", None
+                )
+                if callable(lookup_no_evict):
+                    embeddings, resident = lookup_no_evict(
+                        ids_for_query, embedding_dim
+                    )
+                else:
+                    embeddings = self.kv_client.gpu_cache_lookup_flat(
+                        ids_for_query, embedding_dim
+                    )
+        else:
+            lookup_no_evict = getattr(
+                self.kv_client, "gpu_cache_lookup_flat_no_evict", None
+            )
+            if not callable(lookup_no_evict) and prepared is not None:
+                raise RuntimeError(
+                    "BagPipe requires gpu_cache_lookup_flat_no_evict to own "
+                    "cache backfill"
+                )
+            if callable(lookup_no_evict):
+                embeddings, resident = lookup_no_evict(
+                    ids_for_query, embedding_dim
+                )
+                self._bagpipe_last_lookup_resident = (
+                    ids_for_query,
+                    resident,
+                )
+            elif prepared is None:
+                embeddings = self.kv_client.gpu_cache_lookup_flat(
+                    ids_for_query, embedding_dim
+                )
+                self._bagpipe_last_lookup_resident = None
+        if assume_hits:
+            self._bagpipe_last_lookup_resident = (ids_for_query, resident)
+        if gather_inverse is not None:
+            embeddings = embeddings.index_select(0, gather_inverse)
         if embeddings.device != compute_device:
             embeddings = embeddings.to(compute_device)
         return embeddings
@@ -1289,6 +1382,34 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
             used_fused_prefetch = False
             _gpu_cache_fn = getattr(self.kv_client, "is_gpu_cache_enabled", None)
             _gpu_cache_on = bool(_gpu_cache_fn()) if callable(_gpu_cache_fn) else False
+            # [BagPipe-probe] opt-in one-shot log of which lookup branch this
+            # run actually takes; written to a file because torchrun's captured
+            # stdout is discarded on success.  Disabled unless
+            # RS_DEMO_BAGPIPE_PROBE_LOG names a path (zero I/O otherwise).
+            _probe_path = os.environ.get("RS_DEMO_BAGPIPE_PROBE_LOG")
+            if _probe_path and not getattr(self, "_lookup_branch_logged", False):
+                self._lookup_branch_logged = True
+                if use_local_shm_direct_fast_path:
+                    _branch = "local_shm_direct"
+                elif use_single_node_owner_exchange_fast_path:
+                    _branch = "single_node_owner_exchange"
+                elif self._fused_prefetch_handle is not None:
+                    _branch = "fused_prefetch"
+                elif len(self._prefetch_handles) > 0:
+                    _branch = "per_feature_prefetch"
+                elif _gpu_cache_on:
+                    _branch = "gpu_cache"
+                else:
+                    _branch = "pull"
+                try:
+                    with open(_probe_path, "a", encoding="utf-8") as _f:
+                        _f.write(
+                            f"[EBC-probe] lookup branch={_branch} "
+                            f"gpu_cache_on={_gpu_cache_on} device={compute_device} "
+                            f"num_fused_ids={int(fused_values_all.numel())}\n"
+                        )
+                except Exception:  # noqa: BLE001
+                    pass
             if use_local_shm_direct_fast_path:
                 is_gpu_cache_enabled = getattr(self.kv_client, "is_gpu_cache_enabled", None)
                 gpu_cache_enabled = bool(is_gpu_cache_enabled()) if callable(is_gpu_cache_enabled) else True
