@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 import argparse
+import tempfile
 
 from petps_cluster_runner import PetPSClusterRunner
 from ps_server_helpers import RDMA_SKIP_EXIT_CODE, get_rdma_skip_reason
 from ps_test_config import (
     DEFAULT_RDMA_MULTI_SHARD_CONFIG,
     DEFAULT_RDMA_SINGLE_SHARD_CONFIG,
+    materialize_rdma_config,
     resolve_rdma_integration_config,
 )
 CONTROL_PLANE_NOISE_PATTERNS = (
@@ -63,42 +65,46 @@ def main():
         help="show control-plane/status logs from runner and integration binary",
     )
     args = parser.parse_args()
-    config_path = resolve_rdma_integration_config(args.server_count, args.config_path)
+    source_config_path = resolve_rdma_integration_config(args.server_count, args.config_path)
     client_timeout = normalize_timeout(args.client_timeout, "client-timeout")
     cluster_timeout = normalize_timeout(args.cluster_timeout, "cluster-timeout")
 
-    runner = PetPSClusterRunner(
-        config_path=config_path,
-        num_servers=args.server_count,
-        num_clients=args.client_count,
-        thread_num=1,
-        value_size=args.value_size,
-        max_kv_num_per_request=args.max_kv_num_per_request,
-        timeout=cluster_timeout,
-        verbose=args.show_runner_logs,
-        status_refresh_interval=args.status_refresh_interval,
-        show_status_logs=args.show_runner_logs,
-        show_control_plane_logs=args.show_runner_logs,
-        rdma_namespace=args.rdma_namespace,
-        rdma_control_plane_host=args.rdma_control_plane_host,
-        rdma_control_plane_port=args.rdma_control_plane_port,
-        rdma_per_thread_response_limit_bytes=args.rdma_per_thread_response_limit_bytes,
-        rdma_client_receive_arena_bytes=args.rdma_client_receive_arena_bytes,
-        rdma_rc_server_coroutines_per_thread=(
-            args.rdma_rc_server_coroutines_per_thread
-        ),
-        rdma_rc_server_get_workers=args.rdma_rc_server_get_workers,
-        validate_routing=args.validate_routing,
-    )
-
-    with runner.run():
-        completed = runner.run_client(
-            [args.test_binary, f"--gtest_filter={args.gtest_filter}"],
-            timeout=client_timeout,
-            stream_output=False,
+    with tempfile.TemporaryDirectory(prefix="recstore_petps_integration_") as runtime_dir:
+        config_path = materialize_rdma_config(
+            source_config_path, args.server_count, args.client_count, runtime_dir
         )
-        print_filtered_output(completed.stdout, args.show_runner_logs)
-        print_filtered_output(completed.stderr, args.show_runner_logs)
+        runner = PetPSClusterRunner(
+            config_path=config_path,
+            num_servers=args.server_count,
+            num_clients=args.client_count,
+            thread_num=1,
+            value_size=args.value_size,
+            max_kv_num_per_request=args.max_kv_num_per_request,
+            timeout=cluster_timeout,
+            verbose=args.show_runner_logs,
+            status_refresh_interval=args.status_refresh_interval,
+            show_status_logs=args.show_runner_logs,
+            show_control_plane_logs=args.show_runner_logs,
+            rdma_namespace=args.rdma_namespace,
+            rdma_control_plane_host=args.rdma_control_plane_host,
+            rdma_control_plane_port=args.rdma_control_plane_port,
+            rdma_per_thread_response_limit_bytes=args.rdma_per_thread_response_limit_bytes,
+            rdma_client_receive_arena_bytes=args.rdma_client_receive_arena_bytes,
+            rdma_rc_server_coroutines_per_thread=(
+                args.rdma_rc_server_coroutines_per_thread
+            ),
+            rdma_server_get_workers=args.rdma_rc_server_get_workers,
+            validate_routing=args.validate_routing,
+        )
+
+        with runner.run():
+            completed = runner.run_client(
+                [args.test_binary, f"--gtest_filter={args.gtest_filter}"],
+                timeout=client_timeout,
+                stream_output=False,
+            )
+            print_filtered_output(completed.stdout, args.show_runner_logs)
+            print_filtered_output(completed.stderr, args.show_runner_logs)
     return completed.returncode
 
 

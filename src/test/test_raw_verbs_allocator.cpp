@@ -32,17 +32,6 @@ TEST(RawVerbsRegionAllocatorTest, RejectsReservedRegionOutsideLocalMemory) {
   EXPECT_THROW(allocator.SetReservedRegion({448, 128}), std::runtime_error);
 }
 
-TEST(RawVerbsDeviceSelectionTest, PrefersMatchingNumaThenFallsBack) {
-  const std::vector<int> numa_nodes{0, 1, 2, 3};
-  const std::vector<bool> usable{false, true, true, false};
-
-  EXPECT_EQ(petps::SelectRawVerbsDeviceIndex(2, numa_nodes, usable), 2);
-  EXPECT_EQ(petps::SelectRawVerbsDeviceIndex(8, numa_nodes, usable), 1);
-  EXPECT_EQ(petps::SelectRawVerbsDeviceIndex(-1, numa_nodes, usable), 1);
-  EXPECT_EQ(petps::SelectRawVerbsDeviceIndex(0, numa_nodes, usable), 1);
-  EXPECT_EQ(petps::SelectRawVerbsDeviceIndex(0, {0}, {}), -1);
-}
-
 TEST(RawVerbsEndpointTest, MetaKeyIncludesLocalAndRemoteLanes) {
   EXPECT_EQ(petps::RawVerbsMetaKey(1, 2, 3, 4),
             "raw-verbs-meta-1-lane-2-to-3-lane-4");

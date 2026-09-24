@@ -4,6 +4,8 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 add_library(wq_ps_client
     control_plane.cc
+    rdma_deployment.cc
+    rdma_distributed_executor.cc
     petps_client.cc
     rc_options.cc
     rc_transport.cc
@@ -25,6 +27,7 @@ set(warp_wq_ps_client -Wl,--whole-archive wq_ps_client -Wl,--no-whole-archive CA
 
 add_executable(petps_server
     control_plane.cc
+    rdma_deployment.cc
     petps_server.cc
     rc_options.cc
     rc_transport.cc

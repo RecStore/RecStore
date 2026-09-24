@@ -12,16 +12,23 @@
 #include <thread>
 
 #include "ps/rdma/control_plane.h"
+#include "base/log.h"
 
 namespace petps {
 namespace {
 
-constexpr int kRawVerbsPort          = 1;
 constexpr std::uint32_t kRawVerbsPsn = 3185;
 constexpr int kRawVerbsCqDepth       = 4096;
 constexpr int kRawVerbsRecvDepth     = 1024;
 
 std::string IbvError(const char* op) { return std::string(op) + " failed"; }
+
+std::string GidString(const ibv_gid& gid) {
+  char text[INET6_ADDRSTRLEN] = {};
+  return inet_ntop(AF_INET6, gid.raw, text, sizeof(text)) == nullptr
+           ? "invalid"
+           : text;
+}
 
 std::string QpCreateError(const RawVerbsConfig& config, int node) {
   return "ibv_create_qp failed: likely insufficient RDMA QP resources "
@@ -38,42 +45,11 @@ std::string QpCreateError(const RawVerbsConfig& config, int node) {
 struct OpenedRawVerbsDevice {
   ibv_context* context = nullptr;
   int gid_index        = -1;
+  ibv_port_attr port_attr{};
+  ibv_gid gid{};
 };
 
-int ReadDeviceNumaNode(ibv_device* device) {
-  std::ifstream input(std::string("/sys/class/infiniband/") +
-                      ibv_get_device_name(device) + "/device/numa_node");
-  int numa_node = -1;
-  input >> numa_node;
-  return numa_node;
-}
-
-int FindUsableGidIndex(ibv_context* context) {
-  ibv_port_attr port_attr{};
-  if (ibv_query_port(context, kRawVerbsPort, &port_attr) != 0 ||
-      port_attr.state != IBV_PORT_ACTIVE || port_attr.gid_tbl_len <= 0) {
-    return -1;
-  }
-  std::vector<ibv_gid> gids(static_cast<std::size_t>(port_attr.gid_tbl_len));
-  std::vector<bool> roce_v2_gids(
-      static_cast<std::size_t>(port_attr.gid_tbl_len));
-  const std::string gid_type_dir =
-      std::string("/sys/class/infiniband/") +
-      ibv_get_device_name(context->device) + "/ports/" +
-      std::to_string(kRawVerbsPort) + "/gid_attrs/types/";
-  for (int i = 0; i < port_attr.gid_tbl_len; ++i) {
-    if (ibv_query_gid(context, kRawVerbsPort, i, &gids[i]) != 0) {
-      std::memset(&gids[i], 0, sizeof(gids[i]));
-    }
-    std::ifstream type_input(gid_type_dir + std::to_string(i));
-    std::string gid_type;
-    std::getline(type_input, gid_type);
-    roce_v2_gids[static_cast<std::size_t>(i)] = gid_type == "RoCE v2";
-  }
-  return SelectRawVerbsGidIndex(gids, roce_v2_gids);
-}
-
-OpenedRawVerbsDevice OpenDeviceForNuma(int numa_id) {
+OpenedRawVerbsDevice OpenDeviceExplicit(const RawVerbsConfig& config) {
   // ibv_fork_init must be called before any other libibverbs API.
   // It sets MADV_DONTFORK on all mmap'd regions (CQ/QP memory) so that
   // forked child processes (e.g. DataLoader workers) don't inherit them.
@@ -89,40 +65,58 @@ OpenedRawVerbsDevice OpenDeviceForNuma(int numa_id) {
   if (devices == nullptr || device_count == 0) {
     throw std::runtime_error("no RDMA devices found");
   }
-  std::vector<int> device_numa_nodes(static_cast<std::size_t>(device_count));
-  std::vector<bool> usable_devices(static_cast<std::size_t>(device_count));
-  std::vector<int> gid_indices(static_cast<std::size_t>(device_count), -1);
   for (int i = 0; i < device_count; ++i) {
-    device_numa_nodes[static_cast<std::size_t>(i)] =
-        ReadDeviceNumaNode(devices[i]);
-    ibv_context* candidate = ibv_open_device(devices[i]);
-    if (candidate == nullptr) {
+    if (config.device_name != ibv_get_device_name(devices[i]))
       continue;
+    ibv_context* candidate = ibv_open_device(devices[i]);
+    if (candidate == nullptr)
+      throw std::runtime_error("ibv_open_device failed");
+    ibv_port_attr port_attr{};
+    if (ibv_query_port(candidate, config.port_num, &port_attr) != 0 ||
+        port_attr.state != IBV_PORT_ACTIVE) {
+      ibv_close_device(candidate);
+      throw std::runtime_error("configured RDMA port is not active");
     }
-    gid_indices[static_cast<std::size_t>(i)] = FindUsableGidIndex(candidate);
-    usable_devices[static_cast<std::size_t>(i)] =
-        gid_indices[static_cast<std::size_t>(i)] >= 0;
-    ibv_close_device(candidate);
-  }
-  const int device_index = SelectRawVerbsDeviceIndex(
-      numa_id, device_numa_nodes, usable_devices);
-  if (device_index < 0) {
+    const bool is_ib = port_attr.link_layer == IBV_LINK_LAYER_INFINIBAND;
+    if ((config.fabric_mode == recstore::RdmaFabricMode::kIb) != is_ib) {
+      ibv_close_device(candidate);
+      throw std::runtime_error(
+          "configured RDMA fabric mode does not match link layer");
+    }
+    ibv_gid gid{};
+    if (ibv_query_gid(candidate, config.port_num, config.gid_index, &gid) !=
+        0) {
+      ibv_close_device(candidate);
+      throw std::runtime_error("configured RDMA gid_index is unavailable");
+    }
+    if (!is_ib) {
+      std::ifstream type_input(
+          std::string("/sys/class/infiniband/") + config.device_name +
+          "/ports/" + std::to_string(config.port_num) + "/gid_attrs/types/" +
+          std::to_string(config.gid_index));
+      std::string gid_type;
+      std::getline(type_input, gid_type);
+      const std::string expected =
+          config.fabric_mode == recstore::RdmaFabricMode::kRocEv1
+              ? "RoCE v1"
+              : "RoCE v2";
+      if (gid_type != expected) {
+        ibv_close_device(candidate);
+        throw std::runtime_error(
+            "configured RDMA GID type does not match fabric mode");
+      }
+    }
     ibv_free_device_list(devices);
-    throw std::runtime_error("no active RDMA device with a non-zero GID found");
+    return {candidate, config.gid_index, port_attr, gid};
   }
-  ibv_context* context = ibv_open_device(devices[device_index]);
-  const int gid_index  = gid_indices[static_cast<std::size_t>(device_index)];
   ibv_free_device_list(devices);
-  if (context == nullptr) {
-    throw std::runtime_error("ibv_open_device failed");
-  }
-  return {context, gid_index};
+  throw std::runtime_error("configured RDMA device was not found");
 }
 
-void ModifyQpToInit(ibv_qp* qp) {
+void ModifyQpToInit(ibv_qp* qp, std::uint8_t port) {
   ibv_qp_attr attr{};
   attr.qp_state        = IBV_QPS_INIT;
-  attr.port_num        = kRawVerbsPort;
+  attr.port_num        = port;
   attr.pkey_index      = 0;
   attr.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE |
                          IBV_ACCESS_REMOTE_ATOMIC;
@@ -133,38 +127,63 @@ void ModifyQpToInit(ibv_qp* qp) {
   }
 }
 
-void FillAhAttr(ibv_ah_attr* ah_attr,
-                std::uint16_t remote_lid,
-                const std::uint8_t* remote_gid,
-                int local_gid_index) {
+void FillAhAttr(
+    ibv_ah_attr* ah_attr,
+    std::uint16_t remote_lid,
+    const std::uint8_t* remote_gid,
+    int local_gid_index,
+    std::uint8_t port,
+    recstore::RdmaFabricMode mode,
+    std::uint8_t hop_limit,
+    std::uint8_t traffic_class,
+    std::uint32_t flow_label) {
   std::memset(ah_attr, 0, sizeof(*ah_attr));
   ah_attr->dlid          = remote_lid;
   ah_attr->sl            = 0;
   ah_attr->src_path_bits = 0;
-  ah_attr->port_num      = kRawVerbsPort;
-  if (remote_gid != nullptr) {
+  ah_attr->port_num      = port;
+  if (remote_gid != nullptr && mode != recstore::RdmaFabricMode::kIb) {
     ah_attr->is_global = 1;
     std::memcpy(&ah_attr->grh.dgid, remote_gid, 16);
-    ah_attr->grh.sgid_index = local_gid_index;
-    ah_attr->grh.hop_limit  = 1;
+    ah_attr->grh.sgid_index    = local_gid_index;
+    ah_attr->grh.hop_limit     = hop_limit;
+    ah_attr->grh.traffic_class = traffic_class;
+    ah_attr->grh.flow_label    = flow_label;
   }
 }
 
-void ModifyQpToRtr(ibv_qp* qp,
-                   const RawVerbsNodeMeta& remote,
-                   int local_gid_index) {
+void ModifyQpToRtr(
+    ibv_qp* qp,
+    const RawVerbsNodeMeta& remote,
+    int local_gid_index,
+    std::uint8_t port,
+    recstore::RdmaFabricMode mode,
+    std::uint8_t hop_limit,
+    std::uint8_t traffic_class,
+    std::uint32_t flow_label) {
   ibv_port_attr port_attr{};
-  if (ibv_query_port(qp->context, kRawVerbsPort, &port_attr) != 0) {
+  if (ibv_query_port(qp->context, port, &port_attr) != 0) {
     throw std::runtime_error(IbvError("ibv_query_port for active MTU"));
   }
   ibv_qp_attr attr{};
-  attr.qp_state           = IBV_QPS_RTR;
-  attr.path_mtu           = port_attr.active_mtu;
+  attr.qp_state = IBV_QPS_RTR;
+  attr.path_mtu = static_cast<ibv_mtu>(
+      std::min(static_cast<int>(port_attr.active_mtu),
+               static_cast<int>(remote.active_mtu)));
   attr.dest_qp_num        = remote.qpn;
   attr.rq_psn             = remote.psn;
   attr.max_dest_rd_atomic = 16;
   attr.min_rnr_timer      = 12;
-  FillAhAttr(&attr.ah_attr, remote.lid, remote.gid, local_gid_index);
+  FillAhAttr(
+      &attr.ah_attr,
+      remote.lid,
+      remote.gid,
+      local_gid_index,
+      port,
+      mode,
+      hop_limit,
+      traffic_class,
+      flow_label);
   const int flags =
       IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN |
       IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
@@ -216,10 +235,29 @@ struct RawVerbsTransport::Impl {
 
 RawVerbsTransport::RawVerbsTransport(const RawVerbsConfig& config)
     : impl_(std::make_unique<Impl>(config)) {
-  const auto opened = OpenDeviceForNuma(config.numa_id);
-  impl_->context     = opened.context;
-  impl_->gid_index   = opened.gid_index;
-  impl_->pd      = ibv_alloc_pd(impl_->context);
+  if (config.device_name.empty() || config.port_num == 0 ||
+      config.gid_index < 0) {
+    throw std::invalid_argument(
+        "RDMA device_name, port_num, and gid_index are required");
+  }
+  const auto opened = OpenDeviceExplicit(config);
+  impl_->context    = opened.context;
+  impl_->gid_index  = opened.gid_index;
+  if (config.local_lane == 0) {
+    const char* role = config.connect_to_servers ? "client" : "server";
+    LOG(INFO) << "component=rdma_verbs event=fabric_ready"
+              << " role=" << role << " node_id=" << config.global_id
+              << " device=" << config.device_name
+              << " port=" << static_cast<int>(config.port_num)
+              << " gid_index=" << config.gid_index
+              << " gid=" << GidString(opened.gid) << " link_layer="
+              << (opened.port_attr.link_layer == IBV_LINK_LAYER_INFINIBAND
+                      ? "ib"
+                      : "ethernet")
+              << " active_mtu_bytes="
+              << (128 << static_cast<int>(opened.port_attr.active_mtu));
+  }
+  impl_->pd = ibv_alloc_pd(impl_->context);
   if (impl_->pd == nullptr) {
     throw std::runtime_error("ibv_alloc_pd failed");
   }
@@ -310,8 +348,6 @@ RawVerbsTransport::~RawVerbsTransport() {
   }
 }
 
-void RawVerbsTransport::RegisterThread() {}
-
 namespace {
 bool MrContains(ibv_mr* mr, const void* ptr, std::size_t bytes) {
   if (mr == nullptr) {
@@ -395,20 +431,42 @@ void* RawVerbsTransport::LocalPointer(GlobalAddress address) const {
 
 RawVerbsNodeMeta RawVerbsTransport::LocalMeta() const {
   ibv_port_attr port_attr{};
-  if (ibv_query_port(impl_->context, kRawVerbsPort, &port_attr) != 0) {
+  if (ibv_query_port(impl_->context, impl_->config.port_num, &port_attr) != 0) {
     throw std::runtime_error("ibv_query_port failed");
   }
   ibv_gid gid{};
-  if (ibv_query_gid(impl_->context, kRawVerbsPort, impl_->gid_index, &gid) !=
+  if (ibv_query_gid(
+          impl_->context, impl_->config.port_num, impl_->gid_index, &gid) !=
       0) {
     throw std::runtime_error("ibv_query_gid failed");
   }
   RawVerbsNodeMeta meta{};
-  meta.node_id   = static_cast<std::uint16_t>(impl_->config.global_id);
-  meta.lid       = port_attr.lid;
-  meta.psn       = kRawVerbsPsn;
-  meta.rkey      = impl_->local_mr->rkey;
-  meta.base_addr = reinterpret_cast<std::uint64_t>(impl_->local_base);
+  meta.node_id = static_cast<std::uint16_t>(impl_->config.global_id);
+  meta.logical_id =
+      impl_->config.global_id < impl_->config.num_servers
+          ? impl_->config.global_id
+          : impl_->config.global_id - impl_->config.num_servers;
+  meta.lid              = port_attr.lid;
+  meta.psn              = kRawVerbsPsn;
+  meta.rkey             = impl_->local_mr->rkey;
+  meta.base_addr        = reinterpret_cast<std::uint64_t>(impl_->local_base);
+  meta.deployment_id    = impl_->config.deployment_id;
+  meta.deployment_epoch = impl_->config.deployment_epoch;
+  meta.configuration_digest = impl_->config.configuration_digest;
+  meta.fabric_digest        = impl_->config.fabric_digest;
+  meta.protocol_version     = impl_->config.protocol_version;
+  meta.node_role            = static_cast<std::uint8_t>(
+      impl_->config.global_id < impl_->config.num_servers
+                     ? recstore::RdmaNodeRole::kServer
+                     : recstore::RdmaNodeRole::kClient);
+  meta.port_num   = impl_->config.port_num;
+  meta.link_layer = static_cast<std::uint8_t>(
+      port_attr.link_layer == IBV_LINK_LAYER_INFINIBAND
+          ? IBV_LINK_LAYER_INFINIBAND
+          : IBV_LINK_LAYER_ETHERNET);
+  meta.gid_index   = impl_->config.gid_index;
+  meta.active_mtu  = port_attr.active_mtu;
+  meta.fabric_mode = static_cast<std::uint8_t>(impl_->config.fabric_mode);
   std::memcpy(meta.gid, &gid, sizeof(meta.gid));
   return meta;
 }
@@ -420,6 +478,11 @@ void RawVerbsTransport::Publish() {
       impl_->config.control_plane_host,
       impl_->config.control_plane_port,
       impl_->config.control_plane_timeout_ms,
+      impl_->config.deployment_id,
+      impl_->config.deployment_epoch,
+      impl_->config.protocol_version,
+      impl_->config.configuration_digest,
+      impl_->config.fabric_digest,
   });
   for (int node = 0; node < node_count; ++node) {
     if (!ShouldRawVerbsConnectToNode(impl_->config, node)) {
@@ -443,6 +506,11 @@ void RawVerbsTransport::Connect() {
       impl_->config.control_plane_host,
       impl_->config.control_plane_port,
       impl_->config.control_plane_timeout_ms,
+      impl_->config.deployment_id,
+      impl_->config.deployment_epoch,
+      impl_->config.protocol_version,
+      impl_->config.configuration_digest,
+      impl_->config.fabric_digest,
   });
   impl_->metas.assign(static_cast<std::size_t>(node_count), RawVerbsNodeMeta{});
   impl_->remotes.assign(
@@ -467,6 +535,7 @@ void RawVerbsTransport::Connect() {
         impl_->config.global_id,
         impl_->config.local_lane,
         impl_->config.control_plane_timeout_ms);
+    ValidateRawVerbsPeerMeta(impl_->config, node, meta);
     impl_->metas[static_cast<std::size_t>(node)]   = meta;
     impl_->remotes[static_cast<std::size_t>(node)] = RawVerbsRemoteMemory{
         meta.node_id,
@@ -480,9 +549,16 @@ void RawVerbsTransport::Connect() {
       continue;
     }
     ibv_qp* qp = impl_->qps[static_cast<std::size_t>(node)];
-    ModifyQpToInit(qp);
+    ModifyQpToInit(qp, impl_->config.port_num);
     ModifyQpToRtr(
-        qp, impl_->metas[static_cast<std::size_t>(node)], impl_->gid_index);
+        qp,
+        impl_->metas[static_cast<std::size_t>(node)],
+        impl_->gid_index,
+        impl_->config.port_num,
+        impl_->config.fabric_mode,
+        impl_->config.hop_limit,
+        impl_->config.traffic_class,
+        impl_->config.flow_label);
     ModifyQpToRts(qp);
     for (int i = 0; i < kRawVerbsRecvDepth; ++i) {
       ibv_recv_wr wr{};

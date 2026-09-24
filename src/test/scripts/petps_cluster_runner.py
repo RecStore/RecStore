@@ -262,6 +262,7 @@ class PetPSClusterRunner:
 
     def build_env(self, bind_core_offset=None):
         env = os.environ.copy()
+        env["RECSTORE_CONFIG"] = str(self.config_path)
         if self.validate_routing:
             env["RECSTORE_RDMA_VALIDATE_ROUTING"] = "1"
         if bind_core_offset is not None:

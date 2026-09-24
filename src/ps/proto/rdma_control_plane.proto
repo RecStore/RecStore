@@ -2,12 +2,37 @@ syntax = "proto3";
 
 package recstoreps.rdma;
 
+message RawVerbsMetadata {
+  uint32 magic = 1;
+  uint32 protocol_version = 2;
+  string deployment_id = 3;
+  uint64 deployment_epoch = 4;
+  string configuration_digest = 5;
+  string fabric_digest = 6;
+  int32 node_id = 7;
+  int32 logical_id = 8;
+  uint32 node_role = 9;
+  uint32 lid = 10;
+  uint32 qpn = 11;
+  uint32 psn = 12;
+  uint32 rkey = 13;
+  uint64 base_addr = 14;
+  bytes gid = 15;
+  uint32 port_num = 16;
+  uint32 link_layer = 17;
+  int32 gid_index = 18;
+  uint32 active_mtu = 19;
+  uint32 fabric_mode = 20;
+}
+
 message PublishMetaRequest {
   int32 publisher_node_id = 1;
   int32 publisher_lane = 2;
   int32 receiver_node_id = 3;
   int32 receiver_lane = 4;
   bytes meta = 5;
+  string deployment_id = 6;
+  uint64 deployment_epoch = 7;
 }
 
 message PublishMetaResponse {
@@ -19,6 +44,8 @@ message GetMetaRequest {
   int32 receiver_node_id = 3;
   int32 receiver_lane = 4;
   int32 timeout_ms = 5;
+  string deployment_id = 6;
+  uint64 deployment_epoch = 7;
 }
 
 message GetMetaResponse {
@@ -27,14 +54,36 @@ message GetMetaResponse {
 
 message PublishServerReadyRequest {
   int32 server_id = 1;
+  uint32 protocol_version = 2;
+  string deployment_id = 3;
+  uint64 deployment_epoch = 4;
+  string configuration_digest = 5;
+  string fabric_digest = 6;
 }
 
 message PublishServerReadyResponse {
 }
 
+message PublishServerDrainingRequest {
+  int32 server_id = 1;
+  uint32 protocol_version = 2;
+  string deployment_id = 3;
+  uint64 deployment_epoch = 4;
+  string configuration_digest = 5;
+  string fabric_digest = 6;
+}
+
+message PublishServerDrainingResponse {
+}
+
 message WaitServerRequest {
   int32 server_id = 1;
   int32 timeout_ms = 2;
+  uint32 protocol_version = 3;
+  string deployment_id = 4;
+  uint64 deployment_epoch = 5;
+  string configuration_digest = 6;
+  string fabric_digest = 7;
 }
 
 message WaitServerResponse {
@@ -43,6 +92,11 @@ message WaitServerResponse {
 message WaitServerReadyRequest {
   int32 num_servers = 1;
   int32 timeout_ms = 2;
+  uint32 protocol_version = 3;
+  string deployment_id = 4;
+  uint64 deployment_epoch = 5;
+  string configuration_digest = 6;
+  string fabric_digest = 7;
 }
 
 message WaitServerReadyResponse {
@@ -59,6 +113,8 @@ service RdmaControlPlane {
   rpc GetMeta(GetMetaRequest) returns (GetMetaResponse);
   rpc PublishServerReady(PublishServerReadyRequest)
       returns (PublishServerReadyResponse);
+  rpc PublishServerDraining(PublishServerDrainingRequest)
+      returns (PublishServerDrainingResponse);
   rpc WaitServer(WaitServerRequest) returns (WaitServerResponse);
   rpc WaitServerReady(WaitServerReadyRequest) returns (WaitServerReadyResponse);
   rpc Probe(ProbeRequest) returns (ProbeResponse);

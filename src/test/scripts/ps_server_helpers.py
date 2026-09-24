@@ -86,19 +86,43 @@ def get_backend_type():
 def get_rdma_runner_config():
     """Extract the RDMA runner settings needed by the PetPS test harness."""
     _config_path, config = load_config()
+    if not config:
+        raise ValueError("RDMA runner requires an active RecStore config")
     cache_ps = config.get("cache_ps", {})
     dist_client = config.get("distributed_client", {})
+    deployment = config.get("rdma_deployment")
+    if not isinstance(dist_client, dict) or not isinstance(deployment, dict):
+        raise ValueError(
+            "RDMA runner requires explicit distributed_client and rdma_deployment"
+        )
+    if not isinstance(dist_client.get("num_shards"), int) or dist_client["num_shards"] <= 0:
+        raise ValueError("RDMA runner requires positive distributed_client.num_shards")
+    if not isinstance(dist_client.get("max_keys_per_request"), int) or dist_client["max_keys_per_request"] <= 0:
+        raise ValueError(
+            "RDMA runner requires positive distributed_client.max_keys_per_request"
+        )
+    nodes = deployment.get("nodes")
+    if not isinstance(nodes, list) or not nodes:
+        raise ValueError("RDMA runner requires explicit rdma_deployment.nodes")
+    if not isinstance(deployment.get("num_clients"), int) or deployment["num_clients"] <= 0:
+        raise ValueError("RDMA runner requires positive rdma_deployment.num_clients")
+    if not isinstance(deployment.get("deployment_id"), str) or not deployment["deployment_id"]:
+        raise ValueError("RDMA runner requires explicit rdma_deployment.deployment_id")
+    if not isinstance(deployment.get("epoch"), int) or deployment["epoch"] <= 0:
+        raise ValueError("RDMA runner requires positive rdma_deployment.epoch")
+    if deployment.get("protocol_version") != 1:
+        raise ValueError("RDMA runner requires protocol_version=1")
     base_kv = cache_ps.get("base_kv_config", {})
     return {
-        "num_servers": int(
-            dist_client.get("num_shards", cache_ps.get("num_shards", 1))
-        ),
+        "num_servers": dist_client["num_shards"],
         "value_size": int(
             base_kv.get("value", {}).get(
                 "default_value_size_hint", base_kv.get("value_size", 512)
             )
         ),
-        "max_kv_num_per_request": int(dist_client.get("max_keys_per_request", 64)),
+        "max_kv_num_per_request": dist_client["max_keys_per_request"],
+        "num_clients": deployment["num_clients"],
+        "rdma_deployment_nodes": nodes,
     }
 
 
