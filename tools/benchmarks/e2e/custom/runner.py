@@ -114,20 +114,29 @@ def _merge_rank_csvs(cfg: BenchmarkConfig, run_id: str, *, backend: str) -> None
 def _sync_runtime_dir(cfg: BenchmarkConfig, runtime_dir: Path) -> None:
     # Remote clients read the runtime config (recstore_config.json) from the
     # same path as the local runner. Without a shared filesystem the file
-    # must be pushed to every remote client host before launch. The remote
+    # must be pushed to every remote client and PS host before launch. The remote
     # path must be absolute: a relative destination would resolve against
     # the SSH login directory, not the runner's cwd.
-    for client in cfg.clients:
-        host = client.ssh_host
+    targets = {
+        (spec.ssh_host, spec.ssh_port, spec.repo_root): spec
+        for spec in (*cfg.clients, *cfg.servers)
+    }
+    for target in targets.values():
+        host = target.ssh_host
         if host in {"", "local", "localhost"}:
             continue
         local_dir = runtime_dir.resolve()
         # rsync only creates the last path component; create the parents
         # on the remote side first.
-        mkdir_cmd = wrap_remote_command(["mkdir", "-p", str(local_dir)], host, cwd=client.repo_root, ssh_port=client.ssh_port)
+        mkdir_cmd = wrap_remote_command(
+            ["mkdir", "-p", str(local_dir)],
+            host,
+            cwd=target.repo_root,
+            ssh_port=target.ssh_port,
+        )
         _checked_run(mkdir_cmd, cwd=ROOT)
         cmd = [
-            "rsync", "-a", "-e", f"ssh -p {client.ssh_port}",
+            "rsync", "-a", "-e", f"ssh -p {target.ssh_port}",
             f"{local_dir}/", f"{host}:{local_dir}/",
         ]
         _checked_run(cmd, cwd=ROOT)

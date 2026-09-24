@@ -236,7 +236,12 @@ class PetPSClusterRunner:
     @staticmethod
     def _allocate_local_port(host):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind((host, 0))
+            try:
+                sock.bind((host, 0))
+            except OSError:
+                # The control-plane host may be a remote PS address.  Pick a
+                # port locally; the remote server will bind it on startup.
+                sock.bind(("0.0.0.0", 0))
             return sock.getsockname()[1]
 
     def emit_status(self, phase, extra=""):

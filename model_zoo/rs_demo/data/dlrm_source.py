@@ -149,6 +149,26 @@ def convert_kjt_ids_to_fused_ids(sparse_features, table_offsets: dict[str, int])
     return torch.cat(ids_chunks, dim=0).contiguous()
 
 
+def convert_kjt_ids_to_fused_ids_device(
+    sparse_features, table_offsets: dict[str, int]
+) -> torch.Tensor:
+    """Build fused IDs without per-feature device-to-host synchronization."""
+    keys = list(sparse_features.keys())
+    if not keys:
+        return torch.empty((0,), dtype=torch.int64)
+    values = sparse_features.values()
+    if values.dtype != torch.int64:
+        values = values.to(torch.int64)
+    lengths = sparse_features.lengths().to(device=values.device, dtype=torch.long)
+    rows_per_feature = lengths.view(len(keys), -1).sum(dim=1)
+    prefixes = torch.tensor(
+        [table_offsets[key] for key in keys],
+        device=values.device,
+        dtype=torch.int64,
+    ).repeat_interleave(rows_per_feature)
+    return (values + prefixes).contiguous()
+
+
 def build_train_dataloader(
     repo_root: Path,
     data_dir_rel: str,

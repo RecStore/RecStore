@@ -91,6 +91,7 @@ class BagPipePlugin(OptimizationPlugin):
         embedding_dim: int = 128,
         fuse_k: int = 30,
         table_offsets: Dict[str, int] | None = None,
+        table_sizes: Dict[str, int] | None = None,
         master_table_name: str = "",
         device: torch.device | None = None,
         lr: float = 0.01,
@@ -130,6 +131,7 @@ class BagPipePlugin(OptimizationPlugin):
             embedding_dim=embedding_dim,
             fuse_k=fuse_k,
             table_offsets=table_offsets or {},
+            table_sizes=table_sizes,
             master_table_name=master_table_name,
             device=device if device is not None else torch.device("cpu"),
             lr=lr,
@@ -168,14 +170,18 @@ class BagPipePlugin(OptimizationPlugin):
     #  Lifecycle hooks
     # ------------------------------------------------------------------
 
-    def on_prepare(self, sparse_features: Any) -> None:
+    def on_prepare(self, sparse_features: Any):
         """Batch preparation hook: enqueue + pre-issue PS prefetch.
 
         Called during ``prepare_next_batch`` — ``lookahead`` steps before
-        the batch is consumed, so the PS has time to respond.
+        the batch is consumed, so the PS has time to respond.  Returns the
+        controller's ``(unique_ids, inverse, raw_count)`` ticket so the
+        training loop can reuse it as prepared-ids metadata (skips a second
+        unique pass in the pooled-gradient path), or ``None``.
         """
         if self._controller is not None:
-            self._controller.enqueue(sparse_features)
+            return self._controller.enqueue(sparse_features)
+        return None
 
     def on_consume(
         self,
@@ -231,6 +237,17 @@ class BagPipePlugin(OptimizationPlugin):
         if self._controller is None:
             return 0
         return self._controller.lookahead_value
+
+    @property
+    def prefetch_buffer_depth(self) -> int:
+        """Resource-aware depth for the runner's prepared-batch queue.
+
+        The runner's fill helper prepares ``depth + 1`` batches, so subtract
+        one to keep the unconsumed queue equal to the prefetch slot budget.
+        """
+        if self._controller is None:
+            return 0
+        return max(0, self._controller.max_inflight_prefetch - 1)
 
     def config_schema(self) -> Dict[str, Any]:
         return {

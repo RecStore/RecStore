@@ -96,6 +96,19 @@ class _FakeRecStoreClient:
         )
         return True
 
+    def apply_sgd_update_gpu_cache_best_effort(
+        self, name, ids, grads, *, learning_rate
+    ) -> None:
+        self.gpu_cache_sgd_update_calls.append(
+            (
+                str(name),
+                ids.detach().to(dtype=torch.int64, device="cpu").clone(),
+                grads.detach().to(dtype=torch.float32, device="cpu").clone(),
+                float(learning_rate),
+            )
+        )
+        return None
+
     def init_embedding_table(self, table_name: str, num_embeddings: int, embedding_dim: int) -> bool:
         self.init_embedding_table_calls += 1
         return True
@@ -284,6 +297,12 @@ class _FakeKeyedSparseFeatures:
         if key != "cat_0":
             raise KeyError(key)
         return _FakeJaggedFeature(self._values)
+
+    def values(self) -> torch.Tensor:
+        return self._values
+
+    def lengths(self) -> torch.Tensor:
+        return torch.ones_like(self._values)
 
 
 class _FakeSparseSGD:
@@ -963,6 +982,7 @@ class TestRecStoreRunner(unittest.TestCase):
             batch_size=1,
             embedding_dim=4,
             num_embeddings=16,
+            ps_type="HIERKV",
             nnodes=1,
             nproc_per_node=2,
             single_node_ps_backend="hierkv",
@@ -998,6 +1018,89 @@ class TestRecStoreRunner(unittest.TestCase):
         self.assertEqual(fake_sparse_optimizer.flush_calls, 1)
         self.assertGreaterEqual(fake_sparse_optimizer.zero_grad_calls, 2)
         self.assertEqual(fake_ebc.reset_perf_stats_calls, 1)
+
+    def test_bagpipe_mode_enables_gpu_cache_and_keeps_plugin_optimizer(self) -> None:
+        cfg = config.parse_config(
+            [
+                "--backend",
+                "recstore",
+                "--steps",
+                "1",
+                "--warmup-steps",
+                "0",
+                "--batch-size",
+                "1",
+                "--embedding-dim",
+                "4",
+                "--num-embeddings",
+                "16",
+                "--read-mode",
+                "bagpipe",
+                "--optimization-cache-capacity",
+                "32",
+            ]
+        )
+        created_kwargs: dict[str, object] = {}
+
+        class _FakeBagPipePlugin:
+            def __init__(self) -> None:
+                self.optimizer = _FakeSparseSGD([], lr=0.01)
+                self.shutdown_calls = 0
+
+            @property
+            def lookahead_depth(self) -> int:
+                return 1
+
+            @property
+            def prefetch_buffer_depth(self) -> int:
+                return 1
+
+            def create_sparse_optimizer(self, modules, lr: float):
+                return self.optimizer
+
+            def on_prepare(self, sparse_features) -> None:
+                del sparse_features
+
+            def on_consume(self, sparse_features, device) -> None:
+                del sparse_features, device
+
+            def on_step_end(self, step, row) -> None:
+                del step, row
+
+            def shutdown(self) -> None:
+                self.shutdown_calls += 1
+
+        plugins: list[_FakeBagPipePlugin] = []
+
+        def fake_create(plugin_name: str, **kwargs):
+            self.assertEqual(plugin_name, "bagpipe")
+            created_kwargs.update(kwargs)
+            plugin = _FakeBagPipePlugin()
+            plugins.append(plugin)
+            return plugin
+
+        def build_fake_kjt(*args, **kwargs):
+            del args, kwargs
+            return None, _FakeKeyedSparseFeatures([3])
+
+        with mock.patch.object(
+            recstore_runner.OptimizationPluginRegistry, "create", fake_create
+        ):
+            fake_ebc = self._run_local_worker_with_fake_embedding_module(
+                cfg, use_run=True, build_kjt=build_fake_kjt
+            )
+
+        client = fake_ebc.kv_client
+        self.assertEqual(client.enable_gpu_cache_calls, [(32, 4)])
+        self.assertTrue(client.gpu_cache_enabled)
+        self.assertFalse(client.gpu_cache_lookup_bypass_enabled)
+        self.assertEqual(created_kwargs["master_table_name"], "t_cat_0")
+        self.assertEqual(created_kwargs["cache_capacity"], 32)
+        self.assertEqual(len(plugins), 1)
+        self.assertIs(_FakeSparseSGD.last_instance, plugins[0].optimizer)
+        self.assertEqual(plugins[0].optimizer.step_calls, 1)
+        self.assertEqual(plugins[0].optimizer.flush_calls, 1)
+        self.assertEqual(plugins[0].shutdown_calls, 1)
 
     def test_direct_mode_skips_async_issue(self) -> None:
         cfg = RunConfig(

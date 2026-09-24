@@ -134,6 +134,13 @@ class TestPetPSClusterRunner(unittest.TestCase):
         )
         self.assertGreater(runner.rdma_control_plane_port, 0)
 
+    def test_allocates_control_plane_port_for_remote_host(self):
+        runner = PetPSClusterRunner(
+            rdma_control_plane_host="10.164.78.98",
+            rdma_control_plane_port=None,
+        )
+        self.assertGreater(runner.rdma_control_plane_port, 0)
+
     def test_detects_ready_lines(self):
         runner = PetPSClusterRunner()
         self.assertTrue(

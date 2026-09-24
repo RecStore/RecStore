@@ -551,6 +551,53 @@ class ShardedRecstoreClient:
             normalized_values = normalized_values.to(cache_device)
         prefill(normalized_ids, normalized_values)
 
+    def prefill_gpu_cache_no_evict(
+        self,
+        name: str,
+        ids: torch.Tensor,
+        values: torch.Tensor,
+    ) -> torch.Tensor:
+        if not self._gpu_cache_enabled:
+            raise RuntimeError(
+                "prefill_gpu_cache_no_evict requires GPU cache to be enabled"
+            )
+        prefill = getattr(self._client, "prefill_gpu_cache_no_evict", None)
+        if callable(prefill):
+            return prefill(name, ids, values)
+        ops = getattr(self._client, "ops", None)
+        prefill = getattr(ops, "prefill_gpu_cache_no_evict", None)
+        if not callable(prefill):
+            raise RuntimeError(
+                "prefill_gpu_cache_no_evict requires a RecStore client or ops "
+                "library exposing prefill_gpu_cache_no_evict()."
+            )
+        self._ensure_gpu_cache_table(name)
+        normalized_ids = self._normalize_ids(ids, keep_device=True)
+        normalized_values = self._normalize_grads(values, keep_device=True)
+        if (
+            normalized_ids.numel() > 0
+            and normalized_ids.device.type == "cpu"
+            and normalized_values.device.type == "cpu"
+            and torch.cuda.is_available()
+        ):
+            cache_device = torch.device("cuda", torch.cuda.current_device())
+            normalized_ids = normalized_ids.to(cache_device)
+            normalized_values = normalized_values.to(cache_device)
+        return prefill(normalized_ids, normalized_values)
+
+    def contains_gpu_cache(self, keys: torch.Tensor) -> torch.Tensor:
+        contains = getattr(self._client, "contains_gpu_cache", None)
+        if callable(contains):
+            return contains(keys)
+        ops = getattr(self._client, "ops", None)
+        contains = getattr(ops, "contains_gpu_cache", None)
+        if not callable(contains):
+            raise RuntimeError(
+                "contains_gpu_cache requires a RecStore client or ops library "
+                "exposing contains_gpu_cache()."
+            )
+        return contains(self._normalize_ids(keys, keep_device=True))
+
     def invalidate_gpu_cache(self, name: str, ids: torch.Tensor) -> None:
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
@@ -574,6 +621,37 @@ class ShardedRecstoreClient:
                 raise RuntimeError("invalidate_gpu_cache requires CUDA ids")
             normalized_ids = normalized_ids.to(torch.device("cuda", torch.cuda.current_device()))
         invalidator(normalized_ids)
+
+    def invalidate_gpu_cache_with_mask(
+        self, name: str, ids: torch.Tensor
+    ) -> torch.Tensor:
+        if not self._gpu_cache_enabled:
+            raise RuntimeError(
+                "invalidate_gpu_cache_with_mask requires GPU cache to be enabled"
+            )
+        invalidator = getattr(
+            self._client, "invalidate_gpu_cache_with_mask", None
+        )
+        if callable(invalidator):
+            return invalidator(name, ids)
+        ops = getattr(self._client, "ops", None)
+        invalidator = getattr(ops, "invalidate_gpu_cache_with_mask", None)
+        if not callable(invalidator):
+            raise RuntimeError(
+                "invalidate_gpu_cache_with_mask requires a RecStore client or "
+                "ops library exposing invalidate_gpu_cache_with_mask()."
+            )
+        self._ensure_gpu_cache_table(name)
+        normalized_ids = self._normalize_ids(ids, keep_device=True)
+        if normalized_ids.numel() > 0 and normalized_ids.device.type == "cpu":
+            if not torch.cuda.is_available():
+                raise RuntimeError(
+                    "invalidate_gpu_cache_with_mask requires CUDA ids"
+                )
+            normalized_ids = normalized_ids.to(
+                torch.device("cuda", torch.cuda.current_device())
+            )
+        return invalidator(normalized_ids)
 
     def apply_sgd_update_gpu_cache(
         self,
@@ -640,6 +718,37 @@ class ShardedRecstoreClient:
         if not normalized.is_contiguous():
             normalized = normalized.contiguous()
         return fn(normalized, int(embedding_dim))
+
+    def gpu_cache_lookup_flat_no_evict(
+        self, keys: torch.Tensor, embedding_dim: int
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if not self._gpu_cache_enabled:
+            raise RuntimeError(
+                "gpu_cache_lookup_flat_no_evict requires GPU cache to be enabled"
+            )
+        fn = getattr(self._client, "gpu_cache_lookup_flat_no_evict", None)
+        if callable(fn):
+            normalized = self._normalize_ids(keys, keep_device=True)
+            if not normalized.is_contiguous():
+                normalized = normalized.contiguous()
+            return fn(normalized, int(embedding_dim))
+        raise RuntimeError(
+            "gpu_cache_lookup_flat_no_evict requires a RecStore client "
+            "exposing gpu_cache_lookup_flat_no_evict()."
+        )
+
+    def get_gpu_cache_generation(self) -> int:
+        getter = getattr(self._client, "get_gpu_cache_generation", None)
+        if callable(getter):
+            return int(getter())
+        ops = getattr(self._client, "ops", None)
+        getter = getattr(ops, "get_gpu_cache_generation", None)
+        if not callable(getter):
+            raise RuntimeError(
+                "get_gpu_cache_generation requires a RecStore client or ops "
+                "library exposing get_gpu_cache_generation()."
+            )
+        return int(getter())
 
     def query_gpu_cache(self, keys: torch.Tensor, embedding_dim: int) -> tuple[torch.Tensor, torch.Tensor]:
         fn = getattr(self._client, "query_gpu_cache", None)

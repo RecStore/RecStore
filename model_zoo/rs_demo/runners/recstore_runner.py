@@ -26,6 +26,7 @@ from ..data.dlrm_source import (
     build_kjt_batch_from_dense_sparse_labels,
     build_train_dataloader,
     convert_kjt_ids_to_fused_ids,
+    convert_kjt_ids_to_fused_ids_device,
     get_default_cat_names,
     inject_project_paths,
 )
@@ -231,6 +232,14 @@ class RecStoreRunner(BenchmarkRunner):
         res = subprocess.run(
             cmd, cwd=str(repo_root), env=env, check=False, text=True, capture_output=True
         )
+        # [BagPipe-probe] keep worker stderr even on success: C++ WARNINGs
+        # (GPU cache fallbacks, update failures) are otherwise lost.
+        try:
+            (rank_dir / "worker_stderr.log").write_text(
+                res.stderr or "", encoding="utf-8"
+            )
+        except Exception:
+            pass
         if res.returncode != 0:
             raise RuntimeError(
                 "recstore torchrun worker failed\n"
@@ -336,7 +345,7 @@ class RecStoreRunner(BenchmarkRunner):
 
             recstore.load_ops_library()
             client = recstore.RecStoreClient()
-            if cfg.nnodes == 1:
+            if cfg.ps_type.upper() in {"LOCAL_SHM", "HIERKV"}:
                 client.set_ps_backend(cfg.single_node_ps_backend)
             elif cfg.ps_type.upper() == "RDMA":
                 client.set_ps_backend("rdma")
@@ -361,19 +370,76 @@ class RecStoreRunner(BenchmarkRunner):
             use_bagpipe = cfg.optimization.plugin == "bagpipe" or cfg.read_mode == "bagpipe"
 
             if use_bagpipe:
-                def _id_extractor(sparse_features):
-                    return convert_kjt_ids_to_fused_ids(sparse_features, table_offsets)
+                fused_id_prefixes = torch.tensor(
+                    [table_offsets[name] for name in default_cat_names],
+                    dtype=torch.int64,
+                    device=device,
+                )
 
+                def _id_extractor(sparse_features):
+                    values = sparse_features.values().to(torch.int64)
+                    try:
+                        # DLRM has one ID per feature per sample, so a
+                        # broadcast add avoids repeat_interleave and length
+                        # reduction on the enqueue path.
+                        return (
+                            values.view(len(fused_id_prefixes), -1)
+                            + fused_id_prefixes[:, None]
+                        ).reshape(-1).contiguous()
+                    except RuntimeError:
+                        return convert_kjt_ids_to_fused_ids_device(
+                            sparse_features, table_offsets
+                        )
+
+                cache_capacity = (
+                    cfg.optimization.cache_capacity
+                    or cfg.gpu_cache_capacity
+                    or 160_000
+                )
+                if not client.is_gpu_cache_enabled():
+                    enabled = client.enable_gpu_cache(
+                        cache_capacity, cfg.embedding_dim
+                    )
+                    if not enabled:
+                        raise RuntimeError(
+                            "BagPipe requires GPU cache but enable_gpu_cache("
+                            f"capacity={cache_capacity}, dim={cfg.embedding_dim}) "
+                            "returned False"
+                        )
+                print(
+                    "[rs_demo] BagPipe GPU cache enabled: "
+                    f"capacity={cache_capacity}, dim={cfg.embedding_dim}"
+                )
+                # BagPipe owns its cache policy.  The cold-start lookup must not
+                # trip the ops layer's low-hit bypass latch and clear the cache.
+                disable_bypass = getattr(
+                    client, "set_gpu_cache_lookup_bypass_enabled", None
+                )
+                if callable(disable_bypass):
+                    disable_bypass(False)
+                # BagPipe also owns residency across CPU-side update paths.
+                disable_clear_after_update = getattr(
+                    client, "set_clear_gpu_cache_after_cpu_update", None
+                )
+                if callable(disable_clear_after_update):
+                    disable_clear_after_update(False)
+
+                master_table_name = eb_configs[0]["name"] if eb_configs else ""
                 plugin = OptimizationPluginRegistry.create(
                     "bagpipe",
                     embedding_module=embedding_module,
                     kv_client=client,
                     lookahead=cfg.optimization.lookahead,
                     cleanup_proportion=cfg.optimization.cleanup_proportion,
-                    cache_capacity=cfg.optimization.cache_capacity,
+                    cache_capacity=cache_capacity,
                     embedding_dim=cfg.optimization.embedding_dim,
                     fuse_k=cfg.fuse_k,
                     table_offsets=table_offsets,
+                    table_sizes={
+                        cfg_item["feature_names"][0]: cfg_item["num_embeddings"]
+                        for cfg_item in eb_configs
+                    },
+                    master_table_name=master_table_name,
                     device=device,
                     lr=0.01,
                     id_extractor=_id_extractor,
@@ -413,7 +479,6 @@ class RecStoreRunner(BenchmarkRunner):
             )
             criterion = build_criterion(cfg, unwrapped_module)
             dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
-            sparse_optimizer = recstore.SparseSGD([embedding_module], lr=0.01)
             record_pooled_grad = getattr(embedding_module, "record_pooled_grad", None)
 
             if _maybe_warmup_gpu_local_shm_fast_path(cfg=cfg, client=client, device=device):
@@ -481,8 +546,8 @@ class RecStoreRunner(BenchmarkRunner):
 
             for step in range(cfg.steps):
                 step_wall_start = time.perf_counter()
-                observed_depth = read_path.depth * 2
-                target_buffer = read_path.desired_buffer_size
+                observed_depth = read_path.desired_buffer_size
+                target_buffer = observed_depth
                 _fill_prefetch_buffer(
                     prepared_batches, prepare_next_batch,
                     from_step=step, target_buffer=target_buffer, max_steps=cfg.steps,

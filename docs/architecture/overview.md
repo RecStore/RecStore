@@ -40,6 +40,7 @@ graph TD
 - **Python Client**: 提供面向用户的 [RecStoreClient](src/python/pytorch/recstore/KVClient.py) 接口。
 - **PyTorch Binding**: 在 [op_torch.cc](src/framework/pytorch/op_torch.cc) 中定义了 `torch.ops.recstore_ops` 扩展。
 - **C++ Interface**: [CommonOp](src/framework/op.h) 是客户端的核心抽象，`KVClientOp` 实现了跨组件的调用转发。
+- **BagPipe GPU Cache**: [BagPipe ownership](bagpipe_cache.md) 说明 C++ GPU cache 与 Python residency mirror 的单一写者协议。
 
 ---
 

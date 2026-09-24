@@ -174,6 +174,13 @@ void MaintainGpuCacheAfterUpdateNoThrow(const torch::Tensor& keys,
   if (!gpu::IsGpuCacheEnabled()) {
     return;
   }
+  // When the adaptive bypass system is explicitly disabled, an external
+  // controller (e.g. BagPipe) owns cache invalidation: it pushes deltas the
+  // cache has already applied, so invalidating here (or clearing the whole
+  // cache when keys are on CPU) would needlessly evict valid entries.
+  if (!g_gpu_cache_lookup_bypass_enabled) {
+    return;
+  }
   if (ShouldBypassGpuCacheMaintenance(keys.numel())) {
     gpu::ResetLastGpuCacheProfile();
     return;
@@ -725,6 +732,77 @@ gpu_cache_lookup_flat_torch(const torch::Tensor& keys,
   return cpu_values;
 }
 
+std::tuple<torch::Tensor, torch::Tensor>
+gpu_cache_lookup_flat_no_evict_torch(const torch::Tensor& keys,
+                                     int64_t embedding_dim) {
+  ResetLocalLookupFlatProfile();
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+  gpu::ResetLastGpuCacheProfile();
+#endif
+  const auto total_start = SteadyNow();
+  const auto orig_device = keys.device();
+
+  TORCH_CHECK(keys.dim() == 1, "Keys tensor must be 1-dimensional");
+  TORCH_CHECK(keys.scalar_type() == torch::kInt64,
+              "Keys tensor must have dtype int64");
+  TORCH_CHECK(keys.is_contiguous(), "Keys tensor must be contiguous");
+  TORCH_CHECK(embedding_dim > 0, "Embedding dimension must be positive");
+  TORCH_CHECK(gpu::CanUseGpuCache(keys, embedding_dim),
+              "gpu_cache_lookup_flat_no_evict requires an enabled GPU cache "
+              "on the keys' CUDA device");
+
+  const int64_t num_keys = keys.size(0);
+  auto resident = torch::ones({num_keys}, keys.options().dtype(torch::kBool));
+  if (num_keys == 0) {
+    return {
+        torch::empty({0, embedding_dim}, keys.options().dtype(torch::kFloat32)),
+        resident};
+  }
+
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+  auto cache_result = gpu::QueryGpuCache(keys, embedding_dim);
+  RecordGpuCacheLookupOutcome(
+      num_keys,
+      static_cast<double>(num_keys - cache_result.missing_count),
+      static_cast<double>(num_keys));
+  if (cache_result.missing_count == 0) {
+    g_last_local_lookup_flat_profile[kLookupTotalMs] =
+        ElapsedMs(total_start);
+    return {cache_result.values, resident};
+  }
+
+  const auto backend_start = SteadyNow();
+  auto miss_cpu_keys = cache_result.missing_keys_cpu.contiguous();
+  const int64_t miss_count = miss_cpu_keys.size(0);
+  auto miss_cpu_values = torch::empty(
+      {miss_count, embedding_dim},
+      torch::TensorOptions().device(torch::kCPU).dtype(torch::kFloat32));
+  auto op = GetKVClientOp();
+  base::RecTensor rec_miss_keys =
+      ToRecTensor(miss_cpu_keys, base::DataType::UINT64);
+  base::RecTensor rec_miss_values =
+      ToRecTensor(miss_cpu_values, base::DataType::FLOAT32);
+  op->EmbRead(rec_miss_keys, rec_miss_values);
+  gpu::AddGpuCacheBackendLookupMs(ElapsedMs(backend_start));
+
+  auto miss_keys_cuda = miss_cpu_keys.to(orig_device, /*non_blocking=*/false);
+  auto miss_values_cuda =
+      miss_cpu_values.to(orig_device, /*non_blocking=*/false);
+  auto inserted = gpu::FillGpuCacheNoEvict(miss_keys_cuda, miss_values_cuda);
+  gpu::ScatterMissValues(&cache_result.values,
+                         cache_result.missing_positions_cpu,
+                         miss_values_cuda);
+  auto positions_cuda = cache_result.missing_positions_cpu.to(orig_device);
+  resident.index_put_({positions_cuda}, inserted);
+  g_last_local_lookup_flat_profile[kLookupTotalMs] = ElapsedMs(total_start);
+  return {cache_result.values, resident};
+#else
+  (void)total_start;
+  (void)orig_device;
+  TORCH_CHECK(false, "GPU cache support is unavailable");
+#endif
+}
+
 // Async prefetch: returns a unique prefetch id (uint64_t)
 int64_t emb_prefetch_torch(const torch::Tensor& keys) {
   TORCH_CHECK(keys.dim() == 1, "Keys tensor must be 1-dimensional");
@@ -1201,6 +1279,56 @@ void prefill_gpu_cache_torch(const torch::Tensor& keys,
 #endif
 }
 
+torch::Tensor prefill_gpu_cache_no_evict_torch(const torch::Tensor& keys,
+                                               const torch::Tensor& values) {
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+  TORCH_CHECK(keys.dim() == 1, "keys must be 1-dimensional");
+  TORCH_CHECK(keys.scalar_type() == torch::kInt64,
+              "keys must have dtype int64");
+  TORCH_CHECK(values.dim() == 2, "values must be 2-dimensional");
+  TORCH_CHECK(values.scalar_type() == torch::kFloat32,
+              "values must have dtype float32");
+  TORCH_CHECK(keys.size(0) == values.size(0),
+              "keys and values must have the same number of rows");
+  if (keys.numel() == 0) {
+    return torch::empty({0}, torch::TensorOptions().dtype(torch::kBool));
+  }
+  TORCH_CHECK(keys.is_cuda() || values.is_cuda(),
+              "prefill_gpu_cache_no_evict requires keys or values on CUDA");
+  const auto cache_device = values.is_cuda() ? values.device() : keys.device();
+  auto keys_cuda          = keys.is_cuda() ? keys : keys.to(cache_device);
+  auto values_cuda        = values.is_cuda() ? values : values.to(cache_device);
+  if (!keys_cuda.is_contiguous()) {
+    keys_cuda = keys_cuda.contiguous();
+  }
+  if (!values_cuda.is_contiguous()) {
+    values_cuda = values_cuda.contiguous();
+  }
+  return gpu::FillGpuCacheNoEvict(keys_cuda, values_cuda);
+#else
+  (void)keys;
+  (void)values;
+  TORCH_CHECK(false, "GPU cache support is unavailable");
+#endif
+}
+
+torch::Tensor contains_gpu_cache_torch(const torch::Tensor& keys) {
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+  return gpu::ContainsGpuCache(keys);
+#else
+  (void)keys;
+  TORCH_CHECK(false, "GPU cache support is unavailable");
+#endif
+}
+
+int64_t get_gpu_cache_generation_torch() {
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+  return static_cast<int64_t>(gpu::GetGpuCacheGeneration());
+#else
+  return 0;
+#endif
+}
+
 void invalidate_gpu_cache_torch(const torch::Tensor& keys) {
 #ifdef RECSTORE_ENABLE_GPU_CACHE
   TORCH_CHECK(keys.dim() == 1, "keys must be 1-dimensional");
@@ -1217,6 +1345,44 @@ void invalidate_gpu_cache_torch(const torch::Tensor& keys) {
   gpu::InvalidateGpuCache(keys_cuda);
 #else
   (void)keys;
+#endif
+}
+
+torch::Tensor invalidate_gpu_cache_with_mask_torch(const torch::Tensor& keys) {
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+  TORCH_CHECK(keys.dim() == 1, "keys must be 1-dimensional");
+  TORCH_CHECK(keys.scalar_type() == torch::kInt64,
+              "keys must have dtype int64");
+  if (keys.numel() == 0) {
+    return torch::empty({0}, torch::TensorOptions().dtype(torch::kBool));
+  }
+  TORCH_CHECK(keys.is_cuda(), "invalidate_gpu_cache_with_mask requires CUDA keys");
+  auto keys_cuda = keys;
+  if (!keys_cuda.is_contiguous()) {
+    keys_cuda = keys_cuda.contiguous();
+  }
+  return gpu::InvalidateGpuCacheWithMask(keys_cuda);
+#else
+  (void)keys;
+  TORCH_CHECK(false, "GPU cache support is unavailable");
+#endif
+}
+
+std::tuple<torch::Tensor, torch::Tensor>
+gpu_cache_lookup_flat_assuming_hits_torch(const torch::Tensor& keys,
+                                          int64_t embedding_dim) {
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+  TORCH_CHECK(keys.dim() == 1, "Keys tensor must be 1-dimensional");
+  TORCH_CHECK(keys.scalar_type() == torch::kInt64,
+              "Keys must have dtype int64");
+  TORCH_CHECK(keys.is_contiguous(), "Keys tensor must be contiguous");
+  TORCH_CHECK(keys.is_cuda(), "gpu_cache_lookup_flat_assuming_hits requires CUDA keys");
+  TORCH_CHECK(embedding_dim > 0, "Embedding dimension must be positive");
+  return gpu::LookupGpuCacheAssumingHits(keys, embedding_dim);
+#else
+  (void)keys;
+  (void)embedding_dim;
+  TORCH_CHECK(false, "GPU cache support is unavailable");
 #endif
 }
 
@@ -1252,6 +1418,42 @@ bool apply_sgd_update_gpu_cache_torch(const torch::Tensor& keys,
   (void)grads;
   (void)learning_rate;
   return false;
+#endif
+}
+
+// Best-effort in-place SGD on the GPU cache: value -= lr * grad for keys
+// present in the cache; missing keys silently skipped.  No Query, no
+// missing report, no device synchronization.  This is the cache-side SGD
+// primitive for controllers (BagPipe) that own their own cache policy.
+void apply_sgd_update_gpu_cache_best_effort_torch(const torch::Tensor& keys,
+                                                  const torch::Tensor& grads,
+                                                  double learning_rate) {
+#ifdef RECSTORE_ENABLE_GPU_CACHE
+  TORCH_CHECK(keys.dim() == 1, "keys must be 1-dimensional");
+  TORCH_CHECK(keys.scalar_type() == torch::kInt64, "keys must be int64");
+  TORCH_CHECK(grads.dim() == 2, "grads must be 2-dimensional");
+  TORCH_CHECK(grads.scalar_type() == torch::kFloat32, "grads must be float32");
+  TORCH_CHECK(keys.size(0) == grads.size(0),
+              "keys and grads must have the same number of rows");
+  if (keys.numel() == 0) {
+    return;
+  }
+  TORCH_CHECK(keys.is_cuda() || grads.is_cuda(),
+              "apply_sgd_update_gpu_cache_best_effort requires keys or grads on CUDA");
+  const auto cache_device = grads.is_cuda() ? grads.device() : keys.device();
+  auto keys_cuda          = keys.is_cuda() ? keys : keys.to(cache_device);
+  auto grads_cuda         = grads.is_cuda() ? grads : grads.to(cache_device);
+  if (!keys_cuda.is_contiguous()) {
+    keys_cuda = keys_cuda.contiguous();
+  }
+  if (!grads_cuda.is_contiguous()) {
+    grads_cuda = grads_cuda.contiguous();
+  }
+  gpu::ApplySgdUpdateBestEffortGpuCache(keys_cuda, grads_cuda, learning_rate);
+#else
+  (void)keys;
+  (void)grads;
+  (void)learning_rate;
 #endif
 }
 
@@ -1356,6 +1558,10 @@ TORCH_LIBRARY(recstore_ops, m) {
   m.def("emb_read", emb_read_torch);
   m.def("local_lookup_flat", local_lookup_flat_torch);
   m.def("gpu_cache_lookup_flat", gpu_cache_lookup_flat_torch);
+  m.def("gpu_cache_lookup_flat_no_evict",
+        gpu_cache_lookup_flat_no_evict_torch);
+  m.def("gpu_cache_lookup_flat_assuming_hits",
+        gpu_cache_lookup_flat_assuming_hits_torch);
   m.def("emb_update", emb_update_torch);
   m.def("emb_update_table", emb_update_table_torch);
   m.def("emb_update_async", emb_update_async_torch);
@@ -1381,8 +1587,14 @@ TORCH_LIBRARY(recstore_ops, m) {
   m.def("disable_gpu_cache", disable_gpu_cache_torch);
   m.def("clear_gpu_cache", clear_gpu_cache_torch);
   m.def("prefill_gpu_cache", prefill_gpu_cache_torch);
+  m.def("prefill_gpu_cache_no_evict", prefill_gpu_cache_no_evict_torch);
+  m.def("contains_gpu_cache", contains_gpu_cache_torch);
+  m.def("get_gpu_cache_generation", get_gpu_cache_generation_torch);
   m.def("invalidate_gpu_cache", invalidate_gpu_cache_torch);
+  m.def("invalidate_gpu_cache_with_mask", invalidate_gpu_cache_with_mask_torch);
   m.def("apply_sgd_update_gpu_cache", apply_sgd_update_gpu_cache_torch);
+  m.def("apply_sgd_update_gpu_cache_best_effort",
+        apply_sgd_update_gpu_cache_best_effort_torch);
   m.def("set_gpu_cache_lookup_bypass_enabled",
         set_gpu_cache_lookup_bypass_enabled_torch);
   m.def("is_gpu_cache_lookup_bypass_enabled",
