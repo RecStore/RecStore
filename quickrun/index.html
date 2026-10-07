@@ -2033,9 +2033,9 @@
 </code></pre></div>
 <h2 id="1">1. 启动参数服务器<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
 <p>在仓库根目录执行：</p>
-<div class="highlight"><span class="filename">自动读取配置文件，启动ps客户端</span><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./buidl/bin/ps_server
+<div class="highlight"><span class="filename">自动读取配置文件，启动ps客户端</span><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./build/bin/ps_server
 </code></pre></div>
-<p>配置文件相关信息可以参考：<a href="../config">项目配置</a></p>
+<p>配置文件相关信息可以参考：<a href="../config/">项目配置</a></p>
 <h2 id="2">2. 运行计算层模型<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
 <p>DLRM 使用的数据集为 <a href="https://ailab.criteo.com/ressources/">Criteo Kaggle Display Advertising Challenge Dataset</a>，项目切片了第 0 天的数据方便进行测试和分析，你可以在 <a href="https://github.com/user-attachments/files/23355355/day_0.csv">day_0.csv</a> 下载前 4096 条的数据，然后使用脚本进行预处理：</p>
 <div class="highlight"><span class="filename">预处理./partial_data中的数据</span><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span>model_zoo/torchrec_dlrm/

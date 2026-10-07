@@ -2331,7 +2331,7 @@
 </tr>
 </tbody>
 </table>
-<p>作用位置：通信协议选择见 <a href="../src/framework/op.cc">src/framework/op.cc</a>、<a href="../src/ps/grpc/grpc_ps_server.cpp">src/ps/grpc/grpc_ps_server.cpp</a> 和 <a href="../src/ps/brpc/brpc_ps_server.cpp">src/ps/brpc/brpc_ps_server.cpp</a>。同时也可通过统一入口可执行程序 <a href="../src/ps/ps_server.cpp">src/ps/ps_server.cpp</a> 按 <code>ps_type</code> 自动选择 GRPC 或 bRPC；批量限制与线程数在 <a href="../src/ps/grpc/grpc_ps_client.h">src/ps/grpc/grpc_ps_client.h</a> 及 <a href="../src/storage/kv_engine/base_kv.h">src/storage/kv_engine/base_kv.h</a> 中生效；分片与 servers 列表用于分布式路由。</p>
+<p>作用位置：通信协议选择见 <code>src/framework/op.cc</code>、<code>src/ps/grpc/grpc_ps_server.cpp</code> 和 <code>src/ps/brpc/brpc_ps_server.cpp</code>。同时也可通过统一入口可执行程序 <code>src/ps/ps_server.cpp</code> 按 <code>ps_type</code> 自动选择 GRPC 或 bRPC；批量限制与线程数在 <code>src/ps/grpc/grpc_ps_client.h</code> 及 <code>src/storage/kv_engine/base_kv.h</code> 中生效；分片与 servers 列表用于分布式路由。</p>
 <h3 id="12-servers">1.2 servers 数组配置<a class="headerlink" href="#12-servers" title="Permanent link">&para;</a></h3>
 <p>每个服务器节点包含以下字段：</p>
 <table>
@@ -2369,7 +2369,7 @@
 <p>默认配置中 <code>host</code> 为 <code>127.0.0.1</code>，仅允许本地访问。在多机场景下，必须修改为 <code>0.0.0.0</code> 或本机对外的局域网 IP (LAN IP)，以允许远程客户端连接。</p>
 </details>
 <h3 id="13-base_kv_config">1.3 base_kv_config 配置<a class="headerlink" href="#13-base_kv_config" title="Permanent link">&para;</a></h3>
-<p><code>base_kv_config</code> 定义底层键值存储引擎的配置，由 <a href="../src/storage/kv_engine/engine_selector.h">src/storage/kv_engine/engine_selector.h</a> 的 <code>ResolveEngine</code> 解析 <code>engine_type</code>；具体字段校验在对应引擎构造时完成。</p>
+<p><code>base_kv_config</code> 定义底层键值存储引擎的配置，由 <code>src/storage/kv_engine/engine_selector.h</code> 的 <code>ResolveEngine</code> 解析 <code>engine_type</code>；具体字段校验在对应引擎构造时完成。</p>
 <h4 id="hybrid">通用必填字段（非 HYBRID 模式）<a class="headerlink" href="#hybrid" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
@@ -2407,7 +2407,7 @@
 </tr>
 </tbody>
 </table>
-<p>作用位置：字段最终进入 <code>BaseKVConfig.json_config_</code>，在 <a href="../src/storage/kv_engine/engine_selector.h">src/storage/kv_engine/engine_selector.h</a> 中推导引擎类型，并在 <a href="../src/storage/kv_engine/base_kv.h">src/storage/kv_engine/base_kv.h</a> 及对应引擎实现中用于容量预分配与值大小约束。</p>
+<p>作用位置：字段最终进入 <code>BaseKVConfig.json_config_</code>，在 <code>src/storage/kv_engine/engine_selector.h</code> 中推导引擎类型，并在 <code>src/storage/kv_engine/base_kv.h</code> 及对应引擎实现中用于容量预分配与值大小约束。</p>
 <details class="note" open="open">
 <summary>注意</summary>
 <p>Composite 配置请使用嵌套 <code>index</code> / <code>value</code>，不要混用已废弃的顶层 <code>index_type</code>、<code>value_type</code>、<code>value_memory_management</code> 等字段。组件类型与 allocator 明细见 <a href="../storage/composite_kvengine/">composite_kvengine.md</a>。</p>
@@ -2468,7 +2468,7 @@
 <li><code>value.type</code> 取值：<code>DRAM_VALUE_STORE</code> / <code>SSD_VALUE_STORE</code> / <code>TIERED_VALUE_STORE</code></li>
 <li>旧字段 <code>path</code>、<code>index.io.file_path</code>、<code>value.ssd_allocator.io.file_path</code> 会被拒绝</li>
 </ul>
-<p>仓库根目录 <code>recstore_config.json</code>（可由 <a href="../recstore_config_generator.py">recstore_config_generator.py</a> 生成）的<strong>默认 KV 组合</strong>为：</p>
+<p>仓库根目录 <code>recstore_config.json</code> 的<strong>默认 KV 组合</strong>为：</p>
 <table>
 <thead>
 <tr>
@@ -2495,7 +2495,7 @@
 </tr>
 </tbody>
 </table>
-<p>引擎推导实现位置：<a href="../src/storage/kv_engine/engine_selector.h">src/storage/kv_engine/engine_selector.h</a></p>
+<p>引擎推导实现位置：<code>src/storage/kv_engine/engine_selector.h</code></p>
 <h2 id="2-distributed_client">2. distributed_client 配置<a class="headerlink" href="#2-distributed_client" title="Permanent link">&para;</a></h2>
 <p><code>distributed_client</code> 配置用于分布式客户端，实现多分片参数服务器的访问。</p>
 <table>
@@ -2534,7 +2534,7 @@
 </tr>
 </tbody>
 </table>
-<p>作用位置：分片数与哈希方法在 <a href="../src/ps/brpc/dist_brpc_ps_client.cpp">src/ps/brpc/dist_brpc_ps_client.cpp</a> 与 <a href="../src/ps/grpc/dist_grpc_ps_client.cpp">src/ps/grpc/dist_grpc_ps_client.cpp</a> 的 <code>GetShardId</code>、<code>PartitionKeys</code> 中决定路由；<code>max_keys_per_request</code> 限制单分片请求大小；<code>servers</code> 列表在 <code>InitializeClients</code> 中生成各分片客户端。</p>
+<p>作用位置：分片数与哈希方法在 <code>src/ps/brpc/dist_brpc_ps_client.cpp</code> 与 <code>src/ps/grpc/dist_grpc_ps_client.cpp</code> 的 <code>GetShardId</code>、<code>PartitionKeys</code> 中决定路由；<code>max_keys_per_request</code> 限制单分片请求大小；<code>servers</code> 列表在 <code>InitializeClients</code> 中生成各分片客户端。</p>
 <h2 id="3-client">3. client 配置<a class="headerlink" href="#3-client" title="Permanent link">&para;</a></h2>
 <p><code>client</code> 配置用于单节点客户端，直接连接单个参数服务器。</p>
 <table>
@@ -2567,7 +2567,7 @@
 </tr>
 </tbody>
 </table>
-<p>作用位置：单节点客户端在 <a href="../src/ps/grpc/grpc_ps_client.cpp">src/ps/grpc/grpc_ps_client.cpp</a> 读取以上字段创建 gRPC 通道并标识分片，在 <a href="../src/ps/grpc/grpc_ps_client.h">src/ps/grpc/grpc_ps_client.h</a> 中保存元数据。</p>
+<p>作用位置：单节点客户端在 <code>src/ps/grpc/grpc_ps_client.cpp</code> 读取以上字段创建 gRPC 通道并标识分片，在 <code>src/ps/grpc/grpc_ps_client.h</code> 中保存元数据。</p>
 <details class="tip" open="open">
 <summary>动态覆盖</summary>
 <p>运行时可用 <code>client.set_ps_config(host, port)</code> 覆盖配置文件里的 <code>host</code> 和 <code>port</code>。接口说明见 <a href="../calc/interfaces/">计算层接口</a>。</p>
@@ -2594,9 +2594,9 @@
 </tr>
 </tbody>
 </table>
-<p>作用位置：<code>report_API</code> 由 <a href="../src/base/report/report_client.cpp">src/base/report/report_client.cpp</a> 读取；当该字段缺失时会回退到默认地址 <code>http://127.0.0.1:8081/report</code>。</p>
+<p>作用位置：<code>report_API</code> 由 <code>src/base/report/report_client.cpp</code> 读取；当该字段缺失时会回退到默认地址 <code>http://127.0.0.1:8081/report</code>。</p>
 <h2 id="5-hugectr">5. hugectr 配置<a class="headerlink" href="#5-hugectr" title="Permanent link">&para;</a></h2>
-<p><code>hugectr</code> 顶层配置用于 HugeCTR 入口的运行时后端选择。它不会修改 <code>CommonOp</code> 语义，而是只影响 <a href="../src/framework/hugectr/op_hugectr.cc">src/framework/hugectr/op_hugectr.cc</a> 内部的 backend 分发。</p>
+<p><code>hugectr</code> 顶层配置用于 HugeCTR 入口的运行时后端选择。它不会修改 <code>CommonOp</code> 语义，而是只影响 <code>src/framework/hugectr/op_hugectr.cc</code> 内部的 backend 分发。</p>
 <table>
 <thead>
 <tr>

@@ -2055,27 +2055,27 @@
 <h2 id="1-calculation-layer">1. 计算层 (Calculation Layer)<a class="headerlink" href="#1-calculation-layer" title="Permanent link">&para;</a></h2>
 <p>计算层是 RecStore 与深度学习框架（如 PyTorch）的交界面，负责将模型的前向查询和反向更新请求转换为 RecStore 内部的 Tensor 操作。</p>
 <ul>
-<li><strong>Python Client</strong>: 提供面向用户的 <a href="src/python/pytorch/recstore/KVClient.py">RecStoreClient</a> 接口。</li>
-<li><strong>PyTorch Binding</strong>: 在 <a href="src/framework/pytorch/op_torch.cc">op_torch.cc</a> 中定义了 <code>torch.ops.recstore_ops</code> 扩展。</li>
-<li><strong>C++ Interface</strong>: <a href="src/framework/op.h">CommonOp</a> 是客户端的核心抽象，<code>KVClientOp</code> 实现了跨组件的调用转发。</li>
+<li><strong>Python Client</strong>: 提供面向用户的 <code>RecStoreClient</code>（<code>src/python/pytorch/recstore/KVClient.py</code>）接口。</li>
+<li><strong>PyTorch Binding</strong>: 在 <code>src/framework/pytorch/op_torch.cc</code> 中定义了 <code>torch.ops.recstore_ops</code> 扩展。</li>
+<li><strong>C++ Interface</strong>: <code>CommonOp</code>（<code>src/framework/op.h</code>）是客户端的核心抽象，<code>KVClientOp</code> 实现了跨组件的调用转发。</li>
 <li><strong>BagPipe GPU Cache</strong>: <a href="../bagpipe_cache/">BagPipe ownership</a> 说明 C++ GPU cache 与 Python residency mirror 的单一写者协议。</li>
 </ul>
 <hr />
 <h2 id="2-parameter-server-layer">2. 参数服务器层 (Parameter Server Layer)<a class="headerlink" href="#2-parameter-server-layer" title="Permanent link">&para;</a></h2>
 <p>参数服务器层负责分布式环境下参数的分发与通信。它屏蔽了底层的网络细节，支持多种通信协议。</p>
 <ul>
-<li><strong>RPC 通信</strong>: 支持 gRPC 和 bRPC。例如 <a href="src/ps/grpc/dist_grpc_ps_client.cpp">DistGRPCPSClient</a> 负责序列化数据并发送请求。</li>
-<li><strong>服务端分发</strong>: <a href="src/ps/grpc/grpc_ps_server.cpp">GRPCPS_Server</a> 接收请求并将其路由给后端的存储逻辑。</li>
-<li><strong>协议定义</strong>: <a href="src/ps/proto/ps.proto">ps.proto</a> 定义了 <code>GetParameter</code>、<code>UpdateParameter</code> 等核心接口。</li>
+<li><strong>RPC 通信</strong>: 支持 gRPC 和 bRPC。例如 <code>DistGRPCPSClient</code>（<code>src/ps/grpc/dist_grpc_ps_client.cpp</code>）负责序列化数据并发送请求。</li>
+<li><strong>服务端分发</strong>: <code>GRPCPS_Server</code>（<code>src/ps/grpc/grpc_ps_server.cpp</code>）接收请求并将其路由给后端的存储逻辑。</li>
+<li><strong>协议定义</strong>: <code>src/ps/proto/ps.proto</code> 定义了 <code>GetParameter</code>、<code>UpdateParameter</code> 等核心接口。</li>
 </ul>
 <hr />
 <h2 id="3-storage-layer">3. 存储层 (Storage Layer)<a class="headerlink" href="#3-storage-layer" title="Permanent link">&para;</a></h2>
 <p>存储层是 RecStore 的核心，负责参数在异构存储介质（DRAM, NVM, SSD）上的高效读写与管理。</p>
 <ul>
-<li><strong>核心逻辑 (CachePS)</strong>: <a href="src/ps/base/cache_ps_impl.h">CachePS</a> 是存储层的入口，负责处理来自 RPC Server 的请求。</li>
-<li><strong>引擎抽象 (BaseKV)</strong>: <a href="src/storage/kv_engine/base_kv.h">BaseKV</a> 定义了统一的操作接口。</li>
-<li><strong>组合引擎</strong>: <a href="src/storage/kv_engine/engine_composite.h">KVEngineComposite</a> 通过 <code>index.type</code> + <code>value.type</code> 组合 DRAM 索引与 DRAM/SSD/Tiered 值存储；仓库默认组合为 <code>DRAM_PET_HASH</code> + <code>DRAM_VALUE_STORE</code> + <code>CONCURRENT_SLAB_MEMORY_POOL</code>。</li>
-<li><strong>内存管理</strong>: 提供 <a href="src/memory/persist_simple_malloc.h">PersistSimpleMalloc</a> 等组件，实现对持久化内存的直接管理。</li>
+<li><strong>核心逻辑 (CachePS)</strong>: <code>CachePS</code>（<code>src/ps/base/cache_ps_impl.h</code>）是存储层的入口，负责处理来自 RPC Server 的请求。</li>
+<li><strong>引擎抽象 (BaseKV)</strong>: <code>BaseKV</code>（<code>src/storage/kv_engine/base_kv.h</code>）定义了统一的操作接口。</li>
+<li><strong>组合引擎</strong>: <code>KVEngineComposite</code>（<code>src/storage/kv_engine/engine_composite.h</code>）通过 <code>index.type</code> + <code>value.type</code> 组合 DRAM 索引与 DRAM/SSD/Tiered 值存储；仓库默认组合为 <code>DRAM_PET_HASH</code> + <code>DRAM_VALUE_STORE</code> + <code>CONCURRENT_SLAB_MEMORY_POOL</code>。</li>
+<li><strong>内存管理</strong>: 提供 <code>PersistSimpleMalloc</code>（<code>src/memory/allocators/persist_loop_slab_allocator.h</code>）等组件，实现对持久化内存的直接管理。</li>
 </ul>
 <hr />
 <details class="tip" open="open">

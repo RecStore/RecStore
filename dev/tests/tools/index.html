@@ -1768,10 +1768,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#find_ps_server_binary" class="md-nav__link">
+  <a href="#find_ps_server_binary-find_ps_server_launcher_cli" class="md-nav__link">
     <span class="md-ellipsis">
       
-        find_ps_server_binary()
+        find_ps_server_binary() / find_ps_server_launcher_cli()
       
     </span>
   </a>
@@ -1779,10 +1779,65 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#check_ps_server_runningportsnone" class="md-nav__link">
+  <a href="#run_launcher_decisionconfig_pathnone" class="md-nav__link">
     <span class="md-ellipsis">
       
-        check_ps_server_running(ports=None)
+        run_launcher_decision(config_path=None)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#find_config_file-load_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        find_config_file() / load_config()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_backend_type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_backend_type()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_rdma_runner_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_rdma_runner_config()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_rdma_skip_reason" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_rdma_skip_reason()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_ports_from_config-check_ps_server_runningportsnone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_ports_from_config() / check_ps_server_running(ports=None)
       
     </span>
   </a>
@@ -2124,10 +2179,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#find_ps_server_binary" class="md-nav__link">
+  <a href="#find_ps_server_binary-find_ps_server_launcher_cli" class="md-nav__link">
     <span class="md-ellipsis">
       
-        find_ps_server_binary()
+        find_ps_server_binary() / find_ps_server_launcher_cli()
       
     </span>
   </a>
@@ -2135,10 +2190,65 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#check_ps_server_runningportsnone" class="md-nav__link">
+  <a href="#run_launcher_decisionconfig_pathnone" class="md-nav__link">
     <span class="md-ellipsis">
       
-        check_ps_server_running(ports=None)
+        run_launcher_decision(config_path=None)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#find_config_file-load_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        find_config_file() / load_config()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_backend_type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_backend_type()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_rdma_runner_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_rdma_runner_config()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_rdma_skip_reason" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_rdma_skip_reason()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_ports_from_config-check_ps_server_runningportsnone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_ports_from_config() / check_ps_server_running(ports=None)
       
     </span>
   </a>
@@ -2332,7 +2442,7 @@
 
 <h1 id="_1">测试用工具<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <h2 id="ps_server_helperspy">ps_server_helpers.py<a class="headerlink" href="#ps_server_helperspy" title="Permanent link">&para;</a></h2>
-<p><code>src/test/scripts/ps_server_helpers.py</code> 模块提供了一系列辅助函数，用于在测试环境中查找、检测和配置 <code>ps_server</code>。它通常与 <code>ps_server_runner.py</code> 配合使用，用于自动化测试流程。</p>
+<p><code>src/test/scripts/ps_server_helpers.py</code> 模块提供了一系列辅助函数，用于在测试环境中查找、检测和配置 <code>ps_server</code>。端口探活与启动决策实际委托给 C++ 侧启动器 <code>ps_server_launcher_cli</code>（见下文），Python 侧负责读取配置、整理 RDMA runner 参数并在 CI 中判定跳过。</p>
 <table>
 <thead>
 <tr>
@@ -2343,19 +2453,14 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>PS_SERVER_PATH</code></td>
-<td style="text-align: left;">指定 <code>ps_server</code> 的绝对路径</td>
-<td style="text-align: left;">自动查找</td>
-</tr>
-<tr>
 <td style="text-align: left;"><code>RECSTORE_CONFIG</code></td>
 <td style="text-align: left;">指定 <code>recstore_config.json</code> 路径</td>
-<td style="text-align: left;">None</td>
+<td style="text-align: left;">自动查找</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>PS_LOG_DIR</code></td>
 <td style="text-align: left;">指定日志输出目录</td>
-<td style="text-align: left;"><code>./logs</code></td>
+<td style="text-align: left;"><code>/tmp/recstore_ps</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>PS_TIMEOUT</code></td>
@@ -2367,64 +2472,57 @@
 <td style="text-align: left;">期望的分片数量</td>
 <td style="text-align: left;">2</td>
 </tr>
-<tr>
-<td style="text-align: left;"><code>NO_PS_SERVER</code></td>
-<td style="text-align: left;">强制跳过启动服务器 (Set to '1' or 'true')</td>
-<td style="text-align: left;">False</td>
-</tr>
 </tbody>
 </table>
-<h3 id="find_ps_server_binary"><code>find_ps_server_binary()</code><a class="headerlink" href="#find_ps_server_binary" title="Permanent link">&para;</a></h3>
-<p>在 <code>build/bin/ps_server</code> 等常见构建目录中查找可执行文件。</p>
+<h3 id="find_ps_server_binary-find_ps_server_launcher_cli"><code>find_ps_server_binary()</code> / <code>find_ps_server_launcher_cli()</code><a class="headerlink" href="#find_ps_server_binary-find_ps_server_launcher_cli" title="Permanent link">&para;</a></h3>
+<p>返回 <code>build/bin/</code> 下的 <code>ps_server</code> 与 <code>ps_server_launcher_cli</code> 可执行文件路径。</p>
+<h3 id="run_launcher_decisionconfig_pathnone"><code>run_launcher_decision(config_path=None)</code><a class="headerlink" href="#run_launcher_decisionconfig_pathnone" title="Permanent link">&para;</a></h3>
+<p>调用 <code>ps_server_launcher_cli decision</code> 并解析其 JSON 输出，返回启动决策（是否启动、失败原因、配置端口、已开放端口等）。返回码 <code>2</code> 表示“判定失败”，会在结果里带上 <code>should_fail</code>。</p>
+<h3 id="find_config_file-load_config"><code>find_config_file()</code> / <code>load_config()</code><a class="headerlink" href="#find_config_file-load_config" title="Permanent link">&para;</a></h3>
+<p>按 <code>RECSTORE_CONFIG</code> → 自当前目录向上查找 <code>recstore_config.json</code> → 仓库根目录的顺序定位当前配置；<code>load_config()</code> 返回 <code>(path, dict)</code>，找不到时返回 <code>(None, {})</code>。</p>
+<h3 id="get_backend_type"><code>get_backend_type()</code><a class="headerlink" href="#get_backend_type" title="Permanent link">&para;</a></h3>
+<p>返回 <code>cache_ps.ps_type</code>（大写），默认 <code>GRPC</code>。</p>
+<h3 id="get_rdma_runner_config"><code>get_rdma_runner_config()</code><a class="headerlink" href="#get_rdma_runner_config" title="Permanent link">&para;</a></h3>
+<p>从配置中提取 PetPS RDMA 测试所需的参数，并对 <code>distributed_client</code> / <code>rdma_deployment</code> 做严格校验，缺失或非法时直接抛 <code>ValueError</code>。返回字段：</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;"></th>
-<th style="text-align: left;">说明</th>
+<th style="text-align: left;">键名</th>
+<th style="text-align: left;">来源</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>返回值</strong></td>
-<td style="text-align: left;"><code>ps_server</code> 的绝对路径。</td>
+<td style="text-align: left;"><code>num_servers</code></td>
+<td style="text-align: left;"><code>distributed_client.num_shards</code></td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>查找顺序</strong></td>
-<td style="text-align: left;"><code>OS ENV(PS_SERVER_PATH)</code> -&gt; <code>./bin</code> -&gt; <code>./build/bin</code> -&gt; 上级目录的构建路径。</td>
+<td style="text-align: left;"><code>value_size</code></td>
+<td style="text-align: left;"><code>base_kv_config.value.default_value_size_hint</code>（回退 <code>value_size</code> / 512）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>max_kv_num_per_request</code></td>
+<td style="text-align: left;"><code>distributed_client.max_keys_per_request</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>num_clients</code></td>
+<td style="text-align: left;"><code>rdma_deployment.num_clients</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rdma_deployment_nodes</code></td>
+<td style="text-align: left;"><code>rdma_deployment.nodes</code></td>
 </tr>
 </tbody>
 </table>
-<h3 id="check_ps_server_runningportsnone"><code>check_ps_server_running(ports=None)</code><a class="headerlink" href="#check_ps_server_runningportsnone" title="Permanent link">&para;</a></h3>
-<p>检查 Parameter Server 的默认端口（或指定端口）是否已在监听。</p>
-<table>
-<thead>
-<tr>
-<th style="text-align: left;"></th>
-<th style="text-align: left;">说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: left;"><strong>参数</strong></td>
-<td style="text-align: left;"><code>ports</code> (list, optional): 要检查的端口列表。默认为 <code>[15000, 15001, 15002, 15003]</code>。</td>
-</tr>
-<tr>
-<td style="text-align: left;"><strong>返回值</strong></td>
-<td style="text-align: left;"><code>(is_running: bool, open_ports: list)</code></td>
-</tr>
-</tbody>
-</table>
+<p>校验项包括：<code>num_shards</code> / <code>max_keys_per_request</code> / <code>num_clients</code> / <code>epoch</code> 为正整数，<code>rdma_deployment.nodes</code> 非空，<code>deployment_id</code> 非空，<code>protocol_version == 1</code>。</p>
+<h3 id="get_rdma_skip_reason"><code>get_rdma_skip_reason()</code><a class="headerlink" href="#get_rdma_skip_reason" title="Permanent link">&para;</a></h3>
+<p>当 <code>/dev/infiniband</code> 下没有 <code>uverbs*</code> 设备时返回跳过原因，否则返回 <code>None</code>；配套常量 <code>RDMA_SKIP_EXIT_CODE = 77</code>。</p>
+<h3 id="get_ports_from_config-check_ps_server_runningportsnone"><code>get_ports_from_config()</code> / <code>check_ps_server_running(ports=None)</code><a class="headerlink" href="#get_ports_from_config-check_ps_server_runningportsnone" title="Permanent link">&para;</a></h3>
+<p>基于启动器决策读取配置端口并探活。<code>check_ps_server_running</code> 返回 <code>(is_running: bool, open_ports: list)</code>。</p>
 <h3 id="should_skip_server_start"><code>should_skip_server_start()</code><a class="headerlink" href="#should_skip_server_start" title="Permanent link">&para;</a></h3>
-<p>判断当前测试是否应该跳过启动 <code>ps_server</code> 的步骤。判断逻辑:</p>
-<ul>
-<li>检查环境变量 <code>CI</code> 或 <code>GITHUB_ACTIONS</code>。</li>
-<li>检查环境变量 <code>NO_PS_SERVER</code>。</li>
-<li>检查端口是否已被占用（意味着服务已经在运行）。</li>
-</ul>
-<p>返回值: <code>(skip: bool, reason: str)</code></p>
+<p>根据启动器决策判断是否跳过启动 <code>ps_server</code>，返回 <code>(skip: bool, reason: str)</code>。判定失败时抛 <code>RuntimeError</code>；<code>already_running</code> / <code>ci_reuse_running</code> / <code>NO_PS_SERVER</code> 直接跳过；CI 下 <code>ci_server_not_ready</code> 会以明确原因返回不跳过。</p>
 <h3 id="get_server_config"><code>get_server_config()</code><a class="headerlink" href="#get_server_config" title="Permanent link">&para;</a></h3>
-<p>获取标准化的服务器配置字典，优先读取环境变量。</p>
-<p>返回值字典:</p>
+<p>返回标准化服务器配置字典：</p>
 <table>
 <thead>
 <tr>
@@ -2435,23 +2533,27 @@
 <tbody>
 <tr>
 <td style="text-align: left;"><code>server_path</code></td>
-<td style="text-align: left;">二进制文件路径</td>
+<td style="text-align: left;"><code>ps_server</code> 二进制路径</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>launcher_cli</code></td>
+<td style="text-align: left;"><code>ps_server_launcher_cli</code> 路径</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>config_path</code></td>
-<td style="text-align: left;">配置文件路径 (<code>RECSTORE_CONFIG</code>)</td>
+<td style="text-align: left;">配置文件路径（<code>RECSTORE_CONFIG</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>log_dir</code></td>
-<td style="text-align: left;">日志目录 (<code>PS_LOG_DIR</code>)</td>
+<td style="text-align: left;">日志目录（<code>PS_LOG_DIR</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>timeout</code></td>
-<td style="text-align: left;">超时时间 (<code>PS_TIMEOUT</code>)</td>
+<td style="text-align: left;">超时时间（<code>PS_TIMEOUT</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>num_shards</code></td>
-<td style="text-align: left;">分片数量 (<code>PS_NUM_SHARDS</code>)</td>
+<td style="text-align: left;">分片数量（<code>PS_NUM_SHARDS</code>）</td>
 </tr>
 </tbody>
 </table>
