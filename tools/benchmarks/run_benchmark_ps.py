@@ -582,6 +582,7 @@ def build_benchmark_cmd(
     rdma_get_response_mode: str = "direct_sg",
     skip_load: bool = False,
     verify_deterministic_values: bool = False,
+    fetch_key_space: int = 0,
 ) -> list[str]:
     cmd = [
         benchmark_binary,
@@ -617,6 +618,8 @@ def build_benchmark_cmd(
         cmd.append("--skip_load=true")
     if verify_deterministic_values:
         cmd.append("--verify_deterministic_values=true")
+    if fetch_key_space > 0:
+        cmd.append(f"--fetch_key_space={fetch_key_space}")
     return cmd
 
 
@@ -2259,6 +2262,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rdma-rc-skip-client-copy", action="store_true")
     parser.add_argument("--transaction-profile", action="store_true")
     parser.add_argument("--verify-deterministic-values", action="store_true")
+    parser.add_argument(
+        "--fetch-key-space",
+        type=int,
+        default=0,
+        help=(
+            "transactions fetch key universe; keys in (record_count, "
+            "fetch_key_space] miss the loaded set; 0 = record_count"
+        ),
+    )
     parser.add_argument("--rdma-direct-async-fetch", action="store_true")
     parser.add_argument("--rdma-adapter-skip-prefetch-result-copy", action="store_true")
     parser.add_argument(
@@ -2488,6 +2500,7 @@ def main() -> int:
                 rdma_get_response_mode=args.rdma_get_response_mode,
                 skip_load=args.skip_load,
                 verify_deterministic_values=args.verify_deterministic_values,
+                fetch_key_space=args.fetch_key_space,
             )
 
             run_config["cases"].append(

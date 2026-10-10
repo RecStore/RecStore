@@ -117,6 +117,10 @@ void NormalizeDramValuePath(nlohmann::json* base_kv_config) {
   value_cfg["path"] = "/dev/shm/recstore_rdma_rc_" + TimestampNow() + "/value";
 }
 
+struct AlignedCharDeleter {
+  void operator()(char* ptr) const { std::free(ptr); }
+};
+
 class PetPSServer {
 public:
   PetPSServer(CachePS* cache_ps,
@@ -165,6 +169,23 @@ public:
                 << " bytes=" << backing.size;
     } else {
       LOG(INFO) << "component=rdma_rc_server event=value_region_unavailable";
+    }
+    // Registered read-only zero region used to serve absent keys on the
+    // direct_sg path. Written once here and never modified afterwards, so
+    // direct responses can reference it without any per-request memset.
+    const std::size_t direct_sg_zero_bytes =
+        transport_->config().response_slot_bytes;
+    if (direct_sg_zero_bytes > 0) {
+      void* zero_region = nullptr;
+      if (posix_memalign(&zero_region, 4096, direct_sg_zero_bytes) != 0) {
+        throw std::runtime_error("failed to allocate direct_sg zero region");
+      }
+      std::memset(zero_region, 0, direct_sg_zero_bytes);
+      direct_sg_zero_region_.reset(static_cast<char*>(zero_region));
+      transport_->RegisterLocalMemoryRegion(
+          direct_sg_zero_region_.get(), direct_sg_zero_bytes);
+      LOG(INFO) << "component=rdma_rc_server event=direct_sg_zero_region"
+                << " bytes=" << direct_sg_zero_bytes;
     }
     last_seq_.assign(
         static_cast<std::size_t>(transport_->TotalSlots()), std::uint64_t{0});
@@ -242,6 +263,8 @@ private:
     std::atomic<std::uint64_t> get_direct_sg_fallback{0};
     std::atomic<std::uint64_t> get_direct_sg_ns{0};
     std::atomic<std::uint64_t> get_direct_sg_wr{0};
+    std::atomic<std::uint64_t> get_direct_sg_abort{0};
+    std::atomic<std::uint64_t> get_direct_sg_abort_ns{0};
     std::atomic<std::uint64_t> handle_put_ns{0};
     std::atomic<std::uint64_t> handle_update_ns{0};
     std::atomic<std::uint64_t> handle_init_ns{0};
@@ -320,6 +343,10 @@ private:
     const std::uint64_t get_missing_rows = Exchange(&profile_.get_missing_rows);
     const std::uint64_t get_direct_sg    = Exchange(&profile_.get_direct_sg);
     const std::uint64_t get_direct_sg_ns = Exchange(&profile_.get_direct_sg_ns);
+    const std::uint64_t get_direct_sg_abort =
+        Exchange(&profile_.get_direct_sg_abort);
+    const std::uint64_t get_direct_sg_abort_ns =
+        Exchange(&profile_.get_direct_sg_abort_ns);
     const std::uint64_t handle_put_ns    = Exchange(&profile_.handle_put_ns);
     const std::uint64_t handle_update_ns = Exchange(&profile_.handle_update_ns);
     const std::uint64_t handle_init_ns   = Exchange(&profile_.handle_init_ns);
@@ -422,6 +449,11 @@ private:
         << " get_direct_sg_avg_ns="
         << (get_direct_sg == 0 ? 0 : get_direct_sg_ns / get_direct_sg)
         << " get_direct_sg_wr=" << Exchange(&profile_.get_direct_sg_wr)
+        << " get_direct_sg_abort=" << get_direct_sg_abort
+        << " get_direct_sg_abort_avg_ns="
+        << (get_direct_sg_abort == 0
+                ? 0
+                : get_direct_sg_abort_ns / get_direct_sg_abort)
         << " handle_put_avg_ns="
         << (handled_put == 0 ? 0 : handle_put_ns / handled_put)
         << " handle_update_avg_ns="
@@ -634,6 +666,20 @@ private:
     }
   }
 
+  // Count a direct_sg batch that failed after the probe and record the probe
+  // time, so the fallback cost stays visible instead of being hidden by the
+  // early return (issue #257).
+  void RecordDirectSgAbort(std::uint64_t direct_start_ns) {
+    if (FLAGS_rdma_rc_profile_interval_ms <= 0) {
+      return;
+    }
+    profile_.get_direct_sg_abort.fetch_add(1, std::memory_order_relaxed);
+    if (direct_start_ns != 0) {
+      profile_.get_direct_sg_abort_ns.fetch_add(
+          NowNs() - direct_start_ns, std::memory_order_relaxed);
+    }
+  }
+
   bool HandleGetDirectSg(
       const petps::RequestDescriptor& descriptor,
       base::ConstArray<std::uint64_t> keys,
@@ -664,34 +710,58 @@ private:
         &rows,
         get_profile);
     if (!ok || rows.size() != descriptor.key_count) {
+      RecordDirectSgAbort(direct_start_ns);
       return false;
     }
+    char* zero_base               = direct_sg_zero_region_.get();
     std::uint64_t response_offset = 0;
     std::uint64_t wr_count        = 0;
+    std::size_t zero_cursor       = 0;
     for (std::size_t row = 0; row < rows.size();) {
       std::array<petps::RawVerbsSge, kMaxDirectSgesPerWr> sges{};
       std::size_t sge_count = 0;
       std::size_t row_count = 0;
       for (; row < rows.size(); ++row) {
         const auto& ref = rows[row];
-        if (ref.missing || ref.data == nullptr || ref.size != row_bytes) {
+        if (!ref.missing && (ref.data == nullptr || ref.size != row_bytes)) {
+          // Key exists but is not directly addressable (SSD row or capacity
+          // mismatch). It must never be zero-filled, so fall back to the copy
+          // path for this whole batch.
+          RecordDirectSgAbort(direct_start_ns);
           return false;
+        }
+        const char* src = ref.data;
+        if (ref.missing) {
+          if (zero_base == nullptr) {
+            RecordDirectSgAbort(direct_start_ns);
+            return false;
+          }
+          // Absent key: serve zeros from the registered zero region. The cursor
+          // advances one row per miss, so consecutive misses stay contiguous
+          // and coalesce into a single SGE.
+          src = zero_base + zero_cursor * row_bytes;
         }
         if (sge_count > 0) {
           auto& last = sges[sge_count - 1];
           const char* last_end =
               static_cast<const char*>(last.data) + last.bytes;
-          if (last_end == ref.data) {
+          if (last_end == src) {
             last.bytes += row_bytes;
             ++row_count;
+            if (ref.missing) {
+              ++zero_cursor;
+            }
             continue;
           }
         }
         if (sge_count == kMaxDirectSgesPerWr) {
           break;
         }
-        sges[sge_count++] = petps::RawVerbsSge{ref.data, row_bytes};
+        sges[sge_count++] = petps::RawVerbsSge{src, row_bytes};
         ++row_count;
+        if (ref.missing) {
+          ++zero_cursor;
+        }
       }
       const std::uint64_t bytes =
           static_cast<std::uint64_t>(row_count * row_bytes);
@@ -1265,6 +1335,7 @@ private:
   int shard_id_      = 0;
   recstore::ResolvedRdmaDeployment deployment_;
   recstore::ResolvedRdmaFabric fabric_;
+  std::unique_ptr<char, AlignedCharDeleter> direct_sg_zero_region_;
   std::unique_ptr<petps::RcShardServerTransport> transport_;
   petps::RdmaControlPlaneClient control_plane_client_;
   std::vector<std::thread> threads_;

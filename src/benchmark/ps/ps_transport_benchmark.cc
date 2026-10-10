@@ -59,6 +59,11 @@ DEFINE_double(zipfian_alpha, 0.9, "Zipfian alpha");
 DEFINE_int32(read_ratio, 100, "read percentage for mixed mode");
 DEFINE_uint64(seed, 0x9e3779b97f4a7c15ULL, "base random seed");
 DEFINE_bool(skip_load, false, "skip transactions preload phase");
+DEFINE_uint64(fetch_key_space,
+              0,
+              "fetch key universe for the transactions workload; keys in "
+              "(record_count, fetch_key_space] miss the loaded set; 0 keeps "
+              "the fetch range equal to record_count");
 DEFINE_bool(load_only, false, "run transactions preload phase and exit");
 DEFINE_int32(prefetch_depth,
              0,
@@ -171,19 +176,24 @@ public:
   KeyGenerator(std::string distribution,
                uint64_t record_count,
                double alpha,
-               uint64_t seed)
+               uint64_t seed,
+               uint64_t key_space = 0)
       : distribution_(std::move(distribution)),
         record_count_(record_count),
+        key_space_(key_space == 0 ? record_count : key_space),
         alpha_(alpha),
         rng_(seed) {
     if (record_count_ == 0) {
       throw std::invalid_argument("record_count must be positive");
     }
+    if (key_space_ < record_count_) {
+      throw std::invalid_argument("key_space must be >= record_count");
+    }
     if (distribution_ == "zipfian") {
       if (std::abs(alpha_ - 1.0) < 1e-9) {
-        log_n_ = std::log(static_cast<double>(record_count_));
+        log_n_ = std::log(static_cast<double>(key_space_));
       } else {
-        pow_n_ = std::pow(static_cast<double>(record_count_), 1.0 - alpha_);
+        pow_n_ = std::pow(static_cast<double>(key_space_), 1.0 - alpha_);
       }
     } else if (distribution_ != "uniform") {
       throw std::invalid_argument("distribution must be uniform or zipfian");
@@ -192,7 +202,7 @@ public:
 
   uint64_t NextKey() {
     if (distribution_ == "uniform") {
-      return rng_.Uniform(record_count_) + 1;
+      return rng_.Uniform(key_space_) + 1;
     }
     return NextZipfian() + 1;
   }
@@ -209,14 +219,15 @@ private:
       rank = std::pow(1.0 + u * (pow_n_ - 1.0), 1.0 / (1.0 - alpha_));
     }
     uint64_t key = static_cast<uint64_t>(rank);
-    if (key >= record_count_) {
-      key = record_count_ - 1;
+    if (key >= key_space_) {
+      key = key_space_ - 1;
     }
     return key;
   }
 
   std::string distribution_;
   uint64_t record_count_;
+  uint64_t key_space_;
   double alpha_;
   double pow_n_ = 1.0;
   double log_n_ = 0.0;
@@ -272,18 +283,24 @@ MakeDeterministicFlatValues(const std::vector<uint64_t>& keys, int dim) {
   return values;
 }
 
-void VerifyDeterministicFlatValues(const std::vector<uint64_t>& keys,
-                                   const std::vector<float>& output,
-                                   int dim) {
+void VerifyDeterministicFlatValues(
+    const std::vector<uint64_t>& keys,
+    const std::vector<float>& output,
+    int dim,
+    uint64_t record_count) {
   CHECK_GE(output.size(), keys.size() * static_cast<size_t>(dim));
   for (size_t row = 0; row < keys.size(); ++row) {
+    // Keys above the loaded range are misses and must read back as zeros.
+    const bool missing = keys[row] > record_count;
     for (int col = 0; col < dim; ++col) {
-      const float expected = DeterministicValueForKey(keys[row], col);
+      const float expected =
+          missing ? 0.0f : DeterministicValueForKey(keys[row], col);
       const float actual =
           output[row * static_cast<size_t>(dim) + static_cast<size_t>(col)];
       CHECK(std::abs(actual - expected) <= 1e-6f)
           << "deterministic value mismatch key=" << keys[row] << " col=" << col
-          << " expected=" << expected << " actual=" << actual;
+          << " missing=" << missing << " expected=" << expected
+          << " actual=" << actual;
     }
   }
 }
@@ -675,7 +692,8 @@ PhaseStats RunTransactions(
           FLAGS_distribution,
           static_cast<uint64_t>(FLAGS_record_count),
           FLAGS_zipfian_alpha,
-          FLAGS_seed + static_cast<uint64_t>(tid));
+          FLAGS_seed + static_cast<uint64_t>(tid),
+          static_cast<uint64_t>(FLAGS_fetch_key_space));
       std::vector<uint64_t> keys(static_cast<size_t>(FLAGS_batch_keys));
       std::vector<float> values =
           MakeFlatValues(static_cast<size_t>(FLAGS_batch_keys), dim, tid);
@@ -696,7 +714,8 @@ PhaseStats RunTransactions(
           CHECK(GetFlat(client, transport, keys, &output))
               << transport << " GetParameter failed";
           if (FLAGS_verify_deterministic_values) {
-            VerifyDeterministicFlatValues(keys, output, dim);
+            VerifyDeterministicFlatValues(
+                keys, output, dim, static_cast<uint64_t>(FLAGS_record_count));
           }
           AccumulateLocalShmTransportStats(
               client, local_shm_stats, local_shm_stats_by_opcode);
@@ -773,7 +792,8 @@ PhaseStats RunPrefetchFetchTransactions(
           FLAGS_distribution,
           static_cast<uint64_t>(FLAGS_record_count),
           FLAGS_zipfian_alpha,
-          FLAGS_seed + static_cast<uint64_t>(tid));
+          FLAGS_seed + static_cast<uint64_t>(tid),
+          static_cast<uint64_t>(FLAGS_fetch_key_space));
       std::deque<PendingFetch> pending;
       std::vector<float> output;
       PhaseStats local;
@@ -814,7 +834,11 @@ PhaseStats RunPrefetchFetchTransactions(
             << transport << " GetPrefetchResult failed";
         const auto consume_end = std::chrono::steady_clock::now();
         if (FLAGS_verify_deterministic_values) {
-          VerifyDeterministicFlatValues(fetch.keys, output, dim);
+          VerifyDeterministicFlatValues(
+              fetch.keys,
+              output,
+              dim,
+              static_cast<uint64_t>(FLAGS_record_count));
         }
         local_profile.consume_ns +=
             static_cast<uint64_t>(NsSince(consume_begin, consume_end));
@@ -914,7 +938,8 @@ PhaseStats RunRdmaDirectAsyncFetchTransactions(int dim, int prefetch_depth) {
           FLAGS_distribution,
           static_cast<uint64_t>(FLAGS_record_count),
           FLAGS_zipfian_alpha,
-          FLAGS_seed + static_cast<uint64_t>(tid));
+          FLAGS_seed + static_cast<uint64_t>(tid),
+          static_cast<uint64_t>(FLAGS_fetch_key_space));
 
       const std::size_t response_floats =
           static_cast<std::size_t>(FLAGS_batch_keys) *
@@ -961,7 +986,11 @@ PhaseStats RunRdmaDirectAsyncFetchTransactions(int dim, int prefetch_depth) {
         CHECK_EQ(*status_word, static_cast<std::int32_t>(petps::RpcStatus::kOk))
             << "RDMA direct async fetch failed with status=" << *status_word;
         if (FLAGS_verify_deterministic_values) {
-          VerifyDeterministicFlatValues(slot->keys, slot->output, dim);
+          VerifyDeterministicFlatValues(
+              slot->keys,
+              slot->output,
+              dim,
+              static_cast<uint64_t>(FLAGS_record_count));
         }
         raw->RevokeRPCResource(slot->rpc_id);
         const auto consume_end = std::chrono::steady_clock::now();
