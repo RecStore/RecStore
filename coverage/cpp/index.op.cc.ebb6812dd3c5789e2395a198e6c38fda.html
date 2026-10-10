@@ -200,7 +200,7 @@
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">80.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l656">recstore::KVClientOp::GetPretchResult(unsigned long, base::RecTensor&amp;) (src/framework/op.cc:656)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l655">recstore::KVClientOp::GetPretchResult(unsigned long, base::RecTensor&amp;) (src/framework/op.cc:655)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="12">called 12 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">83.3%</div>
@@ -214,14 +214,14 @@
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">69.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l641">recstore::KVClientOp::IsPrefetchDone(unsigned long) (src/framework/op.cc:641)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l640">recstore::KVClientOp::IsPrefetchDone(unsigned long) (src/framework/op.cc:640)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="6">called 6 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l666">recstore::KVClientOp::IsWriteDone(unsigned long) (src/framework/op.cc:666)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l665">recstore::KVClientOp::IsWriteDone(unsigned long) (src/framework/op.cc:665)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="2">called 2 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">50.0%</div>
@@ -284,7 +284,7 @@
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">21.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l648">recstore::KVClientOp::WaitForPrefetch(unsigned long) (src/framework/op.cc:648)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#l647">recstore::KVClientOp::WaitForPrefetch(unsigned long) (src/framework/op.cc:647)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="6">called 6 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
@@ -5654,9 +5654,18 @@
       <tr class="source-line">
         <td class="lineno"><a id="l631" href="#l631">631</a></td>
         <td class="linebranch">
+          <details class="linebranchDetails">
+            <summary class="linebranchSummary">2/4</summary>
+            <div class="linebranchContents">
+              <div class="takenBranch">&check; Branch 1 taken 6 times.</div>
+              <div class="notTakenBranch">&cross; Branch 2 not taken.</div>
+              <div class="takenBranch">&check; Branch 4 taken 6 times.</div>
+              <div class="notTakenBranch">&cross; Branch 5 not taken.</div>
+            </div>
+          </details>
         </td>
-        <td class="linecount"></td>
-        <td class="src "><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">embedding_dim</span><span class="w"> </span><span class="o">=</span></td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine">6</td>
+        <td class="src  partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">embedding_dim</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">dim</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">shape</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
         <td class="lineno"><a id="l632" href="#l632">632</a></td>
@@ -5672,33 +5681,17 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine">6</td>
-        <td class="src  partialCoveredLine show_partialCoveredLine"><span class="w">        </span><span class="n">values</span><span class="p">.</span><span class="n">dim</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">shape</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
-      </tr>
-      <tr class="source-line">
-        <td class="lineno"><a id="l633" href="#l633">633</a></td>
-        <td class="linebranch">
-          <details class="linebranchDetails">
-            <summary class="linebranchSummary">2/4</summary>
-            <div class="linebranchContents">
-              <div class="takenBranch">&check; Branch 1 taken 6 times.</div>
-              <div class="notTakenBranch">&cross; Branch 2 not taken.</div>
-              <div class="takenBranch">&check; Branch 4 taken 6 times.</div>
-              <div class="notTakenBranch">&cross; Branch 5 not taken.</div>
-            </div>
-          </details>
-        </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine">6</td>
         <td class="src  partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">GetHierKVLocalRuntime</span><span class="p">().</span><span class="n">Prefetch</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">embedding_dim</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l634" href="#l634">634</a></td>
+        <td class="lineno"><a id="l633" href="#l633">633</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="w">  </span><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l635" href="#l635">635</a></td>
+        <td class="lineno"><a id="l634" href="#l634">634</a></td>
         <td class="linebranch">
           <details class="linebranchDetails">
             <summary class="linebranchSummary">1/2</summary>
@@ -5712,7 +5705,7 @@
         <td class="src  partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">uint64_t</span><span class="o">*</span><span class="w"> </span><span class="n">keys_data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">keys</span><span class="p">.</span><span class="n">data_as</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="p">();</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l636" href="#l636">636</a></td>
+        <td class="lineno"><a id="l635" href="#l635">635</a></td>
         <td class="linebranch">
           <details class="linebranchDetails">
             <summary class="linebranchSummary">1/2</summary>
@@ -5726,14 +5719,14 @@
         <td class="src  partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">L</span><span class="w">                 </span><span class="o">=</span><span class="w"> </span><span class="n">keys</span><span class="p">.</span><span class="n">shape</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l637" href="#l637">637</a></td>
+        <td class="lineno"><a id="l636" href="#l636">636</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">4</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">keys_array</span><span class="p">(</span><span class="n">keys_data</span><span class="p">,</span><span class="w"> </span><span class="n">L</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l638" href="#l638">638</a></td>
+        <td class="lineno"><a id="l637" href="#l637">637</a></td>
         <td class="linebranch">
           <details class="linebranchDetails">
             <summary class="linebranchSummary">1/2</summary>
@@ -5747,28 +5740,28 @@
         <td class="src  partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">ps_client_</span><span class="o">-&gt;</span><span class="n">PrefetchParameter</span><span class="p">(</span><span class="n">keys_array</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l639" href="#l639">639</a></td>
+        <td class="lineno"><a id="l638" href="#l638">638</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l640" href="#l640">640</a></td>
+        <td class="lineno"><a id="l639" href="#l639">639</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l641" href="#l641">641</a></td>
+        <td class="lineno"><a id="l640" href="#l640">640</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">6</td>
         <td class="src  coveredLine show_coveredLine"><span class="kt">bool</span><span class="w"> </span><span class="nf">KVClientOp::IsPrefetchDone</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l642" href="#l642">642</a></td>
+        <td class="lineno"><a id="l641" href="#l641">641</a></td>
         <td class="linebranch">
           <details class="linebranchDetails">
             <summary class="linebranchSummary">2/2</summary>
@@ -5782,49 +5775,49 @@
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">IsHierKVBackendName</span><span class="p">(</span><span class="n">ps_backend_name_</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l643" href="#l643">643</a></td>
+        <td class="lineno"><a id="l642" href="#l642">642</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">4</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">GetHierKVLocalRuntime</span><span class="p">().</span><span class="n">IsPrefetchDone</span><span class="p">(</span><span class="n">prefetch_id</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l644" href="#l644">644</a></td>
+        <td class="lineno"><a id="l643" href="#l643">643</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="w">  </span><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l645" href="#l645">645</a></td>
+        <td class="lineno"><a id="l644" href="#l644">644</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">2</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">ps_client_</span><span class="o">-&gt;</span><span class="n">IsPrefetchDone</span><span class="p">(</span><span class="n">prefetch_id</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l646" href="#l646">646</a></td>
+        <td class="lineno"><a id="l645" href="#l645">645</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l647" href="#l647">647</a></td>
+        <td class="lineno"><a id="l646" href="#l646">646</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l648" href="#l648">648</a></td>
+        <td class="lineno"><a id="l647" href="#l647">647</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">6</td>
         <td class="src  coveredLine show_coveredLine"><span class="kt">void</span><span class="w"> </span><span class="nf">KVClientOp::WaitForPrefetch</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l649" href="#l649">649</a></td>
+        <td class="lineno"><a id="l648" href="#l648">648</a></td>
         <td class="linebranch">
           <details class="linebranchDetails">
             <summary class="linebranchSummary">2/2</summary>
@@ -5838,56 +5831,56 @@
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">IsHierKVBackendName</span><span class="p">(</span><span class="n">ps_backend_name_</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l650" href="#l650">650</a></td>
+        <td class="lineno"><a id="l649" href="#l649">649</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">2</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">    </span><span class="n">GetHierKVLocalRuntime</span><span class="p">().</span><span class="n">WaitForPrefetch</span><span class="p">(</span><span class="n">prefetch_id</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l651" href="#l651">651</a></td>
+        <td class="lineno"><a id="l650" href="#l650">650</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">2</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">    </span><span class="k">return</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l652" href="#l652">652</a></td>
+        <td class="lineno"><a id="l651" href="#l651">651</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="w">  </span><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l653" href="#l653">653</a></td>
+        <td class="lineno"><a id="l652" href="#l652">652</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">4</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="n">ps_client_</span><span class="o">-&gt;</span><span class="n">WaitForPrefetch</span><span class="p">(</span><span class="n">prefetch_id</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l654" href="#l654">654</a></td>
+        <td class="lineno"><a id="l653" href="#l653">653</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l655" href="#l655">655</a></td>
+        <td class="lineno"><a id="l654" href="#l654">654</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l656" href="#l656">656</a></td>
+        <td class="lineno"><a id="l655" href="#l655">655</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">12</td>
         <td class="src  coveredLine show_coveredLine"><span class="kt">void</span><span class="w"> </span><span class="nf">KVClientOp::GetPretchResult</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">prefetch_id</span><span class="p">,</span><span class="w"> </span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l657" href="#l657">657</a></td>
+        <td class="lineno"><a id="l656" href="#l656">656</a></td>
         <td class="linebranch">
           <details class="linebranchDetails">
             <summary class="linebranchSummary">2/2</summary>
@@ -5901,28 +5894,28 @@
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">IsHierKVBackendName</span><span class="p">(</span><span class="n">ps_backend_name_</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l658" href="#l658">658</a></td>
+        <td class="lineno"><a id="l657" href="#l657">657</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">6</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">    </span><span class="n">GetHierKVLocalRuntime</span><span class="p">().</span><span class="n">ConsumePrefetch</span><span class="p">(</span><span class="n">prefetch_id</span><span class="p">,</span><span class="w"> </span><span class="n">values</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l659" href="#l659">659</a></td>
+        <td class="lineno"><a id="l658" href="#l658">658</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">6</td>
         <td class="src  coveredLine show_coveredLine"><span class="w">    </span><span class="k">return</span><span class="p">;</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l660" href="#l660">660</a></td>
+        <td class="lineno"><a id="l659" href="#l659">659</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="w">  </span><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l661" href="#l661">661</a></td>
+        <td class="lineno"><a id="l660" href="#l660">660</a></td>
         <td class="linebranch">
           <details class="linebranchDetails">
             <summary class="linebranchSummary">2/2</summary>
@@ -5936,7 +5929,7 @@
         <td class="src  coveredLine show_coveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">ps_client_</span><span class="o">-&gt;</span><span class="n">GetPrefetchResult</span><span class="p">(</span><span class="n">prefetch_id</span><span class="p">,</span><span class="w"> </span><span class="n">values</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l662" href="#l662">662</a></td>
+        <td class="lineno"><a id="l661" href="#l661">661</a></td>
         <td class="linebranch">
           <details class="linebranchDetails">
             <summary class="linebranchSummary">1/2</summary>
@@ -5950,42 +5943,42 @@
         <td class="src  partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;Failed to get prefetch result from PS client.&quot;</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l663" href="#l663">663</a></td>
+        <td class="lineno"><a id="l662" href="#l662">662</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="w">  </span><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l664" href="#l664">664</a></td>
+        <td class="lineno"><a id="l663" href="#l663">663</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l665" href="#l665">665</a></td>
+        <td class="lineno"><a id="l664" href="#l664">664</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l666" href="#l666">666</a></td>
+        <td class="lineno"><a id="l665" href="#l665">665</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount coveredLine show_coveredLine">2</td>
         <td class="src  coveredLine show_coveredLine"><span class="kt">bool</span><span class="w"> </span><span class="nf">KVClientOp::IsWriteDone</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">write_id</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l667" href="#l667">667</a></td>
+        <td class="lineno"><a id="l666" href="#l666">666</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="w">  </span><span class="c1">// return ps_client_-&gt;IsWriteDone(write_id);</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l668" href="#l668">668</a></td>
+        <td class="lineno"><a id="l667" href="#l667">667</a></td>
         <td class="linebranch">
           <details class="linebranchDetails">
             <summary class="linebranchSummary">1/2</summary>
@@ -5999,84 +5992,84 @@
         <td class="src  partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;Not impl&quot;</span><span class="p">);</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l669" href="#l669">669</a></td>
+        <td class="lineno"><a id="l668" href="#l668">668</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="p">}</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l670" href="#l670">670</a></td>
+        <td class="lineno"><a id="l669" href="#l669">669</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l671" href="#l671">671</a></td>
+        <td class="lineno"><a id="l670" href="#l670">670</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="k">namespace</span><span class="w"> </span><span class="nn">testing</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="c1">// namespace testing</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l672" href="#l672">672</a></td>
+        <td class="lineno"><a id="l671" href="#l671">671</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l673" href="#l673">673</a></td>
+        <td class="lineno"><a id="l672" href="#l672">672</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="p">}</span><span class="w"> </span><span class="c1">// namespace recstore</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l674" href="#l674">674</a></td>
+        <td class="lineno"><a id="l673" href="#l673">673</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l675" href="#l675">675</a></td>
+        <td class="lineno"><a id="l674" href="#l674">674</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="cp">#else</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l676" href="#l676">676</a></td>
+        <td class="lineno"><a id="l675" href="#l675">675</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l677" href="#l677">677</a></td>
+        <td class="lineno"><a id="l676" href="#l676">676</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="cp">#</span><span class="w">  </span><span class="cp">include</span><span class="w"> </span><span class="cpf">&quot;common/op_mock.cc&quot;</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l678" href="#l678">678</a></td>
+        <td class="lineno"><a id="l677" href="#l677">677</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l679" href="#l679">679</a></td>
+        <td class="lineno"><a id="l678" href="#l678">678</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
         <td class="src "><span class="cp">#endif </span><span class="c1">// USE_FAKE_KVCLIENT</span></td>
       </tr>
       <tr class="source-line">
-        <td class="lineno"><a id="l680" href="#l680">680</a></td>
+        <td class="lineno"><a id="l679" href="#l679">679</a></td>
         <td class="linebranch">
         </td>
         <td class="linecount"></td>
@@ -6089,7 +6082,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.6">GCOVR (Version 8.6)</a>
-          at 2026-10-09 15:09:48
+          at 2026-10-10 12:09:25
         </footer>
       </div>
     </div>
