@@ -1052,8 +1052,8 @@ PhaseStats RunRdmaDirectAsyncFetchTransactions(int dim, int prefetch_depth) {
     std::cout
         << "PS_BENCHMARK_PROFILE phase=run transport=RDMA"
         << " mode=" << FLAGS_mode << " prefetch_depth=" << prefetch_depth
-        << " direct_async_fetch=1"
-        << " batches=" << total_profile.iterations << " make_keys_avg_ns="
+        << " direct_async_fetch=1" << " batches=" << total_profile.iterations
+        << " make_keys_avg_ns="
         << static_cast<double>(total_profile.make_keys_ns) / denom
         << " submit_avg_ns="
         << static_cast<double>(total_profile.submit_ns) / denom

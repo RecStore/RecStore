@@ -386,9 +386,9 @@ private:
         poller_max_get_thread = static_cast<int>(i);
       }
       std::cout
-          << "component=rdma_rc_server_poller_profile"
-          << " shard=" << shard_id_ << " thread_id=" << i << " scan_rounds="
-          << poller_scan_rounds << " scanned_slots=" << poller_scanned_slots
+          << "component=rdma_rc_server_poller_profile" << " shard=" << shard_id_
+          << " thread_id=" << i << " scan_rounds=" << poller_scan_rounds
+          << " scanned_slots=" << poller_scanned_slots
           << " ready_slots=" << poller_ready_slots << " scan_hit_pct="
           << (poller_scanned_slots == 0
                   ? 0.0
@@ -407,12 +407,11 @@ private:
       poller_min_get = 0;
     }
     std::cout
-        << "component=rdma_rc_server_profile"
-        << " shard=" << shard_id_ << " threads=" << thread_count_
-        << " scan_rounds=" << scan_rounds << " scanned_slots=" << scanned_slots
-        << " ready_slots=" << ready_slots << " not_ready_slots="
-        << not_ready_slots << " zero_seq_ready=" << zero_seq_ready
-        << " duplicate_seq_ready=" << duplicate_seq_ready
+        << "component=rdma_rc_server_profile" << " shard=" << shard_id_
+        << " threads=" << thread_count_ << " scan_rounds=" << scan_rounds
+        << " scanned_slots=" << scanned_slots << " ready_slots=" << ready_slots
+        << " not_ready_slots=" << not_ready_slots << " zero_seq_ready="
+        << zero_seq_ready << " duplicate_seq_ready=" << duplicate_seq_ready
         << " inflight_seq_ready=" << inflight_seq_ready
         << " empty_scan_rounds=" << empty_scan_rounds << " scan_hit_pct="
         << (scanned_slots == 0 ? 0.0
@@ -1427,8 +1426,7 @@ int main(int argc, char* argv[]) {
         std::make_unique<petps::RdmaControlPlaneServer>(control_plane_endpoint);
     control_plane_server->Start();
     LOG(INFO) << "component=rdma_control_plane event=listening"
-              << " server_id=0"
-              << " host=" << FLAGS_rdma_control_plane_host
+              << " server_id=0" << " host=" << FLAGS_rdma_control_plane_host
               << " port=" << FLAGS_rdma_control_plane_port;
   }
   auto cache_ps      = std::make_unique<CachePS>(config["cache_ps"]);
