@@ -9,6 +9,7 @@
 
 #include <folly/portability/GFlags.h>
 
+#include "base/log.h"
 #include "ps/rdma/control_plane.h"
 #include "ps/rdma/rdma_common.h"
 #include "ps/rdma/rc_options.h"
@@ -643,6 +644,41 @@ void RcShardClientTransport::SubmitRequest(
 void RcShardClientTransport::ClearRequestSlot(const RcClientQpView& view) {
   auto* commit = view.commit;
   commit->state.store(0, std::memory_order_release);
+}
+
+bool RcShardClientTransport::HarvestLaneCompletion(
+    int qp_index, RawVerbsCompletionError* error) {
+  Lane& lane = LaneAt(qp_index);
+  // Drain up to one poll batch so a busy lane does not delay a completion error
+  // behind a queue of parked successes.
+  for (int drained = 0; drained < kRawVerbsPollBatchSize; ++drained) {
+    RawVerbsCompletion completion;
+    const RawVerbsPollOutcome outcome = lane.verbs->TryPoll(&completion, error);
+    if (outcome == RawVerbsPollOutcome::kEmpty) {
+      return false;
+    }
+    if (outcome == RawVerbsPollOutcome::kError) {
+      return true;
+    }
+    const bool is_recv = completion.opcode == IBV_WC_RECV ||
+                         completion.opcode == IBV_WC_RECV_RDMA_WITH_IMM;
+    const std::uint64_t kind_bits = completion.wr_id >> 32;
+    const std::uint32_t slot_ordinal =
+        static_cast<std::uint32_t>(completion.wr_id);
+    if (!is_recv &&
+        kind_bits == static_cast<std::uint64_t>(TrackedWrKind::kSubmitCommit) &&
+        slot_ordinal < lane.submit_completion_ready.size()) {
+      // Park the completion for the next drain of that slot, do not lose it.
+      lane.submit_completion_ready[slot_ordinal] = 1;
+      continue;
+    }
+    if (!is_recv) {
+      LOG(WARNING) << "component=rdma_rc_client event=unexpected_completion"
+                   << " shard=" << config_.shard_id << " qp=" << qp_index
+                   << " wr_id=" << completion.wr_id;
+    }
+  }
+  return false;
 }
 
 RcShardServerTransport::RcShardServerTransport(const RcTransportConfig& config)

@@ -385,11 +385,35 @@ void PetPSClient::MaybeProbeShardHealth(int qp_index, std::int64_t waited_ms) {
       " waited_ms=" + std::to_string(waited_ms) + ")");
 }
 
+void PetPSClient::FailLaneOnCompletionError(
+    int qp_index,
+    const RawVerbsCompletionError& error,
+    std::int64_t waited_ms) {
+  // A completion error means the lane's QP is dead (retry exhaustion, flush or
+  // a protocol fault) and its slots can never be reused safely (§4.1), so the
+  // lane is retired exactly like a lane that lost a completion.
+  const std::string reason =
+      std::string("cq_") + RawVerbsErrorClassToString(error.error_class);
+  MarkLaneDirty(qp_index, reason.c_str(), nullptr, waited_ms);
+  if (IsRawVerbsUnreachableError(error.error_class)) {
+    throw ShardUnreachableError(
+        "shard " + std::to_string(shard_) + " unreachable: lane " +
+        std::to_string(qp_index) +
+        " RDMA completion failed: " + DescribeRawVerbsCompletionError(error));
+  }
+  throw RawVerbsCompletionException(
+      error,
+      "shard=" + std::to_string(shard_) + " lane=" + std::to_string(qp_index) +
+          " waited_ms=" + std::to_string(waited_ms));
+}
+
 std::int32_t PetPSClient::WaitForStatusWord(
     int qp_index, const StatusWord* status, std::uint64_t seq) {
-  const auto start        = std::chrono::steady_clock::now();
-  const bool probe_wanted = FLAGS_rdma_health_probe_after_ms > 0;
-  int spin_iterations     = 0;
+  const auto start             = std::chrono::steady_clock::now();
+  const bool probe_wanted      = FLAGS_rdma_health_probe_after_ms > 0;
+  const bool harvest_wanted    = FLAGS_rdma_cq_harvest_interval_ms > 0;
+  int spin_iterations          = 0;
+  std::int64_t next_harvest_ms = FLAGS_rdma_cq_harvest_interval_ms;
   while (!StatusWordDone(*status, seq)) {
     if (qps_[static_cast<std::size_t>(qp_index)].dirty.load(
             std::memory_order_relaxed)) {
@@ -406,7 +430,7 @@ std::int32_t PetPSClient::WaitForStatusWord(
       std::this_thread::yield();
     }
     std::int64_t elapsed_ms = 0;
-    if (FLAGS_rdma_wait_timeout_ms > 0 || probe_wanted) {
+    if (FLAGS_rdma_wait_timeout_ms > 0 || probe_wanted || harvest_wanted) {
       elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                        std::chrono::steady_clock::now() - start)
                        .count();
@@ -417,6 +441,20 @@ std::int32_t PetPSClient::WaitForStatusWord(
       // lane is retired (§4.1) before reporting the existing timeout.
       MarkLaneDirty(qp_index, "wait_timeout", nullptr, elapsed_ms);
       throw std::runtime_error("RC write RPC wait timeout");
+    }
+    if (harvest_wanted && elapsed_ms >= next_harvest_ms) {
+      next_harvest_ms = elapsed_ms + FLAGS_rdma_cq_harvest_interval_ms;
+      RawVerbsCompletionError completion_error;
+      bool lane_failed = false;
+      {
+        // Harvest under the client mutex so it serializes with submit drains.
+        std::lock_guard<std::mutex> guard(mu_);
+        lane_failed =
+            transport_->HarvestLaneCompletion(qp_index, &completion_error);
+      }
+      if (lane_failed) {
+        FailLaneOnCompletionError(qp_index, completion_error, elapsed_ms);
+      }
     }
     if (probe_wanted && elapsed_ms >= FLAGS_rdma_health_probe_after_ms) {
       MaybeProbeShardHealth(qp_index, elapsed_ms);
@@ -616,7 +654,14 @@ int PetPSClient::SubmitRpcLocked(
   ResetStatusWord(slot->view.status, descriptor.seq);
   const bool profile_enabled          = FLAGS_rdma_rc_profile_interval_ms > 0;
   const std::uint64_t submit_start_ns = profile_enabled ? NowNs() : 0;
-  transport_->SubmitRequest(slot->view, descriptor, payload, payload_bytes);
+  try {
+    transport_->SubmitRequest(slot->view, descriptor, payload, payload_bytes);
+  } catch (const RawVerbsCompletionException& error) {
+    // Draining the previous request on this slot surfaced a dead QP: the slot
+    // must not be reused, so the lane is retired before failing this request.
+    FailLaneOnCompletionError(
+        slot->view.qp_index, error.error(), /*waited_ms=*/-1);
+  }
   if (profile_enabled) {
     profile_.submit_rpc_count.fetch_add(1, std::memory_order_relaxed);
     profile_.submit_request_ns.fetch_add(

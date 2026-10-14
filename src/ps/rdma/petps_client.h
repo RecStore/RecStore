@@ -154,11 +154,18 @@ private:
   // ShardUnreachableError is thrown.
   void MaybeProbeShardHealth(int qp_index, std::int64_t waited_ms);
   // Marks the lane as unusable for good: its slots are never reused and its
-  // waiters fail fast. `reason` is wait_timeout or health_dead.
+  // waiters fail fast. `reason` is wait_timeout, health_dead or cq_<class>.
   void MarkLaneDirty(int qp_index,
                      const char* reason,
                      const RdmaServerHealthSnapshot* snapshot,
                      std::int64_t waited_ms);
+  // Retires the lane on a CQ completion error and throws: peer-side failures
+  // (retry exhaustion, flushes) surface as ShardUnreachableError, local or
+  // rejected operations keep their typed raw-verbs error.
+  [[noreturn]] void FailLaneOnCompletionError(
+      int qp_index,
+      const RawVerbsCompletionError& error,
+      std::int64_t waited_ms);
   RdmaControlPlaneClient MakeControlPlaneClient() const;
   SlotContext& SlotAt(int qp_index, int slot_in_qp);
   const SlotContext& SlotAt(int qp_index, int slot_in_qp) const;

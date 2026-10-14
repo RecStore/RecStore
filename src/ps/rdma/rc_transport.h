@@ -68,6 +68,13 @@ public:
                      const void* payload,
                      std::size_t payload_bytes);
   void ClearRequestSlot(const RcClientQpView& view);
+  // Drains at most one completion from a lane CQ without blocking. Successful
+  // completions are folded into the lane's tracked-completion bookkeeping so a
+  // later SubmitRequest() drain still finds them; a completion error is copied
+  // into `error` and reported as true so the caller can classify and retire the
+  // lane. Callers must serialize with the client submit path (PetPSClient holds
+  // its mutex around both).
+  bool HarvestLaneCompletion(int qp_index, RawVerbsCompletionError* error);
   std::size_t request_slot_bytes() const { return config_.request_slot_bytes; }
   std::size_t response_slot_bytes() const {
     return config_.response_slot_bytes;

@@ -19,6 +19,13 @@ DEFINE_int32(rdma_rc_response_slot_bytes,
 DEFINE_int32(rdma_wait_timeout_ms,
              60000,
              "RC write single RPC wait timeout in milliseconds");
+DEFINE_int32(rdma_cq_harvest_interval_ms,
+             50,
+             "Client lane completion harvest interval in milliseconds: a "
+             "request waiting longer than this drains its lane CQ, so a QP "
+             "completion error (retry exhaustion / flush) is classified and "
+             "fails fast instead of waiting for the wait-timeout budget; 0 "
+             "disables harvesting");
 DEFINE_int32(rdma_rc_profile_interval_ms,
              0,
              "RC write profiling summary interval in milliseconds; 0 disables "

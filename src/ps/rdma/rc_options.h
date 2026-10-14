@@ -9,6 +9,7 @@ DECLARE_int32(rdma_rc_target_response_mtu);
 DECLARE_int32(rdma_rc_request_slot_bytes);
 DECLARE_int32(rdma_rc_response_slot_bytes);
 DECLARE_int32(rdma_wait_timeout_ms);
+DECLARE_int32(rdma_cq_harvest_interval_ms);
 DECLARE_int32(rdma_rc_profile_interval_ms);
 DECLARE_int32(rdma_rc_server_coroutines_per_thread);
 DECLARE_int32(rdma_rc_server_get_workers);
