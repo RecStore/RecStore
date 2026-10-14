@@ -2,13 +2,16 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
+#include "base/log.h"
 #include "rdma_control_plane.grpc.pb.h"
 
 namespace petps {
@@ -71,6 +74,52 @@ grpc::Status MakeDeadlineExceeded(const std::string& message) {
 
 grpc::Status MakeUnavailable(const std::string& message) {
   return grpc::Status(grpc::StatusCode::UNAVAILABLE, message);
+}
+
+// Heartbeat identity travels as gRPC metadata so the Probe RPC needs no proto
+// change (docs/plans/rdma-reliability-architecture.md §3.7).
+int ParseHeartbeatNodeId(grpc::string_ref value) {
+  const std::string text(value.data(), value.size());
+  try {
+    return std::stoi(text);
+  } catch (const std::exception&) {
+    return -1;
+  }
+}
+
+std::uint64_t
+ParseHeartbeatEpoch(grpc::string_ref value, std::uint64_t fallback) {
+  const std::string text(value.data(), value.size());
+  try {
+    return static_cast<std::uint64_t>(std::stoull(text));
+  } catch (const std::exception&) {
+    return fallback;
+  }
+}
+
+std::string ReadMetadataValue(grpc::ServerContext* context, const char* key) {
+  if (context == nullptr) {
+    return std::string();
+  }
+  for (const auto& entry : context->client_metadata()) {
+    if (entry.first == key) {
+      return std::string(entry.second.data(), entry.second.size());
+    }
+  }
+  return std::string();
+}
+
+// A heartbeat/READY from a different `instance_nonce` means the shard process
+// was restarted (or replaced) within the same deployment epoch.
+void LogInstanceChange(const std::string& deployment_id,
+                       std::uint64_t deployment_epoch,
+                       int server_id,
+                       const std::string& from,
+                       const std::string& to) {
+  LOG(WARNING) << "component=rdma_control_plane event=server_instance_change"
+               << " deployment_id=" << deployment_id
+               << " epoch=" << deployment_epoch << " server_id=" << server_id
+               << " from=" << from << " to=" << to;
 }
 
 } // namespace
@@ -308,7 +357,7 @@ public:
     return grpc::Status::OK;
   }
 
-  grpc::Status PublishServerReady(grpc::ServerContext*,
+  grpc::Status PublishServerReady(grpc::ServerContext* context,
                                   const PublishServerReadyRequest* request,
                                   PublishServerReadyResponse*) override {
     const grpc::Status identity = ValidateDeploymentIdentity(
@@ -328,6 +377,8 @@ public:
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                           "invalid versioned server READY record");
     }
+    const std::string instance_nonce =
+        ReadMetadataValue(context, kHeartbeatInstanceMetadata);
     {
       std::lock_guard<std::mutex> guard(owner_->mu_);
       auto& record = owner_->ready_servers_[{request->deployment_id(),
@@ -339,10 +390,24 @@ public:
             grpc::StatusCode::FAILED_PRECONDITION,
             "draining server cannot become ready in same epoch");
       }
-      record = {request->protocol_version(),
-                request->configuration_digest(),
-                request->fabric_digest(),
-                RdmaControlPlaneServer::ReadyRecord::State::kServing};
+      record.protocol_version     = request->protocol_version();
+      record.configuration_digest = request->configuration_digest();
+      record.fabric_digest        = request->fabric_digest();
+      record.state     = RdmaControlPlaneServer::ReadyRecord::State::kServing;
+      record.last_seen = std::chrono::steady_clock::now();
+      record.observed_health = RdmaServerHealth::kServing;
+      if (!instance_nonce.empty()) {
+        if (!record.instance_nonce.empty() &&
+            record.instance_nonce != instance_nonce) {
+          LogInstanceChange(
+              request->deployment_id(),
+              request->deployment_epoch(),
+              request->server_id(),
+              record.instance_nonce,
+              instance_nonce);
+        }
+        record.instance_nonce = instance_nonce;
+      }
     }
     owner_->cv_.notify_all();
     return grpc::Status::OK;
@@ -517,11 +582,38 @@ public:
     return grpc::Status::OK;
   }
 
-  grpc::Status
-  Probe(grpc::ServerContext*, const ProbeRequest*, ProbeResponse*) override {
+  grpc::Status Probe(grpc::ServerContext* context,
+                     const ProbeRequest*,
+                     ProbeResponse*) override {
     if (owner_->stop_requested_.load(std::memory_order_relaxed)) {
       return MakeUnavailable("control-plane stopping");
     }
+    // A bare Probe carries no identity and is a pure liveness check. The
+    // heartbeat Probe carries the shard identity as metadata; when present it
+    // refreshes that shard's `last_seen`.
+    const std::string node_id_text =
+        ReadMetadataValue(context, kHeartbeatNodeIdMetadata);
+    if (node_id_text.empty()) {
+      return grpc::Status::OK;
+    }
+    const int server_id = ParseHeartbeatNodeId(node_id_text);
+    if (server_id < 0) {
+      return grpc::Status::OK;
+    }
+    const std::string deployment_id_text =
+        ReadMetadataValue(context, kHeartbeatDeploymentIdMetadata);
+    const std::string deployment_id =
+        deployment_id_text.empty()
+            ? owner_->endpoint_.deployment_id
+            : deployment_id_text;
+    const std::uint64_t deployment_epoch = ParseHeartbeatEpoch(
+        ReadMetadataValue(context, kHeartbeatDeploymentEpochMetadata),
+        owner_->endpoint_.deployment_epoch);
+    owner_->RecordHeartbeat(
+        deployment_id,
+        deployment_epoch,
+        server_id,
+        ReadMetadataValue(context, kHeartbeatInstanceMetadata));
     return grpc::Status::OK;
   }
 
@@ -586,7 +678,8 @@ RawVerbsNodeMeta RdmaControlPlaneClient::GetMeta(
   return DecodeMetaBytes(response.meta());
 }
 
-void RdmaControlPlaneClient::PublishServerReady(int server_id) const {
+void RdmaControlPlaneClient::PublishServerReady(
+    int server_id, const std::string& instance_nonce) const {
   auto channel = grpc::CreateChannel(
       EndpointString(endpoint_), grpc::InsecureChannelCredentials());
   auto stub = RdmaControlPlane::NewStub(channel);
@@ -601,6 +694,9 @@ void RdmaControlPlaneClient::PublishServerReady(int server_id) const {
 
   PublishServerReadyResponse response;
   grpc::ClientContext context;
+  if (!instance_nonce.empty()) {
+    context.AddMetadata(kHeartbeatInstanceMetadata, instance_nonce);
+  }
   context.set_deadline(DeadlineFromNow(endpoint_.timeout_ms));
   ThrowIfNotOk(stub->PublishServerReady(&context, request, &response),
                "server_ready");
@@ -624,6 +720,26 @@ void RdmaControlPlaneClient::PublishServerDraining(int server_id) const {
   context.set_deadline(DeadlineFromNow(endpoint_.timeout_ms));
   ThrowIfNotOk(stub->PublishServerDraining(&context, request, &response),
                "server_draining");
+}
+
+void RdmaControlPlaneClient::SendHeartbeat(
+    int server_id, const std::string& instance_nonce) const {
+  auto channel = grpc::CreateChannel(
+      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
+  auto stub = RdmaControlPlane::NewStub(channel);
+
+  ProbeRequest request;
+  ProbeResponse response;
+  grpc::ClientContext context;
+  context.AddMetadata(kHeartbeatNodeIdMetadata, std::to_string(server_id));
+  if (!instance_nonce.empty()) {
+    context.AddMetadata(kHeartbeatInstanceMetadata, instance_nonce);
+  }
+  context.AddMetadata(kHeartbeatDeploymentIdMetadata, endpoint_.deployment_id);
+  context.AddMetadata(kHeartbeatDeploymentEpochMetadata,
+                      std::to_string(endpoint_.deployment_epoch));
+  context.set_deadline(DeadlineFromNow(endpoint_.timeout_ms));
+  ThrowIfNotOk(stub->Probe(&context, request, &response), "probe");
 }
 
 void RdmaControlPlaneClient::WaitServer(int server_id, int timeout_ms) const {
@@ -750,6 +866,108 @@ bool RdmaControlPlaneServer::HasDrainingServer(
   return false;
 }
 
+RdmaServerHealth RdmaControlPlaneServer::ServerHealth(
+    int server_id, std::chrono::steady_clock::time_point now) const {
+  std::lock_guard<std::mutex> guard(mu_);
+  const auto it = ready_servers_.find(
+      ReadyKey{endpoint_.deployment_id, endpoint_.deployment_epoch, server_id});
+  if (it == ready_servers_.end()) {
+    return RdmaServerHealth::kServing;
+  }
+  return EvaluateServerHealth(
+      it->second.last_seen,
+      now,
+      endpoint_.health_stale_ms,
+      endpoint_.health_dead_ms);
+}
+
+std::string RdmaControlPlaneServer::ServerInstanceNonce(int server_id) const {
+  std::lock_guard<std::mutex> guard(mu_);
+  const auto it = ready_servers_.find(
+      ReadyKey{endpoint_.deployment_id, endpoint_.deployment_epoch, server_id});
+  return it == ready_servers_.end() ? std::string() : it->second.instance_nonce;
+}
+
+void RdmaControlPlaneServer::RecordHeartbeat(
+    const std::string& deployment_id,
+    std::uint64_t deployment_epoch,
+    int server_id,
+    const std::string& instance_nonce) {
+  std::lock_guard<std::mutex> guard(mu_);
+  const auto it =
+      ready_servers_.find(ReadyKey{deployment_id, deployment_epoch, server_id});
+  if (it == ready_servers_.end()) {
+    // Unknown shard: either not ready yet or already evicted. Do not create a
+    // record from a heartbeat; READY remains the only way to become serving.
+    return;
+  }
+  it->second.last_seen = std::chrono::steady_clock::now();
+  if (!instance_nonce.empty()) {
+    if (!it->second.instance_nonce.empty() &&
+        it->second.instance_nonce != instance_nonce) {
+      LogInstanceChange(
+          deployment_id,
+          deployment_epoch,
+          server_id,
+          it->second.instance_nonce,
+          instance_nonce);
+    }
+    it->second.instance_nonce = instance_nonce;
+  }
+  heartbeats_received_.fetch_add(1, std::memory_order_relaxed);
+}
+
+void RdmaControlPlaneServer::HealthMonitorLoop() {
+  const int stale_ms = std::max(1, endpoint_.health_stale_ms);
+  const auto tick    = std::chrono::milliseconds(std::max(20, stale_ms / 3));
+  while (true) {
+    std::unique_lock<std::mutex> lock(mu_);
+    if (health_cv_.wait_for(lock, tick, [this] {
+          return stop_requested_.load(std::memory_order_relaxed);
+        })) {
+      return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    for (auto it = ready_servers_.begin(); it != ready_servers_.end();) {
+      ReadyRecord& record           = it->second;
+      const RdmaServerHealth health = EvaluateServerHealth(
+          record.last_seen,
+          now,
+          endpoint_.health_stale_ms,
+          endpoint_.health_dead_ms);
+      if (health != record.observed_health) {
+        LOG(WARNING)
+            << "component=rdma_control_plane event=server_health_change"
+            << " deployment_id=" << it->first.deployment_id
+            << " epoch=" << it->first.deployment_epoch
+            << " server_id=" << it->first.server_id
+            << " from=" << RdmaServerHealthToString(record.observed_health)
+            << " to=" << RdmaServerHealthToString(health)
+            << " instance=" << record.instance_nonce;
+        record.observed_health = health;
+        health_transitions_.fetch_add(1, std::memory_order_relaxed);
+      }
+      const bool seen =
+          record.last_seen != std::chrono::steady_clock::time_point{};
+      const auto idle_ms =
+          seen ? std::chrono::duration_cast<std::chrono::milliseconds>(
+                     now - record.last_seen)
+                     .count()
+               : 0;
+      if (endpoint_.health_record_retention_ms > 0 &&
+          idle_ms >= endpoint_.health_record_retention_ms) {
+        LOG(INFO) << "component=rdma_control_plane event=server_record_evicted"
+                  << " deployment_id=" << it->first.deployment_id
+                  << " server_id=" << it->first.server_id
+                  << " idle_ms=" << idle_ms;
+        it = ready_servers_.erase(it);
+        continue;
+      }
+      ++it;
+    }
+  }
+}
+
 void RdmaControlPlaneServer::Start() {
   if (server_ != nullptr) {
     return;
@@ -773,6 +991,8 @@ void RdmaControlPlaneServer::Start() {
     throw std::runtime_error("control-plane gRPC server failed to listen on " +
                              EndpointString(endpoint_));
   }
+  health_monitor_ =
+      std::thread(&RdmaControlPlaneServer::HealthMonitorLoop, this);
 }
 
 void RdmaControlPlaneServer::Stop() {
@@ -783,6 +1003,10 @@ void RdmaControlPlaneServer::Stop() {
   {
     std::lock_guard<std::mutex> guard(mu_);
     cv_.notify_all();
+  }
+  health_cv_.notify_all();
+  if (health_monitor_.joinable()) {
+    health_monitor_.join();
   }
   server_->Shutdown();
   server_.reset();

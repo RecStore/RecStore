@@ -277,5 +277,156 @@ TEST(RdmaControlPlaneTest, ServerMustBeReadyBeforeDraining) {
   server.Stop();
 }
 
+TEST(RdmaControlPlaneTest, EvaluateServerHealthBoundaries) {
+  using std::chrono::steady_clock;
+  const auto base = steady_clock::time_point{} + std::chrono::seconds(10);
+  const auto at = [&](int ms) { return base + std::chrono::milliseconds(ms); };
+
+  // A record that was never touched is never reported dead.
+  EXPECT_EQ(EvaluateServerHealth(steady_clock::time_point{}, at(0), 3000, 9000),
+            RdmaServerHealth::kServing);
+  EXPECT_EQ(EvaluateServerHealth(base, at(10), 3000, 9000),
+            RdmaServerHealth::kServing);
+  EXPECT_EQ(EvaluateServerHealth(base, at(2999), 3000, 9000),
+            RdmaServerHealth::kServing);
+  EXPECT_EQ(EvaluateServerHealth(base, at(3000), 3000, 9000),
+            RdmaServerHealth::kSuspect);
+  EXPECT_EQ(EvaluateServerHealth(base, at(8999), 3000, 9000),
+            RdmaServerHealth::kSuspect);
+  EXPECT_EQ(EvaluateServerHealth(base, at(9000), 3000, 9000),
+            RdmaServerHealth::kDead);
+}
+
+TEST(RdmaControlPlaneTest, HeartbeatRefreshesLivenessAndTracksInstance) {
+  RdmaControlPlaneEndpoint endpoint{
+      "127.0.0.1",
+      AllocateTcpPort(),
+      500,
+      "unit-test",
+      1,
+      1,
+      "config",
+      "fabric"};
+  endpoint.health_stale_ms            = 300;
+  endpoint.health_dead_ms             = 900;
+  endpoint.health_record_retention_ms = 60000;
+  RdmaControlPlaneServer server(endpoint);
+  server.Start();
+  RdmaControlPlaneClient client(endpoint);
+
+  client.PublishServerReady(0);
+  EXPECT_EQ(server.ServerHealth(0, std::chrono::steady_clock::now()),
+            RdmaServerHealth::kServing);
+
+  // No heartbeat inside the stale window -> suspect, then dead.
+  std::this_thread::sleep_for(std::chrono::milliseconds(400));
+  EXPECT_EQ(server.ServerHealth(0, std::chrono::steady_clock::now()),
+            RdmaServerHealth::kSuspect);
+  std::this_thread::sleep_for(std::chrono::milliseconds(600));
+  EXPECT_EQ(server.ServerHealth(0, std::chrono::steady_clock::now()),
+            RdmaServerHealth::kDead);
+
+  // A heartbeat brings it back to serving and records the instance nonce.
+  client.SendHeartbeat(0, "instance-a");
+  EXPECT_EQ(server.ServerHealth(0, std::chrono::steady_clock::now()),
+            RdmaServerHealth::kServing);
+  EXPECT_EQ(server.ServerInstanceNonce(0), "instance-a");
+  EXPECT_GE(server.heartbeats_received(), 1u);
+
+  client.SendHeartbeat(0, "instance-b");
+  EXPECT_EQ(server.ServerInstanceNonce(0), "instance-b");
+
+  server.Stop();
+}
+
+TEST(RdmaControlPlaneTest, ReadyCarriesInstanceNonce) {
+  RdmaControlPlaneEndpoint endpoint{
+      "127.0.0.1",
+      AllocateTcpPort(),
+      500,
+      "unit-test",
+      1,
+      1,
+      "config",
+      "fabric"};
+  RdmaControlPlaneServer server(endpoint);
+  server.Start();
+  RdmaControlPlaneClient client(endpoint);
+
+  client.PublishServerReady(0, "instance-a");
+  EXPECT_EQ(server.ServerInstanceNonce(0), "instance-a");
+
+  // A READY without a nonce must not wipe the recorded identity.
+  client.PublishServerReady(0);
+  EXPECT_EQ(server.ServerInstanceNonce(0), "instance-a");
+
+  // A READY from a new process replaces it.
+  client.PublishServerReady(0, "instance-b");
+  EXPECT_EQ(server.ServerInstanceNonce(0), "instance-b");
+
+  server.Stop();
+}
+
+TEST(RdmaControlPlaneTest, HealthRecordEvictedAfterRetention) {
+  RdmaControlPlaneEndpoint endpoint{
+      "127.0.0.1",
+      AllocateTcpPort(),
+      500,
+      "unit-test",
+      1,
+      1,
+      "config",
+      "fabric"};
+  endpoint.health_stale_ms            = 60;
+  endpoint.health_dead_ms             = 120;
+  endpoint.health_record_retention_ms = 150;
+  RdmaControlPlaneServer server(endpoint);
+  server.Start();
+  RdmaControlPlaneClient client(endpoint);
+
+  client.PublishServerReady(0);
+  client.SendHeartbeat(0, "instance-a");
+  const std::uint64_t recorded = server.heartbeats_received();
+  EXPECT_GE(recorded, 1u);
+
+  // Past the retention window the monitor evicts the record; heartbeats for an
+  // unknown shard are ignored (READY is the only way to become serving).
+  std::this_thread::sleep_for(std::chrono::milliseconds(600));
+  client.SendHeartbeat(0, "instance-a");
+  EXPECT_EQ(server.heartbeats_received(), recorded);
+  EXPECT_TRUE(server.ServerInstanceNonce(0).empty());
+  server.Stop();
+}
+
+TEST(RdmaControlPlaneTest, HealthRecordRetainedWhenGcDisabled) {
+  RdmaControlPlaneEndpoint endpoint{
+      "127.0.0.1",
+      AllocateTcpPort(),
+      500,
+      "unit-test",
+      1,
+      1,
+      "config",
+      "fabric"};
+  endpoint.health_stale_ms            = 30;
+  endpoint.health_dead_ms             = 60;
+  endpoint.health_record_retention_ms = 0; // GC disabled (P1a default)
+  RdmaControlPlaneServer server(endpoint);
+  server.Start();
+  RdmaControlPlaneClient client(endpoint);
+
+  client.PublishServerReady(0, "instance-a");
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+  // The record survives its own death when eviction is disabled; heartbeats for
+  // it are still accepted (which is how it recovers without a new READY).
+  client.SendHeartbeat(0, "instance-a");
+  EXPECT_EQ(server.ServerInstanceNonce(0), "instance-a");
+  EXPECT_EQ(server.ServerHealth(0, std::chrono::steady_clock::now()),
+            RdmaServerHealth::kServing);
+
+  server.Stop();
+}
+
 } // namespace
 } // namespace petps

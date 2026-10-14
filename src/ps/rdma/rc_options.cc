@@ -61,6 +61,22 @@ DEFINE_int32(rdma_control_plane_port,
 DEFINE_int32(rdma_control_plane_timeout_ms,
              30000,
              "RDMA control-plane request timeout in milliseconds");
+DEFINE_int32(rdma_heartbeat_interval_ms,
+             1000,
+             "RDMA shard heartbeat interval in milliseconds");
+DEFINE_int32(rdma_health_stale_ms,
+             3000,
+             "RDMA control-plane health stale threshold in milliseconds; a "
+             "shard with no heartbeat within this window is Suspect");
+DEFINE_int32(
+    rdma_health_dead_ms,
+    9000,
+    "RDMA control-plane health dead threshold in milliseconds; a shard "
+    "with no heartbeat within this window is Dead");
+DEFINE_int32(rdma_health_record_retention_ms,
+             0,
+             "RDMA control-plane health record retention in milliseconds; a "
+             "record idle longer than this is evicted; 0 disables eviction");
 DEFINE_string(rdma_rc_namespace,
               "",
               "Override RC write shared-memory namespace");
