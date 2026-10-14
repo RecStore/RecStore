@@ -7,6 +7,7 @@
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -210,6 +211,20 @@ void ModifyQpToRts(ibv_qp* qp) {
 
 } // namespace
 
+std::string
+DescribeRawVerbsCompletionError(const RawVerbsCompletionError& error) {
+  return std::string("raw verbs CQ error: ") + ibv_wc_status_str(error.status) +
+         " class=" + RawVerbsErrorClassToString(error.error_class) +
+         " wr_id=" + std::to_string(error.wr_id) +
+         " opcode=" + std::to_string(static_cast<int>(error.opcode));
+}
+
+RawVerbsCompletionException::RawVerbsCompletionException(
+    const RawVerbsCompletionError& error, const std::string& context)
+    : std::runtime_error(DescribeRawVerbsCompletionError(error) +
+                         (context.empty() ? std::string() : " " + context)),
+      error_(error) {}
+
 struct RawVerbsTransport::Impl {
   explicit Impl(const RawVerbsConfig& c)
       : config(c), allocator(c.local_region_bytes, c.allocation_start_offset) {}
@@ -229,6 +244,7 @@ struct RawVerbsTransport::Impl {
   std::vector<RawVerbsRemoteMemory> remotes;
   std::vector<ibv_qp*> qps;
   std::vector<std::uint32_t> max_inline_data_per_node;
+  std::mutex cq_mutex; // Serializes CQ access across drains and wait harvests.
   ibv_wc wc_batch[kRawVerbsPollBatchSize] = {};
   RawVerbsCompletionBatchCursor batch_cursor;
 };
@@ -746,6 +762,49 @@ void RawVerbsTransport::SendDoorbell(
   }
 }
 
+RawVerbsPollOutcome RawVerbsTransport::TryPoll(RawVerbsCompletion* completion,
+                                               RawVerbsCompletionError* error) {
+  std::lock_guard<std::mutex> guard(impl_->cq_mutex);
+  if (!impl_->batch_cursor.HasCachedCompletion()) {
+    const int n =
+        ibv_poll_cq(impl_->cq, kRawVerbsPollBatchSize, impl_->wc_batch);
+    if (n < 0) {
+      throw std::runtime_error("ibv_poll_cq failed");
+    }
+    if (n == 0) {
+      return RawVerbsPollOutcome::kEmpty;
+    }
+    impl_->batch_cursor.Reset(impl_->wc_batch, n);
+  }
+  ibv_wc& wc = *impl_->batch_cursor.TakeCachedCompletion();
+  if (wc.status != IBV_WC_SUCCESS) {
+    error->status      = wc.status;
+    error->wr_id       = wc.wr_id;
+    error->opcode      = wc.opcode;
+    error->error_class = ClassifyRawVerbsCompletionStatus(wc.status);
+    return RawVerbsPollOutcome::kError;
+  }
+  if (completion != nullptr) {
+    completion->wr_id    = wc.wr_id;
+    completion->opcode   = wc.opcode;
+    completion->has_imm  = (wc.wc_flags & IBV_WC_WITH_IMM) != 0;
+    completion->imm_data = completion->has_imm ? ntohl(wc.imm_data) : 0;
+  }
+  if (wc.opcode == IBV_WC_RECV || wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
+    const std::uint16_t node_id = static_cast<std::uint16_t>(wc.wr_id);
+    ibv_recv_wr wr{};
+    ibv_recv_wr* bad_wr = nullptr;
+    wr.wr_id            = node_id;
+    wr.sg_list          = nullptr;
+    wr.num_sge          = 0;
+    if (node_id < impl_->qps.size() &&
+        ibv_post_recv(impl_->qps[node_id], &wr, &bad_wr) != 0) {
+      throw std::runtime_error("ibv_post_recv repost failed");
+    }
+  }
+  return RawVerbsPollOutcome::kCompletion;
+}
+
 bool RawVerbsTransport::Poll(RawVerbsCompletion* completion, int timeout_ms) {
   const auto deadline =
       timeout_ms > 0
@@ -753,45 +812,18 @@ bool RawVerbsTransport::Poll(RawVerbsCompletion* completion, int timeout_ms) {
                 std::chrono::milliseconds(timeout_ms)
           : std::chrono::steady_clock::time_point::max();
   while (true) {
-    if (!impl_->batch_cursor.HasCachedCompletion()) {
-      const int n =
-          ibv_poll_cq(impl_->cq, kRawVerbsPollBatchSize, impl_->wc_batch);
-      if (n < 0) {
-        throw std::runtime_error("ibv_poll_cq failed");
-      }
-      if (n == 0) {
-        if (std::chrono::steady_clock::now() >= deadline) {
-          return false;
-        }
-        std::this_thread::yield();
-        continue;
-      }
-      impl_->batch_cursor.Reset(impl_->wc_batch, n);
+    RawVerbsCompletionError error;
+    const RawVerbsPollOutcome outcome = TryPoll(completion, &error);
+    if (outcome == RawVerbsPollOutcome::kCompletion) {
+      return true;
     }
-    ibv_wc& wc = *impl_->batch_cursor.TakeCachedCompletion();
-    if (wc.status != IBV_WC_SUCCESS) {
-      throw std::runtime_error(
-          std::string("raw verbs CQ error: ") + ibv_wc_status_str(wc.status));
+    if (outcome == RawVerbsPollOutcome::kError) {
+      throw RawVerbsCompletionException(error);
     }
-    if (completion != nullptr) {
-      completion->wr_id    = wc.wr_id;
-      completion->opcode   = wc.opcode;
-      completion->has_imm  = (wc.wc_flags & IBV_WC_WITH_IMM) != 0;
-      completion->imm_data = completion->has_imm ? ntohl(wc.imm_data) : 0;
+    if (std::chrono::steady_clock::now() >= deadline) {
+      return false;
     }
-    if (wc.opcode == IBV_WC_RECV || wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
-      const std::uint16_t node_id = static_cast<std::uint16_t>(wc.wr_id);
-      ibv_recv_wr wr{};
-      ibv_recv_wr* bad_wr = nullptr;
-      wr.wr_id            = node_id;
-      wr.sg_list          = nullptr;
-      wr.num_sge          = 0;
-      if (node_id < impl_->qps.size() &&
-          ibv_post_recv(impl_->qps[node_id], &wr, &bad_wr) != 0) {
-        throw std::runtime_error("ibv_post_recv repost failed");
-      }
-    }
-    return true;
+    std::this_thread::yield();
   }
 }
 
