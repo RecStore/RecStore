@@ -2,11 +2,14 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #include "base/array.h"
@@ -433,6 +436,129 @@ TEST(PetPSIntegrationTest, RepeatedPutGetStressMultiShard) {
 
     ExpectFlatSlots(output.data(), values, embedding_dim);
   }
+}
+
+// P1b client fast-fail scenario (docs/plans/rdma-reliability-architecture.md
+// §3.7/§4.1). Needs a parent that freezes shard 1 after the warm-up marker and
+// unfreezes it once every lane is dirty, so it skips unless
+// RECSTORE_RDMA_FAST_FAIL_TEST is set. Driven by
+// tmp/experiments/EXP-0005-rdma-client-fast-fail/scripts/full_run.py.
+namespace {
+constexpr char kFastFailWarmMarker[]  = "RECSTORE_FAST_FAIL_WARM_READY";
+constexpr char kFastFailDirtyMarker[] = "RECSTORE_FAST_FAIL_ALL_LANES_DIRTY";
+// An immediately failed request only loads an atomic and throws; anything close
+// to the probe delay means the lane was not actually retired.
+constexpr std::int64_t kInstantFailUs = 100000;
+} // namespace
+
+TEST(PetPSIntegrationTest, ShardUnreachableRetiresLanesAndFailsFast) {
+  if (std::getenv("RECSTORE_RDMA_FAST_FAIL_TEST") == nullptr) {
+    GTEST_SKIP()
+        << "requires RECSTORE_RDMA_FAST_FAIL_TEST and a driving parent";
+  }
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  const int client_id     = FLAGS_global_id - FLAGS_num_server_processes;
+  ASSERT_GE(client_id, 0);
+  const auto fabric = TestFabric();
+  const int logical_client_id =
+      FLAGS_rdma_rc_client_id_base >= 0
+          ? FLAGS_rdma_rc_client_id_base
+          : fabric.logical_id;
+  petps::PetPSClient healthy("127.0.0.1", 1234, 0, logical_client_id);
+  petps::PetPSClient frozen("127.0.0.1", 1234, 1, logical_client_id);
+  healthy.InitThread();
+  frozen.InitThread();
+
+  const std::vector<std::uint64_t> healthy_keys = {8000001, 8000002, 8000003};
+  const std::vector<std::uint64_t> frozen_keys  = {9000001, 9000002, 9000003};
+  const auto healthy_values = MakeValues(healthy_keys, embedding_dim);
+  const auto frozen_values  = MakeValues(frozen_keys, embedding_dim);
+  ASSERT_EQ(healthy.PutParameter(healthy_keys, healthy_values), 0);
+  ASSERT_EQ(frozen.PutParameter(frozen_keys, frozen_values), 0);
+
+  const auto get_matches = [&](petps::PetPSClient& client,
+                               const std::vector<std::uint64_t>& keys,
+                               const base::RecTensor& expected) {
+    std::vector<float> output(
+        keys.size() * static_cast<std::size_t>(embedding_dim), 0.0f);
+    base::RecTensor output_tensor(
+        output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
+    if (client.GetParameter(
+            base::ConstArray<std::uint64_t>(keys), output_tensor) != 0) {
+      return false;
+    }
+    return std::equal(output.begin(), output.end(), expected.data_as<float>());
+  };
+
+  // The parent freezes shard 1 once it sees this marker.
+  std::printf("%s\n", kFastFailWarmMarker);
+  std::fflush(stdout);
+
+  // Phase 1: the next request has to die through the slow path with the
+  // dedicated error instead of sitting on the full L3 wait budget.
+  const auto phase1_start = std::chrono::steady_clock::now();
+  bool saw_unreachable    = false;
+  std::string first_error;
+  while (!saw_unreachable && std::chrono::steady_clock::now() - phase1_start <
+                                 std::chrono::seconds(60)) {
+    try {
+      EXPECT_TRUE(get_matches(frozen, frozen_keys, frozen_values));
+    } catch (const petps::ShardUnreachableError& error) {
+      saw_unreachable = true;
+      first_error     = error.what();
+    } catch (const std::exception& error) {
+      FAIL() << "expected the slow-path verdict, got: " << error.what();
+      return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+  ASSERT_TRUE(saw_unreachable) << "shard 1 never produced a verdict";
+  EXPECT_NE(first_error.find("unreachable"), std::string::npos) << first_error;
+
+  // Phase 2: retire the remaining lanes. Attempts that still own a live lane
+  // fail through the slow path; once every lane is dirty the request must fail
+  // immediately, without a probe and without waiting.
+  const int lanes = FLAGS_rdma_rc_qps_per_client_per_shard;
+  ASSERT_GT(lanes, 1);
+  std::int64_t instant_us = -1;
+  int attempts            = 1;
+  for (; attempts <= lanes + 4 && instant_us < 0; ++attempts) {
+    const auto attempt_start = std::chrono::steady_clock::now();
+    EXPECT_THROW(get_matches(frozen, frozen_keys, frozen_values),
+                 petps::ShardUnreachableError);
+    const std::int64_t elapsed_us =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - attempt_start)
+            .count();
+    if (elapsed_us < kInstantFailUs) {
+      instant_us = elapsed_us;
+    }
+    // Isolation: the healthy shard must keep serving while its peer retires.
+    EXPECT_TRUE(get_matches(healthy, healthy_keys, healthy_values));
+  }
+  EXPECT_GE(instant_us, 0) << "no instant failure after " << attempts - 1
+                           << " attempts (lanes=" << lanes << ")";
+  EXPECT_LE(attempts, lanes + 1)
+      << "retired more lanes than the pool has: " << attempts - 1;
+
+  // The parent brings shard 1 back once every lane is dirty.
+  std::printf("%s\n", kFastFailDirtyMarker);
+  std::fflush(stdout);
+
+  // Phase 3: the control plane reports the shard serving again, but P1b has no
+  // lane rebuild (P3), so the retired lanes must keep failing fast instead of
+  // re-using slots the server may still read.
+  std::this_thread::sleep_for(std::chrono::seconds(8));
+  const auto post_start = std::chrono::steady_clock::now();
+  EXPECT_THROW(get_matches(frozen, frozen_keys, frozen_values),
+               petps::ShardUnreachableError);
+  const std::int64_t post_us =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now() - post_start)
+          .count();
+  EXPECT_LT(post_us, kInstantFailUs)
+      << "a retired lane was re-armed without a rebuild";
+  EXPECT_TRUE(get_matches(healthy, healthy_keys, healthy_values));
 }
 
 TEST(PetPSIntegrationTest, AsyncGetPrefetchStressSingleShard) {

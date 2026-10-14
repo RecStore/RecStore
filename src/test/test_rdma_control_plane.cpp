@@ -512,5 +512,61 @@ TEST(RdmaControlPlaneTest, GetServerHealthTreatsErrorsAsUnknown) {
   EXPECT_FALSE(snapshot.known);
 }
 
+TEST(RdmaControlPlaneTest, SlowPathVerdictOnlyFailsOnDead) {
+  RdmaServerHealthSnapshot dead;
+  dead.known  = true;
+  dead.health = RdmaServerHealth::kDead;
+  EXPECT_EQ(ClassifyShardHealthSnapshot(true, dead),
+            RdmaSlowPathVerdict::kShardUnreachable);
+
+  RdmaServerHealthSnapshot suspect;
+  suspect.known  = true;
+  suspect.health = RdmaServerHealth::kSuspect;
+  EXPECT_EQ(ClassifyShardHealthSnapshot(true, suspect),
+            RdmaSlowPathVerdict::kKeepWaiting);
+
+  RdmaServerHealthSnapshot serving;
+  serving.known  = true;
+  serving.health = RdmaServerHealth::kServing;
+  EXPECT_EQ(ClassifyShardHealthSnapshot(true, serving),
+            RdmaSlowPathVerdict::kKeepWaiting);
+
+  // Unknown shard: the control plane has no READY record for it.
+  RdmaServerHealthSnapshot unknown;
+  EXPECT_EQ(ClassifyShardHealthSnapshot(true, unknown),
+            RdmaSlowPathVerdict::kKeepWaiting);
+
+  // Failed query (control plane unreachable): never a false verdict, even if a
+  // stale snapshot claims death.
+  EXPECT_EQ(ClassifyShardHealthSnapshot(false, dead),
+            RdmaSlowPathVerdict::kKeepWaiting);
+}
+
+TEST(RdmaControlPlaneTest, SlowPathProbeGateThrottlesAndCoalesces) {
+  RdmaSlowPathProbeGate gate;
+  const auto start = std::chrono::steady_clock::now();
+
+  // First probe is admitted.
+  EXPECT_TRUE(gate.TryBeginProbe(start, 100));
+  // A concurrent waiter is coalesced while the probe is in flight.
+  EXPECT_FALSE(gate.TryBeginProbe(start, 100));
+  gate.EndProbe();
+  EXPECT_EQ(gate.probes(), 1u);
+  EXPECT_EQ(gate.skipped(), 1u);
+
+  // Within the TTL the verdict is considered fresh.
+  EXPECT_FALSE(gate.TryBeginProbe(start + std::chrono::milliseconds(99), 100));
+  // A ttl of 0 disables the freshness window but still coalesces in-flight
+  // probes.
+  EXPECT_TRUE(gate.TryBeginProbe(start + std::chrono::milliseconds(100), 0));
+  EXPECT_FALSE(gate.TryBeginProbe(start + std::chrono::milliseconds(100), 0));
+  gate.EndProbe();
+
+  // After the TTL a new probe runs again.
+  EXPECT_TRUE(gate.TryBeginProbe(start + std::chrono::milliseconds(200), 100));
+  gate.EndProbe();
+  EXPECT_EQ(gate.probes(), 3u);
+}
+
 } // namespace
 } // namespace petps

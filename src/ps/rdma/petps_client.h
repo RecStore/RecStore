@@ -11,6 +11,7 @@
 #include "base/array.h"
 #include "base/log.h"
 #include "ps/base/shard_client.h"
+#include "ps/rdma/control_plane.h"
 #include "ps/rdma/rc_transport.h"
 #include "ps/rdma/rdma_protocol.h"
 #include "ps/rdma/rdma_status.h"
@@ -93,8 +94,20 @@ private:
   };
 
   struct QpContext {
+    QpContext()                            = default;
+    QpContext(const QpContext&)            = delete;
+    QpContext& operator=(const QpContext&) = delete;
+    QpContext(QpContext&& other) noexcept
+        : qp_index(other.qp_index),
+          slots(std::move(other.slots)),
+          dirty(other.dirty.load(std::memory_order_relaxed)) {}
+
     int qp_index = 0;
     std::vector<SlotContext> slots;
+    // P1b whole-lane dirty marker: a lane that lost a completion or whose
+    // shard was judged dead never hands its slots to new requests and fails
+    // its waiters fast (docs/plans/rdma-reliability-architecture.md §4.1).
+    std::atomic<bool> dirty{false};
   };
 
   struct PendingRpc {
@@ -131,6 +144,22 @@ private:
     int slot_in_qp = -1;
   };
   SlotHandle AcquireIdleSlot();
+  // Waits for the slot status word, running the P1b slow-path health probe
+  // after the configured delay and failing fast with ShardUnreachableError
+  // once the lane is dirty.
+  std::int32_t
+  WaitForStatusWord(int qp_index, const StatusWord* status, std::uint64_t seq);
+  // Queries the control plane about this shard at most once per probe
+  // interval; when the verdict is Dead the lane is retired and
+  // ShardUnreachableError is thrown.
+  void MaybeProbeShardHealth(int qp_index, std::int64_t waited_ms);
+  // Marks the lane as unusable for good: its slots are never reused and its
+  // waiters fail fast. `reason` is wait_timeout or health_dead.
+  void MarkLaneDirty(int qp_index,
+                     const char* reason,
+                     const RdmaServerHealthSnapshot* snapshot,
+                     std::int64_t waited_ms);
+  RdmaControlPlaneClient MakeControlPlaneClient() const;
   SlotContext& SlotAt(int qp_index, int slot_in_qp);
   const SlotContext& SlotAt(int qp_index, int slot_in_qp) const;
   void EnsureThreadInitializedLocked() const;
@@ -212,6 +241,10 @@ private:
   uint64_t next_prefetch_id_ = 1;
   ProfileCounters profile_;
   bool thread_initialized_ = false; // Set after InitThread has run.
+  // P1b slow path: shared by all lanes because shard health is per-shard.
+  RdmaSlowPathProbeGate health_probe_gate_;
+  std::atomic<std::uint64_t> health_probe_failures_{0};
+  std::atomic<std::uint64_t> health_probe_dead_verdicts_{0};
 };
 
 } // namespace petps

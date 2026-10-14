@@ -99,6 +99,75 @@ struct RdmaServerHealthSnapshot {
   std::string instance_nonce;
 };
 
+// Slow-path health probe policy (P1b). A client that has been waiting longer
+// than the probe threshold asks the control plane about its shard; the query is
+// throttled so many waiters share at most one RPC per probe interval
+// (docs/plans/rdma-reliability-architecture.md §3.7).
+enum class RdmaSlowPathVerdict {
+  kKeepWaiting,      // serving / suspect / unknown: stay on the L0..L3 budgets
+  kShardUnreachable, // the control plane judged the shard dead
+};
+
+inline RdmaSlowPathVerdict ClassifyShardHealthSnapshot(
+    bool query_ok, const RdmaServerHealthSnapshot& snapshot) {
+  // Never fail a request on an inconclusive query: an unreachable control plane
+  // or a shard without a READY record falls back to the data-path budgets
+  // instead of producing a false verdict.
+  if (!query_ok || !snapshot.known) {
+    return RdmaSlowPathVerdict::kKeepWaiting;
+  }
+  return snapshot.health == RdmaServerHealth::kDead
+           ? RdmaSlowPathVerdict::kShardUnreachable
+           : RdmaSlowPathVerdict::kKeepWaiting;
+}
+
+// Throttles slow-path probes: at most one in-flight query, and at most one
+// query per `ttl_ms`. A caller that cannot get the gate skips its own probe
+// instead of blocking (the verdict is re-read after the TTL); the probe
+// timestamp is taken before the RPC so a slow or failing control plane is
+// throttled as well.
+class RdmaSlowPathProbeGate {
+public:
+  // Returns true when the caller owns the probe and must call EndProbe().
+  bool TryBeginProbe(std::chrono::steady_clock::time_point now, int ttl_ms) {
+    std::lock_guard<std::mutex> guard(mu_);
+    if (probing_) {
+      skipped_.fetch_add(1, std::memory_order_relaxed);
+      return false;
+    }
+    if (has_probe_ && ttl_ms > 0 &&
+        now - last_probe_ < std::chrono::milliseconds(ttl_ms)) {
+      skipped_.fetch_add(1, std::memory_order_relaxed);
+      return false;
+    }
+    probing_    = true;
+    has_probe_  = true;
+    last_probe_ = now;
+    return true;
+  }
+
+  void EndProbe() {
+    std::lock_guard<std::mutex> guard(mu_);
+    probing_ = false;
+    probes_.fetch_add(1, std::memory_order_relaxed);
+  }
+
+  std::uint64_t probes() const {
+    return probes_.load(std::memory_order_relaxed);
+  }
+  std::uint64_t skipped() const {
+    return skipped_.load(std::memory_order_relaxed);
+  }
+
+private:
+  mutable std::mutex mu_;
+  bool probing_   = false;
+  bool has_probe_ = false;
+  std::chrono::steady_clock::time_point last_probe_{};
+  std::atomic<std::uint64_t> probes_{0};
+  std::atomic<std::uint64_t> skipped_{0};
+};
+
 // Metadata keys carried on the Probe RPC so heartbeat payloads do not need a
 // proto change.
 inline constexpr char kHeartbeatNodeIdMetadata[]   = "x-recstore-rdma-node-id";

@@ -77,6 +77,21 @@ DEFINE_int32(rdma_health_record_retention_ms,
              0,
              "RDMA control-plane health record retention in milliseconds; a "
              "record idle longer than this is evicted; 0 disables eviction");
+DEFINE_int32(rdma_health_probe_after_ms,
+             1000,
+             "Client slow-path health probe delay in milliseconds: a request "
+             "waiting longer than this queries shard health from the shard-0 "
+             "control plane; 0 disables slow-path probing");
+DEFINE_int32(rdma_health_probe_interval_ms,
+             1000,
+             "Minimum interval between client slow-path health probes in "
+             "milliseconds; also used as the TTL of the last verdict so "
+             "concurrent waiters share one query");
+DEFINE_int32(rdma_health_probe_timeout_ms,
+             1000,
+             "Deadline for a client slow-path health probe RPC in "
+             "milliseconds; a probe that times out keeps the request on its "
+             "data-path budgets");
 DEFINE_string(rdma_rc_namespace,
               "",
               "Override RC write shared-memory namespace");
