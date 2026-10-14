@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 #include "base/bind_core.h"
@@ -136,6 +137,11 @@ public:
         deployment_(deployment),
         fabric_(fabric),
         control_plane_client_(control_plane_endpoint) {
+    // Per-process liveness identity (see
+    // docs/plans/rdma-reliability-architecture.md §3.7): deployment_epoch is
+    // config-driven and does not change on restart, so the control plane uses
+    // this nonce to tell a restart from the same process.
+    instance_nonce_ = std::to_string(NowNs()) + "-" + std::to_string(getpid());
     petps::RcTransportConfig config;
     config.node_id        = FLAGS_global_id;
     config.num_servers    = deployment_.num_shards;
@@ -209,6 +215,8 @@ public:
     for (int i = 0; i < thread_count_; ++i) {
       threads_.emplace_back(&PetPSServer::PollingThread, this, i);
     }
+    // P1a: observation-only shard heartbeat to the control plane.
+    heartbeat_thread_ = std::thread(&PetPSServer::HeartbeatThread, this);
   }
 
 private:
@@ -981,6 +989,25 @@ private:
     response->status->response_bytes = 0;
   }
 
+  // P1a observation-only heartbeat loop. It never changes serving behavior: a
+  // failed heartbeat is logged and retried, never propagated to the data path.
+  void HeartbeatThread() {
+    const int interval_ms = std::max(1, FLAGS_rdma_heartbeat_interval_ms);
+    LOG(INFO) << "component=rdma_control_plane event=heartbeat_thread_ready"
+              << " server_id=" << FLAGS_global_id << " interval_ms="
+              << interval_ms << " instance=" << instance_nonce_;
+    while (true) {
+      try {
+        control_plane_client_.SendHeartbeat(FLAGS_global_id, instance_nonce_);
+      } catch (const std::exception& error) {
+        LOG(WARNING) << "component=rdma_control_plane event=heartbeat_failed"
+                     << " server_id=" << FLAGS_global_id << " error=\""
+                     << error.what() << "\"";
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+    }
+  }
+
   void MaybePublishServerReady() {
     const int started =
         started_threads_.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -988,7 +1015,7 @@ private:
         ready_published_.exchange(true, std::memory_order_acq_rel)) {
       return;
     }
-    control_plane_client_.PublishServerReady(FLAGS_global_id);
+    control_plane_client_.PublishServerReady(FLAGS_global_id, instance_nonce_);
     LOG(INFO) << "component=rdma_control_plane event=server_ready_published"
               << " server_id=" << FLAGS_global_id
               << " host=" << FLAGS_rdma_control_plane_host
@@ -1339,6 +1366,8 @@ private:
   std::unique_ptr<petps::RcShardServerTransport> transport_;
   petps::RdmaControlPlaneClient control_plane_client_;
   std::vector<std::thread> threads_;
+  std::thread heartbeat_thread_;
+  std::string instance_nonce_;
   std::vector<std::uint64_t> last_seq_;
   std::vector<std::uint64_t> inflight_seq_;
   std::vector<std::unique_ptr<PollerProfile>> poller_profiles_;
@@ -1421,6 +1450,20 @@ int main(int argc, char* argv[]) {
       deployment.configuration_digest,
       deployment.fabric_digest,
       deployment.num_shards};
+  control_plane_endpoint.health_stale_ms =
+      std::max(1, FLAGS_rdma_health_stale_ms);
+  control_plane_endpoint.health_dead_ms = std::max(
+      control_plane_endpoint.health_stale_ms + 1, FLAGS_rdma_health_dead_ms);
+  control_plane_endpoint.health_record_retention_ms =
+      std::max(0, FLAGS_rdma_health_record_retention_ms);
+  if (FLAGS_rdma_heartbeat_interval_ms >=
+      control_plane_endpoint.health_stale_ms) {
+    LOG(WARNING) << "component=rdma_control_plane"
+                 << " event=heartbeat_interval_not_below_stale"
+                 << " heartbeat_interval_ms="
+                 << FLAGS_rdma_heartbeat_interval_ms << " health_stale_ms="
+                 << control_plane_endpoint.health_stale_ms;
+  }
   if (FLAGS_global_id == 0) {
     control_plane_server =
         std::make_unique<petps::RdmaControlPlaneServer>(control_plane_endpoint);
