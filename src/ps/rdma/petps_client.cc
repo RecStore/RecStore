@@ -493,10 +493,9 @@ void PetPSClient::MaybeReportProfile() {
   const std::uint64_t pending_samples = Exchange(&profile_.pending_rpc_samples);
   const std::uint64_t pending_sum     = Exchange(&profile_.pending_rpc_sum);
   std::cout
-      << "component=rdma_rc_client_profile"
-      << " shard=" << shard_ << " client_id=" << client_id_
-      << " submit_count=" << submit_count << " wait_count=" << wait_count
-      << " revoke_count=" << revoke_count
+      << "component=rdma_rc_client_profile" << " shard=" << shard_
+      << " client_id=" << client_id_ << " submit_count=" << submit_count
+      << " wait_count=" << wait_count << " revoke_count=" << revoke_count
       << " acquire_qp_count=" << Exchange(&profile_.acquire_qp_count)
       << " acquire_qp_failures=" << Exchange(&profile_.acquire_qp_failures)
       << " submit_avg_ns=" << (submit_count == 0 ? 0 : submit_ns / submit_count)
