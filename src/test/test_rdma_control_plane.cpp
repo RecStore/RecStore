@@ -428,5 +428,89 @@ TEST(RdmaControlPlaneTest, HealthRecordRetainedWhenGcDisabled) {
   server.Stop();
 }
 
+TEST(RdmaControlPlaneTest, GetServerHealthReportsShardState) {
+  RdmaControlPlaneEndpoint endpoint{
+      "127.0.0.1",
+      AllocateTcpPort(),
+      500,
+      "unit-test",
+      1,
+      1,
+      "config",
+      "fabric"};
+  endpoint.health_stale_ms = 30;
+  endpoint.health_dead_ms  = 60;
+  RdmaControlPlaneServer server(endpoint);
+  server.Start();
+  RdmaControlPlaneClient client(endpoint);
+
+  client.PublishServerReady(0, "instance-a");
+
+  bool query_ok                     = false;
+  RdmaServerHealthSnapshot snapshot = client.GetServerHealth(0, -1, &query_ok);
+  EXPECT_TRUE(query_ok);
+  EXPECT_TRUE(snapshot.known);
+  EXPECT_EQ(snapshot.health, RdmaServerHealth::kServing);
+  EXPECT_GE(snapshot.last_seen_age_ms, 0);
+  EXPECT_EQ(snapshot.instance_nonce, "instance-a");
+
+  // Unknown shard: a successful query that carries no opinion.
+  query_ok = false;
+  snapshot = client.GetServerHealth(7, -1, &query_ok);
+  EXPECT_TRUE(query_ok);
+  EXPECT_FALSE(snapshot.known);
+
+  // No heartbeat: health is evaluated fresh at query time.
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  query_ok = false;
+  snapshot = client.GetServerHealth(0, -1, &query_ok);
+  EXPECT_TRUE(query_ok);
+  EXPECT_TRUE(snapshot.known);
+  EXPECT_EQ(snapshot.health, RdmaServerHealth::kDead);
+  EXPECT_GE(snapshot.last_seen_age_ms, 300);
+
+  // A heartbeat brings the same instance back to serving.
+  client.SendHeartbeat(0, "instance-a");
+  snapshot = client.GetServerHealth(0);
+  EXPECT_TRUE(snapshot.known);
+  EXPECT_EQ(snapshot.health, RdmaServerHealth::kServing);
+
+  server.Stop();
+}
+
+TEST(RdmaControlPlaneTest, GetServerHealthTreatsErrorsAsUnknown) {
+  RdmaControlPlaneEndpoint endpoint{
+      "127.0.0.1",
+      AllocateTcpPort(),
+      200,
+      "unit-test",
+      1,
+      1,
+      "config",
+      "fabric"};
+  RdmaControlPlaneServer server(endpoint);
+  server.Start();
+  RdmaControlPlaneClient client(endpoint);
+  client.PublishServerReady(0, "instance-a");
+
+  // Wrong deployment identity is rejected by the server; the client reports an
+  // unknown snapshot instead of leaking a health opinion.
+  RdmaControlPlaneEndpoint other = endpoint;
+  other.deployment_id            = "other-deployment";
+  RdmaControlPlaneClient foreign_client(other);
+  bool query_ok = true;
+  RdmaServerHealthSnapshot snapshot =
+      foreign_client.GetServerHealth(0, -1, &query_ok);
+  EXPECT_FALSE(query_ok);
+  EXPECT_FALSE(snapshot.known);
+
+  // Control plane down: still no opinion, no throw.
+  server.Stop();
+  query_ok = true;
+  snapshot = client.GetServerHealth(0, -1, &query_ok);
+  EXPECT_FALSE(query_ok);
+  EXPECT_FALSE(snapshot.known);
+}
+
 } // namespace
 } // namespace petps

@@ -19,6 +19,8 @@ namespace {
 
 using recstoreps::rdma::GetMetaRequest;
 using recstoreps::rdma::GetMetaResponse;
+using recstoreps::rdma::GetServerHealthRequest;
+using recstoreps::rdma::GetServerHealthResponse;
 using recstoreps::rdma::ProbeRequest;
 using recstoreps::rdma::ProbeResponse;
 using recstoreps::rdma::PublishMetaRequest;
@@ -617,6 +619,34 @@ public:
     return grpc::Status::OK;
   }
 
+  grpc::Status GetServerHealth(grpc::ServerContext*,
+                               const GetServerHealthRequest* request,
+                               GetServerHealthResponse* response) override {
+    const grpc::Status identity = ValidateDeploymentIdentity(
+        request->deployment_id(), request->deployment_epoch());
+    if (!identity.ok()) {
+      return identity;
+    }
+    if (request->server_id() < 0) {
+      return grpc::Status(
+          grpc::StatusCode::INVALID_ARGUMENT, "server id must be non-negative");
+    }
+    if (owner_->stop_requested_.load(std::memory_order_relaxed)) {
+      return MakeUnavailable("control-plane stopping");
+    }
+    const RdmaServerHealthSnapshot snapshot =
+        owner_->ServerHealthSnapshot(request->server_id());
+    response->set_known(snapshot.known);
+    response->set_state(
+        snapshot.known ? static_cast<std::int32_t>(snapshot.health) : -1);
+    response->set_last_seen_age_ms(
+        snapshot.known ? snapshot.last_seen_age_ms : -1);
+    if (snapshot.known) {
+      response->set_instance_nonce(snapshot.instance_nonce);
+    }
+    return grpc::Status::OK;
+  }
+
 private:
   RdmaControlPlaneServer* owner_;
 };
@@ -740,6 +770,53 @@ void RdmaControlPlaneClient::SendHeartbeat(
                       std::to_string(endpoint_.deployment_epoch));
   context.set_deadline(DeadlineFromNow(endpoint_.timeout_ms));
   ThrowIfNotOk(stub->Probe(&context, request, &response), "probe");
+}
+
+RdmaServerHealthSnapshot RdmaControlPlaneClient::GetServerHealth(
+    int server_id, int timeout_ms, bool* query_ok) const {
+  const int effective_timeout_ms =
+      timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
+  if (query_ok != nullptr) {
+    *query_ok = false;
+  }
+  RdmaServerHealthSnapshot snapshot;
+
+  auto channel = grpc::CreateChannel(
+      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
+  auto stub = RdmaControlPlane::NewStub(channel);
+
+  GetServerHealthRequest request;
+  request.set_server_id(server_id);
+  request.set_deployment_id(endpoint_.deployment_id);
+  request.set_deployment_epoch(endpoint_.deployment_epoch);
+
+  GetServerHealthResponse response;
+  grpc::ClientContext context;
+  context.set_deadline(DeadlineFromNow(effective_timeout_ms));
+  const grpc::Status status =
+      stub->GetServerHealth(&context, request, &response);
+  if (!status.ok()) {
+    VLOG(1) << "component=rdma_control_plane event=get_server_health_failed"
+            << " server_id=" << server_id
+            << " status=" << GrpcStatusText(status);
+    return snapshot;
+  }
+  if (query_ok != nullptr) {
+    *query_ok = true;
+  }
+  if (!response.known()) {
+    return snapshot;
+  }
+  const auto state = response.state();
+  if (state < static_cast<std::int32_t>(RdmaServerHealth::kServing) ||
+      state > static_cast<std::int32_t>(RdmaServerHealth::kDead)) {
+    return snapshot;
+  }
+  snapshot.known            = true;
+  snapshot.health           = static_cast<RdmaServerHealth>(state);
+  snapshot.last_seen_age_ms = response.last_seen_age_ms();
+  snapshot.instance_nonce   = response.instance_nonce();
+  return snapshot;
 }
 
 void RdmaControlPlaneClient::WaitServer(int server_id, int timeout_ms) const {
@@ -886,6 +963,32 @@ std::string RdmaControlPlaneServer::ServerInstanceNonce(int server_id) const {
   const auto it = ready_servers_.find(
       ReadyKey{endpoint_.deployment_id, endpoint_.deployment_epoch, server_id});
   return it == ready_servers_.end() ? std::string() : it->second.instance_nonce;
+}
+
+RdmaServerHealthSnapshot
+RdmaControlPlaneServer::ServerHealthSnapshot(int server_id) const {
+  std::lock_guard<std::mutex> guard(mu_);
+  const auto it = ready_servers_.find(
+      ReadyKey{endpoint_.deployment_id, endpoint_.deployment_epoch, server_id});
+  if (it == ready_servers_.end()) {
+    return RdmaServerHealthSnapshot{};
+  }
+  const auto now = std::chrono::steady_clock::now();
+  RdmaServerHealthSnapshot snapshot;
+  snapshot.known  = true;
+  snapshot.health = EvaluateServerHealth(
+      it->second.last_seen,
+      now,
+      endpoint_.health_stale_ms,
+      endpoint_.health_dead_ms);
+  snapshot.instance_nonce = it->second.instance_nonce;
+  if (it->second.last_seen != std::chrono::steady_clock::time_point{}) {
+    snapshot.last_seen_age_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - it->second.last_seen)
+            .count();
+  }
+  return snapshot;
 }
 
 void RdmaControlPlaneServer::RecordHeartbeat(

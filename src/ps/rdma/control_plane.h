@@ -88,6 +88,17 @@ inline RdmaServerHealth EvaluateServerHealth(
   return RdmaServerHealth::kServing;
 }
 
+// Snapshot returned by the GetServerHealth RPC and the matching server-side
+// accessor. `known=false` means shard 0 has no READY record for that shard, so
+// the data path must stay on its own budgets instead of failing the request
+// (P1b slow-path fast-fail; docs/plans/rdma-reliability-architecture.md §3.7).
+struct RdmaServerHealthSnapshot {
+  bool known                    = false;
+  RdmaServerHealth health       = RdmaServerHealth::kServing;
+  std::int64_t last_seen_age_ms = -1;
+  std::string instance_nonce;
+};
+
 // Metadata keys carried on the Probe RPC so heartbeat payloads do not need a
 // proto change.
 inline constexpr char kHeartbeatNodeIdMetadata[]   = "x-recstore-rdma-node-id";
@@ -126,6 +137,11 @@ public:
   void PublishServerDraining(int server_id) const;
   // Lightweight liveness heartbeat. P1a: the server records it as `last_seen`.
   void SendHeartbeat(int server_id, const std::string& instance_nonce) const;
+  // Queries shard health from the shard 0 control plane. Never throws: RPC
+  // failures are reported as `query_ok=false` with an unknown snapshot so the
+  // client slow path can fall back to L0/L3 instead of failing the request.
+  RdmaServerHealthSnapshot GetServerHealth(
+      int server_id, int timeout_ms = -1, bool* query_ok = nullptr) const;
   void WaitServer(int server_id, int timeout_ms = -1) const;
   void WaitServerReady(int num_servers, int timeout_ms = -1) const;
 
@@ -153,6 +169,10 @@ public:
   // Health of a ready record evaluated at `now` (kServing when unknown).
   RdmaServerHealth
   ServerHealth(int server_id, std::chrono::steady_clock::time_point now) const;
+  // Fresh snapshot for the GetServerHealth RPC: `known=false` when there is no
+  // READY record, otherwise the health evaluated at query time plus the
+  // last-seen age and instance nonce.
+  RdmaServerHealthSnapshot ServerHealthSnapshot(int server_id) const;
   // Latest instance nonce observed for a ready record ("" when unknown).
   std::string ServerInstanceNonce(int server_id) const;
 

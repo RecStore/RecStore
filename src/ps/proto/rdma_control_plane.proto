@@ -108,6 +108,24 @@ message ProbeRequest {
 message ProbeResponse {
 }
 
+message GetServerHealthRequest {
+  int32 server_id = 1;
+  string deployment_id = 2;
+  uint64 deployment_epoch = 3;
+}
+
+message GetServerHealthResponse {
+  // false when shard 0 holds no READY record for this server id (never ready,
+  // evicted, or already reported dead). Callers must treat "unknown" as "no
+  // opinion" and fall back to the data-plane budgets (P1b slow path).
+  bool known = 1;
+  // RdmaServerHealth value: 0 serving, 1 suspect, 2 dead; -1 when unknown.
+  int32 state = 2;
+  // Age of the last READY/heartbeat reference in ms; -1 when never seen.
+  int64 last_seen_age_ms = 3;
+  string instance_nonce = 4;
+}
+
 service RdmaControlPlane {
   rpc PublishMeta(PublishMetaRequest) returns (PublishMetaResponse);
   rpc GetMeta(GetMetaRequest) returns (GetMetaResponse);
@@ -118,4 +136,6 @@ service RdmaControlPlane {
   rpc WaitServer(WaitServerRequest) returns (WaitServerResponse);
   rpc WaitServerReady(WaitServerReadyRequest) returns (WaitServerReadyResponse);
   rpc Probe(ProbeRequest) returns (ProbeResponse);
+  rpc GetServerHealth(GetServerHealthRequest)
+      returns (GetServerHealthResponse);
 }
