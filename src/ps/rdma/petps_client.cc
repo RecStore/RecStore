@@ -157,8 +157,12 @@ void PetPSClient::InitializeTransport() {
   config_.fabric               = fabric;
 
   transport_ = std::make_unique<RcShardClientTransport>(config_);
-  const RdmaControlPlaneClient control_plane = MakeControlPlaneClient();
-  control_plane.WaitServer(shard_, config_.control_plane_timeout_ms);
+  // One control-plane client per shard client: WaitServer at init and every
+  // slow-path health probe share one channel/stub instead of connecting per
+  // probe (P1b §15-5).
+  control_plane_ =
+      std::make_unique<RdmaControlPlaneClient>(MakeControlPlaneClient());
+  control_plane_->WaitServer(shard_, config_.control_plane_timeout_ms);
   qps_.clear();
   qps_.reserve(static_cast<std::size_t>(config_.qps_per_client_per_shard));
   for (int qp = 0; qp < config_.qps_per_client_per_shard; ++qp) {
@@ -354,10 +358,9 @@ void PetPSClient::MaybeProbeShardHealth(int qp_index, std::int64_t waited_ms) {
     return;
   }
   const ProbeGateGuard guard(&health_probe_gate_);
-  bool query_ok = false;
-  const RdmaServerHealthSnapshot snapshot =
-      MakeControlPlaneClient().GetServerHealth(
-          shard_, FLAGS_rdma_health_probe_timeout_ms, &query_ok);
+  bool query_ok                           = false;
+  const RdmaServerHealthSnapshot snapshot = control_plane_->GetServerHealth(
+      shard_, FLAGS_rdma_health_probe_timeout_ms, &query_ok);
   if (!query_ok) {
     health_probe_failures_.fetch_add(1, std::memory_order_relaxed);
     VLOG(1) << "component=rdma_rc_client event=health_probe_failed shard="

@@ -183,6 +183,11 @@ void ValidateRawVerbsPeerMeta(const RawVerbsConfig& local,
                               int expected_node_id,
                               const RawVerbsNodeMeta& remote);
 
+// Opaque per-client gRPC channel/stub cache; defined in control_plane.cc. Kept
+// out of the header so this file does not pull in the generated stubs, and
+// shared between copies of a client so they reuse one connection.
+struct RdmaControlPlaneChannelCache;
+
 class RdmaControlPlaneClient {
 public:
   explicit RdmaControlPlaneClient(RdmaControlPlaneEndpoint endpoint);
@@ -214,8 +219,14 @@ public:
   void WaitServer(int server_id, int timeout_ms = -1) const;
   void WaitServerReady(int num_servers, int timeout_ms = -1) const;
 
+  // Number of gRPC channels this client has opened. It stays 1 no matter how
+  // many RPCs are sent, which is what keeps the per-second shard heartbeats off
+  // a per-heartbeat connect (P1b §15-5).
+  std::uint64_t channels_opened() const;
+
 private:
   RdmaControlPlaneEndpoint endpoint_;
+  std::shared_ptr<RdmaControlPlaneChannelCache> channels_;
 };
 
 class RdmaControlPlaneServer {
@@ -231,6 +242,16 @@ public:
   // touching the monitor internals.
   std::uint64_t heartbeats_received() const {
     return heartbeats_received_.load(std::memory_order_relaxed);
+  }
+  // Heartbeats dropped for a bad identity: malformed metadata, another
+  // deployment/epoch, or an out-of-range shard id (P1b §15-6).
+  std::uint64_t heartbeats_rejected() const {
+    return heartbeats_rejected_.load(std::memory_order_relaxed);
+  }
+  // Heartbeats for a shard without a READY record; READY stays the only way to
+  // become serving, so these never create or revive a record.
+  std::uint64_t heartbeats_unknown_shard() const {
+    return heartbeats_unknown_shard_.load(std::memory_order_relaxed);
   }
   std::uint64_t health_transitions() const {
     return health_transitions_.load(std::memory_order_relaxed);
@@ -328,13 +349,14 @@ private:
   std::thread health_monitor_;
   std::condition_variable health_cv_;
   std::atomic<std::uint64_t> heartbeats_received_{0};
+  std::atomic<std::uint64_t> heartbeats_rejected_{0};
+  std::atomic<std::uint64_t> heartbeats_unknown_shard_{0};
   std::atomic<std::uint64_t> health_transitions_{0};
 
   void HealthMonitorLoop();
-  void RecordHeartbeat(const std::string& deployment_id,
-                       std::uint64_t deployment_epoch,
-                       int server_id,
-                       const std::string& instance_nonce);
+  // Records an accepted heartbeat. The caller has already validated the
+  // heartbeat identity against this endpoint.
+  void RecordHeartbeat(int server_id, const std::string& instance_nonce);
 };
 
 } // namespace petps

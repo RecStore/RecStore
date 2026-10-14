@@ -221,6 +221,9 @@ private:
   int client_id_          = -1; // Logical client id derived from global id.
   RcTransportConfig config_;    // Transport slot sizing and shard config.
   std::unique_ptr<RcShardClientTransport> transport_; // Slot transport owner.
+  // Control-plane connection shared by the init handshake and the P1b
+  // slow-path health probes.
+  std::unique_ptr<RdmaControlPlaneClient> control_plane_;
   std::vector<QpContext> qps_; // One context per client-side QP lane.
   std::vector<std::vector<char>>
       receive_buffers_; // All heap-backed response buffers ever allocated.

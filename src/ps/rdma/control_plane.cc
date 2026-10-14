@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -15,6 +16,18 @@
 #include "rdma_control_plane.grpc.pb.h"
 
 namespace petps {
+
+// One lazily opened channel/stub per client, shared by every copy of that
+// client. A shard heartbeats once per second, so opening a connection per RPC
+// would be wasteful (P1b §15-5); gRPC channels are thread-safe and serve
+// concurrent RPCs, so all callers of one client share this cache.
+struct RdmaControlPlaneChannelCache {
+  std::once_flag once;
+  std::shared_ptr<grpc::Channel> channel;
+  std::shared_ptr<recstoreps::rdma::RdmaControlPlane::Stub> stub;
+  std::atomic<std::uint64_t> channels_opened{0};
+};
+
 namespace {
 
 using recstoreps::rdma::GetMetaRequest;
@@ -122,6 +135,21 @@ void LogInstanceChange(const std::string& deployment_id,
                << " deployment_id=" << deployment_id
                << " epoch=" << deployment_epoch << " server_id=" << server_id
                << " from=" << from << " to=" << to;
+}
+
+// Opens the shared channel/stub on first use and returns the cached stub. The
+// channel is created without connecting, so a client that is never used keeps
+// costing nothing.
+recstoreps::rdma::RdmaControlPlane::Stub* CachedControlPlaneStub(
+    const std::shared_ptr<RdmaControlPlaneChannelCache>& cache,
+    const RdmaControlPlaneEndpoint& endpoint) {
+  std::call_once(cache->once, [&cache, &endpoint] {
+    cache->channel = grpc::CreateChannel(
+        EndpointString(endpoint), grpc::InsecureChannelCredentials());
+    cache->stub = recstoreps::rdma::RdmaControlPlane::NewStub(cache->channel);
+    cache->channels_opened.fetch_add(1, std::memory_order_relaxed);
+  });
+  return cache->stub.get();
 }
 
 } // namespace
@@ -591,31 +619,38 @@ public:
       return MakeUnavailable("control-plane stopping");
     }
     // A bare Probe carries no identity and is a pure liveness check. The
-    // heartbeat Probe carries the shard identity as metadata; when present it
-    // refreshes that shard's `last_seen`.
+    // heartbeat Probe carries the shard identity as metadata; only a fully
+    // matching identity may refresh that shard's `last_seen` (P1b §15-6). A
+    // mismatch is dropped and counted: a stale or foreign process must not be
+    // able to keep a record alive, while the heartbeat channel itself stays
+    // non-fatal (a P1a contract, the sender only logs).
     const std::string node_id_text =
         ReadMetadataValue(context, kHeartbeatNodeIdMetadata);
     if (node_id_text.empty()) {
       return grpc::Status::OK;
     }
     const int server_id = ParseHeartbeatNodeId(node_id_text);
-    if (server_id < 0) {
-      return grpc::Status::OK;
-    }
     const std::string deployment_id_text =
         ReadMetadataValue(context, kHeartbeatDeploymentIdMetadata);
-    const std::string deployment_id =
-        deployment_id_text.empty()
-            ? owner_->endpoint_.deployment_id
-            : deployment_id_text;
-    const std::uint64_t deployment_epoch = ParseHeartbeatEpoch(
-        ReadMetadataValue(context, kHeartbeatDeploymentEpochMetadata),
-        owner_->endpoint_.deployment_epoch);
+    const std::string epoch_text =
+        ReadMetadataValue(context, kHeartbeatDeploymentEpochMetadata);
+    const bool identity_matches =
+        !deployment_id_text.empty() &&
+        deployment_id_text == owner_->endpoint_.deployment_id &&
+        !epoch_text.empty() &&
+        ParseHeartbeatEpoch(epoch_text, 0) ==
+            owner_->endpoint_.deployment_epoch;
+    const int num_servers = owner_->endpoint_.num_servers;
+    if (server_id < 0 || !identity_matches ||
+        (num_servers > 0 && server_id >= num_servers)) {
+      owner_->heartbeats_rejected_.fetch_add(1, std::memory_order_relaxed);
+      VLOG(1) << "component=rdma_control_plane event=heartbeat_rejected"
+              << " node_id=" << node_id_text << " deployment_id="
+              << deployment_id_text << " epoch=" << epoch_text;
+      return grpc::Status::OK;
+    }
     owner_->RecordHeartbeat(
-        deployment_id,
-        deployment_epoch,
-        server_id,
-        ReadMetadataValue(context, kHeartbeatInstanceMetadata));
+        server_id, ReadMetadataValue(context, kHeartbeatInstanceMetadata));
     return grpc::Status::OK;
   }
 
@@ -653,7 +688,12 @@ private:
 
 RdmaControlPlaneClient::RdmaControlPlaneClient(
     RdmaControlPlaneEndpoint endpoint)
-    : endpoint_(std::move(endpoint)) {}
+    : endpoint_(std::move(endpoint)),
+      channels_(std::make_shared<RdmaControlPlaneChannelCache>()) {}
+
+std::uint64_t RdmaControlPlaneClient::channels_opened() const {
+  return channels_->channels_opened.load(std::memory_order_relaxed);
+}
 
 void RdmaControlPlaneClient::PublishMeta(
     int publisher_node_id,
@@ -661,9 +701,7 @@ void RdmaControlPlaneClient::PublishMeta(
     int receiver_node_id,
     int receiver_lane,
     const RawVerbsNodeMeta& meta) const {
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
 
   PublishMetaRequest request;
   request.set_publisher_node_id(publisher_node_id);
@@ -688,9 +726,7 @@ RawVerbsNodeMeta RdmaControlPlaneClient::GetMeta(
     int timeout_ms) const {
   const int effective_timeout_ms =
       timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
 
   GetMetaRequest request;
   request.set_publisher_node_id(publisher_node_id);
@@ -710,9 +746,7 @@ RawVerbsNodeMeta RdmaControlPlaneClient::GetMeta(
 
 void RdmaControlPlaneClient::PublishServerReady(
     int server_id, const std::string& instance_nonce) const {
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
 
   PublishServerReadyRequest request;
   request.set_server_id(server_id);
@@ -733,9 +767,7 @@ void RdmaControlPlaneClient::PublishServerReady(
 }
 
 void RdmaControlPlaneClient::PublishServerDraining(int server_id) const {
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
 
   PublishServerDrainingRequest request;
   request.set_server_id(server_id);
@@ -754,9 +786,7 @@ void RdmaControlPlaneClient::PublishServerDraining(int server_id) const {
 
 void RdmaControlPlaneClient::SendHeartbeat(
     int server_id, const std::string& instance_nonce) const {
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
 
   ProbeRequest request;
   ProbeResponse response;
@@ -781,9 +811,7 @@ RdmaServerHealthSnapshot RdmaControlPlaneClient::GetServerHealth(
   }
   RdmaServerHealthSnapshot snapshot;
 
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
 
   GetServerHealthRequest request;
   request.set_server_id(server_id);
@@ -822,9 +850,7 @@ RdmaServerHealthSnapshot RdmaControlPlaneClient::GetServerHealth(
 void RdmaControlPlaneClient::WaitServer(int server_id, int timeout_ms) const {
   const int effective_timeout_ms =
       timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
 
   WaitServerRequest request;
   request.set_server_id(server_id);
@@ -845,9 +871,7 @@ void RdmaControlPlaneClient::WaitServerReady(int num_servers,
                                              int timeout_ms) const {
   const int effective_timeout_ms =
       timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
 
   WaitServerReadyRequest request;
   request.set_num_servers(num_servers);
@@ -992,16 +1016,14 @@ RdmaControlPlaneServer::ServerHealthSnapshot(int server_id) const {
 }
 
 void RdmaControlPlaneServer::RecordHeartbeat(
-    const std::string& deployment_id,
-    std::uint64_t deployment_epoch,
-    int server_id,
-    const std::string& instance_nonce) {
+    int server_id, const std::string& instance_nonce) {
   std::lock_guard<std::mutex> guard(mu_);
-  const auto it =
-      ready_servers_.find(ReadyKey{deployment_id, deployment_epoch, server_id});
+  const auto it = ready_servers_.find(
+      ReadyKey{endpoint_.deployment_id, endpoint_.deployment_epoch, server_id});
   if (it == ready_servers_.end()) {
     // Unknown shard: either not ready yet or already evicted. Do not create a
     // record from a heartbeat; READY remains the only way to become serving.
+    heartbeats_unknown_shard_.fetch_add(1, std::memory_order_relaxed);
     return;
   }
   it->second.last_seen = std::chrono::steady_clock::now();
@@ -1009,8 +1031,8 @@ void RdmaControlPlaneServer::RecordHeartbeat(
     if (!it->second.instance_nonce.empty() &&
         it->second.instance_nonce != instance_nonce) {
       LogInstanceChange(
-          deployment_id,
-          deployment_epoch,
+          endpoint_.deployment_id,
+          endpoint_.deployment_epoch,
           server_id,
           it->second.instance_nonce,
           instance_nonce);

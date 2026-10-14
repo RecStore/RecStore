@@ -568,5 +568,128 @@ TEST(RdmaControlPlaneTest, SlowPathProbeGateThrottlesAndCoalesces) {
   EXPECT_EQ(gate.probes(), 3u);
 }
 
+TEST(RdmaControlPlaneTest, HeartbeatIdentityIsValidated) {
+  RdmaControlPlaneEndpoint endpoint{
+      "127.0.0.1",
+      AllocateTcpPort(),
+      500,
+      "unit-test",
+      1,
+      1,
+      "config",
+      "fabric"};
+  endpoint.num_servers     = 1;
+  endpoint.health_stale_ms = 60;
+  endpoint.health_dead_ms  = 120;
+  RdmaControlPlaneServer server(endpoint);
+  server.Start();
+  RdmaControlPlaneClient client(endpoint);
+
+  client.PublishServerReady(0, "instance-a");
+  client.SendHeartbeat(0, "instance-a");
+  ASSERT_EQ(server.heartbeats_received(), 1u);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  ASSERT_EQ(server.ServerHealth(0, std::chrono::steady_clock::now()),
+            RdmaServerHealth::kDead);
+
+  // Another deployment cannot revive this shard's record.
+  RdmaControlPlaneEndpoint foreign = endpoint;
+  foreign.deployment_id            = "other-deployment";
+  RdmaControlPlaneClient foreign_client(foreign);
+  foreign_client.SendHeartbeat(0, "instance-a");
+  EXPECT_EQ(server.heartbeats_rejected(), 1u);
+  EXPECT_EQ(server.heartbeats_received(), 1u);
+  EXPECT_EQ(server.ServerHealth(0, std::chrono::steady_clock::now()),
+            RdmaServerHealth::kDead);
+
+  // A new epoch of the same deployment is rejected as well.
+  RdmaControlPlaneEndpoint next_epoch = endpoint;
+  next_epoch.deployment_epoch         = 2;
+  RdmaControlPlaneClient epoch_client(next_epoch);
+  epoch_client.SendHeartbeat(0, "instance-a");
+  EXPECT_EQ(server.heartbeats_rejected(), 2u);
+  EXPECT_EQ(server.heartbeats_received(), 1u);
+
+  // A shard id outside num_servers is rejected before the record lookup.
+  client.SendHeartbeat(1, "instance-a");
+  EXPECT_EQ(server.heartbeats_rejected(), 3u);
+  EXPECT_EQ(server.heartbeats_unknown_shard(), 0u);
+
+  // The shard's own heartbeat still refreshes the record.
+  client.SendHeartbeat(0, "instance-b");
+  EXPECT_EQ(server.heartbeats_received(), 2u);
+  EXPECT_EQ(server.ServerHealth(0, std::chrono::steady_clock::now()),
+            RdmaServerHealth::kServing);
+  EXPECT_EQ(server.ServerInstanceNonce(0), "instance-b");
+
+  server.Stop();
+}
+
+TEST(RdmaControlPlaneTest, HeartbeatForUnknownShardIsCounted) {
+  RdmaControlPlaneEndpoint endpoint{
+      "127.0.0.1",
+      AllocateTcpPort(),
+      500,
+      "unit-test",
+      1,
+      1,
+      "config",
+      "fabric"};
+  endpoint.num_servers = 2;
+  RdmaControlPlaneServer server(endpoint);
+  server.Start();
+  RdmaControlPlaneClient client(endpoint);
+
+  // No READY record yet: a heartbeat never creates one.
+  client.SendHeartbeat(1, "instance-a");
+  EXPECT_EQ(server.heartbeats_unknown_shard(), 1u);
+  EXPECT_EQ(server.heartbeats_received(), 0u);
+  EXPECT_FALSE(server.ServerHealthSnapshot(1).known);
+
+  // After READY the same heartbeat is accepted.
+  client.PublishServerReady(1, "instance-a");
+  client.SendHeartbeat(1, "instance-a");
+  EXPECT_EQ(server.heartbeats_unknown_shard(), 1u);
+  EXPECT_EQ(server.heartbeats_received(), 1u);
+
+  server.Stop();
+}
+
+TEST(RdmaControlPlaneTest, ControlPlaneClientReusesOneChannel) {
+  RdmaControlPlaneEndpoint endpoint{
+      "127.0.0.1",
+      AllocateTcpPort(),
+      500,
+      "unit-test",
+      1,
+      1,
+      "config",
+      "fabric"};
+  RdmaControlPlaneServer server(endpoint);
+  server.Start();
+  RdmaControlPlaneClient client(endpoint);
+
+  // Lazily opened: a client that has not sent an RPC holds no channel.
+  EXPECT_EQ(client.channels_opened(), 0u);
+
+  client.PublishServerReady(0, "instance-a");
+  client.SendHeartbeat(0, "instance-a");
+  bool query_ok = false;
+  const RdmaServerHealthSnapshot snapshot =
+      client.GetServerHealth(0, -1, &query_ok);
+  EXPECT_TRUE(query_ok);
+  EXPECT_TRUE(snapshot.known);
+  client.WaitServer(0, 500);
+  client.SendHeartbeat(0, "instance-a");
+
+  // Four different RPCs, one shared channel: this is what keeps the per-second
+  // heartbeats off a per-heartbeat connect.
+  EXPECT_EQ(client.channels_opened(), 1u);
+  EXPECT_EQ(server.heartbeats_received(), 2u);
+
+  server.Stop();
+}
+
 } // namespace
 } // namespace petps
