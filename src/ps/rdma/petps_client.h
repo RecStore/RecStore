@@ -205,6 +205,9 @@ private:
                                std::uint64_t seq,
                                const std::string& table_name,
                                const RcClientQpView& view) const;
+  // Requires `mu_` (every call site holds it). Never waits for the RPC here:
+  // the status wait must run outside `mu_` because WaitForStatusWord harvests
+  // the lane CQ under that mutex.
   int SubmitRpcLocked(
       SlotContext* slot,
       const RequestDescriptor& descriptor,
@@ -212,8 +215,7 @@ private:
       std::size_t payload_bytes,
       float* recv_buffer,
       std::size_t key_count,
-      std::size_t response_bytes,
-      bool is_async);
+      std::size_t response_bytes);
 
   struct PrefetchState {
     int rpc_id            = -1;      // In-flight async GET handle.

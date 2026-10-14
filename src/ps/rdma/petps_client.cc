@@ -646,8 +646,7 @@ int PetPSClient::SubmitRpcLocked(
     std::size_t payload_bytes,
     float* recv_buffer,
     std::size_t key_count,
-    std::size_t response_bytes,
-    bool is_async) {
+    std::size_t response_bytes) {
   if (slot == nullptr) {
     throw std::runtime_error("slot context is null");
   }
@@ -661,6 +660,13 @@ int PetPSClient::SubmitRpcLocked(
     // must not be reused, so the lane is retired before failing this request.
     FailLaneOnCompletionError(
         slot->view.qp_index, error.error(), /*waited_ms=*/-1);
+  } catch (const RcTrackedCompletionTimeout&) {
+    // The previous request's completion never arrived: its slot memory may
+    // still be read by the server, so the lane is retired before the timeout
+    // is reported unchanged.
+    MarkLaneDirty(
+        slot->view.qp_index, "drain_timeout", nullptr, /*waited_ms=*/-1);
+    throw;
   }
   if (profile_enabled) {
     profile_.submit_rpc_count.fetch_add(1, std::memory_order_relaxed);
@@ -698,9 +704,6 @@ int PetPSClient::SubmitRpcLocked(
                peak, pending_size, std::memory_order_relaxed)) {
     }
     MaybeReportProfile();
-  }
-  if (!is_async) {
-    WaitRPCFinish(rpc_id);
   }
   return rpc_id;
 }
@@ -875,8 +878,7 @@ int PetPSClient::GetParameter(
         descriptor.payload_bytes,
         values,
         keys.Size(),
-        response_bytes,
-        true);
+        response_bytes);
   }
   if (!isAsync) {
     WaitRPCFinish(rpc_id);
@@ -1031,7 +1033,7 @@ int PetPSClient::PutParameter(const base::ConstArray<uint64_t>& keys,
       }
       recv   = AllocateStatusReceiveBufferLocked();
       rpc_id = SubmitRpcLocked(
-          &slot, descriptor, payload.data(), payload_bytes, recv, 0, 0, true);
+          &slot, descriptor, payload.data(), payload_bytes, recv, 0, 0);
     }
     WaitRPCFinish(rpc_id);
     const auto* status = reinterpret_cast<const std::int32_t*>(recv);
@@ -1078,8 +1080,7 @@ int PetPSClient::InitEmbeddingTable(
         descriptor.payload_bytes,
         recv,
         0,
-        0,
-        true);
+        0);
   }
 
   WaitRPCFinish(rpc_id);
@@ -1157,7 +1158,7 @@ int PetPSClient::UpdateParameter(const std::string& table_name,
       }
       recv   = AllocateStatusReceiveBufferLocked();
       rpc_id = SubmitRpcLocked(
-          &slot, descriptor, payload.data(), payload_bytes, recv, 0, 0, true);
+          &slot, descriptor, payload.data(), payload_bytes, recv, 0, 0);
     }
 
     WaitRPCFinish(rpc_id);
@@ -1215,8 +1216,7 @@ int PetPSClient::SubmitUpdateParameterFlat(
       table_name,
       slot.view);
   float* recv = AllocateStatusReceiveBufferLocked();
-  return SubmitRpcLocked(
-      &slot, descriptor, payload, payload_bytes, recv, 0, 0, true);
+  return SubmitRpcLocked(&slot, descriptor, payload, payload_bytes, recv, 0, 0);
 }
 
 int PetPSClient::SubmitUpdateParameterFlatGather(
@@ -1276,7 +1276,7 @@ int PetPSClient::SubmitUpdateParameterFlatGather(
       slot.view);
   float* recv = AllocateStatusReceiveBufferLocked();
   return SubmitRpcLocked(
-      &slot, descriptor, slot.view.payload, payload_bytes, recv, 0, 0, true);
+      &slot, descriptor, slot.view.payload, payload_bytes, recv, 0, 0);
 }
 
 int PetPSClient::WaitUpdateParameter(int rpc_id) {

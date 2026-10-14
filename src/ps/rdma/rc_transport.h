@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -51,6 +52,15 @@ struct RcClientQpView {
   void* response_slot    = nullptr; // Base address of the client response slot.
   char* response_payload = nullptr; // Response payload region before status.
   StatusWord* status     = nullptr; // Status word at end of response slot.
+};
+
+// Raised when a tracked completion (a submit-commit or response-status CQE) did
+// not arrive within the wait budget: the slot's memory may still be referenced
+// by the peer, so the caller must retire the lane instead of reusing the slot.
+class RcTrackedCompletionTimeout : public std::runtime_error {
+public:
+  explicit RcTrackedCompletionTimeout(const std::string& message)
+      : std::runtime_error(message) {}
 };
 
 class RcShardClientTransport {

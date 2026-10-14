@@ -297,7 +297,7 @@ void WaitForTrackedCompletion(
   while (true) {
     RawVerbsCompletion completion;
     if (!verbs->Poll(&completion, FLAGS_rdma_wait_timeout_ms)) {
-      throw std::runtime_error(
+      throw RcTrackedCompletionTimeout(
           "RC verbs write completion timeout " + context + " expected_wr_id=" +
           std::to_string(MakeTrackedWrId(kind, slot_ordinal)));
     }
