@@ -92,7 +92,7 @@ grpc::Status MakeUnavailable(const std::string& message) {
 }
 
 // Heartbeat identity travels as gRPC metadata so the Probe RPC needs no proto
-// change (docs/plans/rdma-reliability-architecture.md §3.7).
+// change.
 int ParseHeartbeatNodeId(grpc::string_ref value) {
   const std::string text(value.data(), value.size());
   try {

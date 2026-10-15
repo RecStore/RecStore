@@ -34,8 +34,8 @@ struct RdmaControlPlaneEndpoint {
   // Optional on client-only endpoints; the server uses it to bound READY ids.
   int num_servers = 0;
   // Control-plane health monitor thresholds (server side only). Defaults match
-  // the L2 budget in docs/plans/rdma-reliability-architecture.md. Record GC is
-  // off by default so P1a stays observation-only; P1b re-decides the policy.
+  // the L2 budget. Record GC is off by default so P1a stays observation-only;
+  // P1b re-decides the policy.
   int health_stale_ms            = 3000;
   int health_dead_ms             = 9000;
   int health_record_retention_ms = 0;
@@ -46,7 +46,7 @@ inline constexpr std::size_t kMaxRawVerbsMetadataBytes = 4096;
 
 // Per-shard liveness used by the control-plane health monitor. This is an
 // observation-only signal in P1a: it is logged and counted, but it does not
-// change request handling (see docs/plans/rdma-reliability-architecture.md).
+// change request handling.
 enum class RdmaServerHealth : std::uint8_t {
   kServing = 0,
   kSuspect = 1,
@@ -91,7 +91,7 @@ inline RdmaServerHealth EvaluateServerHealth(
 // Snapshot returned by the GetServerHealth RPC and the matching server-side
 // accessor. `known=false` means shard 0 has no READY record for that shard, so
 // the data path must stay on its own budgets instead of failing the request
-// (P1b slow-path fast-fail; docs/plans/rdma-reliability-architecture.md §3.7).
+// (P1b slow-path fast-fail).
 struct RdmaServerHealthSnapshot {
   bool known                    = false;
   RdmaServerHealth health       = RdmaServerHealth::kServing;
@@ -101,8 +101,7 @@ struct RdmaServerHealthSnapshot {
 
 // Slow-path health probe policy (P1b). A client that has been waiting longer
 // than the probe threshold asks the control plane about its shard; the query is
-// throttled so many waiters share at most one RPC per probe interval
-// (docs/plans/rdma-reliability-architecture.md §3.7).
+// throttled so many waiters share at most one RPC per probe interval.
 enum class RdmaSlowPathVerdict {
   kKeepWaiting,      // serving / suspect / unknown: stay on the L0..L3 budgets
   kShardUnreachable, // the control plane judged the shard dead
@@ -205,7 +204,7 @@ public:
           int timeout_ms = -1) const;
   // `instance_nonce` identifies the serving process; when non-empty it is
   // recorded in the READY record so a restart can be told apart from the same
-  // process (docs/plans/rdma-reliability-architecture.md §3.7).
+  // process.
   void PublishServerReady(int server_id,
                           const std::string& instance_nonce = "") const;
   void PublishServerDraining(int server_id) const;
@@ -237,9 +236,8 @@ public:
   void Start();
   void Stop();
 
-  // P1a observability (docs/plans/rdma-reliability-architecture.md §3.7). These
-  // read-only accessors let tests and future P1b callers inspect health without
-  // touching the monitor internals.
+  // P1a observability. These read-only accessors let tests and future P1b
+  // callers inspect health without touching the monitor internals.
   std::uint64_t heartbeats_received() const {
     return heartbeats_received_.load(std::memory_order_relaxed);
   }

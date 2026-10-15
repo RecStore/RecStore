@@ -8,9 +8,8 @@ namespace petps {
 
 // Client-visible failure raised when a shard is judged unreachable by the
 // slow-path health verdict, or when its lane was retired after losing a
-// completion (docs/plans/rdma-reliability-architecture.md §3.7, §4.1). Kept
-// distinct from the server-returned RpcStatus codes and from a plain wait
-// timeout so callers can fail fast without retrying blindly.
+// completion. Kept distinct from the server-returned RpcStatus codes and from
+// a plain wait timeout so callers can fail fast without retrying blindly.
 class ShardUnreachableError : public std::runtime_error {
 public:
   explicit ShardUnreachableError(const std::string& message)

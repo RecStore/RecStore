@@ -106,7 +106,7 @@ private:
     std::vector<SlotContext> slots;
     // P1b whole-lane dirty marker: a lane that lost a completion or whose
     // shard was judged dead never hands its slots to new requests and fails
-    // its waiters fast (docs/plans/rdma-reliability-architecture.md §4.1).
+    // its waiters fast.
     std::atomic<bool> dirty{false};
   };
 

@@ -438,9 +438,8 @@ TEST(PetPSIntegrationTest, RepeatedPutGetStressMultiShard) {
   }
 }
 
-// P1b client fast-fail scenario (docs/plans/rdma-reliability-architecture.md
-// §3.7/§4.1). Needs a parent that freezes shard 1 after the warm-up marker and
-// unfreezes it once every lane is dirty, so it skips unless
+// P1b client fast-fail scenario. Needs a parent that freezes shard 1 after the
+// warm-up marker and unfreezes it once every lane is dirty, so it skips unless
 // RECSTORE_RDMA_FAST_FAIL_TEST is set. Driven by
 // tmp/experiments/EXP-0005-rdma-client-fast-fail/scripts/full_run.py.
 namespace {

@@ -137,10 +137,9 @@ public:
         deployment_(deployment),
         fabric_(fabric),
         control_plane_client_(control_plane_endpoint) {
-    // Per-process liveness identity (see
-    // docs/plans/rdma-reliability-architecture.md §3.7): deployment_epoch is
-    // config-driven and does not change on restart, so the control plane uses
-    // this nonce to tell a restart from the same process.
+    // Per-process liveness identity: deployment_epoch is config-driven and
+    // does not change on restart, so the control plane uses this nonce to tell
+    // a restart from the same process.
     instance_nonce_ = std::to_string(NowNs()) + "-" + std::to_string(getpid());
     petps::RcTransportConfig config;
     config.node_id        = FLAGS_global_id;
