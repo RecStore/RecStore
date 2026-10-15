@@ -70,8 +70,10 @@ qps-per-client-per-shard * slots-per-qp
 ### 2.3 控制面
 
 `global_id=0` 的 `petps_server` 在启动时监听 TCP 控制面端口。client 和其他
-server 通过它交换 `RawVerbsNodeMeta` 并等待 ready；控制面只负责启动期协调，
-不参与热路径 GET/PUT/UPDATE。
+server 通过它交换 `RawVerbsNodeMeta` 并等待 ready。控制面额外承担 shard 存活
+观测：每个 shard 周期上报心跳（记录 `last_seen`），并按 `stale`/`dead` 阈值给出
+`serving`/`suspect`/`dead`；client 仅在请求等待超过阈值后（慢路径）按需查询
+`GetServerHealth`。因此控制面仍不参与热路径 GET/PUT/UPDATE。
 
 常用字段：
 
@@ -93,6 +95,13 @@ server 通过它交换 `RawVerbsNodeMeta` 并等待 ready；控制面只负责�
 - Debug/O0 适合调试，不应作为吞吐结果；benchmark 报告使用 Release 构建。
 - 源码修改后必须重编对应的 `petps_server`、benchmark、integration 或 op-layer target，
   否则旧 binary 可能掩盖修改结果。
+- RDMA RC QP **不提供**空闲时的"远端进程存活"信号：只有在有 WR 在飞时，链路层才靠 ACK
+  超时把"对端不可达"暴露成 CQ error。因此 client 的失败快速通道分两层——节点层（shard
+  心跳判 `dead`）与设备层（等待期对 lane CQ 收割并按 completion status 分类）；两者都只
+  把故障 lane **整条置脏**（其 slot 不再复用）并抛 `ShardUnreachableError`，不做 QP 重建、
+  不做应用层重试。据此，被置脏的 lane 在本进程内不会自愈（重新可用需 QP 重建，属后续工作），
+  这个退化行为在测试中被固定为断言，不要改成静默复用。
+- 热点路径零开销：正常请求（µs 级完成）既不查控制面（1s 后才查）也不收割 CQ（50ms 后才收割）。
 
 ## 4. 关键参数
 
@@ -107,6 +116,14 @@ server 通过它交换 `RawVerbsNodeMeta` 并等待 ready；控制面只负责�
 | `--rdma-put-protocol-version` | PUT 协议版本；`2` 是当前主路径 |
 | `--rdma-put-v2-transfer-mode` | PUT-v2 payload 方式：`read` 或 `push` |
 | `--rdma-wait-timeout-ms` | RDMA 请求等待超时 |
+| `--rdma-heartbeat-interval-ms` | shard 心跳上报周期；默认 `1000` |
+| `--rdma-health-stale-ms` | 无心跳判 `suspect` 的空闲阈值；默认 `3000` |
+| `--rdma-health-dead-ms` | 无心跳判 `dead` 的空闲阈值；默认 `9000` |
+| `--rdma-health-record-retention-ms` | 控制面健康记录 GC 期限；默认 `0`（关闭淘汰） |
+| `--rdma-health-probe-after-ms` | 慢路径健康查询起始等待；默认 `1000`，`0` 关闭慢路径 |
+| `--rdma-health-probe-interval-ms` | 慢路径查询/判定间隔；默认 `1000` |
+| `--rdma-health-probe-timeout-ms` | 慢路径健康查询 RPC 超时；默认 `1000` |
+| `--rdma-cq-harvest-interval-ms` | 等待期 CQ 收割间隔；默认 `50`，`0` 关闭（旧行为） |
 | `--rdma-get-response-mode` | GET response 路径：`auto`、`direct_sg` 或 `staging_copy` |
 | `--server-rdma-threads` | generic PS runner 的 server polling thread 数 |
 | `--rdma-rc-server-get-workers` | GET payload worker 数；`0` 表示 poller 同步处理 |
