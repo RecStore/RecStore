@@ -281,10 +281,13 @@ PetPSClient::SlotHandle PetPSClient::AcquireIdleSlot() {
   if (FLAGS_rdma_rc_profile_interval_ms > 0) {
     profile_.acquire_qp_count.fetch_add(1, std::memory_order_relaxed);
   }
-  int usable_lanes = 0;
+  int usable_lanes   = 0;
+  int dead_lanes     = 0;
+  int degraded_lanes = 0;
   for (std::size_t qp_index = 0; qp_index < qps_.size(); ++qp_index) {
     auto& qp = qps_[qp_index];
     if (qp.dead.load(std::memory_order_relaxed)) {
+      ++dead_lanes;
       continue;
     }
     if (qp.dirty.load(std::memory_order_relaxed)) {
@@ -296,6 +299,7 @@ PetPSClient::SlotHandle PetPSClient::AcquireIdleSlot() {
           !qp.rebuildable.load(std::memory_order_relaxed) ||
           now < qp.next_rebuild_at ||
           !TryRebuildLaneLocked(static_cast<int>(qp_index))) {
+        ++degraded_lanes;
         continue;
       }
     }
@@ -316,8 +320,10 @@ PetPSClient::SlotHandle PetPSClient::AcquireIdleSlot() {
   }
   if (usable_lanes == 0 && !qps_.empty()) {
     throw ShardUnreachableError(
-        "shard " + std::to_string(shard_) + " unreachable: all " +
-        std::to_string(qps_.size()) + " lanes retired");
+        "shard " + std::to_string(shard_) + " unreachable: no usable lane (" +
+        std::to_string(dead_lanes) + " dead, " +
+        std::to_string(degraded_lanes) + " of " + std::to_string(qps_.size()) +
+        " degraded)");
   }
   throw std::runtime_error("no idle RC write slot available");
 }
