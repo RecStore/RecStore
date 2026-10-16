@@ -73,6 +73,15 @@ inline bool TryFreeBitmapBit(uint64_t* words, int bit) {
   }
 }
 
+// Size classes for the legacy (8-byte metadata + payload) layout. The
+// `8 + dim * 4` widths cover embedding rows: 8+80 serves a dim-20 row and
+// 8+272 serves a dim-68 row, which would otherwise round up to 136 / 520.
+inline const std::vector<int>& DefaultSlabSizeClasses() {
+  static const std::vector<int> kClasses = {
+      8 + 32, 8 + 64, 8 + 80, 8 + 128, 8 + 272, 8 + 512, 8 + 1024};
+  return kClasses;
+}
+
 } // namespace concurrent_slab_detail
 
 template <bool PERFECT_FIT_MOD = true>
@@ -533,7 +542,24 @@ public:
       : ConcurrentSlabMemoryPool<false>(
             filename,
             memory_size,
-            {8 + 32, 8 + 64, 8 + 128, 8 + 512, 8 + 1024}) {}
+            concurrent_slab_detail::DefaultSlabSizeClasses()) {}
+};
+
+// Same pool, but the caller supplies the size-class list
+// (value.dram_allocator.size_classes). The classes are exact minimum sizes:
+// a request is served by the first class >= kMetaDataSize + request.
+class ConcurrentSlabMemoryPoolSized : public ConcurrentSlabMemoryPool<false> {
+public:
+  ConcurrentSlabMemoryPoolSized(const std::string& filename,
+                                int64 memory_size,
+                                const std::string& /*medium*/,
+                                const std::vector<int>& size_classes)
+      : ConcurrentSlabMemoryPool<false>(
+            filename,
+            memory_size,
+            size_classes.empty()
+                ? concurrent_slab_detail::DefaultSlabSizeClasses()
+                : size_classes) {}
 };
 
 FACTORY_REGISTER(MallocApi,
@@ -542,5 +568,21 @@ FACTORY_REGISTER(MallocApi,
                  const std::string&,
                  int64,
                  const std::string&);
+
+// The sized variant answers the same factory key but takes an explicit
+// size-class list; DramValueStore picks it when
+// value.dram_allocator.size_classes is set. The registration lives in its own
+// namespace only because FACTORY_REGISTER names its static by key.
+namespace {
+
+FACTORY_REGISTER(MallocApi,
+                 CONCURRENT_SLAB_MEMORY_POOL,
+                 ConcurrentSlabMemoryPoolSized,
+                 const std::string&,
+                 int64,
+                 const std::string&,
+                 const std::vector<int>&);
+
+} // namespace
 
 } // namespace base

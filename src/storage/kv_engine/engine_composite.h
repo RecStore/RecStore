@@ -160,6 +160,15 @@ public:
     TrackKeys(keys, tid);
   }
 
+  uint64_t BatchDelete(base::ConstArray<uint64_t> keys,
+                       unsigned tid) override {
+    if (keys.Size() == 0) {
+      return 0;
+    }
+    std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
+    return DeleteKeysLocked(keys, tid);
+  }
+
   void BatchGet(base::ConstArray<uint64_t> keys,
                 std::vector<base::ConstArray<float>>* values,
                 unsigned tid) override {
@@ -317,6 +326,74 @@ public:
     return true;
   }
 
+  bool BatchGetFlatRange(base::ConstArray<uint64_t> keys,
+                         float* values,
+                         int64_t num_rows,
+                         int64_t row_dim,
+                         int64_t value_offset,
+                         int64_t value_dim,
+                         unsigned tid,
+                         BatchGetFlatStats* stats = nullptr,
+                         bool collect_profile = true) override {
+    if (values == nullptr || num_rows < 0 || row_dim <= 0 ||
+        value_offset < 0 || value_dim <= 0 || value_offset > row_dim ||
+        value_dim > row_dim - value_offset ||
+        keys.Size() != static_cast<size_t>(num_rows)) {
+      return false;
+    }
+    const size_t stored_row_bytes =
+        static_cast<size_t>(row_dim) * sizeof(float);
+    if (default_value_size_hint_ != stored_row_bytes) {
+      return false;
+    }
+    const size_t source_offset_bytes =
+        static_cast<size_t>(value_offset) * sizeof(float);
+    const size_t output_row_bytes =
+        static_cast<size_t>(value_dim) * sizeof(float);
+    thread_local std::vector<Value_t> handles;
+    handles.assign(keys.Size(), kValueHandleNone);
+    const bool profile_enabled = stats != nullptr && collect_profile;
+    if (stats != nullptr) {
+      stats->index_lookup_ns = 0;
+      stats->zero_fill_ns = 0;
+      stats->row_copy_ns = 0;
+      stats->missing_rows = 0;
+    }
+    const auto index_lookup_start =
+        profile_enabled ? std::chrono::steady_clock::now()
+                        : std::chrono::steady_clock::time_point{};
+    if (keys.Size() > 0) {
+      index_->BatchGet(keys, handles.data(), tid);
+    }
+    if (profile_enabled) {
+      stats->index_lookup_ns = static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now() - index_lookup_start)
+              .count());
+    }
+
+    uint64_t missing_rows = 0;
+    const auto row_copy_start =
+        profile_enabled ? std::chrono::steady_clock::now()
+                        : std::chrono::steady_clock::time_point{};
+    if (!value_store_->ReadFlatFixedRowSlices(
+            handles.data(), static_cast<size_t>(num_rows), values,
+            stored_row_bytes, source_offset_bytes, output_row_bytes,
+            &missing_rows)) {
+      return false;
+    }
+    if (stats != nullptr) {
+      if (profile_enabled) {
+        stats->row_copy_ns = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - row_copy_start)
+                .count());
+      }
+      stats->missing_rows = missing_rows;
+    }
+    return true;
+  }
+
   bool BatchGetIndexOnly(base::ConstArray<uint64_t> keys,
                          unsigned tid,
                          BatchGetFlatStats* stats = nullptr) override {
@@ -458,7 +535,58 @@ public:
     return true;
   }
 
+  bool ApplySgdUpdateFlatRange(
+      base::ConstArray<uint64_t> keys,
+      const float* grads,
+      int64_t num_rows,
+      int64_t row_dim,
+      int64_t update_offset,
+      int64_t update_dim,
+      float learning_rate,
+      unsigned tid) override {
+    if (grads == nullptr || keys.Size() != static_cast<size_t>(num_rows) ||
+        row_dim <= 0 || update_offset < 0 || update_dim <= 0 ||
+        update_offset > row_dim || update_dim > row_dim - update_offset) {
+      return false;
+    }
+    const size_t row_bytes = static_cast<size_t>(row_dim) * sizeof(float);
+    if (default_value_size_hint_ != row_bytes) {
+      return false;
+    }
+
+    std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
+    thread_local std::vector<DirectFixedRow> rows;
+    if (!BatchGetDirectFixedRows(keys, num_rows, row_dim, tid, &rows)) {
+      return false;
+    }
+    for (int64_t row = 0; row < num_rows; ++row) {
+      const auto& direct_row = rows[static_cast<size_t>(row)];
+      if (direct_row.missing || direct_row.data == nullptr ||
+          direct_row.size != row_bytes) {
+        return false;
+      }
+      float* value = reinterpret_cast<float*>(
+                         const_cast<char*>(direct_row.data)) +
+                     update_offset;
+      const float* grad = grads + row * update_dim;
+#pragma omp simd
+      for (int64_t column = 0; column < update_dim; ++column) {
+        value[column] -= learning_rate * grad[column];
+      }
+    }
+    return true;
+  }
+
   void BulkLoad(base::ConstArray<uint64_t> keys, const void* value) override {
+    BulkLoadRange(keys, value, 0);
+  }
+
+  void BulkLoadRange(base::ConstArray<uint64_t> keys,
+                     const void* value,
+                     unsigned tid,
+                     BulkLoadStats* stats = nullptr) override {
+    using clock = std::chrono::steady_clock;
+    const auto total_start = clock::now();
     const auto& j           = config_.json_config_;
     const size_t value_size = j.at("value").value("default_value_size_hint", 0);
     if (value_size == 0) {
@@ -474,7 +602,9 @@ public:
     for (int i = 0; i < keys.Size(); ++i) {
       specs.push_back(ValueStore::WriteSpec{data + i * value_size, value_size});
     }
+    const auto prepare_end = clock::now();
     std::vector<uint64_t> handles = value_store_->BatchAllocAndWrite(specs);
+    const auto alloc_end = clock::now();
     if (handles.size() != static_cast<size_t>(keys.Size())) {
       LOG(FATAL) << "KVEngine::BulkLoad allocation result size mismatch";
     }
@@ -484,8 +614,87 @@ public:
                    << " size=" << value_size;
       }
     }
-    index_->BatchPut(keys, handles.data(), 0);
-    TrackKeys(keys, 0);
+    const auto validate_end = clock::now();
+    index_->BatchPut(keys, handles.data(), tid);
+    const auto index_end = clock::now();
+    TrackKeys(keys, tid);
+    const auto track_end = clock::now();
+    if (stats != nullptr) {
+      auto ns = [](clock::duration duration) {
+        return static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(duration)
+                .count());
+      };
+      stats->prepare_ns = ns(prepare_end - total_start);
+      stats->value_alloc_ns = ns(alloc_end - prepare_end);
+      stats->handle_validate_ns = ns(validate_end - alloc_end);
+      stats->index_put_ns = ns(index_end - validate_end);
+      stats->key_track_ns = ns(track_end - index_end);
+      stats->total_ns = ns(track_end - total_start);
+    }
+  }
+
+  bool BulkLoadIndexedFloatRange(
+      base::ConstArray<uint64_t> keys,
+      const int64_t* row_indices,
+      const float* values,
+      int64_t num_rows,
+      int64_t value_dim,
+      unsigned tid,
+      BulkLoadStats* stats = nullptr) override {
+    using clock = std::chrono::steady_clock;
+    const auto total_start = clock::now();
+    if (row_indices == nullptr || values == nullptr || num_rows < 0 ||
+        value_dim <= 0 || keys.Size() != static_cast<size_t>(num_rows)) {
+      return false;
+    }
+    const size_t row_bytes =
+        sizeof(int64_t) + static_cast<size_t>(value_dim) * sizeof(float);
+    if (default_value_size_hint_ != row_bytes) {
+      return false;
+    }
+
+    std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
+    std::vector<uint64_t> handles(static_cast<size_t>(num_rows),
+                                  kValueHandleNone);
+    const auto prepare_end = clock::now();
+    for (int64_t row_index = 0; row_index < num_rows; ++row_index) {
+      const uint64_t handle = value_store_->Alloc(row_bytes);
+      if (handle == kValueHandleNone) {
+        LOG(FATAL) << "KVEngine indexed bulk value allocation failed, key="
+                   << keys[static_cast<int>(row_index)]
+                   << " size=" << row_bytes;
+      }
+      char* row = const_cast<char*>(value_store_->DirectPtr(handle));
+      if (row == nullptr) {
+        return false;
+      }
+      std::memcpy(row, row_indices + row_index, sizeof(int64_t));
+      std::memcpy(row + sizeof(int64_t),
+                  values + row_index * value_dim,
+                  static_cast<size_t>(value_dim) * sizeof(float));
+      handles[static_cast<size_t>(row_index)] = handle;
+    }
+    const auto alloc_end = clock::now();
+    const auto validate_end = alloc_end;
+    index_->BatchPut(keys, handles.data(), tid);
+    const auto index_end = clock::now();
+    TrackKeys(keys, tid);
+    const auto track_end = clock::now();
+    if (stats != nullptr) {
+      auto ns = [](clock::duration duration) {
+        return static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(duration)
+                .count());
+      };
+      stats->prepare_ns = ns(prepare_end - total_start);
+      stats->value_alloc_ns = ns(alloc_end - prepare_end);
+      stats->handle_validate_ns = ns(validate_end - alloc_end);
+      stats->index_put_ns = ns(index_end - validate_end);
+      stats->key_track_ns = ns(track_end - index_end);
+      stats->total_ns = ns(track_end - total_start);
+    }
+    return true;
   }
 
   bool SaveCheckpoint(const std::string& file,
@@ -672,8 +881,28 @@ public:
   }
 
   uint64_t CheckpointRecordCount() const override {
+    return ActiveKeyCount();
+  }
+
+  // CollectCheckpointKeys traverses checkpoint_keys_by_thread_ while the put
+  // path (TrackKeys) push_backs into it under a *shared* lock, so collectors
+  // must take the exclusive lock; a shared lock here races the writers.
+  uint64_t ActiveKeyCount() const override {
     std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     return static_cast<uint64_t>(CollectCheckpointKeys().size());
+  }
+
+  std::vector<uint64_t> SnapshotKeys() const override {
+    std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
+    return CollectCheckpointKeys();
+  }
+
+  void clear() override {
+    std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
+    const std::vector<uint64_t> keys = CollectCheckpointKeys();
+    if (!keys.empty()) {
+      DeleteKeysLocked(base::ConstArray<uint64_t>(keys), 0);
+    }
   }
 
   void Util() override {
@@ -781,6 +1010,37 @@ private:
     for (int i = 0; i < keys.Size(); ++i) {
       thread_keys.push_back(keys[i]);
     }
+  }
+
+  uint64_t DeleteKeysLocked(base::ConstArray<uint64_t> keys, unsigned tid) {
+    (void)tid;
+    std::unordered_set<uint64_t> deleted_keys;
+    deleted_keys.reserve(static_cast<size_t>(keys.Size()));
+    for (int i = 0; i < keys.Size(); ++i) {
+      Value_t handle = kValueHandleNone;
+      index_->Get(keys[i], handle);
+      if (handle == kValueHandleNone) {
+        continue;
+      }
+      uint64_t key = keys[i];
+      if (!index_->Delete(key)) {
+        continue;
+      }
+      value_store_->Retire(handle);
+      deleted_keys.insert(key);
+    }
+    if (!deleted_keys.empty()) {
+      for (auto& tracked_keys : checkpoint_keys_by_thread_) {
+        tracked_keys.erase(
+            std::remove_if(tracked_keys.begin(), tracked_keys.end(),
+                           [&](uint64_t key) {
+                             return deleted_keys.find(key) !=
+                                    deleted_keys.end();
+                           }),
+            tracked_keys.end());
+      }
+    }
+    return static_cast<uint64_t>(deleted_keys.size());
   }
 
   void PutInternal(uint64_t key,

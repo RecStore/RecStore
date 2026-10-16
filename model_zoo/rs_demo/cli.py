@@ -94,6 +94,11 @@ def main(argv: list[str] | None = None) -> int:
             "run_%Y%m%d_%H%M%S_%f"
         )
         cfg.torchrec_trace_dir = str(run_dir)
+    if cfg.backend == "recstore" and cfg.recstore_profiler and not is_recstore_worker:
+        run_dir = Path(cfg.recstore_trace_dir) / datetime.now().strftime(
+            "run_%Y%m%d_%H%M%S_%f"
+        )
+        cfg.recstore_trace_dir = str(run_dir)
     ensure_parent_dirs(cfg)
     if cfg.backend == "recstore":
         setup_local_report_env(cfg.jsonl)

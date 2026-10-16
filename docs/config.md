@@ -58,7 +58,7 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
 | `value.type` | string | 全部 | `DRAM_VALUE_STORE`、`SSD_VALUE_STORE` 或 `TIERED_VALUE_STORE` |
 | `value.default_value_size_hint` | integer | 全部 | 单条 value 的默认字节数提示，替代旧的顶层 `value_size` |
 | `value.path` | string | `DRAM_VALUE_STORE`、`SSD_VALUE_STORE` | DRAM 可为空或 `/dev/shm` 路径；SSD 必须是非空文件路径 |
-| `value.dram_allocator` | object | `DRAM_VALUE_STORE`、`TIERED_VALUE_STORE` | DRAM 分配器配置，常用字段为 `type`、`capacity_bytes`；`DRAM_VALUE_STORE` 不允许 `dram_allocator.path` |
+| `value.dram_allocator` | object | `DRAM_VALUE_STORE`、`TIERED_VALUE_STORE` | DRAM 分配器配置，常用字段为 `type`、`capacity_bytes`；`CONCURRENT_SLAB_MEMORY_POOL` 可加 `size_classes` 覆盖尺寸类；`DRAM_VALUE_STORE` 不允许 `dram_allocator.path` |
 | `value.ssd_allocator` | object | `SSD_VALUE_STORE`、`TIERED_VALUE_STORE` | SSD 分配器配置，常用字段为 `type`、`capacity_bytes`、`min_block_size`、`max_block_size`、`io`；`SSD_VALUE_STORE` 的文件路径放在 `value.path`，不放在 `ssd_allocator.path` |
 | `value.ssd_allocator.path` | string | `TIERED_VALUE_STORE` | TIERED 模式的 SSD 层文件路径 |
 

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <tuple>
+#include <vector>
 
 #include "base/array.h"
 #include "base/json.h"
@@ -73,6 +74,12 @@ public:
     LOG(FATAL) << "not implemented";
   };
 
+  virtual uint64_t BatchDelete(base::ConstArray<uint64_t> keys, unsigned tid) {
+    (void)keys;
+    (void)tid;
+    return 0;
+  }
+
   virtual void BatchGet(base::ConstArray<uint64_t> keys,
                         std::vector<base::ConstArray<float>>* values,
                         unsigned tid) = 0;
@@ -82,6 +89,15 @@ public:
     std::uint64_t zero_fill_ns    = 0;
     std::uint64_t row_copy_ns     = 0;
     std::uint64_t missing_rows    = 0;
+  };
+
+  struct BulkLoadStats {
+    std::uint64_t prepare_ns         = 0;
+    std::uint64_t value_alloc_ns     = 0;
+    std::uint64_t handle_validate_ns = 0;
+    std::uint64_t index_put_ns       = 0;
+    std::uint64_t key_track_ns       = 0;
+    std::uint64_t total_ns           = 0;
   };
 
   struct DirectFixedRow {
@@ -102,6 +118,19 @@ public:
       int64_t embedding_dim,
       unsigned tid,
       BatchGetFlatStats* stats = nullptr) {
+    return false;
+  }
+
+  virtual bool BatchGetFlatRange(
+      base::ConstArray<uint64_t> keys,
+      float* values,
+      int64_t num_rows,
+      int64_t row_dim,
+      int64_t value_offset,
+      int64_t value_dim,
+      unsigned tid,
+      BatchGetFlatStats* stats = nullptr,
+      bool collect_profile = true) {
     return false;
   }
 
@@ -141,11 +170,43 @@ public:
     return false;
   }
 
+  virtual bool ApplySgdUpdateFlatRange(
+      base::ConstArray<uint64_t> keys,
+      const float* grads,
+      int64_t num_rows,
+      int64_t row_dim,
+      int64_t update_offset,
+      int64_t update_dim,
+      float learning_rate,
+      unsigned tid) {
+    return false;
+  }
+
   virtual void DebugInfo() const {}
 
   virtual void BulkLoad(base::ConstArray<uint64_t> keys, const void* value) {
     LOG(FATAL) << "not implemented";
   };
+
+  virtual void BulkLoadRange(base::ConstArray<uint64_t> keys,
+                             const void* value,
+                             unsigned tid,
+                             BulkLoadStats* stats = nullptr) {
+    (void)tid;
+    (void)stats;
+    BulkLoad(keys, value);
+  }
+
+  virtual bool BulkLoadIndexedFloatRange(
+      base::ConstArray<uint64_t> keys,
+      const int64_t* row_indices,
+      const float* values,
+      int64_t num_rows,
+      int64_t value_dim,
+      unsigned tid,
+      BulkLoadStats* stats = nullptr) {
+    return false;
+  }
 
   virtual void LoadFakeData(int64_t key_capacity, int value_size) {
     std::vector<uint64_t> keys;
@@ -177,6 +238,10 @@ public:
   }
 
   virtual uint64_t CheckpointRecordCount() const { return 0; }
+
+  virtual uint64_t ActiveKeyCount() const { return CheckpointRecordCount(); }
+
+  virtual std::vector<uint64_t> SnapshotKeys() const { return {}; }
 
 protected:
 };

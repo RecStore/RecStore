@@ -423,6 +423,131 @@ TEST_P(KVEngineCartesianTest, BatchGetFlatRejectsMismatchedDim) {
       0));
 }
 
+TEST(KVEngineFlatReadTest, DramRowsSupportNonPowerOfTwoByteWidths) {
+  constexpr int64_t kDim = 15;
+  const std::string value_path =
+      "/dev/shm/test_kv_engine_flat_non_power_" + std::to_string(getpid());
+  std::filesystem::create_directories(value_path);
+
+  base::PMMmapRegisterCenter::GetConfig().backend =
+      base::PMMmapRegisterCenter::Backend::kAnonymousDram;
+  BaseKVConfig config;
+  config.num_threads_ = 1;
+  config.json_config_ = {
+      {"engine_type", "KVEngineComposite"},
+      {"capacity", 128},
+      {"index", {{"type", "DRAM_PET_HASH"}}},
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", value_path},
+        {"default_value_size_hint", kDim * sizeof(float)},
+        {"dram_allocator",
+         {{"type", "CONCURRENT_SLAB_MEMORY_POOL"},
+          {"capacity_bytes", 64ULL << 20}}}}}};
+  auto resolved = base::ResolveEngine(config);
+  std::unique_ptr<BaseKV> engine(
+      base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
+          resolved.engine, resolved.cfg));
+  ASSERT_NE(engine, nullptr);
+
+  const std::vector<uint64_t> put_keys = {101, 202};
+  std::vector<float> first(kDim);
+  std::vector<float> second(kDim);
+  for (int64_t column = 0; column < kDim; ++column) {
+    first[static_cast<size_t>(column)] = static_cast<float>(column + 1);
+    second[static_cast<size_t>(column)] = static_cast<float>(100 + column);
+  }
+  std::vector<base::ConstArray<float>> rows = {
+      base::ConstArray<float>(first.data(), static_cast<int>(first.size())),
+      base::ConstArray<float>(second.data(), static_cast<int>(second.size()))};
+  engine->BatchPut(base::ConstArray<uint64_t>(put_keys), &rows, 0);
+
+  const std::vector<uint64_t> get_keys = {202, 303, 101};
+  std::vector<float> output(get_keys.size() * kDim, -1.0F);
+  BaseKV::BatchGetFlatStats stats;
+  ASSERT_TRUE(engine->BatchGetFlat(base::ConstArray<uint64_t>(get_keys),
+                                   output.data(), get_keys.size(), kDim, 0,
+                                   &stats));
+  EXPECT_EQ(stats.missing_rows, 1);
+  EXPECT_EQ(std::vector<float>(output.begin(), output.begin() + kDim), second);
+  EXPECT_EQ(std::vector<float>(output.begin() + kDim,
+                               output.begin() + 2 * kDim),
+            std::vector<float>(kDim, 0.0F));
+  EXPECT_EQ(std::vector<float>(output.begin() + 2 * kDim, output.end()), first);
+
+  engine.reset();
+  std::filesystem::remove_all(value_path);
+}
+
+TEST(KVEngineFlatReadTest, DramRowsSupportDirectFixedSlices) {
+  constexpr int64_t kDim = 16;
+  constexpr int64_t kMetadataFloats = sizeof(int64_t) / sizeof(float);
+  constexpr int64_t kStoredDim = kMetadataFloats + kDim;
+  const std::string value_path =
+      "/dev/shm/test_kv_engine_flat_slice_" + std::to_string(getpid());
+  std::filesystem::create_directories(value_path);
+
+  base::PMMmapRegisterCenter::GetConfig().backend =
+      base::PMMmapRegisterCenter::Backend::kAnonymousDram;
+  BaseKVConfig config;
+  config.num_threads_ = 1;
+  config.json_config_ = {
+      {"engine_type", "KVEngineComposite"},
+      {"capacity", 128},
+      {"index", {{"type", "DRAM_PET_HASH"}}},
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", value_path},
+        {"default_value_size_hint", kStoredDim * sizeof(float)},
+        {"dram_allocator",
+         {{"type", "CONCURRENT_SLAB_MEMORY_POOL"},
+          {"capacity_bytes", 64ULL << 20}}}}}};
+  auto resolved = base::ResolveEngine(config);
+  std::unique_ptr<BaseKV> engine(
+      base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
+          resolved.engine, resolved.cfg));
+  ASSERT_NE(engine, nullptr);
+
+  const std::vector<uint64_t> put_keys = {101, 202};
+  std::vector<float> first(kStoredDim);
+  std::vector<float> second(kStoredDim);
+  const int64_t first_index = 17;
+  const int64_t second_index = 29;
+  std::memcpy(first.data(), &first_index, sizeof(first_index));
+  std::memcpy(second.data(), &second_index, sizeof(second_index));
+  for (int64_t column = 0; column < kDim; ++column) {
+    first[static_cast<size_t>(kMetadataFloats + column)] =
+        static_cast<float>(column + 1);
+    second[static_cast<size_t>(kMetadataFloats + column)] =
+        static_cast<float>(100 + column);
+  }
+  std::vector<base::ConstArray<float>> rows = {
+      base::ConstArray<float>(first.data(), static_cast<int>(first.size())),
+      base::ConstArray<float>(second.data(), static_cast<int>(second.size()))};
+  engine->BatchPut(base::ConstArray<uint64_t>(put_keys), &rows, 0);
+
+  const std::vector<uint64_t> get_keys = {202, 303, 101};
+  std::vector<float> output(get_keys.size() * kDim, -1.0F);
+  BaseKV::BatchGetFlatStats stats;
+  ASSERT_TRUE(engine->BatchGetFlatRange(
+      base::ConstArray<uint64_t>(get_keys), output.data(), get_keys.size(),
+      kStoredDim, kMetadataFloats, kDim, 0, &stats));
+  EXPECT_EQ(stats.missing_rows, 1);
+  EXPECT_EQ(std::vector<float>(output.begin(), output.begin() + kDim),
+            std::vector<float>(second.begin() + kMetadataFloats, second.end()));
+  EXPECT_EQ(std::vector<float>(output.begin() + kDim,
+                               output.begin() + 2 * kDim),
+            std::vector<float>(kDim, 0.0F));
+  EXPECT_EQ(std::vector<float>(output.begin() + 2 * kDim, output.end()),
+            std::vector<float>(first.begin() + kMetadataFloats, first.end()));
+  EXPECT_FALSE(engine->BatchGetFlatRange(
+      base::ConstArray<uint64_t>(get_keys), output.data(), get_keys.size(),
+      kStoredDim, kStoredDim, kDim, 0));
+
+  engine.reset();
+  std::filesystem::remove_all(value_path);
+}
+
 TEST_P(KVEngineCartesianTest, ApplySgdUpdateFlatUpdatesAndInitializesRows) {
   if (value_type_ != "DRAM_VALUE_STORE") {
     GTEST_SKIP() << "Direct flat SGD update requires DRAM_VALUE_STORE";

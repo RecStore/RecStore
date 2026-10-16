@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import os
 import subprocess
 import sys
 import time
 from collections import deque
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +42,10 @@ from ..models.utils import (
     reshape_torchrec_embeddings_for_dlrm,
 )
 from python.pytorch.recstore.benchmark.report import finalize_recstore_row
+from python.pytorch.recstore.analysis.profiler import (
+    ProfilerConfig,
+    build_torchrec_profiler,
+)
 from ..runtime.timing import StepTimer
 from ..runtime.worker_common import (
     barrier_for_step_alignment as _barrier_for_step_alignment,
@@ -118,6 +124,54 @@ def _merge_consumed_perf_stats(row: dict[str, Any], stats: dict[str, float]) -> 
 
 def _reset_perf_stats(obj: Any) -> None:
     obj.reset_perf_stats()
+
+
+class _EventLog:
+    """Append-only JSONL host timeline used to align traces with wall clock."""
+
+    def __init__(self, path: str, rank: int) -> None:
+        self._file = None
+        if not path:
+            return
+        target = Path(path)
+        target = target.with_name(f"{target.stem}.rank{rank}{target.suffix}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        self._file = target.open("w", encoding="utf-8")
+
+    def emit(self, event: str, **fields: Any) -> None:
+        if self._file is None:
+            return
+        record = {
+            "event": event,
+            "epoch": time.time(),
+            "mono_ns": time.monotonic_ns(),
+            **fields,
+        }
+        self._file.write(json.dumps(record, separators=(",", ":")) + "\n")
+        self._file.flush()
+
+    def close(self) -> None:
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+
+
+def _iter_profiled_steps(steps: Any, profiler_context: Any) -> Any:
+    """Yield steps while the profiler context is active.
+
+    A generator keeps the profiling window tied to the training loop without
+    re-indenting the whole loop body.
+    """
+    with profiler_context:
+        yield from steps
+
+
+def _make_recstore_trace_handler(cfg: RunConfig, rank: int):
+    def _handler(prof: Any) -> None:
+        trace_path = Path(cfg.recstore_trace_dir) / f"rank{rank}.pt.trace.json"
+        prof.export_chrome_trace(str(trace_path))
+
+    return _handler
 
 
 def _fill_prefetch_buffer(
@@ -336,6 +390,8 @@ class RecStoreRunner(BenchmarkRunner):
 
         orig_cwd = Path.cwd()
         plugin = None
+        events: _EventLog | None = None
+        step_iter = None
         try:
             os.chdir(str(self.runtime_dir))
             torch.manual_seed(cfg.seed)
@@ -492,6 +548,7 @@ class RecStoreRunner(BenchmarkRunner):
             prepared_batches: deque = deque()
 
             def prepare_next_batch(batch_step: int):
+                events.emit("prepare_start", step=batch_step)
                 row: dict[str, Any] = {
                     "rank": rank,
                     "batch_size": cfg.batch_size,
@@ -539,13 +596,47 @@ class RecStoreRunner(BenchmarkRunner):
                     )
                 else:
                     _add_sparse_id_stats(row, sparse_features, table_offsets)
+                events.emit(
+                    "prepare_end",
+                    step=batch_step,
+                    enqueue_ms=row.get("bagpipe_enqueue_ms"),
+                    prepare_ms=row.get("batch_prepare_ms", 0.0)
+                    + row.get("input_pack_ms", 0.0),
+                )
                 return (
                     batch_step, row,
                     dense_batch, sparse_features, labels_batch, ticket,
                 )
 
-            for step in range(cfg.steps):
+            profiler = build_torchrec_profiler(
+                ProfilerConfig(
+                    enabled=cfg.recstore_profiler,
+                    trace_dir=cfg.recstore_trace_dir,
+                    warmup=cfg.recstore_profiler_warmup,
+                    active=cfg.recstore_profiler_active,
+                    repeat=cfg.recstore_profiler_repeat,
+                ),
+                on_trace_ready=(
+                    _make_recstore_trace_handler(cfg, rank)
+                    if cfg.recstore_profiler
+                    else None
+                ),
+            )
+            events = _EventLog(cfg.recstore_event_log, rank)
+            events.emit(
+                "profiler_begin",
+                rank=rank,
+                profiler_enabled=bool(profiler),
+                warmup=cfg.recstore_profiler_warmup,
+                active=cfg.recstore_profiler_active,
+                repeat=cfg.recstore_profiler_repeat,
+            )
+            step_iter = _iter_profiled_steps(
+                range(cfg.steps), profiler or nullcontext()
+            )
+            for step in step_iter:
                 step_wall_start = time.perf_counter()
+                events.emit("step_start", step=step)
                 observed_depth = read_path.desired_buffer_size
                 target_buffer = observed_depth
                 _fill_prefetch_buffer(
@@ -566,6 +657,7 @@ class RecStoreRunner(BenchmarkRunner):
                 # embed_lookup and sparse_update hit the PS over the network (host
                 # + network work) so they stay on the wall clock; the pure-GPU
                 # dense stages use CUDA events via timer.gpu().
+                events.emit("consume_start", step=step)
                 with timer.cpu("embed_lookup_ms"):
                     read_path.before_lookup(step, sparse_features, ticket, row)
                     if callable(record_pooled_grad):
@@ -573,10 +665,12 @@ class RecStoreRunner(BenchmarkRunner):
                             embeddings = embedding_module(sparse_features)
                     else:
                         embeddings = embedding_module(sparse_features)
+                events.emit("consume_end", step=step)
 
                 if embeddings is None:
                     raise RuntimeError("recstore embedding module returned no embeddings")
 
+                events.emit("pack_start", step=step)
                 with timer.gpu("embed_pool_local_ms"):
                     embedded_sparse_source = reshape_torchrec_embeddings_for_dlrm(
                         embeddings=embeddings, feature_names=default_cat_names, torch=torch
@@ -588,11 +682,15 @@ class RecStoreRunner(BenchmarkRunner):
                         labels_batch=labels_batch,
                         torch=torch, device=device, detach_sparse=True,
                     )
+                events.emit("pack_end", step=step)
+                events.emit("fwd_start", step=step)
                 with timer.gpu("dense_fwd_ms"):
                     loss, _ = compute_dense_loss(
                         cfg, dense_module, criterion, dense_features, embedded_sparse, labels
                     )
 
+                events.emit("fwd_end", step=step)
+                events.emit("bwd_start", step=step)
                 with timer.gpu("backward_ms"):
                     for param in dense_module.parameters():
                         if param.requires_grad:
@@ -607,10 +705,14 @@ class RecStoreRunner(BenchmarkRunner):
                         )
                     embedded_sparse_grad = embedded_sparse.grad.detach()
 
+                events.emit("bwd_end", step=step)
+                events.emit("dense_opt_start", step=step)
                 with timer.gpu("dense_optimizer_ms"):
                     dense_optimizer.step()
                     dense_optimizer.zero_grad(set_to_none=True)
 
+                events.emit("dense_opt_end", step=step)
+                events.emit("sparse_start", step=step)
                 with timer.cpu("sparse_optimizer_ms"):
                     replay_start = time.perf_counter()
                     sparse_grad = embedded_sparse_grad.to(embedded_sparse_source.device)
@@ -656,6 +758,7 @@ class RecStoreRunner(BenchmarkRunner):
                     )
                     sparse_optimizer.zero_grad()
 
+                events.emit("sparse_end", step=step)
                 row["loss"] = float(loss.detach().float().cpu().item())
                 _merge_consumed_perf_stats(row, _consume_perf_stats(embedding_module))
                 row["step_sync_wait_ms"] = timer.finish()
@@ -666,15 +769,22 @@ class RecStoreRunner(BenchmarkRunner):
                 )
                 _finalize_step_timing(row, wall_start=step_wall_start)
                 rows.append(finalize_recstore_row(row))
+                events.emit("barrier_start", step=step)
                 _barrier_for_step_alignment(
                     dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
                 )
+                events.emit("barrier_end", step=step)
 
                 if (step + 1) % 10 == 0:
                     print(
                         f"[rs_demo] step {step + 1}/{cfg.steps} "
                         f"emb={rows[-1]['emb_stage_ms']:.2f}ms step={rows[-1]['step_total_ms']:.2f}ms"
                     )
+                events.emit(
+                    "step_end", step=step, step_total_ms=row["step_total_ms"]
+                )
+                if profiler is not None:
+                    profiler.step()
 
             print("[rs_demo] workload finished")
 
@@ -698,6 +808,10 @@ class RecStoreRunner(BenchmarkRunner):
                 "rows": rows,
             }
         finally:
+            if step_iter is not None:
+                step_iter.close()
+            if events is not None:
+                events.close()
             if plugin is not None:
                 plugin.shutdown()
             os.chdir(str(orig_cwd))

@@ -205,6 +205,12 @@ class RunConfig:
     torchrec_profiler_active: int = 2
     torchrec_profiler_repeat: int = 1
     torchrec_trace_dir: str = ""
+    recstore_profiler: bool = False
+    recstore_profiler_warmup: int = 0
+    recstore_profiler_active: int = 2
+    recstore_profiler_repeat: int = 1
+    recstore_trace_dir: str = ""
+    recstore_event_log: str = ""
     torchrec_main_csv: str = ""
     torchrec_main_agg_csv: str = ""
     torchrec_trace_csv: str = ""
@@ -439,6 +445,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Dense compute model.",
     )
     parser.add_argument("--torchrec-profiler", action="store_true", default=False)
+    parser.add_argument(
+        "--recstore-profiler",
+        action="store_true",
+        default=False,
+        help="Record a torch profiler trace (CPU+CUDA) for the RecStore backend.",
+    )
+    parser.add_argument("--recstore-profiler-warmup", type=int, default=0)
+    parser.add_argument("--recstore-profiler-active", type=int, default=2)
+    parser.add_argument("--recstore-profiler-repeat", type=int, default=1)
+    parser.add_argument(
+        "--recstore-trace-dir",
+        type=str,
+        default="",
+        help="Directory for rank<N>.pt.trace.json when --recstore-profiler is set.",
+    )
+    parser.add_argument(
+        "--recstore-event-log",
+        type=str,
+        default="",
+        help="Optional JSONL path for per-step host timeline events (epoch seconds).",
+    )
     parser.add_argument(
         "--torchrec-dist-mode",
         type=str,
@@ -681,6 +708,20 @@ def validate_recstore_config(cfg: RunConfig) -> None:
         return
     resolve_num_embeddings_per_feature(cfg.num_embeddings, cfg.num_embeddings_per_feature)
 
+    recstore_profiler_subargs_nondefault = any(
+        [
+            cfg.recstore_profiler_warmup != 0,
+            cfg.recstore_profiler_active != 2,
+            cfg.recstore_profiler_repeat != 1,
+        ]
+    )
+    if recstore_profiler_subargs_nondefault and not cfg.recstore_profiler:
+        raise RuntimeError(
+            "RecStore profiler sub-arguments require --recstore-profiler."
+        )
+    if cfg.recstore_profiler and not cfg.recstore_trace_dir:
+        raise RuntimeError("--recstore-profiler requires --recstore-trace-dir.")
+
     if cfg.nnodes <= 0:
         raise RuntimeError("--nnodes must be greater than 0.")
     if cfg.nproc_per_node <= 0:
@@ -792,6 +833,9 @@ def ensure_parent_dirs(cfg: RunConfig) -> None:
     ensure_shared_dir(Path(cfg.recstore_main_agg_csv).parent)
     ensure_shared_dir(Path(cfg.server_log).parent)
     ensure_shared_dir(Path(cfg.torchrec_trace_dir))
+    ensure_shared_dir(Path(cfg.recstore_trace_dir))
+    if cfg.recstore_event_log:
+        ensure_shared_dir(Path(cfg.recstore_event_log).parent)
     ensure_shared_dir(Path(cfg.torchrec_main_csv).parent)
     ensure_shared_dir(Path(cfg.torchrec_main_agg_csv).parent)
     ensure_shared_dir(Path(cfg.torchrec_trace_csv).parent)

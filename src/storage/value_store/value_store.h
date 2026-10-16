@@ -80,6 +80,24 @@ public:
     return false;
   }
 
+  virtual bool ReadFlatFixedRowSlices(
+      const uint64_t* handles,
+      size_t num_rows,
+      void* out_buf,
+      size_t stored_row_bytes,
+      size_t source_offset_bytes,
+      size_t output_row_bytes,
+      uint64_t* missing_rows) const {
+    (void)handles;
+    (void)num_rows;
+    (void)out_buf;
+    (void)stored_row_bytes;
+    (void)source_offset_bytes;
+    (void)output_row_bytes;
+    (void)missing_rows;
+    return false;
+  }
+
   virtual bool GetDirectFixedRows(
       const uint64_t* handles,
       size_t num_rows,

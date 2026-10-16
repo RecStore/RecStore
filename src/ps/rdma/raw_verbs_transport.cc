@@ -2,11 +2,15 @@
 
 #include <arpa/inet.h>
 
+#include <unistd.h>
+
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -41,6 +45,106 @@ std::string QpCreateError(const RawVerbsConfig& config, int node) {
          ", num_clients=" + std::to_string(config.num_clients) +
          "). Reduce --client-count or --qps-per-client-per-shard.";
 }
+
+// Opt-in RDMA wire trace for offline NIC bandwidth reconstruction.
+//
+// RECSTORE_RDMA_WIRE_TRACE=<path> appends one JSONL record per posted work
+// request; RECSTORE_RDMA_WIRE_TRACE_TAG labels the writer (default: pid). The
+// `node` field is the peer global node id, so client requests and server
+// responses can be separated after the run. Disabled by default: the hot path
+// costs one null check.
+class RdmaWireTrace {
+public:
+  static RdmaWireTrace& Instance() {
+    static RdmaWireTrace instance;
+    return instance;
+  }
+
+  void Record(const char* op, int self, int node, std::size_t bytes) {
+    if (file_ == nullptr) {
+      return;
+    }
+    timespec now{};
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    const auto stamp = static_cast<unsigned long long>(now.tv_sec) * 1000000000ull +
+                       static_cast<unsigned long long>(now.tv_nsec);
+    char line[224];
+    const int written = std::snprintf(
+        line,
+        sizeof(line),
+        "{\"t\":%llu,\"tag\":\"%s\",\"pid\":%d,\"op\":\"%s\","
+        "\"self\":%d,\"node\":%d,\"bytes\":%llu}\n",
+        stamp,
+        tag_.c_str(),
+        static_cast<int>(getpid()),
+        op,
+        self,
+        node,
+        static_cast<unsigned long long>(bytes));
+    if (written <= 0) {
+      return;
+    }
+    // snprintf returns the *would-be* length; anything that did not fit in
+    // `line` would read past the buffer here. kMaxTagLen keeps this
+    // unreachable in practice; if it ever trips, drop the record instead of
+    // emitting a truncated (invalid) JSONL line.
+    if (static_cast<std::size_t>(written) >= sizeof(line)) {
+      return;
+    }
+    std::lock_guard<std::mutex> guard(mutex_);
+    buffer_.append(line, static_cast<std::size_t>(written));
+    // The PS server is killed rather than shut down cleanly, so a purely
+    // size-triggered flush silently drops whatever sits in the buffer at
+    // exit. A time budget bounds that loss to kFlushIntervalNs of posts.
+    if (buffer_.size() >= kFlushBytes ||
+        stamp - last_flush_ns_ >= kFlushIntervalNs) {
+      FlushLocked();
+      last_flush_ns_ = stamp;
+    }
+  }
+
+  ~RdmaWireTrace() {
+    std::lock_guard<std::mutex> guard(mutex_);
+    FlushLocked();
+    if (file_ != nullptr) {
+      std::fclose(file_);
+    }
+  }
+
+private:
+  RdmaWireTrace() {
+    const char* path = std::getenv("RECSTORE_RDMA_WIRE_TRACE");
+    if (path == nullptr || *path == '\0') {
+      return;
+    }
+    const char* tag = std::getenv("RECSTORE_RDMA_WIRE_TRACE_TAG");
+    tag_ = (tag != nullptr && *tag != '\0') ? tag : std::to_string(getpid());
+    // Keep every record inside `line[224]` in Record(); the fixed fields
+    // already take ~90 bytes at their widest.
+    if (tag_.size() > kMaxTagLen) {
+      tag_.resize(kMaxTagLen);
+    }
+    file_ = std::fopen(path, "a");
+  }
+
+  void FlushLocked() {
+    if (file_ != nullptr && !buffer_.empty()) {
+      std::fwrite(buffer_.data(), 1, buffer_.size(), file_);
+      std::fflush(file_);
+    }
+    buffer_.clear();
+  }
+
+  static constexpr std::size_t kMaxTagLen  = 64;
+  static constexpr std::size_t kFlushBytes = 256 * 1024;
+  // 100ms worth of posts is negligible to lose at process kill time.
+  static constexpr unsigned long long kFlushIntervalNs = 100ull * 1000 * 1000;
+  std::FILE* file_                         = nullptr;
+  std::string tag_;
+  std::string buffer_;
+  unsigned long long last_flush_ns_ = 0;
+  std::mutex mutex_;
+};
 
 struct OpenedRawVerbsDevice {
   ibv_context* context = nullptr;
@@ -613,6 +717,7 @@ void RawVerbsTransport::Write(
   if (ibv_post_send(impl_->qps[remote.nodeID], &wr, &bad_wr) != 0) {
     throw std::runtime_error("ibv_post_send write failed");
   }
+  RdmaWireTrace::Instance().Record("write", impl_->config.global_id, remote.nodeID, bytes);
 }
 
 void RawVerbsTransport::WriteSg(
@@ -649,6 +754,10 @@ void RawVerbsTransport::WriteSg(
   if (verbs_sges.empty()) {
     return;
   }
+  std::size_t total_sg_bytes = 0;
+  for (const auto& sge : verbs_sges) {
+    total_sg_bytes += sge.length;
+  }
   ibv_send_wr wr{};
   wr.wr_id      = wr_id;
   wr.opcode     = IBV_WR_RDMA_WRITE;
@@ -662,6 +771,7 @@ void RawVerbsTransport::WriteSg(
   if (ibv_post_send(impl_->qps[remote.nodeID], &wr, &bad_wr) != 0) {
     throw std::runtime_error("ibv_post_send write-sg failed");
   }
+  RdmaWireTrace::Instance().Record("write_sg", impl_->config.global_id, remote.nodeID, total_sg_bytes);
 }
 
 void RawVerbsTransport::WriteWithImm(
@@ -698,6 +808,7 @@ void RawVerbsTransport::WriteWithImm(
   if (ibv_post_send(impl_->qps[remote.nodeID], &wr, &bad_wr) != 0) {
     throw std::runtime_error("ibv_post_send write-with-imm failed");
   }
+  RdmaWireTrace::Instance().Record("write_imm", impl_->config.global_id, remote.nodeID, bytes);
 }
 
 void RawVerbsTransport::Read(
@@ -726,6 +837,7 @@ void RawVerbsTransport::Read(
   if (ibv_post_send(impl_->qps[remote.nodeID], &wr, &bad_wr) != 0) {
     throw std::runtime_error("ibv_post_send read failed");
   }
+  RdmaWireTrace::Instance().Record("read", impl_->config.global_id, remote.nodeID, bytes);
 }
 
 void RawVerbsTransport::SendDoorbell(

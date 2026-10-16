@@ -133,6 +133,16 @@ def start_rdma_ps_cluster(
 
     def wrap_server_command(global_id: int, cmd: list[str]) -> list[str]:
         server = sorted_servers[global_id]
+        # The RDMA wire trace is opt-in through the environment; PS servers are
+        # launched through ssh, so the variable has to be re-exported here.
+        wire_trace = os.environ.get("RECSTORE_RDMA_WIRE_TRACE", "")
+        if wire_trace:
+            cmd = [
+                "env",
+                f"RECSTORE_RDMA_WIRE_TRACE={wire_trace}",
+                f"RECSTORE_RDMA_WIRE_TRACE_TAG=ps{global_id}",
+                *cmd,
+            ]
         return _wrap_remote(
             cmd,
             ssh_host=server.ssh_host,
@@ -143,8 +153,11 @@ def start_rdma_ps_cluster(
     value_size = int(cfg.embedding_dim) * 4
     max_kv_num_per_request = max(1, int(cfg.batch_size) * SPARSE_FEATURES_PER_SAMPLE)
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    server_path = os.environ.get(
+        "RECSTORE_E2E_PETPS_SERVER", str(repo_root / "build/bin/petps_server")
+    )
     runner = PetPSClusterRunner(
-        server_path=str(repo_root / "build/bin/petps_server"),
+        server_path=server_path,
         config_path=str(config_path),
         num_servers=len(cfg.servers),
         num_clients=_rdma_client_process_count(cfg.clients),
@@ -318,6 +331,16 @@ def build_client_command(
     first_server = sorted(cfg.servers, key=lambda item: item.shard_id)[0]
     env_prefix = ["env", f"CUDA_VISIBLE_DEVICES={_cuda_visible_devices(client)}"]
     env_prefix.extend(f"{key}={value}" for key, value in _recstore_nccl_env().items())
+    # Mirror the server-side hook: clients post the RDMA reads, so tracing them
+    # is what reveals when prefetch traffic actually hits the wire.
+    wire_trace = os.environ.get("RECSTORE_RDMA_WIRE_TRACE", "")
+    if wire_trace:
+        env_prefix.extend(
+            [
+                f"RECSTORE_RDMA_WIRE_TRACE={wire_trace}",
+                f"RECSTORE_RDMA_WIRE_TRACE_TAG=client{client.node_rank}",
+            ]
+        )
     if transport.upper() == "BRPC":
         env_prefix.extend(f"{key}={value}" for key, value in _brpc_rdma_env().items())
     if transport.upper() == "RDMA" and rdma_runner is not None:
@@ -364,6 +387,24 @@ def build_client_command(
             [
                 "--optimization-cache-capacity",
                 str(cfg.optimization_cache_capacity),
+            ]
+        )
+    if cfg.optimization_lookahead > 0:
+        cmd.extend(["--optimization-lookahead", str(cfg.optimization_lookahead)])
+    if cfg.profiler:
+        cmd.extend(
+            [
+                "--recstore-profiler",
+                "--recstore-profiler-warmup",
+                str(cfg.profiler_warmup),
+                "--recstore-profiler-active",
+                str(cfg.profiler_active),
+                "--recstore-profiler-repeat",
+                str(cfg.profiler_repeat),
+                "--recstore-trace-dir",
+                str(cfg.output_dir / "outputs" / run_id / "traces"),
+                "--recstore-event-log",
+                str(cfg.output_dir / "outputs" / run_id / "events.jsonl"),
             ]
         )
     cmd.extend(
@@ -455,4 +496,20 @@ def build_torchrec_command(
         "--rdzv-id",
         rdzv_id or run_id,
     ]
+    if cfg.profiler:
+        cmd.extend(
+            [
+                "--torchrec-profiler",
+                "--torchrec-profiler-warmup",
+                str(cfg.profiler_warmup),
+                "--torchrec-profiler-active",
+                str(cfg.profiler_active),
+                "--torchrec-profiler-repeat",
+                str(cfg.profiler_repeat),
+                "--torchrec-trace-dir",
+                str(cfg.output_dir / "outputs" / run_id / "torchrec_traces"),
+                "--torchrec-trace-csv",
+                str(cfg.output_dir / "outputs" / run_id / "torchrec_trace.csv"),
+            ]
+        )
     return _wrap_remote(cmd, ssh_host=client.ssh_host, ssh_port=client.ssh_port, cwd=client.repo_root)

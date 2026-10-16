@@ -30,10 +30,42 @@ public:
     const auto& dram                 = value.at("dram_allocator");
     const std::string allocator_type = dram.value("type", "R2_SLAB");
     const uint64_t capacity_bytes = dram.at("capacity_bytes").get<uint64_t>();
-    using MF                      = base::
+    std::vector<int> size_classes;
+    if (dram.contains("size_classes")) {
+      size_classes = dram.at("size_classes").get<std::vector<int>>();
+      for (int slab_size : size_classes) {
+        if (slab_size <= 0) {
+          throw std::invalid_argument(
+              "DramValueStore requires positive dram_allocator.size_classes");
+        }
+      }
+    }
+
+    using MF = base::
         Factory<base::MallocApi, const std::string&, int64, const std::string&>;
-    allocator_.reset(MF::NewInstance(
-        allocator_type, path, static_cast<int64>(capacity_bytes), "DRAM"));
+    using MFS =
+        base::Factory<base::MallocApi,
+                      const std::string&,
+                      int64,
+                      const std::string&,
+                      const std::vector<int>&>;
+    if (!size_classes.empty()) {
+      // Only allocators that registered the sized factory accept an explicit
+      // size-class list; everything else keeps the fixed-class constructor.
+      if (MFS::creators().count(allocator_type) == 0) {
+        throw std::invalid_argument(
+            "allocator does not support size_classes: " + allocator_type);
+      }
+      allocator_.reset(MFS::NewInstance(
+          allocator_type,
+          path,
+          static_cast<int64>(capacity_bytes),
+          "DRAM",
+          size_classes));
+    } else {
+      allocator_.reset(MF::NewInstance(
+          allocator_type, path, static_cast<int64>(capacity_bytes), "DRAM"));
+    }
     if (!allocator_) {
       throw std::runtime_error("failed to create DramValueStore allocator");
     }
@@ -117,10 +149,12 @@ public:
     if (handles == nullptr || out_buf == nullptr || row_bytes == 0) {
       return false;
     }
+    if (!IsPowerOfTwo(row_bytes)) {
+      return ReadFlatFixedRowsGeneric(
+          handles, num_rows, out_buf, row_bytes, missing_rows);
+    }
     uint64_t local_missing = 0;
     char* dst              = static_cast<char*>(out_buf);
-    DCHECK(IsPowerOfTwo(row_bytes))
-        << "DramValueStore flat row size must be a power of two";
     const unsigned row_shift = Log2PowerOfTwo(row_bytes);
     for (size_t row = 0; row < num_rows; ++row) {
       char* row_dst = dst + (row << row_shift);
@@ -134,6 +168,45 @@ public:
         return false;
       }
       std::memcpy(row_dst, src, row_bytes);
+    }
+    if (missing_rows != nullptr) {
+      *missing_rows = local_missing;
+    }
+    return true;
+  }
+
+  bool ReadFlatFixedRowSlices(const uint64_t* handles,
+                              size_t num_rows,
+                              void* out_buf,
+                              size_t stored_row_bytes,
+                              size_t source_offset_bytes,
+                              size_t output_row_bytes,
+                              uint64_t* missing_rows) const override {
+    if (handles == nullptr || out_buf == nullptr || output_row_bytes == 0 ||
+        source_offset_bytes > stored_row_bytes ||
+        output_row_bytes > stored_row_bytes - source_offset_bytes) {
+      return false;
+    }
+    if (!IsPowerOfTwo(output_row_bytes)) {
+      return ReadFlatFixedRowSlicesGeneric(
+          handles, num_rows, out_buf, source_offset_bytes, output_row_bytes,
+          missing_rows);
+    }
+    uint64_t local_missing = 0;
+    char* dst              = static_cast<char*>(out_buf);
+    const unsigned row_shift = Log2PowerOfTwo(output_row_bytes);
+    for (size_t row = 0; row < num_rows; ++row) {
+      char* row_dst = dst + (row << row_shift);
+      if (handles[row] == kValueHandleNone) {
+        std::memset(row_dst, 0, output_row_bytes);
+        ++local_missing;
+        continue;
+      }
+      const char* src = Ptr(handles[row]);
+      if (src == nullptr) {
+        return false;
+      }
+      std::memcpy(row_dst, src + source_offset_bytes, output_row_bytes);
     }
     if (missing_rows != nullptr) {
       *missing_rows = local_missing;
@@ -175,6 +248,61 @@ public:
   uint64_t TotalAllocCount() const { return allocator_->total_malloc(); }
 
 private:
+  [[gnu::noinline]] bool ReadFlatFixedRowsGeneric(
+      const uint64_t* handles,
+      size_t num_rows,
+      void* out_buf,
+      size_t row_bytes,
+      uint64_t* missing_rows) const {
+    uint64_t local_missing = 0;
+    char* dst              = static_cast<char*>(out_buf);
+    for (size_t row = 0; row < num_rows; ++row) {
+      char* row_dst = dst + row * row_bytes;
+      if (handles[row] == kValueHandleNone) {
+        std::memset(row_dst, 0, row_bytes);
+        ++local_missing;
+        continue;
+      }
+      const char* src = Ptr(handles[row]);
+      if (src == nullptr) {
+        return false;
+      }
+      std::memcpy(row_dst, src, row_bytes);
+    }
+    if (missing_rows != nullptr) {
+      *missing_rows = local_missing;
+    }
+    return true;
+  }
+
+  [[gnu::noinline]] bool ReadFlatFixedRowSlicesGeneric(
+      const uint64_t* handles,
+      size_t num_rows,
+      void* out_buf,
+      size_t source_offset_bytes,
+      size_t output_row_bytes,
+      uint64_t* missing_rows) const {
+    uint64_t local_missing = 0;
+    char* dst              = static_cast<char*>(out_buf);
+    for (size_t row = 0; row < num_rows; ++row) {
+      char* row_dst = dst + row * output_row_bytes;
+      if (handles[row] == kValueHandleNone) {
+        std::memset(row_dst, 0, output_row_bytes);
+        ++local_missing;
+        continue;
+      }
+      const char* src = Ptr(handles[row]);
+      if (src == nullptr) {
+        return false;
+      }
+      std::memcpy(row_dst, src + source_offset_bytes, output_row_bytes);
+    }
+    if (missing_rows != nullptr) {
+      *missing_rows = local_missing;
+    }
+    return true;
+  }
+
   static uint64_t EncodeOffset(int64 offset) {
     return static_cast<uint64_t>(offset) + 1;
   }
