@@ -244,6 +244,10 @@ struct RawVerbsTransport::Impl {
   std::vector<RawVerbsRemoteMemory> remotes;
   std::vector<ibv_qp*> qps;
   std::vector<std::uint32_t> max_inline_data_per_node;
+  // P3: per-peer lane generation this side publishes. Indexed by node id.
+  std::vector<std::uint64_t> lane_generations;
+  // One control-plane channel shared by Publish()/Connect()/RefreshPeerMeta().
+  std::unique_ptr<RdmaControlPlaneClient> control_plane;
   std::mutex cq_mutex; // Serializes CQ access across drains and wait harvests.
   ibv_wc wc_batch[kRawVerbsPollBatchSize] = {};
   RawVerbsCompletionBatchCursor batch_cursor;
@@ -310,6 +314,7 @@ RawVerbsTransport::RawVerbsTransport(const RawVerbsConfig& config)
   impl_->qps.resize(static_cast<std::size_t>(node_count), nullptr);
   impl_->max_inline_data_per_node.assign(
       static_cast<std::size_t>(node_count), 0);
+  impl_->lane_generations.assign(static_cast<std::size_t>(node_count), 0);
   for (int node = 0; node < node_count; ++node) {
     if (!ShouldRawVerbsConnectToNode(config, node)) {
       continue;
@@ -487,25 +492,59 @@ RawVerbsNodeMeta RawVerbsTransport::LocalMeta() const {
   return meta;
 }
 
+namespace {
+RdmaControlPlaneEndpoint
+MakeControlPlaneEndpoint(const RawVerbsConfig& config) {
+  return RdmaControlPlaneEndpoint{
+      config.control_plane_host,
+      config.control_plane_port,
+      config.control_plane_timeout_ms,
+      config.deployment_id,
+      config.deployment_epoch,
+      config.protocol_version,
+      config.configuration_digest,
+      config.fabric_digest,
+  };
+}
+
+// Fetches and validates `node`'s published metadata over the transport's shared
+// control-plane channel. Shared by the initial Connect() handshake and the P3
+// RefreshPeerMeta() re-read.
+RawVerbsNodeMeta FetchPeerMetaFromControlPlane(
+    RdmaControlPlaneClient& control_plane,
+    const RawVerbsConfig& config,
+    int node) {
+  const RawVerbsNodeMeta meta = control_plane.GetMeta(
+      node,
+      config.remote_lane,
+      config.global_id,
+      config.local_lane,
+      config.control_plane_timeout_ms);
+  ValidateRawVerbsPeerMeta(config, node, meta);
+  return meta;
+}
+} // namespace
+
+RdmaControlPlaneClient& RawVerbsTransport::ControlPlane() {
+  if (impl_->control_plane == nullptr) {
+    impl_->control_plane = std::make_unique<RdmaControlPlaneClient>(
+        MakeControlPlaneEndpoint(impl_->config));
+  }
+  return *impl_->control_plane;
+}
+
 void RawVerbsTransport::Publish() {
   const int node_count = impl_->config.num_servers + impl_->config.num_clients;
-  const RawVerbsNodeMeta local = LocalMeta();
-  RdmaControlPlaneClient control_plane({
-      impl_->config.control_plane_host,
-      impl_->config.control_plane_port,
-      impl_->config.control_plane_timeout_ms,
-      impl_->config.deployment_id,
-      impl_->config.deployment_epoch,
-      impl_->config.protocol_version,
-      impl_->config.configuration_digest,
-      impl_->config.fabric_digest,
-  });
+  const RawVerbsNodeMeta local          = LocalMeta();
+  RdmaControlPlaneClient& control_plane = ControlPlane();
   for (int node = 0; node < node_count; ++node) {
     if (!ShouldRawVerbsConnectToNode(impl_->config, node)) {
       continue;
     }
     RawVerbsNodeMeta peer_local = local;
     peer_local.qpn = impl_->qps[static_cast<std::size_t>(node)]->qp_num;
+    peer_local.lane_generation =
+        impl_->lane_generations[static_cast<std::size_t>(node)];
     control_plane.PublishMeta(
         impl_->config.global_id,
         impl_->config.local_lane,
@@ -518,16 +557,6 @@ void RawVerbsTransport::Publish() {
 void RawVerbsTransport::Connect() {
   const int node_count = impl_->config.num_servers + impl_->config.num_clients;
   const RawVerbsNodeMeta local = LocalMeta();
-  RdmaControlPlaneClient control_plane({
-      impl_->config.control_plane_host,
-      impl_->config.control_plane_port,
-      impl_->config.control_plane_timeout_ms,
-      impl_->config.deployment_id,
-      impl_->config.deployment_epoch,
-      impl_->config.protocol_version,
-      impl_->config.configuration_digest,
-      impl_->config.fabric_digest,
-  });
   impl_->metas.assign(static_cast<std::size_t>(node_count), RawVerbsNodeMeta{});
   impl_->remotes.assign(
       static_cast<std::size_t>(node_count), RawVerbsRemoteMemory{});
@@ -545,13 +574,8 @@ void RawVerbsTransport::Connect() {
     if (!ShouldRawVerbsConnectToNode(impl_->config, node)) {
       continue;
     }
-    const RawVerbsNodeMeta meta = control_plane.GetMeta(
-        node,
-        impl_->config.remote_lane,
-        impl_->config.global_id,
-        impl_->config.local_lane,
-        impl_->config.control_plane_timeout_ms);
-    ValidateRawVerbsPeerMeta(impl_->config, node, meta);
+    const RawVerbsNodeMeta meta =
+        FetchPeerMetaFromControlPlane(ControlPlane(), impl_->config, node);
     impl_->metas[static_cast<std::size_t>(node)]   = meta;
     impl_->remotes[static_cast<std::size_t>(node)] = RawVerbsRemoteMemory{
         meta.node_id,
@@ -592,6 +616,101 @@ void RawVerbsTransport::Connect() {
 void RawVerbsTransport::PublishAndConnect() {
   Publish();
   Connect();
+}
+
+void RawVerbsTransport::RebuildQp(std::uint16_t node_id, bool cq_exclusive) {
+  if (node_id >= impl_->qps.size() ||
+      impl_->qps[static_cast<std::size_t>(node_id)] == nullptr) {
+    throw std::runtime_error("raw verbs rebuild: unknown or absent lane QP");
+  }
+  if (!ShouldRawVerbsConnectToNode(impl_->config, node_id)) {
+    throw std::runtime_error("raw verbs rebuild: node is not connected");
+  }
+  if (impl_->metas.size() != impl_->qps.size()) {
+    throw std::runtime_error("raw verbs rebuild: connect() has not run");
+  }
+  ibv_qp* qp = impl_->qps[static_cast<std::size_t>(node_id)];
+
+  // Serialize with CQ polling. Reset first: the transition flushes every
+  // outstanding WR on the QP (and its receive queue), and the resulting
+  // completions join the earlier failure completions already parked in the CQ.
+  std::lock_guard<std::mutex> guard(impl_->cq_mutex);
+  impl_->batch_cursor.Reset(impl_->wc_batch, 0);
+  ibv_qp_attr reset_attr{};
+  reset_attr.qp_state = IBV_QPS_RESET;
+  if (ibv_modify_qp(qp, &reset_attr, IBV_QP_STATE) != 0) {
+    throw std::runtime_error(IbvError("ibv_modify_qp RESET"));
+  }
+  // Now drop those completions so none is misattributed to a fresh submit. Only
+  // valid when this QP is the CQ's sole poster; a shared CQ must not be drained
+  // or the other peer QPs' completions are lost (and the caller must not have
+  // reached here with a shared CQ in the first place).
+  if (cq_exclusive) {
+    while (true) {
+      const int drained =
+          ibv_poll_cq(impl_->cq, kRawVerbsPollBatchSize, impl_->wc_batch);
+      if (drained < 0) {
+        throw std::runtime_error("ibv_poll_cq failed during raw verbs rebuild");
+      }
+      if (drained == 0) {
+        break;
+      }
+    }
+  }
+
+  ModifyQpToInit(qp, impl_->config.port_num);
+  ModifyQpToRtr(
+      qp,
+      impl_->metas[static_cast<std::size_t>(node_id)],
+      impl_->gid_index,
+      impl_->config.port_num,
+      impl_->config.fabric_mode,
+      impl_->config.hop_limit,
+      impl_->config.traffic_class,
+      impl_->config.flow_label);
+  ModifyQpToRts(qp);
+  // Reset flushed the receive queue; re-arm it so incoming doorbells land.
+  for (int i = 0; i < kRawVerbsRecvDepth; ++i) {
+    ibv_recv_wr wr{};
+    ibv_recv_wr* bad_wr = nullptr;
+    wr.wr_id            = static_cast<std::uint64_t>(node_id);
+    wr.sg_list          = nullptr;
+    wr.num_sge          = 0;
+    if (ibv_post_recv(qp, &wr, &bad_wr) != 0) {
+      throw std::runtime_error("ibv_post_recv failed during rebuild");
+    }
+  }
+}
+
+void RawVerbsTransport::SetLaneGeneration(std::uint16_t node_id,
+                                          std::uint64_t generation) {
+  if (node_id >= impl_->lane_generations.size()) {
+    throw std::runtime_error("raw verbs generation: node out of range");
+  }
+  impl_->lane_generations[static_cast<std::size_t>(node_id)] = generation;
+}
+
+std::uint64_t RawVerbsTransport::LaneGeneration(std::uint16_t node_id) const {
+  if (node_id >= impl_->lane_generations.size()) {
+    throw std::runtime_error("raw verbs generation: node out of range");
+  }
+  return impl_->lane_generations[static_cast<std::size_t>(node_id)];
+}
+
+RawVerbsNodeMeta RawVerbsTransport::RefreshPeerMeta(std::uint16_t node_id) {
+  if (node_id >= impl_->qps.size() ||
+      !ShouldRawVerbsConnectToNode(impl_->config, node_id)) {
+    throw std::runtime_error("raw verbs peer meta: node is not connected");
+  }
+  const RawVerbsNodeMeta meta =
+      FetchPeerMetaFromControlPlane(ControlPlane(), impl_->config, node_id);
+  impl_->metas[static_cast<std::size_t>(node_id)]   = meta;
+  impl_->remotes[static_cast<std::size_t>(node_id)] = RawVerbsRemoteMemory{
+      meta.node_id,
+      meta.base_addr,
+      meta.rkey,
+  };
+  return meta;
 }
 
 void RawVerbsTransport::Write(

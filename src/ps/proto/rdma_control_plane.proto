@@ -23,6 +23,10 @@ message RawVerbsMetadata {
   int32 gid_index = 18;
   uint32 active_mtu = 19;
   uint32 fabric_mode = 20;
+  // P3 lane/QP generation for this publisher lane. Both sides bump it when they
+  // rebuild the QP, so a peer can tell a rebuild from the initial handshake and
+  // re-pair the QP only after both ends reset (`0` on the initial handshake).
+  uint64 lane_generation = 21;
 }
 
 message PublishMetaRequest {

@@ -207,6 +207,8 @@ public:
     }
     get_payload_completions_.resize(
         static_cast<std::size_t>(std::max(1, thread_count_)));
+    next_rebuild_check_ns_.assign(
+        static_cast<std::size_t>(std::max(1, thread_count_)), 0);
   }
 
   void Run() {
@@ -1049,6 +1051,7 @@ private:
           &scanned_slots,
           &ready_slots);
       DrainGetPayloadCompletions(thread_id, profile_enabled);
+      MaybePollClientRebuilds(thread_id);
       if (profile_enabled) {
         profile_.scan_rounds.fetch_add(1, std::memory_order_relaxed);
         profile_.scanned_slots.fetch_add(
@@ -1265,6 +1268,44 @@ private:
     return true;
   }
 
+  // P3: throttled check for clients that rebuilt their lane QP. Runs on the
+  // polling thread that owns the lanes, so it serializes with response writes
+  // without a lock; disabled (and free) unless --rdma_lane_rebuild_enabled.
+  void MaybePollClientRebuilds(int thread_id) {
+    if (!FLAGS_rdma_lane_rebuild_enabled) {
+      return;
+    }
+    const std::uint64_t now = NowNs();
+    const std::uint64_t interval =
+        static_cast<std::uint64_t>(
+            std::max(1, FLAGS_rdma_lane_rebuild_poll_ms)) *
+        1000000ULL;
+    std::uint64_t& next =
+        next_rebuild_check_ns_.at(static_cast<std::size_t>(thread_id));
+    if (now < next) {
+      return;
+    }
+    next               = now + interval;
+    const int qp_count = transport_->config().qps_per_client_per_shard;
+    for (int qp_index = thread_id; qp_index < qp_count;
+         qp_index += thread_count_) {
+      try {
+        const int rebuilt = transport_->PollClientRebuildRequests(qp_index);
+        if (rebuilt > 0) {
+          LOG(WARNING)
+              << "component=rdma_rc_server event=client_lane_rebuild_applied"
+              << " shard=" << shard_id_ << " qp=" << qp_index
+              << " count=" << rebuilt;
+        }
+      } catch (const std::exception& error) {
+        LOG(WARNING)
+            << "component=rdma_rc_server event=client_lane_rebuild_error"
+            << " shard=" << shard_id_ << " qp=" << qp_index << " error=\""
+            << error.what() << "\"";
+      }
+    }
+  }
+
   void ScanAssignedSlots(
       int thread_id,
       int worker_id,
@@ -1311,6 +1352,7 @@ private:
           &scanned_slots,
           &ready_slots);
       DrainGetPayloadCompletions(thread_id, profile_enabled);
+      MaybePollClientRebuilds(thread_id);
       if (profile_enabled) {
         profile_.scan_rounds.fetch_add(1, std::memory_order_relaxed);
         profile_.scanned_slots.fetch_add(
@@ -1372,6 +1414,7 @@ private:
   std::vector<std::unique_ptr<PollerProfile>> poller_profiles_;
   int get_payload_worker_count_ = 0;
   std::vector<std::thread> get_payload_workers_;
+  std::vector<std::uint64_t> next_rebuild_check_ns_;
   std::mutex get_payload_mu_;
   std::condition_variable get_payload_cv_;
   std::deque<GetPayloadTask> get_payload_tasks_;

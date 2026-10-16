@@ -29,6 +29,7 @@ DECLARE_int32(rdma_rc_client_id_base);
 DECLARE_int32(rdma_rc_qps_per_client_per_shard);
 DECLARE_int32(rdma_rc_slots_per_qp);
 DECLARE_string(rdma_get_response_mode);
+DECLARE_bool(rdma_lane_rebuild_enabled);
 
 namespace {
 
@@ -438,6 +439,46 @@ TEST(PetPSIntegrationTest, RepeatedPutGetStressMultiShard) {
   }
 }
 
+// P3 lane/QP rebuild: with --rdma_lane_rebuild_enabled on both ends, forcing a
+// rebuild of a healthy lane's QP must be acknowledged by the peer (the
+// bilateral generation handshake) and the lane must keep serving afterwards.
+// Skips unless the flag is set, so the default suites keep the terminal-dirty
+// behavior.
+TEST(PetPSIntegrationTest, LaneRebuildResumesServiceSingleShard) {
+  if (!FLAGS_rdma_lane_rebuild_enabled) {
+    GTEST_SKIP() << "requires --rdma_lane_rebuild_enabled on server and client";
+  }
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  auto& client            = SingleShardClient();
+
+  std::vector<std::uint64_t> keys = {7600001, 7600002, 7600003};
+  auto values                     = MakeValues(keys, embedding_dim);
+  ASSERT_EQ(client.PutParameter(keys, values), 0);
+
+  const int lanes = FLAGS_rdma_rc_qps_per_client_per_shard;
+  ASSERT_GT(lanes, 0);
+
+  const auto expect_get_ok = [&]() {
+    void* recv_buffer =
+        client.GetReceiveBuffer(client.ResponseBufferBytes(keys.size()));
+    const int rpc_id = client.GetParameter(
+        base::ConstArray<std::uint64_t>(keys),
+        static_cast<float*>(recv_buffer),
+        false);
+    client.WaitRPCFinish(rpc_id);
+    ExpectFlatSlots(static_cast<float*>(recv_buffer), values, embedding_dim);
+    client.RevokeRPCResource(rpc_id);
+  };
+
+  ASSERT_EQ(client.RebuildAllLanesForTest(), lanes)
+      << "the server did not acknowledge every lane rebuild";
+  expect_get_ok();
+
+  // A second round proves the generations keep advancing in lockstep.
+  ASSERT_EQ(client.RebuildAllLanesForTest(), lanes);
+  expect_get_ok();
+}
+
 // P1b client fast-fail scenario. Needs a parent that freezes shard 1 after the
 // warm-up marker and unfreezes it once every lane is dirty, so it skips unless
 // RECSTORE_RDMA_FAST_FAIL_TEST is set. Driven by
@@ -558,6 +599,82 @@ TEST(PetPSIntegrationTest, ShardUnreachableRetiresLanesAndFailsFast) {
   EXPECT_LT(post_us, kInstantFailUs)
       << "a retired lane was re-armed without a rebuild";
   EXPECT_TRUE(get_matches(healthy, healthy_keys, healthy_values));
+}
+
+// P3 end-to-end recovery: a driving parent SIGSTOPs shard 1 after the warm
+// marker and SIGCONTs it later; with lane rebuild enabled the client must
+// retire the frozen lanes, then re-arm and serve them again once the shard
+// resumes (the bilateral generation handshake rebuilds both QPs).
+namespace {
+constexpr char kRebuildWarmMarker[] = "RECSTORE_REBUILD_WARM_READY";
+} // namespace
+
+TEST(PetPSIntegrationTest, LaneRebuildRecoversAfterFreeze) {
+  if (!FLAGS_rdma_lane_rebuild_enabled) {
+    GTEST_SKIP() << "requires --rdma_lane_rebuild_enabled on server and client";
+  }
+  if (std::getenv("RECSTORE_RDMA_REBUILD_RECOVERY_TEST") == nullptr) {
+    GTEST_SKIP()
+        << "requires RECSTORE_RDMA_REBUILD_RECOVERY_TEST and a driving "
+           "parent";
+  }
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  const int client_id     = FLAGS_global_id - FLAGS_num_server_processes;
+  ASSERT_GE(client_id, 0);
+  const auto fabric = TestFabric();
+  const int logical_client_id =
+      FLAGS_rdma_rc_client_id_base >= 0
+          ? FLAGS_rdma_rc_client_id_base
+          : fabric.logical_id;
+  petps::PetPSClient client("127.0.0.1", 1234, 1, logical_client_id);
+  client.InitThread();
+  // Also pair with shard 0: a server transport connects to every client that
+  // uses its shard, and shard 0 also hosts the control plane whose metadata
+  // exchange this test depends on.
+  petps::PetPSClient healthy("127.0.0.1", 1234, 0, logical_client_id);
+  healthy.InitThread();
+
+  const std::vector<std::uint64_t> keys = {7700001, 7700002, 7700003};
+  const auto values                     = MakeValues(keys, embedding_dim);
+  ASSERT_EQ(client.PutParameter(keys, values), 0);
+  const std::vector<std::uint64_t> healthy_keys = {7800001, 7800002, 7800003};
+  ASSERT_EQ(healthy.PutParameter(
+                healthy_keys, MakeValues(healthy_keys, embedding_dim)),
+            0);
+
+  const auto get_matches = [&]() {
+    std::vector<float> output(
+        keys.size() * static_cast<std::size_t>(embedding_dim), 0.0f);
+    base::RecTensor output_tensor(
+        output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
+    if (client.GetParameter(
+            base::ConstArray<std::uint64_t>(keys), output_tensor) != 0) {
+      return false;
+    }
+    return std::equal(output.begin(), output.end(), values.data_as<float>());
+  };
+  ASSERT_TRUE(get_matches());
+
+  // The parent freezes shard 1 once it sees this marker, then unfreezes it.
+  std::printf("%s\n", kRebuildWarmMarker);
+  std::fflush(stdout);
+
+  const auto start = std::chrono::steady_clock::now();
+  bool saw_failure = false;
+  bool recovered   = false;
+  while (std::chrono::steady_clock::now() - start < std::chrono::seconds(120)) {
+    try {
+      if (get_matches() && saw_failure) {
+        recovered = true;
+        break;
+      }
+    } catch (const std::exception&) {
+      saw_failure = true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  EXPECT_TRUE(saw_failure) << "the freeze never produced a failure";
+  EXPECT_TRUE(recovered) << "the lane never recovered after the freeze lifted";
 }
 
 // Device-layer scenario (§3.6, P3 forward shift): the parent SIGKILLs shard 1

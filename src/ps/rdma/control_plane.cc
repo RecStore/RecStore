@@ -176,6 +176,7 @@ std::string EncodeRawVerbsNodeMeta(const RawVerbsNodeMeta& meta) {
   wire.set_gid_index(meta.gid_index);
   wire.set_active_mtu(meta.active_mtu);
   wire.set_fabric_mode(meta.fabric_mode);
+  wire.set_lane_generation(meta.lane_generation);
   std::string payload;
   if (!wire.SerializeToString(&payload)) {
     throw std::runtime_error("failed to serialize RawVerbsNodeMeta");
@@ -225,11 +226,12 @@ RawVerbsNodeMeta DecodeRawVerbsNodeMeta(const std::string& payload) {
   meta.rkey                 = wire.rkey();
   meta.base_addr            = wire.base_addr();
   std::memcpy(meta.gid, wire.gid().data(), sizeof(meta.gid));
-  meta.port_num    = static_cast<std::uint8_t>(wire.port_num());
-  meta.link_layer  = static_cast<std::uint8_t>(wire.link_layer());
-  meta.gid_index   = wire.gid_index();
-  meta.active_mtu  = static_cast<std::uint8_t>(wire.active_mtu());
-  meta.fabric_mode = static_cast<std::uint8_t>(wire.fabric_mode());
+  meta.port_num        = static_cast<std::uint8_t>(wire.port_num());
+  meta.link_layer      = static_cast<std::uint8_t>(wire.link_layer());
+  meta.gid_index       = wire.gid_index();
+  meta.active_mtu      = static_cast<std::uint8_t>(wire.active_mtu());
+  meta.fabric_mode     = static_cast<std::uint8_t>(wire.fabric_mode());
+  meta.lane_generation = wire.lane_generation();
   return meta;
 }
 

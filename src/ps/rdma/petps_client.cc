@@ -245,8 +245,8 @@ const float* PetPSClient::BorrowGetResultPayload(
   auto& slot                 = SlotAt(pending.qp_index, pending.slot_in_qp);
   const bool profile_enabled = FLAGS_rdma_rc_profile_interval_ms > 0;
   const std::uint64_t wait_start_ns = profile_enabled ? NowNs() : 0;
-  const std::int32_t rc_status =
-      WaitForStatusWord(pending.qp_index, slot.view.status, pending.seq);
+  const std::int32_t rc_status      = WaitForStatusWord(
+      pending.qp_index, slot.view.status, pending.seq, pending.lane_epoch);
   if (profile_enabled) {
     profile_.wait_rpc_count.fetch_add(1, std::memory_order_relaxed);
     profile_.wait_status_ns.fetch_add(
@@ -284,9 +284,20 @@ PetPSClient::SlotHandle PetPSClient::AcquireIdleSlot() {
   int usable_lanes = 0;
   for (std::size_t qp_index = 0; qp_index < qps_.size(); ++qp_index) {
     auto& qp = qps_[qp_index];
-    if (qp.dirty.load(std::memory_order_relaxed)) {
-      // Retired lane: its slots stay off limits for good (P1b §4.1).
+    if (qp.dead.load(std::memory_order_relaxed)) {
       continue;
+    }
+    if (qp.dirty.load(std::memory_order_relaxed)) {
+      // A degraded lane is rebuilt lazily here, under mu_, if a QP rebuild can
+      // cure the cause. The cooldown keeps a sustained outage from burning the
+      // rebuild budget on every acquire; a non-rebuildable lane stays retired.
+      const auto now = std::chrono::steady_clock::now();
+      if (!FLAGS_rdma_lane_rebuild_enabled ||
+          !qp.rebuildable.load(std::memory_order_relaxed) ||
+          now < qp.next_rebuild_at ||
+          !TryRebuildLaneLocked(static_cast<int>(qp_index))) {
+        continue;
+      }
     }
     ++usable_lanes;
     for (std::size_t slot_in_qp = 0; slot_in_qp < qp.slots.size();
@@ -329,10 +340,16 @@ void PetPSClient::MarkLaneDirty(
     int qp_index,
     const char* reason,
     const RdmaServerHealthSnapshot* snapshot,
-    std::int64_t waited_ms) {
+    std::int64_t waited_ms,
+    bool rebuildable) {
+  auto& lane = qps_[static_cast<std::size_t>(qp_index)];
+  // A lane can be marked dirty by more than one cause; a rebuildable cause must
+  // not be masked by an earlier non-rebuildable one, so OR the flag in.
+  const bool was_rebuildable = lane.rebuildable.load(std::memory_order_relaxed);
+  lane.rebuildable.store(
+      was_rebuildable || rebuildable, std::memory_order_relaxed);
   const bool already_dirty =
-      qps_[static_cast<std::size_t>(qp_index)].dirty.exchange(
-          true, std::memory_order_relaxed);
+      lane.dirty.exchange(true, std::memory_order_relaxed);
   if (already_dirty) {
     return;
   }
@@ -350,6 +367,81 @@ void PetPSClient::MarkLaneDirty(
       << health_probe_failures_.load(std::memory_order_relaxed)
       << " dead_verdicts="
       << health_probe_dead_verdicts_.load(std::memory_order_relaxed);
+}
+
+bool PetPSClient::TryRebuildLaneLocked(int qp_index) {
+  auto& lane = qps_[static_cast<std::size_t>(qp_index)];
+  if (lane.dead.load(std::memory_order_relaxed)) {
+    return false;
+  }
+  lane.next_rebuild_at =
+      std::chrono::steady_clock::now() +
+      std::chrono::milliseconds(
+          static_cast<std::int64_t>(FLAGS_rdma_lane_rebuild_cooldown_ms));
+  if (lane.rebuild_attempts >= FLAGS_rdma_lane_rebuild_max_attempts) {
+    lane.dead.store(true, std::memory_order_relaxed);
+    LOG(WARNING) << "component=rdma_rc_client event=lane_rebuild_exhausted"
+                 << " shard=" << shard_ << " client_id=" << client_id_
+                 << " lane=" << qp_index
+                 << " attempts=" << lane.rebuild_attempts;
+    return false;
+  }
+  ++lane.rebuild_attempts;
+  bool rebuilt = false;
+  try {
+    rebuilt = transport_->RebuildLane(qp_index);
+  } catch (const std::exception& error) {
+    LOG(WARNING) << "component=rdma_rc_client event=lane_rebuild_failed"
+                 << " shard=" << shard_ << " client_id=" << client_id_
+                 << " lane=" << qp_index << " error=\"" << error.what() << "\"";
+    return false;
+  }
+  if (!rebuilt) {
+    return false;
+  }
+  // The QP was reset, so every slot of this lane is free again and any RPC
+  // still pending on it lost its response (its caller already saw the failure).
+  // Dropping the pending entries keeps a later RevokeRPCResource from freeing a
+  // slot that a new request has since reused.
+  for (auto& slot : lane.slots) {
+    slot.busy = false;
+  }
+  for (auto it = pending_rpcs_.begin(); it != pending_rpcs_.end();) {
+    if (it->second.qp_index == qp_index) {
+      it = pending_rpcs_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  // Bump the epoch before clearing dirty so a waiter can never observe
+  // "clean lane with the old epoch" and mistake a reused slot for its own.
+  lane.epoch.fetch_add(1, std::memory_order_relaxed);
+  lane.dirty.store(false, std::memory_order_relaxed);
+  lane.rebuildable.store(false, std::memory_order_relaxed);
+  lane.generation = transport_->LaneGeneration(qp_index);
+  LOG(WARNING) << "component=rdma_rc_client event=lane_recovered"
+               << " shard=" << shard_ << " client_id=" << client_id_
+               << " lane=" << qp_index << " generation=" << lane.generation
+               << " attempts=" << lane.rebuild_attempts;
+  return true;
+}
+
+int PetPSClient::RebuildAllLanesForTest() {
+  std::lock_guard<std::mutex> guard(mu_);
+  int recovered = 0;
+  for (std::size_t qp_index = 0; qp_index < qps_.size(); ++qp_index) {
+    auto& lane = qps_[qp_index];
+    if (lane.dead.load(std::memory_order_relaxed)) {
+      continue;
+    }
+    // Force the degraded path: mark rebuildable so TryRebuildLaneLocked runs.
+    lane.rebuildable.store(true, std::memory_order_relaxed);
+    lane.dirty.store(true, std::memory_order_relaxed);
+    if (TryRebuildLaneLocked(static_cast<int>(qp_index))) {
+      ++recovered;
+    }
+  }
+  return recovered;
 }
 
 void PetPSClient::MaybeProbeShardHealth(int qp_index, std::int64_t waited_ms) {
@@ -377,7 +469,8 @@ void PetPSClient::MaybeProbeShardHealth(int qp_index, std::int64_t waited_ms) {
     return;
   }
   health_probe_dead_verdicts_.fetch_add(1, std::memory_order_relaxed);
-  MarkLaneDirty(qp_index, "health_dead", &snapshot, waited_ms);
+  MarkLaneDirty(
+      qp_index, "health_dead", &snapshot, waited_ms, /*rebuildable=*/true);
   throw ShardUnreachableError(
       "shard " + std::to_string(shard_) + " unreachable: control plane " +
       "reports dead (lane=" + std::to_string(qp_index) +
@@ -394,7 +487,11 @@ void PetPSClient::FailLaneOnCompletionError(
   // lane is retired exactly like a lane that lost a completion.
   const std::string reason =
       std::string("cq_") + RawVerbsErrorClassToString(error.error_class);
-  MarkLaneDirty(qp_index, reason.c_str(), nullptr, waited_ms);
+  MarkLaneDirty(qp_index,
+                reason.c_str(),
+                nullptr,
+                waited_ms,
+                IsRawVerbsUnreachableError(error.error_class));
   if (IsRawVerbsUnreachableError(error.error_class)) {
     throw ShardUnreachableError(
         "shard " + std::to_string(shard_) + " unreachable: lane " +
@@ -408,20 +505,31 @@ void PetPSClient::FailLaneOnCompletionError(
 }
 
 std::int32_t PetPSClient::WaitForStatusWord(
-    int qp_index, const StatusWord* status, std::uint64_t seq) {
+    int qp_index,
+    const StatusWord* status,
+    std::uint64_t seq,
+    std::uint64_t lane_epoch) {
   const auto start             = std::chrono::steady_clock::now();
   const bool probe_wanted      = FLAGS_rdma_health_probe_after_ms > 0;
   const bool harvest_wanted    = FLAGS_rdma_cq_harvest_interval_ms > 0;
   int spin_iterations          = 0;
   std::int64_t next_harvest_ms = FLAGS_rdma_cq_harvest_interval_ms;
   while (!StatusWordDone(*status, seq)) {
-    if (qps_[static_cast<std::size_t>(qp_index)].dirty.load(
-            std::memory_order_relaxed)) {
+    const auto& lane = qps_[static_cast<std::size_t>(qp_index)];
+    if (lane.dirty.load(std::memory_order_relaxed)) {
       // A sibling request already retired this lane (health verdict or lost
       // completion): fail fast instead of waiting for the full L3 budget.
       throw ShardUnreachableError(
           "shard " + std::to_string(shard_) + " unreachable: lane " +
           std::to_string(qp_index) + " retired");
+    }
+    if (lane.epoch.load(std::memory_order_relaxed) != lane_epoch) {
+      // The lane was rebuilt while this RPC was in flight: its slot was freed
+      // and may already belong to another request, so this response will never
+      // arrive. Fail fast instead of blocking on the reused slot.
+      throw ShardUnreachableError(
+          "shard " + std::to_string(shard_) + " unreachable: lane " +
+          std::to_string(qp_index) + " rebuilt during wait");
     }
     if (spin_iterations < FLAGS_rdma_rc_wait_spin_iterations) {
       ++spin_iterations;
@@ -439,7 +547,8 @@ std::int32_t PetPSClient::WaitForStatusWord(
         elapsed_ms > FLAGS_rdma_wait_timeout_ms) {
       // The completion never came: the slot must not be reused, so the whole
       // lane is retired (§4.1) before reporting the existing timeout.
-      MarkLaneDirty(qp_index, "wait_timeout", nullptr, elapsed_ms);
+      MarkLaneDirty(
+          qp_index, "wait_timeout", nullptr, elapsed_ms, /*rebuildable=*/true);
       throw std::runtime_error("RC write RPC wait timeout");
     }
     if (harvest_wanted && elapsed_ms >= next_harvest_ms) {
@@ -664,8 +773,11 @@ int PetPSClient::SubmitRpcLocked(
     // The previous request's completion never arrived: its slot memory may
     // still be read by the server, so the lane is retired before the timeout
     // is reported unchanged.
-    MarkLaneDirty(
-        slot->view.qp_index, "drain_timeout", nullptr, /*waited_ms=*/-1);
+    MarkLaneDirty(slot->view.qp_index,
+                  "drain_timeout",
+                  nullptr,
+                  /*waited_ms=*/-1,
+                  /*rebuildable=*/true);
     throw;
   }
   if (profile_enabled) {
@@ -691,6 +803,8 @@ int PetPSClient::SubmitRpcLocked(
           recv_buffer,
           key_count,
           response_bytes,
+          qps_[static_cast<std::size_t>(slot->view.qp_index)].epoch.load(
+              std::memory_order_relaxed),
       });
   if (profile_enabled) {
     const std::uint64_t pending_size = pending_rpcs_.size();
@@ -908,8 +1022,8 @@ void PetPSClient::WaitRPCFinish(int rpc_id) {
   auto& slot                 = SlotAt(pending.qp_index, pending.slot_in_qp);
   const bool profile_enabled = FLAGS_rdma_rc_profile_interval_ms > 0;
   const std::uint64_t wait_start_ns = profile_enabled ? NowNs() : 0;
-  const std::int32_t status_code =
-      WaitForStatusWord(pending.qp_index, slot.view.status, pending.seq);
+  const std::int32_t status_code    = WaitForStatusWord(
+      pending.qp_index, slot.view.status, pending.seq, pending.lane_epoch);
   if (profile_enabled) {
     profile_.wait_rpc_count.fetch_add(1, std::memory_order_relaxed);
     profile_.wait_status_ns.fetch_add(

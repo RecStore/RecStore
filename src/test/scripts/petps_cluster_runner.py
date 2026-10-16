@@ -74,6 +74,7 @@ class PetPSClusterRunner:
         rdma_qps_per_client_per_shard=None,
         rdma_slots_per_qp=None,
         rdma_wait_timeout_ms=None,
+        rdma_lane_rebuild_enabled=None,
         rdma_control_plane_timeout_ms=None,
         rdma_profile_interval_ms=None,
         rdma_server_coroutines_per_thread=None,
@@ -137,6 +138,7 @@ class PetPSClusterRunner:
             rdma_rc_qps_per_client_per_shard,
         )
         self.rdma_wait_timeout_ms = rdma_wait_timeout_ms
+        self.rdma_lane_rebuild_enabled = rdma_lane_rebuild_enabled
         self.rdma_control_plane_timeout_ms = rdma_control_plane_timeout_ms
         self.rdma_slots_per_qp = self._coalesce_optional_values(
             "rdma_slots_per_qp",
@@ -358,6 +360,8 @@ class PetPSClusterRunner:
             )
         if self.rdma_wait_timeout_ms is not None:
             cmd.append(f"--rdma_wait_timeout_ms={self.rdma_wait_timeout_ms}")
+        if self.rdma_lane_rebuild_enabled:
+            cmd.append("--rdma_lane_rebuild_enabled=true")
         if self.rdma_control_plane_timeout_ms is not None:
             cmd.append(
                 "--rdma_control_plane_timeout_ms="
@@ -434,6 +438,8 @@ class PetPSClusterRunner:
             cmd.append(f"--rdma_rc_slots_per_qp={self.rdma_slots_per_qp}")
         if self.rdma_wait_timeout_ms is not None:
             cmd.append(f"--rdma_wait_timeout_ms={self.rdma_wait_timeout_ms}")
+        if self.rdma_lane_rebuild_enabled:
+            cmd.append("--rdma_lane_rebuild_enabled=true")
         if self.rdma_control_plane_timeout_ms is not None:
             cmd.append(
                 "--rdma_control_plane_timeout_ms="

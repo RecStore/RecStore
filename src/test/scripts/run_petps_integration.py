@@ -58,6 +58,11 @@ def main():
     parser.add_argument("--rdma-client-receive-arena-bytes", type=int)
     parser.add_argument("--rdma-rc-server-coroutines-per-thread", type=int)
     parser.add_argument("--rdma-rc-server-get-workers", type=int)
+    parser.add_argument(
+        "--rdma-lane-rebuild",
+        action="store_true",
+        help="enable P3 lane/QP rebuild on both server and client",
+    )
     parser.add_argument("--validate-routing", action="store_true")
     parser.add_argument(
         "--show-runner-logs",
@@ -94,6 +99,7 @@ def main():
                 args.rdma_rc_server_coroutines_per_thread
             ),
             rdma_server_get_workers=args.rdma_rc_server_get_workers,
+            rdma_lane_rebuild_enabled=args.rdma_lane_rebuild or None,
             validate_routing=args.validate_routing,
         )
 

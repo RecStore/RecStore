@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -51,6 +52,10 @@ public:
   bool QueryRPCFinished(int rpc_id);
   void WaitRPCFinish(int rpc_id);
   void RevokeRPCResource(int rpc_id);
+  // P3 test/diagnostic hook: rebuild every non-dead lane's QP and return the
+  // number the peer acknowledged. Runs under the client mutex; otherwise the
+  // rebuild happens lazily from AcquireIdleSlot on a degraded lane.
+  int RebuildAllLanesForTest();
 
   int PutParameter(const std::vector<uint64_t>& keys,
                    const base::RecTensor& values);
@@ -100,14 +105,34 @@ private:
     QpContext(QpContext&& other) noexcept
         : qp_index(other.qp_index),
           slots(std::move(other.slots)),
-          dirty(other.dirty.load(std::memory_order_relaxed)) {}
+          dirty(other.dirty.load(std::memory_order_relaxed)),
+          dead(other.dead.load(std::memory_order_relaxed)),
+          rebuildable(other.rebuildable.load(std::memory_order_relaxed)),
+          rebuild_attempts(other.rebuild_attempts),
+          generation(other.generation),
+          epoch(other.epoch.load(std::memory_order_relaxed)),
+          next_rebuild_at(other.next_rebuild_at) {}
 
     int qp_index = 0;
     std::vector<SlotContext> slots;
-    // P1b whole-lane dirty marker: a lane that lost a completion or whose
-    // shard was judged dead never hands its slots to new requests and fails
-    // its waiters fast.
+    // P1b/P3 lane state. `dirty` means the lane is not currently serviceable:
+    // waiters fail fast and AcquireIdleSlot skips it. `dead` is terminal (the
+    // P3 rebuild budget is exhausted). `rebuildable` marks a cause a QP rebuild
+    // can cure, so a degraded lane is rebuilt lazily on the next acquire.
     std::atomic<bool> dirty{false};
+    std::atomic<bool> dead{false};
+    std::atomic<bool> rebuildable{false};
+    int rebuild_attempts     = 0; // Guarded by mu_.
+    std::uint64_t generation = 0; // Guarded by mu_.
+    // Bumped on every successful rebuild. A waiter snapshots it at submit time
+    // (PendingRpc::lane_epoch); a mismatch means the rebuild already released
+    // and may have reused the waiter's slot, so the waiter must fail fast
+    // instead of waiting out its budget on a slot it no longer owns.
+    std::atomic<std::uint64_t> epoch{0};
+    // Earliest steady-clock time the next lazy rebuild may run (cooldown so a
+    // sustained outage does not burn the budget on every acquire). Guarded by
+    // mu_.
+    std::chrono::steady_clock::time_point next_rebuild_at{};
   };
 
   struct PendingRpc {
@@ -118,6 +143,7 @@ private:
     float* recv_buffer         = nullptr; // User-visible response buffer.
     std::size_t key_count      = 0;       // Number of keys in this RPC.
     std::size_t response_bytes = 0;       // Dense response payload bytes.
+    std::uint64_t lane_epoch   = 0;       // QpContext::epoch at submit time.
   };
 
   struct ProfileCounters {
@@ -147,18 +173,29 @@ private:
   // Waits for the slot status word, running the P1b slow-path health probe
   // after the configured delay and failing fast with ShardUnreachableError
   // once the lane is dirty.
-  std::int32_t
-  WaitForStatusWord(int qp_index, const StatusWord* status, std::uint64_t seq);
+  std::int32_t WaitForStatusWord(int qp_index,
+                                 const StatusWord* status,
+                                 std::uint64_t seq,
+                                 std::uint64_t lane_epoch);
   // Queries the control plane about this shard at most once per probe
   // interval; when the verdict is Dead the lane is retired and
   // ShardUnreachableError is thrown.
   void MaybeProbeShardHealth(int qp_index, std::int64_t waited_ms);
-  // Marks the lane as unusable for good: its slots are never reused and its
-  // waiters fail fast. `reason` is wait_timeout, health_dead or cq_<class>.
+  // Marks the lane as unusable for its waiters: its slots are not reused and
+  // its waiters fail fast. `reason` is wait_timeout, health_dead, drain_timeout
+  // or cq_<class>. `rebuildable` tells the P3 lazy-rebuild path whether a QP
+  // rebuild could cure this cause; it defaults to false so only call sites that
+  // recognize a peer-side failure opt in (local/protocol faults must not).
   void MarkLaneDirty(int qp_index,
                      const char* reason,
                      const RdmaServerHealthSnapshot* snapshot,
-                     std::int64_t waited_ms);
+                     std::int64_t waited_ms,
+                     bool rebuildable = false);
+  // P3: rebuilds a degraded lane's QP and, on success, restores it to Active
+  // (frees its slots and drops its pending RPCs). Returns false when the
+  // rebuild failed or the budget is exhausted (which marks the lane Dead).
+  // Requires mu_.
+  bool TryRebuildLaneLocked(int qp_index);
   // Retires the lane on a CQ completion error and throws: peer-side failures
   // (retry exhaustion, flushes) surface as ShardUnreachableError, local or
   // rejected operations keep their typed raw-verbs error.

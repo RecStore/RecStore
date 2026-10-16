@@ -15,6 +15,8 @@
 
 namespace petps {
 
+class RdmaControlPlaneClient;
+
 struct RawVerbsConfig {
   int global_id    = 0;
   int local_lane   = 0;
@@ -316,6 +318,9 @@ struct RawVerbsNodeMeta {
   std::int32_t gid_index         = -1;
   std::uint8_t active_mtu        = 0;
   std::uint8_t fabric_mode       = 0;
+  // P3: this lane's rebuild generation. Bumped before the QP is republished so
+  // the peer can observe "this side rebuilt" and re-pair the QP.
+  std::uint64_t lane_generation = 0;
 };
 
 class RawVerbsTransport {
@@ -366,11 +371,44 @@ public:
   // `error` (which must not be null) instead of being thrown.
   RawVerbsPollOutcome
   TryPoll(RawVerbsCompletion* completion, RawVerbsCompletionError* error);
+  // Rebuilds the QP for one peer node after a device-layer failure, reusing the
+  // PD / MR / registered memory and the peer metadata captured by Connect():
+  // reset -> init -> RTR -> RTS. The reset flushes every outstanding WR on the
+  // QP, so those completions are dropped from the CQ afterwards and the receive
+  // queue is re-armed because reset flushes it too. Only peer-side failures
+  // (retry exhaustion / flush) are worth rebuilding; callers must decide that
+  // from RawVerbsErrorClass. The QP is a shared resource, so a rebuild is only
+  // half of recovery: the peer must rebuild its side too, which the caller
+  // coordinates through the control plane. Must not run concurrently with
+  // submits or polls on the same lane.
+  //
+  // `cq_exclusive` states that this QP is the only one posting to the
+  // transport's CQ (true on the client side, and for a server lane that serves
+  // a single OS client). The post-reset drain runs only then, because draining
+  // a shared CQ would also discard the other peer QPs' completions; when false
+  // the caller must not rebuild in the first place (see
+  // RcShardServerTransport::RebuildClientLaneIfStale).
+  void RebuildQp(std::uint16_t node_id, bool cq_exclusive = true);
+  // P3 metadata-generation handshake. The lane generation is the local side's
+  // rebuild counter toward `node_id`; bump it (then Publish()) before
+  // rebuilding so the peer observes the change. `LaneGeneration` reads that
+  // counter back; the peer's counter is read from the meta returned by
+  // RefreshPeerMeta().
+  void SetLaneGeneration(std::uint16_t node_id, std::uint64_t generation);
+  std::uint64_t LaneGeneration(std::uint16_t node_id) const;
+  // Re-reads `node_id`'s published metadata (GetMeta), validates it, and stores
+  // it for a subsequent RebuildQp(). Used to learn a peer's lane generation and
+  // to pick up addressing changes if the peer process restarted.
+  RawVerbsNodeMeta RefreshPeerMeta(std::uint16_t node_id);
   std::uint32_t max_inline_data(std::uint16_t node_id) const;
 
 private:
   struct Impl;
   ibv_mr* FindLocalMr(const void* ptr, std::size_t bytes) const;
+  // Lazily opens (and caches) the one control-plane client this transport owns.
+  // Publish()/Connect()/RefreshPeerMeta() share it so a lane uses a single
+  // channel instead of a fresh connection per metadata RPC (P1b §15-5).
+  RdmaControlPlaneClient& ControlPlane();
   std::unique_ptr<Impl> impl_;
 };
 
