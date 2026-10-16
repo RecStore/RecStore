@@ -100,17 +100,17 @@ server 通过它交换 `RawVerbsNodeMeta` 并等待 ready。控制面额外承�
   心跳判 `dead`）与设备层（等待期对 lane CQ 收割并按 completion status 分类）；两者都把
   故障 lane **整条置脏**（其 slot 不再交给新请求）并抛 `ShardUnreachableError`，不做应用层
   重试。默认（重建关闭）下这个退化行为是终态的，在测试中被固定为断言。
-- P3（`--rdma-lane-rebuild-enabled`，默认关闭，需 server 与 client 同时开启）允许置脏 lane
-  自愈。只有 peer-side 原因（`wait_timeout` / `health_dead` / `drain_timeout` /
+- 开启 `--rdma-lane-rebuild-enabled`（默认关闭，需 server 与 client 同时开启）后，置脏 lane
+  可以自愈。只有 peer-side 原因（`wait_timeout` / `health_dead` / `drain_timeout` /
   `cq_peer_unreachable` / `cq_flushed`）会被标记为可重建；client 在下一次 slot acquire 时
   按冷却间隔懒重建 lane QP，并通过控制面 metadata 的 `lane_generation` 与 server 做双边
   握手（server 在轮询线程观察到 generation 变化后重建自己一侧）。重建 QP 时会先 reset 冲刷
   未完成 WR，再 drain 清除这些 completion、清空该 lane 的 slot，并递增 lane epoch，使仍
   在等待旧响应的请求快速失败，而不是静默读到被复用的 slot。重建次数默认上限 3，耗尽后 lane
   进入终态 `dead`。
-- P3 要求 `num_os_clients == 1`：`num_os_clients > 1` 时 server 的一条 lane CQ 被多个 client
-  进程的 QP 共享，reset 后无法安全 drain（会丢失其他 client 的 completion），因此两端都会
-  拒绝重建并保持终态置脏，只记录一次 warning。
+- lane 重建要求 `num_os_clients == 1`：`num_os_clients > 1` 时 server 的一条 lane CQ 被多个
+  client 进程的 QP 共享，reset 后无法安全 drain（会丢失其他 client 的 completion），因此两端
+  都会拒绝重建并保持终态置脏，只记录一次 warning。
 - 热点路径零开销：正常请求（µs 级完成）既不查控制面（1s 后才查）也不收割 CQ（50ms 后才收割）。
 
 ## 4. 关键参数

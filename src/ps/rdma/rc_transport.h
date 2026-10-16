@@ -85,14 +85,14 @@ public:
   // lane. Callers must serialize with the client submit path (PetPSClient holds
   // its mutex around both).
   bool HarvestLaneCompletion(int qp_index, RawVerbsCompletionError* error);
-  // P3: rebuilds one lane QP after a peer-side failure and completes the
-  // bilateral handshake — publish the bumped lane generation, then wait until
-  // the peer rebuilds and republishes too. Returns true once the peer
-  // acknowledged within --rdma_lane_rebuild_wait_ms. Callers must serialize
-  // this with the submit path and the CQ harvest (PetPSClient holds its mutex).
-  // Requires a single OS client per shard (num_os_clients == 1): the server
-  // side cannot reset a QP that shares its CQ, so a multi-client deployment
-  // returns false and keeps the terminal-dirty behaviour.
+  // Rebuilds one lane QP after a peer-side failure and completes the bilateral
+  // handshake: publish the bumped lane generation, then wait until the peer
+  // rebuilds and republishes too. Returns true once the peer acknowledged
+  // within --rdma_lane_rebuild_wait_ms. Callers must serialize this with the
+  // submit path and the CQ harvest (PetPSClient holds its mutex). Requires a
+  // single OS client per shard (num_os_clients == 1): the server side cannot
+  // reset a QP that shares its CQ, so a multi-client deployment returns false
+  // and keeps the terminal-dirty behaviour.
   bool RebuildLane(int qp_index);
   std::uint64_t LaneGeneration(int qp_index) const;
   std::size_t request_slot_bytes() const { return config_.request_slot_bytes; }
@@ -109,8 +109,8 @@ private:
         nullptr; // Local registered region for all slots in this lane.
     std::vector<std::uint8_t> submit_completion_pending;
     std::vector<std::uint8_t> submit_completion_ready;
-    // P3: number of times this lane's QP was rebuilt; the value published in
-    // the lane metadata so the server can observe the bump.
+    // Number of times this lane's QP was rebuilt; the value published in the
+    // lane metadata so the server can observe the bump.
     std::uint64_t generation = 0;
   };
 
@@ -165,12 +165,12 @@ public:
       int slot_in_qp,
       const ResponseView& response,
       std::uint64_t seq);
-  // P3: for each client served by `qp_index`, rebuild the server-side QP when
-  // the client published a new lane generation (i.e. the client rebuilt its
-  // side). Must be called from a thread that owns those lanes (the polling
-  // thread that scans `qp_index`). Rebuilding requires the lane CQ to carry a
-  // single client QP (num_os_clients == 1); otherwise it is skipped, because a
-  // shared CQ cannot be drained safely. Returns the number of lanes rebuilt.
+  // For each client served by `qp_index`, rebuild the server-side QP when the
+  // client published a new lane generation (i.e. the client rebuilt its side).
+  // Must be called from a thread that owns those lanes (the polling thread that
+  // scans `qp_index`). Rebuilding requires the lane CQ to carry a single client
+  // QP (num_os_clients == 1); otherwise it is skipped, because a shared CQ
+  // cannot be drained safely. Returns the number of lanes rebuilt.
   int PollClientRebuildRequests(int qp_index);
   const RcTransportConfig& config() const { return config_; }
 
@@ -183,7 +183,7 @@ private:
                                          // response staging slots.
     std::vector<std::uint8_t> response_completion_pending;
     std::vector<std::uint8_t> response_completion_ready;
-    // P3: last client lane generation observed per logical client id. A change
+    // Last client lane generation observed per logical client id. A change
     // means the client rebuilt its side, so this side must rebuild too.
     std::vector<std::uint64_t> observed_client_generation;
   };

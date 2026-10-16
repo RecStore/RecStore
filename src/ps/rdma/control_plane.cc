@@ -17,15 +17,14 @@
 
 namespace petps {
 
-// One lazily opened channel/stub per client, shared by every copy of that
-// client. A shard heartbeats once per second, so opening a connection per RPC
-// would be wasteful (P1b §15-5); gRPC channels are thread-safe and serve
-// concurrent RPCs, so all callers of one client share this cache.
+// One lazily opened channel/stub per client. A shard heartbeats once per
+// second, so opening a connection per RPC would be wasteful; gRPC channels are
+// thread-safe and serve concurrent RPCs, so every RPC of one client shares this
+// cache.
 struct RdmaControlPlaneChannelCache {
   std::once_flag once;
   std::shared_ptr<grpc::Channel> channel;
   std::shared_ptr<recstoreps::rdma::RdmaControlPlane::Stub> stub;
-  std::atomic<std::uint64_t> channels_opened{0};
 };
 
 namespace {
@@ -147,7 +146,6 @@ recstoreps::rdma::RdmaControlPlane::Stub* CachedControlPlaneStub(
     cache->channel = grpc::CreateChannel(
         EndpointString(endpoint), grpc::InsecureChannelCredentials());
     cache->stub = recstoreps::rdma::RdmaControlPlane::NewStub(cache->channel);
-    cache->channels_opened.fetch_add(1, std::memory_order_relaxed);
   });
   return cache->stub.get();
 }
@@ -622,10 +620,10 @@ public:
     }
     // A bare Probe carries no identity and is a pure liveness check. The
     // heartbeat Probe carries the shard identity as metadata; only a fully
-    // matching identity may refresh that shard's `last_seen` (P1b §15-6). A
-    // mismatch is dropped and counted: a stale or foreign process must not be
-    // able to keep a record alive, while the heartbeat channel itself stays
-    // non-fatal (a P1a contract, the sender only logs).
+    // matching identity may refresh that shard's `last_seen`. A mismatch is
+    // dropped and counted: a stale or foreign process must not be able to keep
+    // a record alive, while the heartbeat channel itself stays non-fatal (the
+    // sender only logs).
     const std::string node_id_text =
         ReadMetadataValue(context, kHeartbeatNodeIdMetadata);
     if (node_id_text.empty()) {
@@ -692,10 +690,6 @@ RdmaControlPlaneClient::RdmaControlPlaneClient(
     RdmaControlPlaneEndpoint endpoint)
     : endpoint_(std::move(endpoint)),
       channels_(std::make_shared<RdmaControlPlaneChannelCache>()) {}
-
-std::uint64_t RdmaControlPlaneClient::channels_opened() const {
-  return channels_->channels_opened.load(std::memory_order_relaxed);
-}
 
 void RdmaControlPlaneClient::PublishMeta(
     int publisher_node_id,

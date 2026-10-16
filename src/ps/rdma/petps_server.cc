@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include <folly/init/Init.h>
 
 #include <boost/coroutine2/all.hpp>
@@ -20,7 +22,6 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 #include "base/bind_core.h"
@@ -216,7 +217,7 @@ public:
     for (int i = 0; i < thread_count_; ++i) {
       threads_.emplace_back(&PetPSServer::PollingThread, this, i);
     }
-    // P1a: observation-only shard heartbeat to the control plane.
+    // Observation-only shard heartbeat to the control plane.
     heartbeat_thread_ = std::thread(&PetPSServer::HeartbeatThread, this);
   }
 
@@ -990,7 +991,7 @@ private:
     response->status->response_bytes = 0;
   }
 
-  // P1a observation-only heartbeat loop. It never changes serving behavior: a
+  // Observation-only heartbeat loop. It never changes serving behavior: a
   // failed heartbeat is logged and retried, never propagated to the data path.
   void HeartbeatThread() {
     const int interval_ms = std::max(1, FLAGS_rdma_heartbeat_interval_ms);
@@ -1268,9 +1269,9 @@ private:
     return true;
   }
 
-  // P3: throttled check for clients that rebuilt their lane QP. Runs on the
-  // polling thread that owns the lanes, so it serializes with response writes
-  // without a lock; disabled (and free) unless --rdma_lane_rebuild_enabled.
+  // Throttled check for clients that rebuilt their lane QP. Runs on the polling
+  // thread that owns the lanes, so it serializes with response writes without a
+  // lock; disabled (and free) unless --rdma_lane_rebuild_enabled.
   void MaybePollClientRebuilds(int thread_id) {
     if (!FLAGS_rdma_lane_rebuild_enabled) {
       return;

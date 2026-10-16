@@ -318,8 +318,8 @@ struct RawVerbsNodeMeta {
   std::int32_t gid_index         = -1;
   std::uint8_t active_mtu        = 0;
   std::uint8_t fabric_mode       = 0;
-  // P3: this lane's rebuild generation. Bumped before the QP is republished so
-  // the peer can observe "this side rebuilt" and re-pair the QP.
+  // This lane's rebuild generation. Bumped before the QP is republished so the
+  // peer can observe "this side rebuilt" and re-pair the QP.
   std::uint64_t lane_generation = 0;
 };
 
@@ -389,12 +389,12 @@ public:
   // the caller must not rebuild in the first place (see
   // RcShardServerTransport::RebuildClientLaneIfStale).
   void RebuildQp(std::uint16_t node_id, bool cq_exclusive = true);
-  // P3 metadata-generation handshake. The lane generation is the local side's
-  // rebuild counter toward `node_id`; bump it (then Publish()) before
-  // rebuilding so the peer observes the change. `LaneGeneration` reads that
-  // counter back; the peer's counter is read from the meta returned by
+  // Lane generation handshake. The lane generation is the local side's rebuild
+  // counter toward `node_id`; `AdvanceLaneGeneration` bumps it and republishes
+  // the metadata so the peer can observe the change. `LaneGeneration` reads
+  // that counter back; the peer's counter is read from the meta returned by
   // RefreshPeerMeta().
-  void SetLaneGeneration(std::uint16_t node_id, std::uint64_t generation);
+  std::uint64_t AdvanceLaneGeneration(std::uint16_t node_id);
   std::uint64_t LaneGeneration(std::uint16_t node_id) const;
   // Re-reads `node_id`'s published metadata (GetMeta), validates it, and stores
   // it for a subsequent RebuildQp(). Used to learn a peer's lane generation and
@@ -407,7 +407,7 @@ private:
   ibv_mr* FindLocalMr(const void* ptr, std::size_t bytes) const;
   // Lazily opens (and caches) the one control-plane client this transport owns.
   // Publish()/Connect()/RefreshPeerMeta() share it so a lane uses a single
-  // channel instead of a fresh connection per metadata RPC (P1b §15-5).
+  // channel instead of a fresh connection per metadata RPC.
   RdmaControlPlaneClient& ControlPlane();
   std::unique_ptr<Impl> impl_;
 };

@@ -244,7 +244,7 @@ struct RawVerbsTransport::Impl {
   std::vector<RawVerbsRemoteMemory> remotes;
   std::vector<ibv_qp*> qps;
   std::vector<std::uint32_t> max_inline_data_per_node;
-  // P3: per-peer lane generation this side publishes. Indexed by node id.
+  // Per-peer lane generation this side publishes. Indexed by node id.
   std::vector<std::uint64_t> lane_generations;
   // One control-plane channel shared by Publish()/Connect()/RefreshPeerMeta().
   std::unique_ptr<RdmaControlPlaneClient> control_plane;
@@ -508,7 +508,7 @@ MakeControlPlaneEndpoint(const RawVerbsConfig& config) {
 }
 
 // Fetches and validates `node`'s published metadata over the transport's shared
-// control-plane channel. Shared by the initial Connect() handshake and the P3
+// control-plane channel. Shared by the initial Connect() handshake and the
 // RefreshPeerMeta() re-read.
 RawVerbsNodeMeta FetchPeerMetaFromControlPlane(
     RdmaControlPlaneClient& control_plane,
@@ -682,19 +682,18 @@ void RawVerbsTransport::RebuildQp(std::uint16_t node_id, bool cq_exclusive) {
   }
 }
 
-void RawVerbsTransport::SetLaneGeneration(std::uint16_t node_id,
-                                          std::uint64_t generation) {
-  if (node_id >= impl_->lane_generations.size()) {
-    throw std::runtime_error("raw verbs generation: node out of range");
-  }
-  impl_->lane_generations[static_cast<std::size_t>(node_id)] = generation;
-}
-
 std::uint64_t RawVerbsTransport::LaneGeneration(std::uint16_t node_id) const {
   if (node_id >= impl_->lane_generations.size()) {
     throw std::runtime_error("raw verbs generation: node out of range");
   }
   return impl_->lane_generations[static_cast<std::size_t>(node_id)];
+}
+
+std::uint64_t RawVerbsTransport::AdvanceLaneGeneration(std::uint16_t node_id) {
+  const std::uint64_t next = LaneGeneration(node_id) + 1;
+  impl_->lane_generations[static_cast<std::size_t>(node_id)] = next;
+  Publish();
+  return next;
 }
 
 RawVerbsNodeMeta RawVerbsTransport::RefreshPeerMeta(std::uint16_t node_id) {

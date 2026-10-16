@@ -721,9 +721,7 @@ bool RcShardClientTransport::RebuildLane(int qp_index) {
             std::uint8_t{0});
   // Response status/payload from the dead generation must not look done.
   std::memset(lane.lane_base, 0, ClientLaneBytes(config_));
-  lane.generation += 1;
-  lane.verbs->SetLaneGeneration(server_node, lane.generation);
-  lane.verbs->Publish();
+  lane.generation = lane.verbs->AdvanceLaneGeneration(server_node);
 
   const int wait_ms = std::max(0, FLAGS_rdma_lane_rebuild_wait_ms);
   const auto deadline =
@@ -1159,13 +1157,10 @@ bool RcShardServerTransport::RebuildClientLaneIfStale(
     lane.response_completion_pending[ordinal] = 0;
     lane.response_completion_ready[ordinal]   = 0;
   }
-  observed          = meta.lane_generation;
-  const int node_id = client_node_id;
+  observed                        = meta.lane_generation;
+  const std::uint16_t client_node = static_cast<std::uint16_t>(client_node_id);
   const std::uint64_t next_generation =
-      lane.verbs->LaneGeneration(static_cast<std::uint16_t>(node_id)) + 1;
-  lane.verbs->SetLaneGeneration(
-      static_cast<std::uint16_t>(node_id), next_generation);
-  lane.verbs->Publish();
+      lane.verbs->AdvanceLaneGeneration(client_node);
   LOG(WARNING) << "component=rdma_rc_server event=lane_rebuilt"
                << " shard=" << config_.shard_id << " client_id=" << client_id
                << " qp=" << qp_index << " generation=" << next_generation;

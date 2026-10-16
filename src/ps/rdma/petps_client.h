@@ -52,9 +52,9 @@ public:
   bool QueryRPCFinished(int rpc_id);
   void WaitRPCFinish(int rpc_id);
   void RevokeRPCResource(int rpc_id);
-  // P3 test/diagnostic hook: rebuild every non-dead lane's QP and return the
-  // number the peer acknowledged. Runs under the client mutex; otherwise the
-  // rebuild happens lazily from AcquireIdleSlot on a degraded lane.
+  // Test seam: rebuild every non-dead lane's QP and return the number the peer
+  // acknowledged. Runs under the client mutex, exactly like the lazy rebuild
+  // AcquireIdleSlot performs on a degraded lane.
   int RebuildAllLanesForTest();
 
   int PutParameter(const std::vector<uint64_t>& keys,
@@ -115,10 +115,10 @@ private:
 
     int qp_index = 0;
     std::vector<SlotContext> slots;
-    // P1b/P3 lane state. `dirty` means the lane is not currently serviceable:
-    // waiters fail fast and AcquireIdleSlot skips it. `dead` is terminal (the
-    // P3 rebuild budget is exhausted). `rebuildable` marks a cause a QP rebuild
-    // can cure, so a degraded lane is rebuilt lazily on the next acquire.
+    // Lane state. `dirty` means the lane is not currently serviceable: waiters
+    // fail fast and AcquireIdleSlot skips it. `dead` is terminal (the rebuild
+    // budget is exhausted). `rebuildable` marks a cause a QP rebuild can cure,
+    // so a degraded lane is rebuilt lazily on the next acquire.
     std::atomic<bool> dirty{false};
     std::atomic<bool> dead{false};
     std::atomic<bool> rebuildable{false};
@@ -170,9 +170,9 @@ private:
     int slot_in_qp = -1;
   };
   SlotHandle AcquireIdleSlot();
-  // Waits for the slot status word, running the P1b slow-path health probe
-  // after the configured delay and failing fast with ShardUnreachableError
-  // once the lane is dirty.
+  // Waits for the slot status word, running the slow-path health probe after
+  // the configured delay and failing fast with ShardUnreachableError once the
+  // lane is dirty.
   std::int32_t WaitForStatusWord(int qp_index,
                                  const StatusWord* status,
                                  std::uint64_t seq,
@@ -183,7 +183,7 @@ private:
   void MaybeProbeShardHealth(int qp_index, std::int64_t waited_ms);
   // Marks the lane as unusable for its waiters: its slots are not reused and
   // its waiters fail fast. `reason` is wait_timeout, health_dead, drain_timeout
-  // or cq_<class>. `rebuildable` tells the P3 lazy-rebuild path whether a QP
+  // or cq_<class>. `rebuildable` tells the lazy-rebuild path whether a QP
   // rebuild could cure this cause; it defaults to false so only call sites that
   // recognize a peer-side failure opt in (local/protocol faults must not).
   void MarkLaneDirty(int qp_index,
@@ -191,10 +191,10 @@ private:
                      const RdmaServerHealthSnapshot* snapshot,
                      std::int64_t waited_ms,
                      bool rebuildable = false);
-  // P3: rebuilds a degraded lane's QP and, on success, restores it to Active
-  // (frees its slots and drops its pending RPCs). Returns false when the
-  // rebuild failed or the budget is exhausted (which marks the lane Dead).
-  // Requires mu_.
+  // Rebuilds a degraded lane's QP and, on success, returns it to service (frees
+  // its slots and drops its pending RPCs). Returns false when the rebuild
+  // failed or the budget is exhausted (which marks the lane Dead). Requires
+  // mu_.
   bool TryRebuildLaneLocked(int qp_index);
   // Retires the lane on a CQ completion error and throws: peer-side failures
   // (retry exhaustion, flushes) surface as ShardUnreachableError, local or
@@ -267,8 +267,8 @@ private:
   int client_id_          = -1; // Logical client id derived from global id.
   RcTransportConfig config_;    // Transport slot sizing and shard config.
   std::unique_ptr<RcShardClientTransport> transport_; // Slot transport owner.
-  // Control-plane connection shared by the init handshake and the P1b
-  // slow-path health probes.
+  // Control-plane connection shared by the init handshake and the slow-path
+  // health probes.
   std::unique_ptr<RdmaControlPlaneClient> control_plane_;
   std::vector<QpContext> qps_; // One context per client-side QP lane.
   std::vector<std::vector<char>>
@@ -290,7 +290,7 @@ private:
   uint64_t next_prefetch_id_ = 1;
   ProfileCounters profile_;
   bool thread_initialized_ = false; // Set after InitThread has run.
-  // P1b slow path: shared by all lanes because shard health is per-shard.
+  // Slow path: shared by all lanes because shard health is per-shard.
   RdmaSlowPathProbeGate health_probe_gate_;
   std::atomic<std::uint64_t> health_probe_failures_{0};
   std::atomic<std::uint64_t> health_probe_dead_verdicts_{0};

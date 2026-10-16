@@ -157,9 +157,9 @@ void PetPSClient::InitializeTransport() {
   config_.fabric               = fabric;
 
   transport_ = std::make_unique<RcShardClientTransport>(config_);
-  // One control-plane client per shard client: WaitServer at init and every
-  // slow-path health probe share one channel/stub instead of connecting per
-  // probe (P1b §15-5).
+  // One control-plane client per shard client: the WaitServer handshake and
+  // every slow-path health probe share one channel/stub instead of connecting
+  // per probe.
   control_plane_ =
       std::make_unique<RdmaControlPlaneClient>(MakeControlPlaneClient());
   control_plane_->WaitServer(shard_, config_.control_plane_timeout_ms);
@@ -370,6 +370,10 @@ void PetPSClient::MarkLaneDirty(
 }
 
 bool PetPSClient::TryRebuildLaneLocked(int qp_index) {
+  // Runs under mu_, which is what keeps submits/polls off the lane while its QP
+  // is reset. The bilateral handshake can block for up to
+  // --rdma-lane-rebuild-wait-ms, but only for lanes of this shard, which is the
+  // shard that just failed.
   auto& lane = qps_[static_cast<std::size_t>(qp_index)];
   if (lane.dead.load(std::memory_order_relaxed)) {
     return false;
@@ -430,13 +434,9 @@ int PetPSClient::RebuildAllLanesForTest() {
   std::lock_guard<std::mutex> guard(mu_);
   int recovered = 0;
   for (std::size_t qp_index = 0; qp_index < qps_.size(); ++qp_index) {
-    auto& lane = qps_[qp_index];
-    if (lane.dead.load(std::memory_order_relaxed)) {
+    if (qps_[qp_index].dead.load(std::memory_order_relaxed)) {
       continue;
     }
-    // Force the degraded path: mark rebuildable so TryRebuildLaneLocked runs.
-    lane.rebuildable.store(true, std::memory_order_relaxed);
-    lane.dirty.store(true, std::memory_order_relaxed);
     if (TryRebuildLaneLocked(static_cast<int>(qp_index))) {
       ++recovered;
     }
@@ -483,8 +483,8 @@ void PetPSClient::FailLaneOnCompletionError(
     const RawVerbsCompletionError& error,
     std::int64_t waited_ms) {
   // A completion error means the lane's QP is dead (retry exhaustion, flush or
-  // a protocol fault) and its slots can never be reused safely (§4.1), so the
-  // lane is retired exactly like a lane that lost a completion.
+  // a protocol fault) and its slots can never be reused safely, so the lane is
+  // retired exactly like a lane that lost a completion.
   const std::string reason =
       std::string("cq_") + RawVerbsErrorClassToString(error.error_class);
   MarkLaneDirty(qp_index,
@@ -518,7 +518,7 @@ std::int32_t PetPSClient::WaitForStatusWord(
     const auto& lane = qps_[static_cast<std::size_t>(qp_index)];
     if (lane.dirty.load(std::memory_order_relaxed)) {
       // A sibling request already retired this lane (health verdict or lost
-      // completion): fail fast instead of waiting for the full L3 budget.
+      // completion): fail fast instead of waiting for the full wait budget.
       throw ShardUnreachableError(
           "shard " + std::to_string(shard_) + " unreachable: lane " +
           std::to_string(qp_index) + " retired");
@@ -546,7 +546,7 @@ std::int32_t PetPSClient::WaitForStatusWord(
     if (FLAGS_rdma_wait_timeout_ms > 0 &&
         elapsed_ms > FLAGS_rdma_wait_timeout_ms) {
       // The completion never came: the slot must not be reused, so the whole
-      // lane is retired (§4.1) before reporting the existing timeout.
+      // lane is retired before reporting the existing timeout.
       MarkLaneDirty(
           qp_index, "wait_timeout", nullptr, elapsed_ms, /*rebuildable=*/true);
       throw std::runtime_error("RC write RPC wait timeout");
@@ -1069,7 +1069,7 @@ void PetPSClient::RevokeRPCResource(int rpc_id) {
   auto& slot = qp.slots[static_cast<std::size_t>(it->second.slot_in_qp)];
   if (qp.dirty.load(std::memory_order_relaxed)) {
     // A retired lane never hands its slots back: the server may still read the
-    // request payload, or the completion may still arrive later (§4.1).
+    // request payload, or the completion may still arrive later.
     VLOG(1) << "component=rdma_rc_client event=revoke_skipped_dirty_lane"
             << " shard=" << shard_ << " lane=" << it->second.qp_index
             << " slot=" << it->second.slot_in_qp;

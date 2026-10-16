@@ -439,7 +439,7 @@ TEST(PetPSIntegrationTest, RepeatedPutGetStressMultiShard) {
   }
 }
 
-// P3 lane/QP rebuild: with --rdma_lane_rebuild_enabled on both ends, forcing a
+// Lane/QP rebuild: with --rdma_lane_rebuild_enabled on both ends, forcing a
 // rebuild of a healthy lane's QP must be acknowledged by the peer (the
 // bilateral generation handshake) and the lane must keep serving afterwards.
 // Skips unless the flag is set, so the default suites keep the terminal-dirty
@@ -479,10 +479,9 @@ TEST(PetPSIntegrationTest, LaneRebuildResumesServiceSingleShard) {
   expect_get_ok();
 }
 
-// P1b client fast-fail scenario. Needs a parent that freezes shard 1 after the
-// warm-up marker and unfreezes it once every lane is dirty, so it skips unless
-// RECSTORE_RDMA_FAST_FAIL_TEST is set. Driven by
-// tmp/experiments/EXP-0005-rdma-client-fast-fail/scripts/full_run.py.
+// Client fast-fail scenario. Needs an external parent that freezes shard 1
+// after the warm-up marker and unfreezes it once every lane is dirty, so it
+// skips unless RECSTORE_RDMA_FAST_FAIL_TEST is set.
 namespace {
 constexpr char kFastFailWarmMarker[]  = "RECSTORE_FAST_FAIL_WARM_READY";
 constexpr char kFastFailDirtyMarker[] = "RECSTORE_FAST_FAIL_ALL_LANES_DIRTY";
@@ -585,8 +584,8 @@ TEST(PetPSIntegrationTest, ShardUnreachableRetiresLanesAndFailsFast) {
   std::printf("%s\n", kFastFailDirtyMarker);
   std::fflush(stdout);
 
-  // Phase 3: the control plane reports the shard serving again, but P1b has no
-  // lane rebuild (P3), so the retired lanes must keep failing fast instead of
+  // Phase 3: the control plane reports the shard serving again, but with lane
+  // rebuild disabled the retired lanes must keep failing fast instead of
   // re-using slots the server may still read.
   std::this_thread::sleep_for(std::chrono::seconds(8));
   const auto post_start = std::chrono::steady_clock::now();
@@ -601,9 +600,9 @@ TEST(PetPSIntegrationTest, ShardUnreachableRetiresLanesAndFailsFast) {
   EXPECT_TRUE(get_matches(healthy, healthy_keys, healthy_values));
 }
 
-// P3 end-to-end recovery: a driving parent SIGSTOPs shard 1 after the warm
-// marker and SIGCONTs it later; with lane rebuild enabled the client must
-// retire the frozen lanes, then re-arm and serve them again once the shard
+// End-to-end lane rebuild recovery: an external parent SIGSTOPs shard 1 after
+// the warm marker and SIGCONTs it later; with lane rebuild enabled the client
+// must retire the frozen lanes, then re-arm and serve them again once the shard
 // resumes (the bilateral generation handshake rebuilds both QPs).
 namespace {
 constexpr char kRebuildWarmMarker[] = "RECSTORE_REBUILD_WARM_READY";
@@ -677,12 +676,11 @@ TEST(PetPSIntegrationTest, LaneRebuildRecoversAfterFreeze) {
   EXPECT_TRUE(recovered) << "the lane never recovered after the freeze lifted";
 }
 
-// Device-layer scenario (§3.6, P3 forward shift): the parent SIGKILLs shard 1
-// so its QP is destroyed and verbs retry exhaustion surfaces as a CQ completion
-// error on the client. The client must classify that error, retire the lane and
-// fail fast without the health slow path (the driver disables it with
-// --rdma-health-probe-after-ms=0) and far below the L3 budget. Driven by
-// tmp/experiments/EXP-0006-rdma-cq-status-classify/scripts/full_run.py.
+// Device-layer scenario: an external parent SIGKILLs shard 1 so its QP is
+// destroyed and verbs retry exhaustion surfaces as a CQ completion error on the
+// client. The client must classify that error, retire the lane and fail fast
+// without the health slow path (the driver disables it with
+// --rdma-health-probe-after-ms=0) and far below the wait-timeout budget.
 namespace {
 constexpr char kKilledShardWarmMarker[] = "RECSTORE_KILLED_SHARD_WARM_READY";
 constexpr char kKilledShardDirtyMarker[] =

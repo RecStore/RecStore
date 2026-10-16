@@ -33,9 +33,9 @@ struct RdmaControlPlaneEndpoint {
   std::string fabric_digest;
   // Optional on client-only endpoints; the server uses it to bound READY ids.
   int num_servers = 0;
-  // Control-plane health monitor thresholds (server side only). Defaults match
-  // the L2 budget. Record GC is off by default so P1a stays observation-only;
-  // P1b re-decides the policy.
+  // Control-plane health monitor thresholds (server side only). Record GC is
+  // off by default: the health monitor only observes, it never evicts unless
+  // asked to.
   int health_stale_ms            = 3000;
   int health_dead_ms             = 9000;
   int health_record_retention_ms = 0;
@@ -44,9 +44,8 @@ struct RdmaControlPlaneEndpoint {
 inline constexpr std::uint32_t kRawVerbsMetadataMagic  = 0x52444d41;
 inline constexpr std::size_t kMaxRawVerbsMetadataBytes = 4096;
 
-// Per-shard liveness used by the control-plane health monitor. This is an
-// observation-only signal in P1a: it is logged and counted, but it does not
-// change request handling.
+// Per-shard liveness used by the control-plane health monitor. It is logged
+// and counted; heartbeats feed it, request handling reads it over RPC.
 enum class RdmaServerHealth : std::uint8_t {
   kServing = 0,
   kSuspect = 1,
@@ -90,8 +89,7 @@ inline RdmaServerHealth EvaluateServerHealth(
 
 // Snapshot returned by the GetServerHealth RPC and the matching server-side
 // accessor. `known=false` means shard 0 has no READY record for that shard, so
-// the data path must stay on its own budgets instead of failing the request
-// (P1b slow-path fast-fail).
+// the data path must stay on its own budgets instead of failing the request.
 struct RdmaServerHealthSnapshot {
   bool known                    = false;
   RdmaServerHealth health       = RdmaServerHealth::kServing;
@@ -99,11 +97,11 @@ struct RdmaServerHealthSnapshot {
   std::string instance_nonce;
 };
 
-// Slow-path health probe policy (P1b). A client that has been waiting longer
-// than the probe threshold asks the control plane about its shard; the query is
+// Slow-path health probe policy. A client that has been waiting longer than the
+// probe threshold asks the control plane about its shard; the query is
 // throttled so many waiters share at most one RPC per probe interval.
 enum class RdmaSlowPathVerdict {
-  kKeepWaiting,      // serving / suspect / unknown: stay on the L0..L3 budgets
+  kKeepWaiting,      // serving / suspect / unknown: keep waiting on the budgets
   kShardUnreachable, // the control plane judged the shard dead
 };
 
@@ -183,8 +181,7 @@ void ValidateRawVerbsPeerMeta(const RawVerbsConfig& local,
                               const RawVerbsNodeMeta& remote);
 
 // Opaque per-client gRPC channel/stub cache; defined in control_plane.cc. Kept
-// out of the header so this file does not pull in the generated stubs, and
-// shared between copies of a client so they reuse one connection.
+// out of the header so this file does not pull in the generated stubs.
 struct RdmaControlPlaneChannelCache;
 
 class RdmaControlPlaneClient {
@@ -208,20 +205,15 @@ public:
   void PublishServerReady(int server_id,
                           const std::string& instance_nonce = "") const;
   void PublishServerDraining(int server_id) const;
-  // Lightweight liveness heartbeat. P1a: the server records it as `last_seen`.
+  // Lightweight liveness heartbeat; the server records it as `last_seen`.
   void SendHeartbeat(int server_id, const std::string& instance_nonce) const;
   // Queries shard health from the shard 0 control plane. Never throws: RPC
   // failures are reported as `query_ok=false` with an unknown snapshot so the
-  // client slow path can fall back to L0/L3 instead of failing the request.
+  // client slow path can fall back to its wait budgets instead of failing.
   RdmaServerHealthSnapshot GetServerHealth(
       int server_id, int timeout_ms = -1, bool* query_ok = nullptr) const;
   void WaitServer(int server_id, int timeout_ms = -1) const;
   void WaitServerReady(int num_servers, int timeout_ms = -1) const;
-
-  // Number of gRPC channels this client has opened. It stays 1 no matter how
-  // many RPCs are sent, which is what keeps the per-second shard heartbeats off
-  // a per-heartbeat connect (P1b §15-5).
-  std::uint64_t channels_opened() const;
 
 private:
   RdmaControlPlaneEndpoint endpoint_;
@@ -236,13 +228,13 @@ public:
   void Start();
   void Stop();
 
-  // P1a observability. These read-only accessors let tests and future P1b
-  // callers inspect health without touching the monitor internals.
+  // Read-only observability for the health monitor. Used by tests to assert
+  // heartbeat accounting without reaching into the monitor internals.
   std::uint64_t heartbeats_received() const {
     return heartbeats_received_.load(std::memory_order_relaxed);
   }
   // Heartbeats dropped for a bad identity: malformed metadata, another
-  // deployment/epoch, or an out-of-range shard id (P1b §15-6).
+  // deployment/epoch, or an out-of-range shard id.
   std::uint64_t heartbeats_rejected() const {
     return heartbeats_rejected_.load(std::memory_order_relaxed);
   }
@@ -313,9 +305,9 @@ private:
     std::string fabric_digest;
     State state = State::kServing;
 
-    // P1a liveness fields. `last_seen` is refreshed by PublishServerReady and
-    // by heartbeat Probes; `instance_nonce` identifies the serving process so a
-    // restart can be told apart from the same process (see §3.7).
+    // `last_seen` is refreshed by PublishServerReady and by heartbeat Probes;
+    // `instance_nonce` identifies the serving process so a restart can be told
+    // apart from the same process.
     std::chrono::steady_clock::time_point last_seen{};
     std::string instance_nonce;
     RdmaServerHealth observed_health = RdmaServerHealth::kServing;
