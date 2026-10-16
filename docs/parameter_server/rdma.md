@@ -97,10 +97,20 @@ server 通过它交换 `RawVerbsNodeMeta` 并等待 ready。控制面额外承�
   否则旧 binary 可能掩盖修改结果。
 - RDMA RC QP **不提供**空闲时的"远端进程存活"信号：只有在有 WR 在飞时，链路层才靠 ACK
   超时把"对端不可达"暴露成 CQ error。因此 client 的失败快速通道分两层——节点层（shard
-  心跳判 `dead`）与设备层（等待期对 lane CQ 收割并按 completion status 分类）；两者都只
-  把故障 lane **整条置脏**（其 slot 不再复用）并抛 `ShardUnreachableError`，不做 QP 重建、
-  不做应用层重试。据此，被置脏的 lane 在本进程内不会自愈（重新可用需 QP 重建，属后续工作），
-  这个退化行为在测试中被固定为断言，不要改成静默复用。
+  心跳判 `dead`）与设备层（等待期对 lane CQ 收割并按 completion status 分类）；两者都把
+  故障 lane **整条置脏**（其 slot 不再交给新请求）并抛 `ShardUnreachableError`，不做应用层
+  重试。默认（重建关闭）下这个退化行为是终态的，在测试中被固定为断言。
+- P3（`--rdma-lane-rebuild-enabled`，默认关闭，需 server 与 client 同时开启）允许置脏 lane
+  自愈。只有 peer-side 原因（`wait_timeout` / `health_dead` / `drain_timeout` /
+  `cq_peer_unreachable` / `cq_flushed`）会被标记为可重建；client 在下一次 slot acquire 时
+  按冷却间隔懒重建 lane QP，并通过控制面 metadata 的 `lane_generation` 与 server 做双边
+  握手（server 在轮询线程观察到 generation 变化后重建自己一侧）。重建 QP 时会先 reset 冲刷
+  未完成 WR，再 drain 清除这些 completion、清空该 lane 的 slot，并递增 lane epoch，使仍
+  在等待旧响应的请求快速失败，而不是静默读到被复用的 slot。重建次数默认上限 3，耗尽后 lane
+  进入终态 `dead`。
+- P3 要求 `num_os_clients == 1`：`num_os_clients > 1` 时 server 的一条 lane CQ 被多个 client
+  进程的 QP 共享，reset 后无法安全 drain（会丢失其他 client 的 completion），因此两端都会
+  拒绝重建并保持终态置脏，只记录一次 warning。
 - 热点路径零开销：正常请求（µs 级完成）既不查控制面（1s 后才查）也不收割 CQ（50ms 后才收割）。
 
 ## 4. 关键参数
@@ -124,6 +134,11 @@ server 通过它交换 `RawVerbsNodeMeta` 并等待 ready。控制面额外承�
 | `--rdma-health-probe-interval-ms` | 慢路径查询/判定间隔；默认 `1000` |
 | `--rdma-health-probe-timeout-ms` | 慢路径健康查询 RPC 超时；默认 `1000` |
 | `--rdma-cq-harvest-interval-ms` | 等待期 CQ 收割间隔；默认 `50`，`0` 关闭（旧行为） |
+| `--rdma-lane-rebuild-enabled` | 置脏 lane 的 QP 重建自愈；默认关闭，需 server 与 client 同时开启 |
+| `--rdma-lane-rebuild-max-attempts` | 每条 lane 的重建次数上限，超过进入终态 `dead`；默认 `3` |
+| `--rdma-lane-rebuild-wait-ms` | 双边重建握手等待 peer ack 的期限；默认 `2000` |
+| `--rdma-lane-rebuild-poll-ms` | server 轮询 client `lane_generation` 的间隔；默认 `50` |
+| `--rdma-lane-rebuild-cooldown-ms` | 同一 lane 两次重建尝试的最小间隔；默认 `1000` |
 | `--rdma-get-response-mode` | GET response 路径：`auto`、`direct_sg` 或 `staging_copy` |
 | `--server-rdma-threads` | generic PS runner 的 server polling thread 数 |
 | `--rdma-rc-server-get-workers` | GET payload worker 数；`0` 表示 poller 同步处理 |
