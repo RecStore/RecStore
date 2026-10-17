@@ -215,6 +215,41 @@ public:
     heartbeat_thread_ = std::thread(&PetPSServer::HeartbeatThread, this);
   }
 
+  // Graceful exit: stop every loop and join. Idempotent; the caller decides
+  // whether to tear the process down normally or short-circuit the (large)
+  // slab unmap.
+  //
+  // Deliberately no draining publication here: nothing consumes `draining`
+  // yet (the health snapshot reports liveness only), while a draining record
+  // permanently rejects READY for the same (deployment, epoch, shard), so a
+  // plain restart would never come back. Draining stays an explicit operator
+  // action until the re-ready rule is settled.
+  void Stop() {
+    if (stop_requested_.exchange(true, std::memory_order_relaxed)) {
+      return;
+    }
+    {
+      std::lock_guard<std::mutex> guard(heartbeat_mu_);
+      heartbeat_cv_.notify_all();
+    }
+    get_payload_cv_.notify_all();
+    for (std::thread& worker : get_payload_workers_) {
+      if (worker.joinable()) {
+        worker.join();
+      }
+    }
+    for (std::thread& thread : threads_) {
+      if (thread.joinable()) {
+        thread.join();
+      }
+    }
+    if (heartbeat_thread_.joinable()) {
+      heartbeat_thread_.join();
+    }
+    LOG(INFO) << "component=petps_server event=server_stopped"
+              << " server_id=" << FLAGS_global_id;
+  }
+
 private:
   struct GetPayloadTask {
     int slot           = -1;
@@ -558,8 +593,12 @@ private:
       {
         std::unique_lock<std::mutex> lock(get_payload_mu_);
         get_payload_cv_.wait(lock, [this] {
-          return !get_payload_tasks_.empty();
+          return !get_payload_tasks_.empty() ||
+                 stop_requested_.load(std::memory_order_relaxed);
         });
+        if (stop_requested_.load(std::memory_order_relaxed)) {
+          return;
+        }
         task = get_payload_tasks_.front();
         get_payload_tasks_.pop_front();
       }
@@ -992,7 +1031,7 @@ private:
     LOG(INFO) << "component=rdma_control_plane event=heartbeat_thread_ready"
               << " server_id=" << FLAGS_global_id
               << " interval_ms=" << interval_ms;
-    while (true) {
+    while (!stop_requested_.load(std::memory_order_relaxed)) {
       try {
         control_plane_client_.SendHeartbeat(FLAGS_global_id);
       } catch (const std::exception& error) {
@@ -1000,7 +1039,12 @@ private:
                      << " server_id=" << FLAGS_global_id << " error=\""
                      << error.what() << "\"";
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+      // Stop() wakes this early instead of waiting out the whole interval.
+      std::unique_lock<std::mutex> lock(heartbeat_mu_);
+      heartbeat_cv_.wait_for(
+          lock, std::chrono::milliseconds(interval_ms), [this] {
+            return stop_requested_.load(std::memory_order_relaxed);
+          });
     }
   }
 
@@ -1032,7 +1076,7 @@ private:
       RunCoroutinePollingThread(thread_id, coroutines_per_thread);
       return;
     }
-    while (true) {
+    while (!stop_requested_.load(std::memory_order_relaxed)) {
       const bool profile_enabled        = FLAGS_rdma_rc_profile_interval_ms > 0;
       const std::uint64_t poll_start_ns = profile_enabled ? NowNs() : 0;
       std::uint64_t scanned_slots       = 0;
@@ -1333,7 +1377,7 @@ private:
       int thread_id,
       int worker_id,
       int worker_count) {
-    while (true) {
+    while (!stop_requested_.load(std::memory_order_relaxed)) {
       const bool profile_enabled        = FLAGS_rdma_rc_profile_interval_ms > 0;
       const std::uint64_t poll_start_ns = profile_enabled ? NowNs() : 0;
       std::uint64_t scanned_slots       = 0;
@@ -1384,7 +1428,7 @@ private:
                 sink, thread_id, coroutine_id, coroutines_per_thread);
           }));
     }
-    while (true) {
+    while (!stop_requested_.load(std::memory_order_relaxed)) {
       for (auto& coroutine : coroutines) {
         (*coroutine)();
       }
@@ -1411,10 +1455,13 @@ private:
   std::vector<std::uint64_t> next_rebuild_check_ns_;
   std::mutex get_payload_mu_;
   std::condition_variable get_payload_cv_;
+  std::mutex heartbeat_mu_;
+  std::condition_variable heartbeat_cv_;
   std::deque<GetPayloadTask> get_payload_tasks_;
   std::vector<std::deque<GetPayloadCompletion>> get_payload_completions_;
   std::atomic<int> started_threads_{0};
   std::atomic<bool> ready_published_{false};
+  std::atomic<bool> stop_requested_{false};
   ProfileCounters profile_;
 };
 
@@ -1521,7 +1568,11 @@ int main(int argc, char* argv[]) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
   LOG(INFO) << "component=petps_server event=shutdown";
-  // ponytail: process exit; PetPSServer's joinable poll threads would
-  // std::terminate in ~vector<thread>. Upgrade: PetPSServer::Stop()+join.
+  ps->Stop();
+  if (control_plane_server != nullptr) {
+    control_plane_server->Stop();
+  }
+  // Threads are joined; the process still exits without the global teardown,
+  // which would unmap the multi-GB slab for no one.
   std::_Exit(0);
 }
