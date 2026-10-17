@@ -93,22 +93,12 @@ struct RdmaServerHealthSnapshot {
 // Slow-path health probe policy. A client that has been waiting longer than the
 // probe threshold asks the control plane about its shard; the query is
 // throttled so many waiters share at most one RPC per probe interval.
-enum class RdmaSlowPathVerdict {
-  kKeepWaiting,      // serving / suspect / unknown: keep waiting on the budgets
-  kShardUnreachable, // the control plane judged the shard dead
-};
-
-inline RdmaSlowPathVerdict
-ClassifyShardHealthSnapshot(const RdmaServerHealthSnapshot& snapshot) {
-  // Never fail a request on an inconclusive query: an unreachable control plane
-  // or a shard without a READY record (both `known=false`) falls back to the
-  // data-path budgets instead of producing a false verdict.
-  if (!snapshot.known) {
-    return RdmaSlowPathVerdict::kKeepWaiting;
-  }
-  return snapshot.health == RdmaServerHealth::kDead
-           ? RdmaSlowPathVerdict::kShardUnreachable
-           : RdmaSlowPathVerdict::kKeepWaiting;
+// True when the control plane positively judged the shard dead. An inconclusive
+// query never fails a request: an unreachable control plane and a shard without
+// a READY record both report `known=false`, and then the request stays on its
+// data-path wait budgets instead of producing a false verdict.
+inline bool IsShardUnreachable(const RdmaServerHealthSnapshot& snapshot) {
+  return snapshot.known && snapshot.health == RdmaServerHealth::kDead;
 }
 
 // Throttles slow-path probes: at most one in-flight query, and at most one
@@ -157,6 +147,8 @@ struct RdmaControlPlaneChannelCache;
 class RdmaControlPlaneClient {
 public:
   explicit RdmaControlPlaneClient(RdmaControlPlaneEndpoint endpoint);
+  // Out of line: `channels_` is an incomplete type here.
+  ~RdmaControlPlaneClient();
 
   void PublishMeta(int publisher_node_id,
                    int publisher_lane,
@@ -183,7 +175,7 @@ public:
 
 private:
   RdmaControlPlaneEndpoint endpoint_;
-  std::shared_ptr<RdmaControlPlaneChannelCache> channels_;
+  std::unique_ptr<RdmaControlPlaneChannelCache> channels_;
 };
 
 class RdmaControlPlaneServer {

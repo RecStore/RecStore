@@ -397,30 +397,26 @@ TEST(RdmaControlPlaneTest, GetServerHealthTreatsErrorsAsUnknown) {
   EXPECT_FALSE(snapshot.known);
 }
 
-TEST(RdmaControlPlaneTest, SlowPathVerdictOnlyFailsOnDead) {
+TEST(RdmaControlPlaneTest, SlowPathOnlyFailsOnDeadShards) {
   RdmaServerHealthSnapshot dead;
   dead.known  = true;
   dead.health = RdmaServerHealth::kDead;
-  EXPECT_EQ(ClassifyShardHealthSnapshot(dead),
-            RdmaSlowPathVerdict::kShardUnreachable);
+  EXPECT_TRUE(IsShardUnreachable(dead));
 
   RdmaServerHealthSnapshot suspect;
   suspect.known  = true;
   suspect.health = RdmaServerHealth::kSuspect;
-  EXPECT_EQ(ClassifyShardHealthSnapshot(suspect),
-            RdmaSlowPathVerdict::kKeepWaiting);
+  EXPECT_FALSE(IsShardUnreachable(suspect));
 
   RdmaServerHealthSnapshot serving;
   serving.known  = true;
   serving.health = RdmaServerHealth::kServing;
-  EXPECT_EQ(ClassifyShardHealthSnapshot(serving),
-            RdmaSlowPathVerdict::kKeepWaiting);
+  EXPECT_FALSE(IsShardUnreachable(serving));
 
   // Unknown shard (or an unreachable control plane): the control plane carries
   // no opinion, so the request stays on its data-path budgets.
-  RdmaServerHealthSnapshot unknown;
-  EXPECT_EQ(ClassifyShardHealthSnapshot(unknown),
-            RdmaSlowPathVerdict::kKeepWaiting);
+  const RdmaServerHealthSnapshot unknown;
+  EXPECT_FALSE(IsShardUnreachable(unknown));
 }
 
 TEST(RdmaControlPlaneTest, SlowPathProbeGateThrottlesAndCoalesces) {

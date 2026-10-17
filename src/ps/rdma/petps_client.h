@@ -99,21 +99,9 @@ private:
     bool busy              = false; // True while one RPC is in flight.
   };
 
+  // Not copyable or movable: the lane state holds atomics and the vector that
+  // owns these is built in place by InitializeTransport.
   struct QpContext {
-    QpContext()                            = default;
-    QpContext(const QpContext&)            = delete;
-    QpContext& operator=(const QpContext&) = delete;
-    QpContext(QpContext&& other) noexcept
-        : qp_index(other.qp_index),
-          slots(std::move(other.slots)),
-          dirty(other.dirty.load(std::memory_order_relaxed)),
-          dead(other.dead.load(std::memory_order_relaxed)),
-          rebuildable(other.rebuildable.load(std::memory_order_relaxed)),
-          rebuild_attempts(other.rebuild_attempts),
-          generation(other.generation),
-          epoch(other.epoch.load(std::memory_order_relaxed)),
-          next_rebuild_at(other.next_rebuild_at) {}
-
     int qp_index = 0;
     std::vector<SlotContext> slots;
     // Lane state. `dirty` means the lane is not currently serviceable: waiters
@@ -204,7 +192,6 @@ private:
       int qp_index,
       const RawVerbsCompletionError& error,
       std::int64_t waited_ms);
-  RdmaControlPlaneClient MakeControlPlaneClient() const;
   SlotContext& SlotAt(int qp_index, int slot_in_qp);
   const SlotContext& SlotAt(int qp_index, int slot_in_qp) const;
   void EnsureThreadInitializedLocked() const;

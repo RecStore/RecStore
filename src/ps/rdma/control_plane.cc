@@ -16,16 +16,6 @@
 
 namespace petps {
 
-// One lazily opened channel/stub per client. A shard heartbeats once per
-// second, so opening a connection per RPC would be wasteful; gRPC channels are
-// thread-safe and serve concurrent RPCs, so every RPC of one client shares this
-// cache.
-struct RdmaControlPlaneChannelCache {
-  std::once_flag once;
-  // The generated stub keeps the channel alive.
-  std::unique_ptr<recstoreps::rdma::RdmaControlPlane::Stub> stub;
-};
-
 namespace {
 
 using recstoreps::rdma::GetMetaRequest;
@@ -89,21 +79,21 @@ grpc::Status MakeUnavailable(const std::string& message) {
   return grpc::Status(grpc::StatusCode::UNAVAILABLE, message);
 }
 
-// Opens the shared channel/stub on first use and returns the cached stub. The
-// channel is created without connecting, so a client that is never used keeps
-// costing nothing.
-recstoreps::rdma::RdmaControlPlane::Stub* CachedControlPlaneStub(
-    const std::shared_ptr<RdmaControlPlaneChannelCache>& cache,
-    const RdmaControlPlaneEndpoint& endpoint) {
-  std::call_once(cache->once, [&cache, &endpoint] {
-    cache->stub =
-        recstoreps::rdma::RdmaControlPlane::NewStub(grpc::CreateChannel(
-            EndpointString(endpoint), grpc::InsecureChannelCredentials()));
-  });
-  return cache->stub.get();
-}
-
 } // namespace
+
+// One channel/stub per client. A shard handshakes and heartbeats, so opening a
+// connection per RPC would be wasteful; gRPC channels are thread-safe and serve
+// concurrent RPCs, so every RPC of one client shares this cache. Creating a
+// channel does not connect, so an unused client costs nothing.
+struct RdmaControlPlaneChannelCache {
+  explicit RdmaControlPlaneChannelCache(
+      const RdmaControlPlaneEndpoint& endpoint)
+      : stub(recstoreps::rdma::RdmaControlPlane::NewStub(grpc::CreateChannel(
+            EndpointString(endpoint), grpc::InsecureChannelCredentials()))) {}
+
+  // The generated stub keeps the channel alive.
+  std::unique_ptr<recstoreps::rdma::RdmaControlPlane::Stub> stub;
+};
 
 std::string EncodeRawVerbsNodeMeta(const RawVerbsNodeMeta& meta) {
   RawVerbsMetadata wire;
@@ -603,7 +593,10 @@ private:
 RdmaControlPlaneClient::RdmaControlPlaneClient(
     RdmaControlPlaneEndpoint endpoint)
     : endpoint_(std::move(endpoint)),
-      channels_(std::make_shared<RdmaControlPlaneChannelCache>()) {}
+      channels_(std::make_unique<RdmaControlPlaneChannelCache>(endpoint_)) {}
+
+// Out of line because the cache type is incomplete in the header.
+RdmaControlPlaneClient::~RdmaControlPlaneClient() = default;
 
 void RdmaControlPlaneClient::PublishMeta(
     int publisher_node_id,
@@ -611,7 +604,7 @@ void RdmaControlPlaneClient::PublishMeta(
     int receiver_node_id,
     int receiver_lane,
     const RawVerbsNodeMeta& meta) const {
-  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   PublishMetaRequest request;
   request.set_publisher_node_id(publisher_node_id);
@@ -636,7 +629,7 @@ RawVerbsNodeMeta RdmaControlPlaneClient::GetMeta(
     int timeout_ms) const {
   const int effective_timeout_ms =
       timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
-  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   GetMetaRequest request;
   request.set_publisher_node_id(publisher_node_id);
@@ -655,7 +648,7 @@ RawVerbsNodeMeta RdmaControlPlaneClient::GetMeta(
 }
 
 void RdmaControlPlaneClient::PublishServerReady(int server_id) const {
-  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   PublishServerReadyRequest request;
   request.set_server_id(server_id);
@@ -673,7 +666,7 @@ void RdmaControlPlaneClient::PublishServerReady(int server_id) const {
 }
 
 void RdmaControlPlaneClient::PublishServerDraining(int server_id) const {
-  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   PublishServerDrainingRequest request;
   request.set_server_id(server_id);
@@ -691,7 +684,7 @@ void RdmaControlPlaneClient::PublishServerDraining(int server_id) const {
 }
 
 void RdmaControlPlaneClient::SendHeartbeat(int server_id) const {
-  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   ProbeRequest request;
   request.set_server_id(server_id);
@@ -710,7 +703,7 @@ RdmaControlPlaneClient::GetServerHealth(int server_id, int timeout_ms) const {
       timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
   RdmaServerHealthSnapshot snapshot;
 
-  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   GetServerHealthRequest request;
   request.set_server_id(server_id);
@@ -745,7 +738,7 @@ RdmaControlPlaneClient::GetServerHealth(int server_id, int timeout_ms) const {
 void RdmaControlPlaneClient::WaitServer(int server_id, int timeout_ms) const {
   const int effective_timeout_ms =
       timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
-  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   WaitServerRequest request;
   request.set_server_id(server_id);
@@ -766,7 +759,7 @@ void RdmaControlPlaneClient::WaitServerReady(int num_servers,
                                              int timeout_ms) const {
   const int effective_timeout_ms =
       timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
-  RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   WaitServerReadyRequest request;
   request.set_num_servers(num_servers);

@@ -100,15 +100,37 @@ recstore::ResolvedRdmaFabric TestFabric() {
   return recstore::LocalRdmaFabric(deployment, FLAGS_global_id);
 }
 
+// The client id this process must use: an explicit override wins, otherwise the
+// id the local fabric assigned to it. Always parses the config so a missing
+// RECSTORE_CONFIG still fails loudly.
+int ActiveLogicalClientId() {
+  const auto fabric = TestFabric();
+  return FLAGS_rdma_rc_client_id_base >= 0
+           ? FLAGS_rdma_rc_client_id_base
+           : fabric.logical_id;
+}
+
+// Reads `keys` back and compares them with `expected`; false when the RPC
+// itself failed, so callers can retry a lane that is not serviceable yet.
+bool GetMatches(petps::PetPSClient& client,
+                const std::vector<std::uint64_t>& keys,
+                const base::RecTensor& expected,
+                int embedding_dim) {
+  std::vector<float> output(
+      keys.size() * static_cast<std::size_t>(embedding_dim), 0.0f);
+  base::RecTensor output_tensor(
+      output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
+  if (client.GetParameter(
+          base::ConstArray<std::uint64_t>(keys), output_tensor) != 0) {
+    return false;
+  }
+  return std::equal(output.begin(), output.end(), expected.data_as<float>());
+}
+
 petps::PetPSClient& SingleShardClient() {
   static auto* client = []() {
-    const auto fabric = TestFabric();
-    const int logical_client_id =
-        FLAGS_rdma_rc_client_id_base >= 0
-            ? FLAGS_rdma_rc_client_id_base
-            : fabric.logical_id;
     auto* created =
-        new petps::PetPSClient("127.0.0.1", 1234, 0, logical_client_id);
+        new petps::PetPSClient("127.0.0.1", 1234, 0, ActiveLogicalClientId());
     created->InitThread();
     return created;
   }();
@@ -389,11 +411,7 @@ TEST(PetPSIntegrationTest, RepeatedPutGetStressMultiShard) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);
   const int client_id     = FLAGS_global_id - FLAGS_num_server_processes;
   ASSERT_GE(client_id, 0);
-  const auto fabric = TestFabric();
-  const int logical_client_id =
-      FLAGS_rdma_rc_client_id_base >= 0
-          ? FLAGS_rdma_rc_client_id_base
-          : fabric.logical_id;
+  const int logical_client_id = ActiveLogicalClientId();
 
   json config                   = json::object();
   config["cache_ps"]["ps_type"] = "RDMA";
@@ -523,11 +541,7 @@ TEST(PetPSIntegrationTest, ShardUnreachableRetiresLanesAndFailsFast) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);
   const int client_id     = FLAGS_global_id - FLAGS_num_server_processes;
   ASSERT_GE(client_id, 0);
-  const auto fabric = TestFabric();
-  const int logical_client_id =
-      FLAGS_rdma_rc_client_id_base >= 0
-          ? FLAGS_rdma_rc_client_id_base
-          : fabric.logical_id;
+  const int logical_client_id = ActiveLogicalClientId();
   petps::PetPSClient healthy("127.0.0.1", 1234, 0, logical_client_id);
   petps::PetPSClient frozen("127.0.0.1", 1234, 1, logical_client_id);
   healthy.InitThread();
@@ -539,20 +553,6 @@ TEST(PetPSIntegrationTest, ShardUnreachableRetiresLanesAndFailsFast) {
   const auto frozen_values  = MakeValues(frozen_keys, embedding_dim);
   ASSERT_EQ(healthy.PutParameter(healthy_keys, healthy_values), 0);
   ASSERT_EQ(frozen.PutParameter(frozen_keys, frozen_values), 0);
-
-  const auto get_matches = [&](petps::PetPSClient& client,
-                               const std::vector<std::uint64_t>& keys,
-                               const base::RecTensor& expected) {
-    std::vector<float> output(
-        keys.size() * static_cast<std::size_t>(embedding_dim), 0.0f);
-    base::RecTensor output_tensor(
-        output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
-    if (client.GetParameter(
-            base::ConstArray<std::uint64_t>(keys), output_tensor) != 0) {
-      return false;
-    }
-    return std::equal(output.begin(), output.end(), expected.data_as<float>());
-  };
 
   // The parent freezes shard 1 once it sees this marker.
   std::printf("%s\n", kFastFailWarmMarker);
@@ -566,7 +566,8 @@ TEST(PetPSIntegrationTest, ShardUnreachableRetiresLanesAndFailsFast) {
   while (!saw_unreachable && std::chrono::steady_clock::now() - phase1_start <
                                  std::chrono::seconds(60)) {
     try {
-      EXPECT_TRUE(get_matches(frozen, frozen_keys, frozen_values));
+      EXPECT_TRUE(
+          GetMatches(frozen, frozen_keys, frozen_values, embedding_dim));
     } catch (const petps::ShardUnreachableError& error) {
       saw_unreachable = true;
       first_error     = error.what();
@@ -588,7 +589,7 @@ TEST(PetPSIntegrationTest, ShardUnreachableRetiresLanesAndFailsFast) {
   int attempts            = 1;
   for (; attempts <= lanes + 4 && instant_us < 0; ++attempts) {
     const auto attempt_start = std::chrono::steady_clock::now();
-    EXPECT_THROW(get_matches(frozen, frozen_keys, frozen_values),
+    EXPECT_THROW(GetMatches(frozen, frozen_keys, frozen_values, embedding_dim),
                  petps::ShardUnreachableError);
     const std::int64_t elapsed_us =
         std::chrono::duration_cast<std::chrono::microseconds>(
@@ -598,7 +599,8 @@ TEST(PetPSIntegrationTest, ShardUnreachableRetiresLanesAndFailsFast) {
       instant_us = elapsed_us;
     }
     // Isolation: the healthy shard must keep serving while its peer retires.
-    EXPECT_TRUE(get_matches(healthy, healthy_keys, healthy_values));
+    EXPECT_TRUE(
+        GetMatches(healthy, healthy_keys, healthy_values, embedding_dim));
   }
   EXPECT_GE(instant_us, 0) << "no instant failure after " << attempts - 1
                            << " attempts (lanes=" << lanes << ")";
@@ -614,7 +616,7 @@ TEST(PetPSIntegrationTest, ShardUnreachableRetiresLanesAndFailsFast) {
   // re-using slots the server may still read.
   std::this_thread::sleep_for(std::chrono::seconds(8));
   const auto post_start = std::chrono::steady_clock::now();
-  EXPECT_THROW(get_matches(frozen, frozen_keys, frozen_values),
+  EXPECT_THROW(GetMatches(frozen, frozen_keys, frozen_values, embedding_dim),
                petps::ShardUnreachableError);
   const std::int64_t post_us =
       std::chrono::duration_cast<std::chrono::microseconds>(
@@ -622,7 +624,7 @@ TEST(PetPSIntegrationTest, ShardUnreachableRetiresLanesAndFailsFast) {
           .count();
   EXPECT_LT(post_us, kInstantFailUs)
       << "a retired lane was re-armed without a rebuild";
-  EXPECT_TRUE(get_matches(healthy, healthy_keys, healthy_values));
+  EXPECT_TRUE(GetMatches(healthy, healthy_keys, healthy_values, embedding_dim));
 }
 
 // End-to-end lane rebuild recovery: an external parent SIGSTOPs shard 1 after
@@ -645,11 +647,7 @@ TEST(PetPSIntegrationTest, LaneRebuildRecoversAfterFreeze) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);
   const int client_id     = FLAGS_global_id - FLAGS_num_server_processes;
   ASSERT_GE(client_id, 0);
-  const auto fabric = TestFabric();
-  const int logical_client_id =
-      FLAGS_rdma_rc_client_id_base >= 0
-          ? FLAGS_rdma_rc_client_id_base
-          : fabric.logical_id;
+  const int logical_client_id = ActiveLogicalClientId();
   petps::PetPSClient client("127.0.0.1", 1234, 1, logical_client_id);
   client.InitThread();
   // Also pair with shard 0: a server transport connects to every client that
@@ -666,19 +664,7 @@ TEST(PetPSIntegrationTest, LaneRebuildRecoversAfterFreeze) {
                 healthy_keys, MakeValues(healthy_keys, embedding_dim)),
             0);
 
-  const auto get_matches = [&]() {
-    std::vector<float> output(
-        keys.size() * static_cast<std::size_t>(embedding_dim), 0.0f);
-    base::RecTensor output_tensor(
-        output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
-    if (client.GetParameter(
-            base::ConstArray<std::uint64_t>(keys), output_tensor) != 0) {
-      return false;
-    }
-    return std::equal(output.begin(), output.end(), values.data_as<float>());
-  };
-  ASSERT_TRUE(get_matches());
-
+  ASSERT_TRUE(GetMatches(client, keys, values, embedding_dim));
   // The parent freezes shard 1 once it sees this marker, then unfreezes it.
   std::printf("%s\n", kRebuildWarmMarker);
   std::fflush(stdout);
@@ -688,7 +674,7 @@ TEST(PetPSIntegrationTest, LaneRebuildRecoversAfterFreeze) {
   bool recovered   = false;
   while (std::chrono::steady_clock::now() - start < std::chrono::seconds(120)) {
     try {
-      if (get_matches() && saw_failure) {
+      if (GetMatches(client, keys, values, embedding_dim) && saw_failure) {
         recovered = true;
         break;
       }
@@ -725,11 +711,7 @@ TEST(PetPSIntegrationTest, KilledShardRetiresLanesThroughCompletionError) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);
   const int client_id     = FLAGS_global_id - FLAGS_num_server_processes;
   ASSERT_GE(client_id, 0);
-  const auto fabric = TestFabric();
-  const int logical_client_id =
-      FLAGS_rdma_rc_client_id_base >= 0
-          ? FLAGS_rdma_rc_client_id_base
-          : fabric.logical_id;
+  const int logical_client_id = ActiveLogicalClientId();
   petps::PetPSClient healthy("127.0.0.1", 1234, 0, logical_client_id);
   petps::PetPSClient killed("127.0.0.1", 1234, 1, logical_client_id);
   healthy.InitThread();
@@ -741,20 +723,6 @@ TEST(PetPSIntegrationTest, KilledShardRetiresLanesThroughCompletionError) {
   const auto killed_values  = MakeValues(killed_keys, embedding_dim);
   ASSERT_EQ(healthy.PutParameter(healthy_keys, healthy_values), 0);
   ASSERT_EQ(killed.PutParameter(killed_keys, killed_values), 0);
-
-  const auto get_matches = [&](petps::PetPSClient& client,
-                               const std::vector<std::uint64_t>& keys,
-                               const base::RecTensor& expected) {
-    std::vector<float> output(
-        keys.size() * static_cast<std::size_t>(embedding_dim), 0.0f);
-    base::RecTensor output_tensor(
-        output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
-    if (client.GetParameter(
-            base::ConstArray<std::uint64_t>(keys), output_tensor) != 0) {
-      return false;
-    }
-    return std::equal(output.begin(), output.end(), expected.data_as<float>());
-  };
 
   // The parent SIGKILLs shard 1 once it sees this marker. Wait for the kill to
   // land first: a request whose Writes were already ACKed when the peer died
@@ -775,7 +743,8 @@ TEST(PetPSIntegrationTest, KilledShardRetiresLanesThroughCompletionError) {
                                  std::chrono::seconds(60)) {
     const auto attempt_start = std::chrono::steady_clock::now();
     try {
-      EXPECT_TRUE(get_matches(killed, killed_keys, killed_values));
+      EXPECT_TRUE(
+          GetMatches(killed, killed_keys, killed_values, embedding_dim));
     } catch (const petps::ShardUnreachableError& error) {
       saw_unreachable = true;
       first_error     = error.what();
@@ -808,7 +777,7 @@ TEST(PetPSIntegrationTest, KilledShardRetiresLanesThroughCompletionError) {
   int attempts            = 1;
   for (; attempts <= lanes + 4 && instant_us < 0; ++attempts) {
     const auto attempt_start = std::chrono::steady_clock::now();
-    EXPECT_THROW(get_matches(killed, killed_keys, killed_values),
+    EXPECT_THROW(GetMatches(killed, killed_keys, killed_values, embedding_dim),
                  petps::ShardUnreachableError);
     const std::int64_t elapsed_us =
         std::chrono::duration_cast<std::chrono::microseconds>(
@@ -817,7 +786,8 @@ TEST(PetPSIntegrationTest, KilledShardRetiresLanesThroughCompletionError) {
     if (elapsed_us < kInstantFailUs) {
       instant_us = elapsed_us;
     }
-    EXPECT_TRUE(get_matches(healthy, healthy_keys, healthy_values));
+    EXPECT_TRUE(
+        GetMatches(healthy, healthy_keys, healthy_values, embedding_dim));
   }
   EXPECT_GE(instant_us, 0) << "no instant failure after " << attempts - 1
                            << " attempts (lanes=" << lanes << ")";
