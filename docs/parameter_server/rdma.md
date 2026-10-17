@@ -129,7 +129,6 @@ server 通过它交换 `RawVerbsNodeMeta` 并等待 ready。控制面额外承�
 | `--rdma-heartbeat-interval-ms` | shard 心跳上报周期；默认 `1000` |
 | `--rdma-health-stale-ms` | 无心跳判 `suspect` 的空闲阈值；默认 `3000` |
 | `--rdma-health-dead-ms` | 无心跳判 `dead` 的空闲阈值；默认 `9000` |
-| `--rdma-health-record-retention-ms` | 控制面健康记录 GC 期限；默认 `0`（关闭淘汰） |
 | `--rdma-health-probe-after-ms` | 慢路径健康查询起始等待；默认 `1000`，`0` 关闭慢路径 |
 | `--rdma-health-probe-interval-ms` | 慢路径查询/判定间隔；默认 `1000` |
 | `--rdma-health-probe-timeout-ms` | 慢路径健康查询 RPC 超时；默认 `1000` |

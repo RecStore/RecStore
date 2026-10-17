@@ -455,11 +455,6 @@ RcShardClientTransport::RcShardClientTransport(const RcTransportConfig& config)
   if (server_node_id_ < 0 || server_node_id_ >= config_.num_servers) {
     throw std::runtime_error("server shard id out of global node range");
   }
-  if (FLAGS_rdma_lane_rebuild_enabled && config_.num_os_clients != 1) {
-    LOG(WARNING) << "component=rdma_rc_client event=lane_rebuild_unsupported"
-                 << " shard=" << config_.shard_id << " num_os_clients="
-                 << config_.num_os_clients << " reason=shared_server_cq";
-  }
   lanes_.reserve(static_cast<std::size_t>(config_.qps_per_client_per_shard));
   for (int qp = 0; qp < config_.qps_per_client_per_shard; ++qp) {
     Lane lane;
@@ -765,11 +760,6 @@ RcShardServerTransport::RcShardServerTransport(const RcTransportConfig& config)
   }
   if (config_.slots_per_qp <= 0) {
     throw std::runtime_error("slots_per_qp must be positive");
-  }
-  if (FLAGS_rdma_lane_rebuild_enabled && config_.num_os_clients != 1) {
-    LOG(WARNING) << "component=rdma_rc_server event=lane_rebuild_unsupported"
-                 << " shard=" << config_.shard_id << " num_os_clients="
-                 << config_.num_os_clients << " reason=shared_cq";
   }
   lanes_.reserve(static_cast<std::size_t>(config_.qps_per_client_per_shard));
   const int raw_lane_count = RawLanesPerOsClient(config_);

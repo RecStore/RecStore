@@ -620,14 +620,9 @@ void RawVerbsTransport::PublishAndConnect() {
 
 void RawVerbsTransport::RebuildQp(std::uint16_t node_id, bool cq_exclusive) {
   if (node_id >= impl_->qps.size() ||
-      impl_->qps[static_cast<std::size_t>(node_id)] == nullptr) {
-    throw std::runtime_error("raw verbs rebuild: unknown or absent lane QP");
-  }
-  if (!ShouldRawVerbsConnectToNode(impl_->config, node_id)) {
+      impl_->qps[static_cast<std::size_t>(node_id)] == nullptr ||
+      !ShouldRawVerbsConnectToNode(impl_->config, node_id)) {
     throw std::runtime_error("raw verbs rebuild: node is not connected");
-  }
-  if (impl_->metas.size() != impl_->qps.size()) {
-    throw std::runtime_error("raw verbs rebuild: connect() has not run");
   }
   ibv_qp* qp = impl_->qps[static_cast<std::size_t>(node_id)];
 

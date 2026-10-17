@@ -52,10 +52,6 @@ public:
   bool QueryRPCFinished(int rpc_id);
   void WaitRPCFinish(int rpc_id);
   void RevokeRPCResource(int rpc_id);
-  // Test seam: rebuild every non-dead lane's QP and return the number the peer
-  // acknowledged. Runs under the client mutex, exactly like the lazy rebuild
-  // AcquireIdleSlot performs on a degraded lane.
-  int RebuildAllLanesForTest();
 
   int PutParameter(const std::vector<uint64_t>& keys,
                    const base::RecTensor& values);
@@ -92,6 +88,11 @@ public:
   int FakePutParameter(base::ConstArray<uint64_t> keys, float* values);
 
 private:
+  // Test-only hook onto the lane rebuild path (defined in
+  // src/test/ps/rdma/petps_integration_test.cpp); production code has no
+  // use for forcing a rebuild of healthy lanes.
+  friend struct PetPSClientTestAccess;
+
   struct SlotContext {
     RcClientQpView view;            // Local request/response slot view.
     std::uint64_t next_seq = 1;     // Monotonic request sequence for this lane.
@@ -292,8 +293,6 @@ private:
   bool thread_initialized_ = false; // Set after InitThread has run.
   // Slow path: shared by all lanes because shard health is per-shard.
   RdmaSlowPathProbeGate health_probe_gate_;
-  std::atomic<std::uint64_t> health_probe_failures_{0};
-  std::atomic<std::uint64_t> health_probe_dead_verdicts_{0};
 };
 
 } // namespace petps

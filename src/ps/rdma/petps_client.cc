@@ -39,20 +39,6 @@ std::size_t ComputeMaxGetKeysPerRpc(std::size_t value_size) {
       static_cast<std::size_t>(FLAGS_rdma_rc_target_response_mtu));
 }
 
-// Releases the slow-path probe gate even when the query throws, so one
-// unexpected failure cannot keep every later probe throttled forever.
-class ProbeGateGuard {
-public:
-  explicit ProbeGateGuard(RdmaSlowPathProbeGate* gate) : gate_(gate) {}
-  ~ProbeGateGuard() { gate_->EndProbe(); }
-
-  ProbeGateGuard(const ProbeGateGuard&)            = delete;
-  ProbeGateGuard& operator=(const ProbeGateGuard&) = delete;
-
-private:
-  RdmaSlowPathProbeGate* gate_;
-};
-
 void FillBaseDescriptor(
     RequestDescriptor* descriptor,
     std::uint64_t seq,
@@ -363,16 +349,12 @@ void PetPSClient::MarkLaneDirty(
       snapshot != nullptr && snapshot->known
           ? RdmaServerHealthToString(snapshot->health)
           : "unknown";
-  LOG(WARNING)
-      << "component=rdma_rc_client event=lane_dirty shard=" << shard_
-      << " client_id=" << client_id_ << " lane=" << qp_index
-      << " reason=" << reason << " verdict=" << verdict << " last_seen_age_ms="
-      << (snapshot != nullptr ? snapshot->last_seen_age_ms : -1)
-      << " waited_ms=" << waited_ms << " probes=" << health_probe_gate_.probes()
-      << " probe_skips=" << health_probe_gate_.skipped() << " probe_failures="
-      << health_probe_failures_.load(std::memory_order_relaxed)
-      << " dead_verdicts="
-      << health_probe_dead_verdicts_.load(std::memory_order_relaxed);
+  LOG(WARNING) << "component=rdma_rc_client event=lane_dirty shard=" << shard_
+               << " client_id=" << client_id_ << " lane=" << qp_index
+               << " reason=" << reason << " verdict=" << verdict
+               << " last_seen_age_ms="
+               << (snapshot != nullptr ? snapshot->last_seen_age_ms : -1)
+               << " waited_ms=" << waited_ms;
 }
 
 bool PetPSClient::TryRebuildLaneLocked(int qp_index) {
@@ -436,31 +418,16 @@ bool PetPSClient::TryRebuildLaneLocked(int qp_index) {
   return true;
 }
 
-int PetPSClient::RebuildAllLanesForTest() {
-  std::lock_guard<std::mutex> guard(mu_);
-  int recovered = 0;
-  for (std::size_t qp_index = 0; qp_index < qps_.size(); ++qp_index) {
-    if (qps_[qp_index].dead.load(std::memory_order_relaxed)) {
-      continue;
-    }
-    if (TryRebuildLaneLocked(static_cast<int>(qp_index))) {
-      ++recovered;
-    }
-  }
-  return recovered;
-}
-
 void PetPSClient::MaybeProbeShardHealth(int qp_index, std::int64_t waited_ms) {
   if (!health_probe_gate_.TryBeginProbe(std::chrono::steady_clock::now(),
                                         FLAGS_rdma_health_probe_interval_ms)) {
     return;
   }
-  const ProbeGateGuard guard(&health_probe_gate_);
   bool query_ok                           = false;
   const RdmaServerHealthSnapshot snapshot = control_plane_->GetServerHealth(
       shard_, FLAGS_rdma_health_probe_timeout_ms, &query_ok);
+  health_probe_gate_.EndProbe();
   if (!query_ok) {
-    health_probe_failures_.fetch_add(1, std::memory_order_relaxed);
     VLOG(1) << "component=rdma_rc_client event=health_probe_failed shard="
             << shard_ << " lane=" << qp_index << " waited_ms=" << waited_ms;
     return;
@@ -474,7 +441,6 @@ void PetPSClient::MaybeProbeShardHealth(int qp_index, std::int64_t waited_ms) {
             << " waited_ms=" << waited_ms;
     return;
   }
-  health_probe_dead_verdicts_.fetch_add(1, std::memory_order_relaxed);
   MarkLaneDirty(
       qp_index, "health_dead", &snapshot, waited_ms, /*rebuildable=*/true);
   throw ShardUnreachableError(

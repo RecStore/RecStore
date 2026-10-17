@@ -104,10 +104,6 @@ DEFINE_int32(
     9000,
     "RDMA control-plane health dead threshold in milliseconds; a shard "
     "with no heartbeat within this window is Dead");
-DEFINE_int32(rdma_health_record_retention_ms,
-             0,
-             "RDMA control-plane health record retention in milliseconds; a "
-             "record idle longer than this is evicted; 0 disables eviction");
 DEFINE_int32(rdma_health_probe_after_ms,
              1000,
              "Client slow-path health probe delay in milliseconds: a request "

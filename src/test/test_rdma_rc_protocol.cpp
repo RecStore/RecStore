@@ -249,65 +249,36 @@ TEST(RdmaRcProtocolTest, WaitTimeoutHasDistinctErrorType) {
       petps::RdmaRequestTimeout);
 }
 
-TEST(RdmaRcProtocolTest, ClassifiesRetryExhaustionAsPeerUnreachable) {
+TEST(RdmaRcProtocolTest, ClassifiesCompletionStatuses) {
   using petps::RawVerbsErrorClass;
-  EXPECT_EQ(petps::ClassifyRawVerbsCompletionStatus(IBV_WC_RETRY_EXC_ERR),
-            RawVerbsErrorClass::kPeerUnreachable);
-  EXPECT_EQ(petps::ClassifyRawVerbsCompletionStatus(IBV_WC_RNR_RETRY_EXC_ERR),
-            RawVerbsErrorClass::kPeerUnreachable);
-  EXPECT_TRUE(
-      petps::IsRawVerbsUnreachableError(RawVerbsErrorClass::kPeerUnreachable));
-}
-
-TEST(RdmaRcProtocolTest, ClassifiesFlushedCompletionAsUnreachable) {
-  using petps::RawVerbsErrorClass;
-  EXPECT_EQ(petps::ClassifyRawVerbsCompletionStatus(IBV_WC_WR_FLUSH_ERR),
-            RawVerbsErrorClass::kFlushed);
-  // A flushed WR means the QP was already dead: the shard is unreachable on
-  // that lane until a rebuild, so the client retires it like retry exhaustion.
-  EXPECT_TRUE(petps::IsRawVerbsUnreachableError(RawVerbsErrorClass::kFlushed));
-}
-
-TEST(RdmaRcProtocolTest, ClassifiesLocalFaultsAsLocalErrors) {
-  using petps::RawVerbsErrorClass;
-  const ibv_wc_status local_statuses[] = {
-      IBV_WC_LOC_LEN_ERR,
-      IBV_WC_LOC_QP_OP_ERR,
-      IBV_WC_LOC_PROT_ERR,
-      IBV_WC_LOC_ACCESS_ERR,
-      IBV_WC_LOC_RDD_VIOL_ERR,
+  struct Case {
+    ibv_wc_status status;
+    RawVerbsErrorClass expected;
+    bool unreachable;
   };
-  for (const ibv_wc_status status : local_statuses) {
-    EXPECT_EQ(petps::ClassifyRawVerbsCompletionStatus(status),
-              RawVerbsErrorClass::kLocalError);
-  }
-  EXPECT_FALSE(
-      petps::IsRawVerbsUnreachableError(RawVerbsErrorClass::kLocalError));
-}
-
-TEST(RdmaRcProtocolTest, ClassifiesRemoteRejectionAsPeerRejected) {
-  using petps::RawVerbsErrorClass;
-  const ibv_wc_status remote_statuses[] = {
-      IBV_WC_REM_INV_REQ_ERR,
-      IBV_WC_REM_ACCESS_ERR,
-      IBV_WC_REM_OP_ERR,
+  const Case cases[] = {
+      {IBV_WC_RETRY_EXC_ERR, RawVerbsErrorClass::kPeerUnreachable, true},
+      {IBV_WC_RNR_RETRY_EXC_ERR, RawVerbsErrorClass::kPeerUnreachable, true},
+      // A flushed WR means the QP was already dead: unreachable until rebuilt.
+      {IBV_WC_WR_FLUSH_ERR, RawVerbsErrorClass::kFlushed, true},
+      // The peer answered, so it is alive: a rebuild is not a liveness action.
+      {IBV_WC_REM_INV_REQ_ERR, RawVerbsErrorClass::kPeerRejected, false},
+      {IBV_WC_REM_ACCESS_ERR, RawVerbsErrorClass::kPeerRejected, false},
+      {IBV_WC_REM_OP_ERR, RawVerbsErrorClass::kPeerRejected, false},
+      {IBV_WC_LOC_LEN_ERR, RawVerbsErrorClass::kLocalError, false},
+      {IBV_WC_LOC_QP_OP_ERR, RawVerbsErrorClass::kLocalError, false},
+      {IBV_WC_LOC_PROT_ERR, RawVerbsErrorClass::kLocalError, false},
+      {IBV_WC_LOC_ACCESS_ERR, RawVerbsErrorClass::kLocalError, false},
+      {IBV_WC_LOC_RDD_VIOL_ERR, RawVerbsErrorClass::kLocalError, false},
+      {IBV_WC_BAD_RESP_ERR, RawVerbsErrorClass::kOther, false},
+      {IBV_WC_GENERAL_ERR, RawVerbsErrorClass::kOther, false},
   };
-  for (const ibv_wc_status status : remote_statuses) {
-    EXPECT_EQ(petps::ClassifyRawVerbsCompletionStatus(status),
-              RawVerbsErrorClass::kPeerRejected);
+  for (const Case& c : cases) {
+    EXPECT_EQ(petps::ClassifyRawVerbsCompletionStatus(c.status), c.expected)
+        << "status=" << static_cast<int>(c.status);
+    EXPECT_EQ(petps::IsRawVerbsUnreachableError(c.expected), c.unreachable)
+        << "status=" << static_cast<int>(c.status);
   }
-  // The peer answered, so it is alive: a rebuild is not a liveness action.
-  EXPECT_FALSE(
-      petps::IsRawVerbsUnreachableError(RawVerbsErrorClass::kPeerRejected));
-}
-
-TEST(RdmaRcProtocolTest, KeepsUnclassifiedStatusesInTheCatchAllClass) {
-  using petps::RawVerbsErrorClass;
-  EXPECT_EQ(petps::ClassifyRawVerbsCompletionStatus(IBV_WC_BAD_RESP_ERR),
-            RawVerbsErrorClass::kOther);
-  EXPECT_EQ(petps::ClassifyRawVerbsCompletionStatus(IBV_WC_GENERAL_ERR),
-            RawVerbsErrorClass::kOther);
-  EXPECT_FALSE(petps::IsRawVerbsUnreachableError(RawVerbsErrorClass::kOther));
 }
 
 TEST(RdmaRcProtocolTest, RendersCompletionErrorClassNames) {

@@ -33,12 +33,9 @@ struct RdmaControlPlaneEndpoint {
   std::string fabric_digest;
   // Optional on client-only endpoints; the server uses it to bound READY ids.
   int num_servers = 0;
-  // Control-plane health monitor thresholds (server side only). Record GC is
-  // off by default: the health monitor only observes, it never evicts unless
-  // asked to.
-  int health_stale_ms            = 3000;
-  int health_dead_ms             = 9000;
-  int health_record_retention_ms = 0;
+  // Control-plane health monitor thresholds (server side only).
+  int health_stale_ms = 3000;
+  int health_dead_ms  = 9000;
 };
 
 inline constexpr std::uint32_t kRawVerbsMetadataMagic  = 0x52444d41;
@@ -94,7 +91,6 @@ struct RdmaServerHealthSnapshot {
   bool known                    = false;
   RdmaServerHealth health       = RdmaServerHealth::kServing;
   std::int64_t last_seen_age_ms = -1;
-  std::string instance_nonce;
 };
 
 // Slow-path health probe policy. A client that has been waiting longer than the
@@ -129,16 +125,13 @@ public:
   bool TryBeginProbe(std::chrono::steady_clock::time_point now, int ttl_ms) {
     std::lock_guard<std::mutex> guard(mu_);
     if (probing_) {
-      skipped_.fetch_add(1, std::memory_order_relaxed);
       return false;
     }
-    if (has_probe_ && ttl_ms > 0 &&
+    if (last_probe_ != std::chrono::steady_clock::time_point{} && ttl_ms > 0 &&
         now - last_probe_ < std::chrono::milliseconds(ttl_ms)) {
-      skipped_.fetch_add(1, std::memory_order_relaxed);
       return false;
     }
     probing_    = true;
-    has_probe_  = true;
     last_probe_ = now;
     return true;
   }
@@ -146,29 +139,17 @@ public:
   void EndProbe() {
     std::lock_guard<std::mutex> guard(mu_);
     probing_ = false;
-    probes_.fetch_add(1, std::memory_order_relaxed);
-  }
-
-  std::uint64_t probes() const {
-    return probes_.load(std::memory_order_relaxed);
-  }
-  std::uint64_t skipped() const {
-    return skipped_.load(std::memory_order_relaxed);
   }
 
 private:
   mutable std::mutex mu_;
-  bool probing_   = false;
-  bool has_probe_ = false;
+  bool probing_ = false;
   std::chrono::steady_clock::time_point last_probe_{};
-  std::atomic<std::uint64_t> probes_{0};
-  std::atomic<std::uint64_t> skipped_{0};
 };
 
 // Metadata keys carried on the Probe RPC so heartbeat payloads do not need a
 // proto change.
-inline constexpr char kHeartbeatNodeIdMetadata[]   = "x-recstore-rdma-node-id";
-inline constexpr char kHeartbeatInstanceMetadata[] = "x-recstore-rdma-instance";
+inline constexpr char kHeartbeatNodeIdMetadata[] = "x-recstore-rdma-node-id";
 inline constexpr char kHeartbeatDeploymentIdMetadata[] =
     "x-recstore-rdma-deployment-id";
 inline constexpr char kHeartbeatDeploymentEpochMetadata[] =
@@ -199,14 +180,10 @@ public:
           int receiver_node_id,
           int receiver_lane,
           int timeout_ms = -1) const;
-  // `instance_nonce` identifies the serving process; when non-empty it is
-  // recorded in the READY record so a restart can be told apart from the same
-  // process.
-  void PublishServerReady(int server_id,
-                          const std::string& instance_nonce = "") const;
+  void PublishServerReady(int server_id) const;
   void PublishServerDraining(int server_id) const;
   // Lightweight liveness heartbeat; the server records it as `last_seen`.
-  void SendHeartbeat(int server_id, const std::string& instance_nonce) const;
+  void SendHeartbeat(int server_id) const;
   // Queries shard health from the shard 0 control plane. Never throws: RPC
   // failures are reported as `query_ok=false` with an unknown snapshot so the
   // client slow path can fall back to its wait budgets instead of failing.
@@ -228,33 +205,10 @@ public:
   void Start();
   void Stop();
 
-  // Read-only observability for the health monitor. Used by tests to assert
-  // heartbeat accounting without reaching into the monitor internals.
-  std::uint64_t heartbeats_received() const {
-    return heartbeats_received_.load(std::memory_order_relaxed);
-  }
-  // Heartbeats dropped for a bad identity: malformed metadata, another
-  // deployment/epoch, or an out-of-range shard id.
-  std::uint64_t heartbeats_rejected() const {
-    return heartbeats_rejected_.load(std::memory_order_relaxed);
-  }
-  // Heartbeats for a shard without a READY record; READY stays the only way to
-  // become serving, so these never create or revive a record.
-  std::uint64_t heartbeats_unknown_shard() const {
-    return heartbeats_unknown_shard_.load(std::memory_order_relaxed);
-  }
-  std::uint64_t health_transitions() const {
-    return health_transitions_.load(std::memory_order_relaxed);
-  }
-  // Health of a ready record evaluated at `now` (kServing when unknown).
-  RdmaServerHealth
-  ServerHealth(int server_id, std::chrono::steady_clock::time_point now) const;
   // Fresh snapshot for the GetServerHealth RPC: `known=false` when there is no
   // READY record, otherwise the health evaluated at query time plus the
-  // last-seen age and instance nonce.
+  // last-seen age.
   RdmaServerHealthSnapshot ServerHealthSnapshot(int server_id) const;
-  // Latest instance nonce observed for a ready record ("" when unknown).
-  std::string ServerInstanceNonce(int server_id) const;
 
 private:
   friend class RdmaControlPlaneService;
@@ -305,11 +259,8 @@ private:
     std::string fabric_digest;
     State state = State::kServing;
 
-    // `last_seen` is refreshed by PublishServerReady and by heartbeat Probes;
-    // `instance_nonce` identifies the serving process so a restart can be told
-    // apart from the same process.
+    // `last_seen` is refreshed by PublishServerReady and by heartbeat Probes.
     std::chrono::steady_clock::time_point last_seen{};
-    std::string instance_nonce;
     RdmaServerHealth observed_health = RdmaServerHealth::kServing;
   };
 
@@ -338,15 +289,11 @@ private:
   std::unique_ptr<grpc::Server> server_;
   std::thread health_monitor_;
   std::condition_variable health_cv_;
-  std::atomic<std::uint64_t> heartbeats_received_{0};
-  std::atomic<std::uint64_t> heartbeats_rejected_{0};
-  std::atomic<std::uint64_t> heartbeats_unknown_shard_{0};
-  std::atomic<std::uint64_t> health_transitions_{0};
 
   void HealthMonitorLoop();
   // Records an accepted heartbeat. The caller has already validated the
   // heartbeat identity against this endpoint.
-  void RecordHeartbeat(int server_id, const std::string& instance_nonce);
+  void RecordHeartbeat(int server_id);
 };
 
 } // namespace petps

@@ -29,7 +29,6 @@ DECLARE_int32(rdma_control_plane_timeout_ms);
 DECLARE_int32(rdma_heartbeat_interval_ms);
 DECLARE_int32(rdma_health_stale_ms);
 DECLARE_int32(rdma_health_dead_ms);
-DECLARE_int32(rdma_health_record_retention_ms);
 DECLARE_int32(rdma_health_probe_after_ms);
 DECLARE_int32(rdma_health_probe_interval_ms);
 DECLARE_int32(rdma_health_probe_timeout_ms);

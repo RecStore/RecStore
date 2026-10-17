@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -115,6 +116,30 @@ petps::PetPSClient& SingleShardClient() {
 }
 
 } // namespace
+
+namespace petps {
+
+// Test-only entry into PetPSClient's lane rebuild path (declared as a friend in
+// petps_client.h, so the production API stays free of test seams). Forcing a
+// rebuild of healthy lanes has no production caller; the integration test uses
+// it to drive the bilateral handshake deterministically.
+struct PetPSClientTestAccess {
+  static int RebuildAllLanes(PetPSClient& client) {
+    std::lock_guard<std::mutex> guard(client.mu_);
+    int recovered = 0;
+    for (std::size_t qp_index = 0; qp_index < client.qps_.size(); ++qp_index) {
+      if (client.qps_[qp_index].dead.load(std::memory_order_relaxed)) {
+        continue;
+      }
+      if (client.TryRebuildLaneLocked(static_cast<int>(qp_index))) {
+        ++recovered;
+      }
+    }
+    return recovered;
+  }
+};
+
+} // namespace petps
 
 TEST(PetPSIntegrationTest, PutGetRoundTripSingleShard) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);
@@ -470,12 +495,12 @@ TEST(PetPSIntegrationTest, LaneRebuildResumesServiceSingleShard) {
     client.RevokeRPCResource(rpc_id);
   };
 
-  ASSERT_EQ(client.RebuildAllLanesForTest(), lanes)
+  ASSERT_EQ(petps::PetPSClientTestAccess::RebuildAllLanes(client), lanes)
       << "the server did not acknowledge every lane rebuild";
   expect_get_ok();
 
   // A second round proves the generations keep advancing in lockstep.
-  ASSERT_EQ(client.RebuildAllLanesForTest(), lanes);
+  ASSERT_EQ(petps::PetPSClientTestAccess::RebuildAllLanes(client), lanes);
   expect_get_ok();
 }
 

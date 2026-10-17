@@ -101,39 +101,22 @@ int ParseHeartbeatNodeId(grpc::string_ref value) {
   }
 }
 
-std::uint64_t
-ParseHeartbeatEpoch(grpc::string_ref value, std::uint64_t fallback) {
+std::uint64_t ParseHeartbeatEpoch(grpc::string_ref value) {
   const std::string text(value.data(), value.size());
   try {
     return static_cast<std::uint64_t>(std::stoull(text));
   } catch (const std::exception&) {
-    return fallback;
+    return 0;
   }
 }
 
 std::string ReadMetadataValue(grpc::ServerContext* context, const char* key) {
-  if (context == nullptr) {
-    return std::string();
-  }
   for (const auto& entry : context->client_metadata()) {
     if (entry.first == key) {
       return std::string(entry.second.data(), entry.second.size());
     }
   }
   return std::string();
-}
-
-// A heartbeat/READY from a different `instance_nonce` means the shard process
-// was restarted (or replaced) within the same deployment epoch.
-void LogInstanceChange(const std::string& deployment_id,
-                       std::uint64_t deployment_epoch,
-                       int server_id,
-                       const std::string& from,
-                       const std::string& to) {
-  LOG(WARNING) << "component=rdma_control_plane event=server_instance_change"
-               << " deployment_id=" << deployment_id
-               << " epoch=" << deployment_epoch << " server_id=" << server_id
-               << " from=" << from << " to=" << to;
 }
 
 // Opens the shared channel/stub on first use and returns the cached stub. The
@@ -387,7 +370,7 @@ public:
     return grpc::Status::OK;
   }
 
-  grpc::Status PublishServerReady(grpc::ServerContext* context,
+  grpc::Status PublishServerReady(grpc::ServerContext*,
                                   const PublishServerReadyRequest* request,
                                   PublishServerReadyResponse*) override {
     const grpc::Status identity = ValidateDeploymentIdentity(
@@ -407,8 +390,6 @@ public:
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                           "invalid versioned server READY record");
     }
-    const std::string instance_nonce =
-        ReadMetadataValue(context, kHeartbeatInstanceMetadata);
     {
       std::lock_guard<std::mutex> guard(owner_->mu_);
       auto& record = owner_->ready_servers_[{request->deployment_id(),
@@ -426,18 +407,6 @@ public:
       record.state     = RdmaControlPlaneServer::ReadyRecord::State::kServing;
       record.last_seen = std::chrono::steady_clock::now();
       record.observed_health = RdmaServerHealth::kServing;
-      if (!instance_nonce.empty()) {
-        if (!record.instance_nonce.empty() &&
-            record.instance_nonce != instance_nonce) {
-          LogInstanceChange(
-              request->deployment_id(),
-              request->deployment_epoch(),
-              request->server_id(),
-              record.instance_nonce,
-              instance_nonce);
-        }
-        record.instance_nonce = instance_nonce;
-      }
     }
     owner_->cv_.notify_all();
     return grpc::Status::OK;
@@ -620,10 +589,9 @@ public:
     }
     // A bare Probe carries no identity and is a pure liveness check. The
     // heartbeat Probe carries the shard identity as metadata; only a fully
-    // matching identity may refresh that shard's `last_seen`. A mismatch is
-    // dropped and counted: a stale or foreign process must not be able to keep
-    // a record alive, while the heartbeat channel itself stays non-fatal (the
-    // sender only logs).
+    // matching identity may refresh that shard's `last_seen`, so a stale or
+    // foreign process cannot keep a record alive while the heartbeat channel
+    // itself stays non-fatal (the sender only logs).
     const std::string node_id_text =
         ReadMetadataValue(context, kHeartbeatNodeIdMetadata);
     if (node_id_text.empty()) {
@@ -638,19 +606,16 @@ public:
         !deployment_id_text.empty() &&
         deployment_id_text == owner_->endpoint_.deployment_id &&
         !epoch_text.empty() &&
-        ParseHeartbeatEpoch(epoch_text, 0) ==
-            owner_->endpoint_.deployment_epoch;
+        ParseHeartbeatEpoch(epoch_text) == owner_->endpoint_.deployment_epoch;
     const int num_servers = owner_->endpoint_.num_servers;
     if (server_id < 0 || !identity_matches ||
         (num_servers > 0 && server_id >= num_servers)) {
-      owner_->heartbeats_rejected_.fetch_add(1, std::memory_order_relaxed);
       VLOG(1) << "component=rdma_control_plane event=heartbeat_rejected"
               << " node_id=" << node_id_text << " deployment_id="
               << deployment_id_text << " epoch=" << epoch_text;
       return grpc::Status::OK;
     }
-    owner_->RecordHeartbeat(
-        server_id, ReadMetadataValue(context, kHeartbeatInstanceMetadata));
+    owner_->RecordHeartbeat(server_id);
     return grpc::Status::OK;
   }
 
@@ -676,9 +641,6 @@ public:
         snapshot.known ? static_cast<std::int32_t>(snapshot.health) : -1);
     response->set_last_seen_age_ms(
         snapshot.known ? snapshot.last_seen_age_ms : -1);
-    if (snapshot.known) {
-      response->set_instance_nonce(snapshot.instance_nonce);
-    }
     return grpc::Status::OK;
   }
 
@@ -740,8 +702,7 @@ RawVerbsNodeMeta RdmaControlPlaneClient::GetMeta(
   return DecodeMetaBytes(response.meta());
 }
 
-void RdmaControlPlaneClient::PublishServerReady(
-    int server_id, const std::string& instance_nonce) const {
+void RdmaControlPlaneClient::PublishServerReady(int server_id) const {
   RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
 
   PublishServerReadyRequest request;
@@ -754,9 +715,6 @@ void RdmaControlPlaneClient::PublishServerReady(
 
   PublishServerReadyResponse response;
   grpc::ClientContext context;
-  if (!instance_nonce.empty()) {
-    context.AddMetadata(kHeartbeatInstanceMetadata, instance_nonce);
-  }
   context.set_deadline(DeadlineFromNow(endpoint_.timeout_ms));
   ThrowIfNotOk(stub->PublishServerReady(&context, request, &response),
                "server_ready");
@@ -780,17 +738,13 @@ void RdmaControlPlaneClient::PublishServerDraining(int server_id) const {
                "server_draining");
 }
 
-void RdmaControlPlaneClient::SendHeartbeat(
-    int server_id, const std::string& instance_nonce) const {
+void RdmaControlPlaneClient::SendHeartbeat(int server_id) const {
   RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
 
   ProbeRequest request;
   ProbeResponse response;
   grpc::ClientContext context;
   context.AddMetadata(kHeartbeatNodeIdMetadata, std::to_string(server_id));
-  if (!instance_nonce.empty()) {
-    context.AddMetadata(kHeartbeatInstanceMetadata, instance_nonce);
-  }
   context.AddMetadata(kHeartbeatDeploymentIdMetadata, endpoint_.deployment_id);
   context.AddMetadata(kHeartbeatDeploymentEpochMetadata,
                       std::to_string(endpoint_.deployment_epoch));
@@ -839,7 +793,6 @@ RdmaServerHealthSnapshot RdmaControlPlaneClient::GetServerHealth(
   snapshot.known            = true;
   snapshot.health           = static_cast<RdmaServerHealth>(state);
   snapshot.last_seen_age_ms = response.last_seen_age_ms();
-  snapshot.instance_nonce   = response.instance_nonce();
   return snapshot;
 }
 
@@ -963,28 +916,6 @@ bool RdmaControlPlaneServer::HasDrainingServer(
   return false;
 }
 
-RdmaServerHealth RdmaControlPlaneServer::ServerHealth(
-    int server_id, std::chrono::steady_clock::time_point now) const {
-  std::lock_guard<std::mutex> guard(mu_);
-  const auto it = ready_servers_.find(
-      ReadyKey{endpoint_.deployment_id, endpoint_.deployment_epoch, server_id});
-  if (it == ready_servers_.end()) {
-    return RdmaServerHealth::kServing;
-  }
-  return EvaluateServerHealth(
-      it->second.last_seen,
-      now,
-      endpoint_.health_stale_ms,
-      endpoint_.health_dead_ms);
-}
-
-std::string RdmaControlPlaneServer::ServerInstanceNonce(int server_id) const {
-  std::lock_guard<std::mutex> guard(mu_);
-  const auto it = ready_servers_.find(
-      ReadyKey{endpoint_.deployment_id, endpoint_.deployment_epoch, server_id});
-  return it == ready_servers_.end() ? std::string() : it->second.instance_nonce;
-}
-
 RdmaServerHealthSnapshot
 RdmaControlPlaneServer::ServerHealthSnapshot(int server_id) const {
   std::lock_guard<std::mutex> guard(mu_);
@@ -1001,7 +932,6 @@ RdmaControlPlaneServer::ServerHealthSnapshot(int server_id) const {
       now,
       endpoint_.health_stale_ms,
       endpoint_.health_dead_ms);
-  snapshot.instance_nonce = it->second.instance_nonce;
   if (it->second.last_seen != std::chrono::steady_clock::time_point{}) {
     snapshot.last_seen_age_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1011,31 +941,16 @@ RdmaControlPlaneServer::ServerHealthSnapshot(int server_id) const {
   return snapshot;
 }
 
-void RdmaControlPlaneServer::RecordHeartbeat(
-    int server_id, const std::string& instance_nonce) {
+void RdmaControlPlaneServer::RecordHeartbeat(int server_id) {
   std::lock_guard<std::mutex> guard(mu_);
   const auto it = ready_servers_.find(
       ReadyKey{endpoint_.deployment_id, endpoint_.deployment_epoch, server_id});
   if (it == ready_servers_.end()) {
-    // Unknown shard: either not ready yet or already evicted. Do not create a
-    // record from a heartbeat; READY remains the only way to become serving.
-    heartbeats_unknown_shard_.fetch_add(1, std::memory_order_relaxed);
+    // Unknown shard: not ready yet, or never ready. A heartbeat never creates a
+    // record; READY remains the only way to become serving.
     return;
   }
   it->second.last_seen = std::chrono::steady_clock::now();
-  if (!instance_nonce.empty()) {
-    if (!it->second.instance_nonce.empty() &&
-        it->second.instance_nonce != instance_nonce) {
-      LogInstanceChange(
-          endpoint_.deployment_id,
-          endpoint_.deployment_epoch,
-          server_id,
-          it->second.instance_nonce,
-          instance_nonce);
-    }
-    it->second.instance_nonce = instance_nonce;
-  }
-  heartbeats_received_.fetch_add(1, std::memory_order_relaxed);
 }
 
 void RdmaControlPlaneServer::HealthMonitorLoop() {
@@ -1049,42 +964,23 @@ void RdmaControlPlaneServer::HealthMonitorLoop() {
       return;
     }
     const auto now = std::chrono::steady_clock::now();
-    for (auto it = ready_servers_.begin(); it != ready_servers_.end();) {
-      ReadyRecord& record           = it->second;
+    for (auto& entry : ready_servers_) {
+      ReadyRecord& record           = entry.second;
       const RdmaServerHealth health = EvaluateServerHealth(
           record.last_seen,
           now,
           endpoint_.health_stale_ms,
           endpoint_.health_dead_ms);
-      if (health != record.observed_health) {
-        LOG(WARNING)
-            << "component=rdma_control_plane event=server_health_change"
-            << " deployment_id=" << it->first.deployment_id
-            << " epoch=" << it->first.deployment_epoch
-            << " server_id=" << it->first.server_id
-            << " from=" << RdmaServerHealthToString(record.observed_health)
-            << " to=" << RdmaServerHealthToString(health)
-            << " instance=" << record.instance_nonce;
-        record.observed_health = health;
-        health_transitions_.fetch_add(1, std::memory_order_relaxed);
-      }
-      const bool seen =
-          record.last_seen != std::chrono::steady_clock::time_point{};
-      const auto idle_ms =
-          seen ? std::chrono::duration_cast<std::chrono::milliseconds>(
-                     now - record.last_seen)
-                     .count()
-               : 0;
-      if (endpoint_.health_record_retention_ms > 0 &&
-          idle_ms >= endpoint_.health_record_retention_ms) {
-        LOG(INFO) << "component=rdma_control_plane event=server_record_evicted"
-                  << " deployment_id=" << it->first.deployment_id
-                  << " server_id=" << it->first.server_id
-                  << " idle_ms=" << idle_ms;
-        it = ready_servers_.erase(it);
+      if (health == record.observed_health) {
         continue;
       }
-      ++it;
+      LOG(WARNING) << "component=rdma_control_plane event=server_health_change"
+                   << " deployment_id=" << entry.first.deployment_id
+                   << " epoch=" << entry.first.deployment_epoch
+                   << " server_id=" << entry.first.server_id << " from="
+                   << RdmaServerHealthToString(record.observed_health)
+                   << " to=" << RdmaServerHealthToString(health);
+      record.observed_health = health;
     }
   }
 }

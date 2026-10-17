@@ -1,5 +1,3 @@
-#include <unistd.h>
-
 #include <folly/init/Init.h>
 
 #include <boost/coroutine2/all.hpp>
@@ -138,10 +136,6 @@ public:
         deployment_(deployment),
         fabric_(fabric),
         control_plane_client_(control_plane_endpoint) {
-    // Per-process liveness identity: deployment_epoch is config-driven and
-    // does not change on restart, so the control plane uses this nonce to tell
-    // a restart from the same process.
-    instance_nonce_ = std::to_string(NowNs()) + "-" + std::to_string(getpid());
     petps::RcTransportConfig config;
     config.node_id        = FLAGS_global_id;
     config.num_servers    = deployment_.num_shards;
@@ -996,11 +990,11 @@ private:
   void HeartbeatThread() {
     const int interval_ms = std::max(1, FLAGS_rdma_heartbeat_interval_ms);
     LOG(INFO) << "component=rdma_control_plane event=heartbeat_thread_ready"
-              << " server_id=" << FLAGS_global_id << " interval_ms="
-              << interval_ms << " instance=" << instance_nonce_;
+              << " server_id=" << FLAGS_global_id
+              << " interval_ms=" << interval_ms;
     while (true) {
       try {
-        control_plane_client_.SendHeartbeat(FLAGS_global_id, instance_nonce_);
+        control_plane_client_.SendHeartbeat(FLAGS_global_id);
       } catch (const std::exception& error) {
         LOG(WARNING) << "component=rdma_control_plane event=heartbeat_failed"
                      << " server_id=" << FLAGS_global_id << " error=\""
@@ -1017,7 +1011,7 @@ private:
         ready_published_.exchange(true, std::memory_order_acq_rel)) {
       return;
     }
-    control_plane_client_.PublishServerReady(FLAGS_global_id, instance_nonce_);
+    control_plane_client_.PublishServerReady(FLAGS_global_id);
     LOG(INFO) << "component=rdma_control_plane event=server_ready_published"
               << " server_id=" << FLAGS_global_id
               << " host=" << FLAGS_rdma_control_plane_host
@@ -1409,7 +1403,6 @@ private:
   petps::RdmaControlPlaneClient control_plane_client_;
   std::vector<std::thread> threads_;
   std::thread heartbeat_thread_;
-  std::string instance_nonce_;
   std::vector<std::uint64_t> last_seq_;
   std::vector<std::uint64_t> inflight_seq_;
   std::vector<std::unique_ptr<PollerProfile>> poller_profiles_;
@@ -1497,8 +1490,6 @@ int main(int argc, char* argv[]) {
       std::max(1, FLAGS_rdma_health_stale_ms);
   control_plane_endpoint.health_dead_ms = std::max(
       control_plane_endpoint.health_stale_ms + 1, FLAGS_rdma_health_dead_ms);
-  control_plane_endpoint.health_record_retention_ms =
-      std::max(0, FLAGS_rdma_health_record_retention_ms);
   if (FLAGS_rdma_heartbeat_interval_ms >=
       control_plane_endpoint.health_stale_ms) {
     LOG(WARNING) << "component=rdma_control_plane"
