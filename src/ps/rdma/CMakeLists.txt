@@ -185,4 +185,24 @@ add_test(
             TIMEOUT 120
             LABELS "rdma_integration"
     )
+
+    # Fault injection in shard 1 while the test drives the client. The driver
+    # owns the per-scenario flags; it only needs the scenario name.
+    foreach(fault_scenario fast_fail rebuild killed)
+        add_test(
+            NAME petps_fault_injection_${fault_scenario}_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${PROJECT_SOURCE_DIR}/src/test/scripts/run_petps_fault_injection.py
+                    --scenario ${fault_scenario}
+                    --config-path ${PROJECT_SOURCE_DIR}/src/test/configs/recstore_config.rdma_multishard_test.json
+                    --test-binary $<TARGET_FILE:petps_integration_test>
+        )
+        set_tests_properties(
+            petps_fault_injection_${fault_scenario}_test
+            PROPERTIES
+                SKIP_RETURN_CODE 77
+                TIMEOUT 300
+                LABELS "rdma_integration"
+        )
+    endforeach()
 endif()
