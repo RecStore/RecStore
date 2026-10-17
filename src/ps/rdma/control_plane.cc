@@ -2,7 +2,6 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -23,8 +22,8 @@ namespace petps {
 // cache.
 struct RdmaControlPlaneChannelCache {
   std::once_flag once;
-  std::shared_ptr<grpc::Channel> channel;
-  std::shared_ptr<recstoreps::rdma::RdmaControlPlane::Stub> stub;
+  // The generated stub keeps the channel alive.
+  std::unique_ptr<recstoreps::rdma::RdmaControlPlane::Stub> stub;
 };
 
 namespace {
@@ -90,35 +89,6 @@ grpc::Status MakeUnavailable(const std::string& message) {
   return grpc::Status(grpc::StatusCode::UNAVAILABLE, message);
 }
 
-// Heartbeat identity travels as gRPC metadata so the Probe RPC needs no proto
-// change.
-int ParseHeartbeatNodeId(grpc::string_ref value) {
-  const std::string text(value.data(), value.size());
-  try {
-    return std::stoi(text);
-  } catch (const std::exception&) {
-    return -1;
-  }
-}
-
-std::uint64_t ParseHeartbeatEpoch(grpc::string_ref value) {
-  const std::string text(value.data(), value.size());
-  try {
-    return static_cast<std::uint64_t>(std::stoull(text));
-  } catch (const std::exception&) {
-    return 0;
-  }
-}
-
-std::string ReadMetadataValue(grpc::ServerContext* context, const char* key) {
-  for (const auto& entry : context->client_metadata()) {
-    if (entry.first == key) {
-      return std::string(entry.second.data(), entry.second.size());
-    }
-  }
-  return std::string();
-}
-
 // Opens the shared channel/stub on first use and returns the cached stub. The
 // channel is created without connecting, so a client that is never used keeps
 // costing nothing.
@@ -126,9 +96,9 @@ recstoreps::rdma::RdmaControlPlane::Stub* CachedControlPlaneStub(
     const std::shared_ptr<RdmaControlPlaneChannelCache>& cache,
     const RdmaControlPlaneEndpoint& endpoint) {
   std::call_once(cache->once, [&cache, &endpoint] {
-    cache->channel = grpc::CreateChannel(
-        EndpointString(endpoint), grpc::InsecureChannelCredentials());
-    cache->stub = recstoreps::rdma::RdmaControlPlane::NewStub(cache->channel);
+    cache->stub =
+        recstoreps::rdma::RdmaControlPlane::NewStub(grpc::CreateChannel(
+            EndpointString(endpoint), grpc::InsecureChannelCredentials()));
   });
   return cache->stub.get();
 }
@@ -406,7 +376,6 @@ public:
       record.fabric_digest        = request->fabric_digest();
       record.state     = RdmaControlPlaneServer::ReadyRecord::State::kServing;
       record.last_seen = std::chrono::steady_clock::now();
-      record.observed_health = RdmaServerHealth::kServing;
     }
     owner_->cv_.notify_all();
     return grpc::Status::OK;
@@ -581,41 +550,24 @@ public:
     return grpc::Status::OK;
   }
 
-  grpc::Status Probe(grpc::ServerContext* context,
-                     const ProbeRequest*,
+  grpc::Status Probe(grpc::ServerContext*,
+                     const ProbeRequest* request,
                      ProbeResponse*) override {
+    const grpc::Status identity = ValidateDeploymentIdentity(
+        request->deployment_id(), request->deployment_epoch());
+    if (!identity.ok()) {
+      return identity;
+    }
+    if (request->server_id() < 0) {
+      return grpc::Status(
+          grpc::StatusCode::INVALID_ARGUMENT, "server id must be non-negative");
+    }
     if (owner_->stop_requested_.load(std::memory_order_relaxed)) {
       return MakeUnavailable("control-plane stopping");
     }
-    // A bare Probe carries no identity and is a pure liveness check. The
-    // heartbeat Probe carries the shard identity as metadata; only a fully
-    // matching identity may refresh that shard's `last_seen`, so a stale or
-    // foreign process cannot keep a record alive while the heartbeat channel
-    // itself stays non-fatal (the sender only logs).
-    const std::string node_id_text =
-        ReadMetadataValue(context, kHeartbeatNodeIdMetadata);
-    if (node_id_text.empty()) {
-      return grpc::Status::OK;
-    }
-    const int server_id = ParseHeartbeatNodeId(node_id_text);
-    const std::string deployment_id_text =
-        ReadMetadataValue(context, kHeartbeatDeploymentIdMetadata);
-    const std::string epoch_text =
-        ReadMetadataValue(context, kHeartbeatDeploymentEpochMetadata);
-    const bool identity_matches =
-        !deployment_id_text.empty() &&
-        deployment_id_text == owner_->endpoint_.deployment_id &&
-        !epoch_text.empty() &&
-        ParseHeartbeatEpoch(epoch_text) == owner_->endpoint_.deployment_epoch;
-    const int num_servers = owner_->endpoint_.num_servers;
-    if (server_id < 0 || !identity_matches ||
-        (num_servers > 0 && server_id >= num_servers)) {
-      VLOG(1) << "component=rdma_control_plane event=heartbeat_rejected"
-              << " node_id=" << node_id_text << " deployment_id="
-              << deployment_id_text << " epoch=" << epoch_text;
-      return grpc::Status::OK;
-    }
-    owner_->RecordHeartbeat(server_id);
+    // Only a shard that already published READY has a liveness record; a
+    // heartbeat never creates one, and READY remains the only way to serve.
+    owner_->RecordHeartbeat(request->server_id());
     return grpc::Status::OK;
   }
 
@@ -742,23 +694,20 @@ void RdmaControlPlaneClient::SendHeartbeat(int server_id) const {
   RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
 
   ProbeRequest request;
+  request.set_server_id(server_id);
+  request.set_deployment_id(endpoint_.deployment_id);
+  request.set_deployment_epoch(endpoint_.deployment_epoch);
+
   ProbeResponse response;
   grpc::ClientContext context;
-  context.AddMetadata(kHeartbeatNodeIdMetadata, std::to_string(server_id));
-  context.AddMetadata(kHeartbeatDeploymentIdMetadata, endpoint_.deployment_id);
-  context.AddMetadata(kHeartbeatDeploymentEpochMetadata,
-                      std::to_string(endpoint_.deployment_epoch));
   context.set_deadline(DeadlineFromNow(endpoint_.timeout_ms));
   ThrowIfNotOk(stub->Probe(&context, request, &response), "probe");
 }
 
-RdmaServerHealthSnapshot RdmaControlPlaneClient::GetServerHealth(
-    int server_id, int timeout_ms, bool* query_ok) const {
+RdmaServerHealthSnapshot
+RdmaControlPlaneClient::GetServerHealth(int server_id, int timeout_ms) const {
   const int effective_timeout_ms =
       timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
-  if (query_ok != nullptr) {
-    *query_ok = false;
-  }
   RdmaServerHealthSnapshot snapshot;
 
   RdmaControlPlane::Stub* stub = CachedControlPlaneStub(channels_, endpoint_);
@@ -778,9 +727,6 @@ RdmaServerHealthSnapshot RdmaControlPlaneClient::GetServerHealth(
             << " server_id=" << server_id
             << " status=" << GrpcStatusText(status);
     return snapshot;
-  }
-  if (query_ok != nullptr) {
-    *query_ok = true;
   }
   if (!response.known()) {
     return snapshot;
@@ -953,38 +899,6 @@ void RdmaControlPlaneServer::RecordHeartbeat(int server_id) {
   it->second.last_seen = std::chrono::steady_clock::now();
 }
 
-void RdmaControlPlaneServer::HealthMonitorLoop() {
-  const int stale_ms = std::max(1, endpoint_.health_stale_ms);
-  const auto tick    = std::chrono::milliseconds(std::max(20, stale_ms / 3));
-  while (true) {
-    std::unique_lock<std::mutex> lock(mu_);
-    if (health_cv_.wait_for(lock, tick, [this] {
-          return stop_requested_.load(std::memory_order_relaxed);
-        })) {
-      return;
-    }
-    const auto now = std::chrono::steady_clock::now();
-    for (auto& entry : ready_servers_) {
-      ReadyRecord& record           = entry.second;
-      const RdmaServerHealth health = EvaluateServerHealth(
-          record.last_seen,
-          now,
-          endpoint_.health_stale_ms,
-          endpoint_.health_dead_ms);
-      if (health == record.observed_health) {
-        continue;
-      }
-      LOG(WARNING) << "component=rdma_control_plane event=server_health_change"
-                   << " deployment_id=" << entry.first.deployment_id
-                   << " epoch=" << entry.first.deployment_epoch
-                   << " server_id=" << entry.first.server_id << " from="
-                   << RdmaServerHealthToString(record.observed_health)
-                   << " to=" << RdmaServerHealthToString(health);
-      record.observed_health = health;
-    }
-  }
-}
-
 void RdmaControlPlaneServer::Start() {
   if (server_ != nullptr) {
     return;
@@ -1008,8 +922,6 @@ void RdmaControlPlaneServer::Start() {
     throw std::runtime_error("control-plane gRPC server failed to listen on " +
                              EndpointString(endpoint_));
   }
-  health_monitor_ =
-      std::thread(&RdmaControlPlaneServer::HealthMonitorLoop, this);
 }
 
 void RdmaControlPlaneServer::Stop() {
@@ -1020,10 +932,6 @@ void RdmaControlPlaneServer::Stop() {
   {
     std::lock_guard<std::mutex> guard(mu_);
     cv_.notify_all();
-  }
-  health_cv_.notify_all();
-  if (health_monitor_.joinable()) {
-    health_monitor_.join();
   }
   server_->Shutdown();
   server_.reset();

@@ -61,7 +61,7 @@ def main():
     parser.add_argument(
         "--rdma-lane-rebuild",
         action="store_true",
-        help="enable P3 lane/QP rebuild on both server and client",
+        help="enable lane/QP rebuild on both server and client",
     )
     parser.add_argument("--validate-routing", action="store_true")
     parser.add_argument(

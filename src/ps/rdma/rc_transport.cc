@@ -1139,8 +1139,7 @@ bool RcShardServerTransport::RebuildClientLaneIfStale(
   // The CQ is exclusive to this QP (checked above), so the reset's flush
   // completions can be drained. The response flags are cleared before any new
   // response is posted, so a stale completion cannot be matched to a fresh one.
-  lane.verbs->RebuildQp(
-      static_cast<std::uint16_t>(client_node_id), /*cq_exclusive=*/true);
+  lane.verbs->RebuildQp(static_cast<std::uint16_t>(client_node_id));
   for (int slot_in_qp = 0; slot_in_qp < config_.slots_per_qp; ++slot_in_qp) {
     const std::size_t ordinal = static_cast<std::size_t>(
         ResponseSlotOrdinal(config_, client_id, slot_in_qp));

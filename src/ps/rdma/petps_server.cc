@@ -228,10 +228,6 @@ public:
     if (stop_requested_.exchange(true, std::memory_order_relaxed)) {
       return;
     }
-    {
-      std::lock_guard<std::mutex> guard(heartbeat_mu_);
-      heartbeat_cv_.notify_all();
-    }
     get_payload_cv_.notify_all();
     for (std::thread& worker : get_payload_workers_) {
       if (worker.joinable()) {
@@ -1039,12 +1035,8 @@ private:
                      << " server_id=" << FLAGS_global_id << " error=\""
                      << error.what() << "\"";
       }
-      // Stop() wakes this early instead of waiting out the whole interval.
-      std::unique_lock<std::mutex> lock(heartbeat_mu_);
-      heartbeat_cv_.wait_for(
-          lock, std::chrono::milliseconds(interval_ms), [this] {
-            return stop_requested_.load(std::memory_order_relaxed);
-          });
+      // Bounded sleep: Stop() joins this thread after at most one interval.
+      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
     }
   }
 
@@ -1455,8 +1447,6 @@ private:
   std::vector<std::uint64_t> next_rebuild_check_ns_;
   std::mutex get_payload_mu_;
   std::condition_variable get_payload_cv_;
-  std::mutex heartbeat_mu_;
-  std::condition_variable heartbeat_cv_;
   std::deque<GetPayloadTask> get_payload_tasks_;
   std::vector<std::deque<GetPayloadCompletion>> get_payload_completions_;
   std::atomic<int> started_threads_{0};

@@ -351,24 +351,18 @@ TEST(RdmaControlPlaneTest, GetServerHealthReportsShardState) {
 
   client.PublishServerReady(0);
 
-  bool query_ok                     = false;
-  RdmaServerHealthSnapshot snapshot = client.GetServerHealth(0, -1, &query_ok);
-  EXPECT_TRUE(query_ok);
+  RdmaServerHealthSnapshot snapshot = client.GetServerHealth(0, -1);
   EXPECT_TRUE(snapshot.known);
   EXPECT_EQ(snapshot.health, RdmaServerHealth::kServing);
   EXPECT_GE(snapshot.last_seen_age_ms, 0);
 
   // Unknown shard: a successful query that carries no opinion.
-  query_ok = false;
-  snapshot = client.GetServerHealth(7, -1, &query_ok);
-  EXPECT_TRUE(query_ok);
+  snapshot = client.GetServerHealth(7, -1);
   EXPECT_FALSE(snapshot.known);
 
   // No heartbeat: health is evaluated fresh at query time.
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  query_ok = false;
-  snapshot = client.GetServerHealth(0, -1, &query_ok);
-  EXPECT_TRUE(query_ok);
+  snapshot = client.GetServerHealth(0, -1);
   EXPECT_TRUE(snapshot.known);
   EXPECT_EQ(snapshot.health, RdmaServerHealth::kDead);
   EXPECT_GE(snapshot.last_seen_age_ms, 300);
@@ -394,17 +388,12 @@ TEST(RdmaControlPlaneTest, GetServerHealthTreatsErrorsAsUnknown) {
   RdmaControlPlaneEndpoint other = endpoint;
   other.deployment_id            = "other-deployment";
   RdmaControlPlaneClient foreign_client(other);
-  bool query_ok = true;
-  RdmaServerHealthSnapshot snapshot =
-      foreign_client.GetServerHealth(0, -1, &query_ok);
-  EXPECT_FALSE(query_ok);
+  RdmaServerHealthSnapshot snapshot = foreign_client.GetServerHealth(0, -1);
   EXPECT_FALSE(snapshot.known);
 
   // Control plane down: still no opinion, no throw.
   server.Stop();
-  query_ok = true;
-  snapshot = client.GetServerHealth(0, -1, &query_ok);
-  EXPECT_FALSE(query_ok);
+  snapshot = client.GetServerHealth(0, -1);
   EXPECT_FALSE(snapshot.known);
 }
 
@@ -412,29 +401,25 @@ TEST(RdmaControlPlaneTest, SlowPathVerdictOnlyFailsOnDead) {
   RdmaServerHealthSnapshot dead;
   dead.known  = true;
   dead.health = RdmaServerHealth::kDead;
-  EXPECT_EQ(ClassifyShardHealthSnapshot(true, dead),
+  EXPECT_EQ(ClassifyShardHealthSnapshot(dead),
             RdmaSlowPathVerdict::kShardUnreachable);
 
   RdmaServerHealthSnapshot suspect;
   suspect.known  = true;
   suspect.health = RdmaServerHealth::kSuspect;
-  EXPECT_EQ(ClassifyShardHealthSnapshot(true, suspect),
+  EXPECT_EQ(ClassifyShardHealthSnapshot(suspect),
             RdmaSlowPathVerdict::kKeepWaiting);
 
   RdmaServerHealthSnapshot serving;
   serving.known  = true;
   serving.health = RdmaServerHealth::kServing;
-  EXPECT_EQ(ClassifyShardHealthSnapshot(true, serving),
+  EXPECT_EQ(ClassifyShardHealthSnapshot(serving),
             RdmaSlowPathVerdict::kKeepWaiting);
 
-  // Unknown shard: the control plane has no READY record for it.
+  // Unknown shard (or an unreachable control plane): the control plane carries
+  // no opinion, so the request stays on its data-path budgets.
   RdmaServerHealthSnapshot unknown;
-  EXPECT_EQ(ClassifyShardHealthSnapshot(true, unknown),
-            RdmaSlowPathVerdict::kKeepWaiting);
-
-  // Failed query (control plane unreachable): never a false verdict, even if a
-  // stale snapshot claims death.
-  EXPECT_EQ(ClassifyShardHealthSnapshot(false, dead),
+  EXPECT_EQ(ClassifyShardHealthSnapshot(unknown),
             RdmaSlowPathVerdict::kKeepWaiting);
 }
 
@@ -475,21 +460,22 @@ TEST(RdmaControlPlaneTest, HeartbeatIdentityIsValidated) {
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   ASSERT_EQ(HealthOf(server, 0), RdmaServerHealth::kDead);
 
-  // Another deployment cannot revive this shard's record.
+  // Another deployment is rejected (the sender logs it: a heartbeat is
+  // observational and never fatal) and cannot revive this shard's record.
   RdmaControlPlaneEndpoint foreign = endpoint;
   foreign.deployment_id            = "other-deployment";
   RdmaControlPlaneClient foreign_client(foreign);
-  foreign_client.SendHeartbeat(0);
+  EXPECT_THROW(foreign_client.SendHeartbeat(0), std::runtime_error);
   EXPECT_EQ(HealthOf(server, 0), RdmaServerHealth::kDead);
 
   // A new epoch of the same deployment is rejected as well.
   RdmaControlPlaneEndpoint next_epoch = endpoint;
   next_epoch.deployment_epoch         = 2;
   RdmaControlPlaneClient epoch_client(next_epoch);
-  epoch_client.SendHeartbeat(0);
+  EXPECT_THROW(epoch_client.SendHeartbeat(0), std::runtime_error);
   EXPECT_EQ(HealthOf(server, 0), RdmaServerHealth::kDead);
 
-  // A shard id outside num_servers is rejected before the record lookup.
+  // A shard id with no READY record refreshes nothing and creates nothing.
   client.SendHeartbeat(1);
   EXPECT_EQ(HealthOf(server, 0), RdmaServerHealth::kDead);
 
@@ -528,10 +514,7 @@ TEST(RdmaControlPlaneTest, ControlPlaneClientServesManyRpcCalls) {
 
   client.PublishServerReady(0);
   client.SendHeartbeat(0);
-  bool query_ok = false;
-  const RdmaServerHealthSnapshot snapshot =
-      client.GetServerHealth(0, -1, &query_ok);
-  EXPECT_TRUE(query_ok);
+  const RdmaServerHealthSnapshot snapshot = client.GetServerHealth(0, -1);
   EXPECT_TRUE(snapshot.known);
   client.WaitServer(0, 500);
   client.SendHeartbeat(0);

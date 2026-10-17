@@ -380,15 +380,10 @@ public:
   // from RawVerbsErrorClass. The QP is a shared resource, so a rebuild is only
   // half of recovery: the peer must rebuild its side too, which the caller
   // coordinates through the control plane. Must not run concurrently with
-  // submits or polls on the same lane.
-  //
-  // `cq_exclusive` states that this QP is the only one posting to the
-  // transport's CQ (true on the client side, and for a server lane that serves
-  // a single OS client). The post-reset drain runs only then, because draining
-  // a shared CQ would also discard the other peer QPs' completions; when false
-  // the caller must not rebuild in the first place (see
-  // RcShardServerTransport::RebuildClientLaneIfStale).
-  void RebuildQp(std::uint16_t node_id, bool cq_exclusive = true);
+  // submits or polls on the same lane, and only on a QP whose CQ carries no
+  // other poster, because the post-reset drain would discard that peer's
+  // completions (see RcShardServerTransport::RebuildClientLaneIfStale).
+  void RebuildQp(std::uint16_t node_id);
   // Lane generation handshake. The lane generation is the local side's rebuild
   // counter toward `node_id`; `AdvanceLaneGeneration` bumps it and republishes
   // the metadata so the peer can observe the change. `LaneGeneration` reads

@@ -618,7 +618,7 @@ void RawVerbsTransport::PublishAndConnect() {
   Connect();
 }
 
-void RawVerbsTransport::RebuildQp(std::uint16_t node_id, bool cq_exclusive) {
+void RawVerbsTransport::RebuildQp(std::uint16_t node_id) {
   if (node_id >= impl_->qps.size() ||
       impl_->qps[static_cast<std::size_t>(node_id)] == nullptr ||
       !ShouldRawVerbsConnectToNode(impl_->config, node_id)) {
@@ -636,20 +636,17 @@ void RawVerbsTransport::RebuildQp(std::uint16_t node_id, bool cq_exclusive) {
   if (ibv_modify_qp(qp, &reset_attr, IBV_QP_STATE) != 0) {
     throw std::runtime_error(IbvError("ibv_modify_qp RESET"));
   }
-  // Now drop those completions so none is misattributed to a fresh submit. Only
-  // valid when this QP is the CQ's sole poster; a shared CQ must not be drained
-  // or the other peer QPs' completions are lost (and the caller must not have
-  // reached here with a shared CQ in the first place).
-  if (cq_exclusive) {
-    while (true) {
-      const int drained =
-          ibv_poll_cq(impl_->cq, kRawVerbsPollBatchSize, impl_->wc_batch);
-      if (drained < 0) {
-        throw std::runtime_error("ibv_poll_cq failed during raw verbs rebuild");
-      }
-      if (drained == 0) {
-        break;
-      }
+  // Drop those completions so none is misattributed to a fresh submit. Callers
+  // only rebuild a QP whose CQ carries no other poster, so the drain cannot
+  // discard another peer QP's completions.
+  while (true) {
+    const int drained =
+        ibv_poll_cq(impl_->cq, kRawVerbsPollBatchSize, impl_->wc_batch);
+    if (drained < 0) {
+      throw std::runtime_error("ibv_poll_cq failed during raw verbs rebuild");
+    }
+    if (drained == 0) {
+      break;
     }
   }
 

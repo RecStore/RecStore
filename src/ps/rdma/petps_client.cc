@@ -423,19 +423,13 @@ void PetPSClient::MaybeProbeShardHealth(int qp_index, std::int64_t waited_ms) {
                                         FLAGS_rdma_health_probe_interval_ms)) {
     return;
   }
-  bool query_ok                           = false;
   const RdmaServerHealthSnapshot snapshot = control_plane_->GetServerHealth(
-      shard_, FLAGS_rdma_health_probe_timeout_ms, &query_ok);
+      shard_, FLAGS_rdma_health_probe_timeout_ms);
   health_probe_gate_.EndProbe();
-  if (!query_ok) {
-    VLOG(1) << "component=rdma_rc_client event=health_probe_failed shard="
-            << shard_ << " lane=" << qp_index << " waited_ms=" << waited_ms;
-    return;
-  }
-  if (ClassifyShardHealthSnapshot(query_ok, snapshot) !=
+  if (ClassifyShardHealthSnapshot(snapshot) !=
       RdmaSlowPathVerdict::kShardUnreachable) {
     VLOG(1) << "component=rdma_rc_client event=health_probe shard=" << shard_
-            << " lane=" << qp_index
+            << " lane=" << qp_index << " known=" << snapshot.known
             << " verdict=" << RdmaServerHealthToString(snapshot.health)
             << " last_seen_age_ms=" << snapshot.last_seen_age_ms
             << " waited_ms=" << waited_ms;

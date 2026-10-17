@@ -23,7 +23,7 @@ message RawVerbsMetadata {
   int32 gid_index = 18;
   uint32 active_mtu = 19;
   uint32 fabric_mode = 20;
-  // P3 lane/QP generation for this publisher lane. Both sides bump it when they
+  // Lane/QP generation for this publisher lane. Both sides bump it when they
   // rebuild the QP, so a peer can tell a rebuild from the initial handshake and
   // re-pair the QP only after both ends reset (`0` on the initial handshake).
   uint64 lane_generation = 21;
@@ -107,6 +107,11 @@ message WaitServerReadyResponse {
 }
 
 message ProbeRequest {
+  // Heartbeat identity: the shard id plus the deployment it belongs to. A
+  // heartbeat only refreshes an existing READY record of the same deployment.
+  int32 server_id = 1;
+  string deployment_id = 2;
+  uint64 deployment_epoch = 3;
 }
 
 message ProbeResponse {
@@ -121,13 +126,12 @@ message GetServerHealthRequest {
 message GetServerHealthResponse {
   // false when shard 0 holds no READY record for this server id (never ready,
   // or already reported dead). Callers must treat "unknown" as "no opinion"
-  // and fall back to the data-plane budgets (P1b slow path).
+  // and fall back to the data-plane budgets (the client slow path).
   bool known = 1;
   // RdmaServerHealth value: 0 serving, 1 suspect, 2 dead; -1 when unknown.
   int32 state = 2;
   // Age of the last READY/heartbeat reference in ms; -1 when never seen.
   int64 last_seen_age_ms = 3;
-  reserved 4;
 }
 
 service RdmaControlPlane {

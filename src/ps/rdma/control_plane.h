@@ -7,10 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <unordered_map>
-#include <unordered_set>
-#include <vector>
 
 #include "ps/rdma/raw_verbs_transport.h"
 
@@ -33,7 +30,7 @@ struct RdmaControlPlaneEndpoint {
   std::string fabric_digest;
   // Optional on client-only endpoints; the server uses it to bound READY ids.
   int num_servers = 0;
-  // Control-plane health monitor thresholds (server side only).
+  // Control-plane health evaluation thresholds (server side only).
   int health_stale_ms = 3000;
   int health_dead_ms  = 9000;
 };
@@ -41,8 +38,8 @@ struct RdmaControlPlaneEndpoint {
 inline constexpr std::uint32_t kRawVerbsMetadataMagic  = 0x52444d41;
 inline constexpr std::size_t kMaxRawVerbsMetadataBytes = 4096;
 
-// Per-shard liveness used by the control-plane health monitor. It is logged
-// and counted; heartbeats feed it, request handling reads it over RPC.
+// Per-shard liveness reported by GetServerHealth: heartbeats feed `last_seen`
+// and a query evaluates it against the stale/dead thresholds.
 enum class RdmaServerHealth : std::uint8_t {
   kServing = 0,
   kSuspect = 1,
@@ -101,12 +98,12 @@ enum class RdmaSlowPathVerdict {
   kShardUnreachable, // the control plane judged the shard dead
 };
 
-inline RdmaSlowPathVerdict ClassifyShardHealthSnapshot(
-    bool query_ok, const RdmaServerHealthSnapshot& snapshot) {
+inline RdmaSlowPathVerdict
+ClassifyShardHealthSnapshot(const RdmaServerHealthSnapshot& snapshot) {
   // Never fail a request on an inconclusive query: an unreachable control plane
-  // or a shard without a READY record falls back to the data-path budgets
-  // instead of producing a false verdict.
-  if (!query_ok || !snapshot.known) {
+  // or a shard without a READY record (both `known=false`) falls back to the
+  // data-path budgets instead of producing a false verdict.
+  if (!snapshot.known) {
     return RdmaSlowPathVerdict::kKeepWaiting;
   }
   return snapshot.health == RdmaServerHealth::kDead
@@ -147,14 +144,6 @@ private:
   std::chrono::steady_clock::time_point last_probe_{};
 };
 
-// Metadata keys carried on the Probe RPC so heartbeat payloads do not need a
-// proto change.
-inline constexpr char kHeartbeatNodeIdMetadata[] = "x-recstore-rdma-node-id";
-inline constexpr char kHeartbeatDeploymentIdMetadata[] =
-    "x-recstore-rdma-deployment-id";
-inline constexpr char kHeartbeatDeploymentEpochMetadata[] =
-    "x-recstore-rdma-deployment-epoch";
-
 std::string EncodeRawVerbsNodeMeta(const RawVerbsNodeMeta& meta);
 RawVerbsNodeMeta DecodeRawVerbsNodeMeta(const std::string& payload);
 void ValidateRawVerbsPeerMeta(const RawVerbsConfig& local,
@@ -185,10 +174,10 @@ public:
   // Lightweight liveness heartbeat; the server records it as `last_seen`.
   void SendHeartbeat(int server_id) const;
   // Queries shard health from the shard 0 control plane. Never throws: RPC
-  // failures are reported as `query_ok=false` with an unknown snapshot so the
-  // client slow path can fall back to its wait budgets instead of failing.
-  RdmaServerHealthSnapshot GetServerHealth(
-      int server_id, int timeout_ms = -1, bool* query_ok = nullptr) const;
+  // failures (and shards without a READY record) come back as `known=false`, so
+  // the client slow path falls back to its wait budgets instead of failing.
+  RdmaServerHealthSnapshot
+  GetServerHealth(int server_id, int timeout_ms = -1) const;
   void WaitServer(int server_id, int timeout_ms = -1) const;
   void WaitServerReady(int num_servers, int timeout_ms = -1) const;
 
@@ -261,7 +250,6 @@ private:
 
     // `last_seen` is refreshed by PublishServerReady and by heartbeat Probes.
     std::chrono::steady_clock::time_point last_seen{};
-    RdmaServerHealth observed_health = RdmaServerHealth::kServing;
   };
 
   int ReadyCount(const std::string& deployment_id,
@@ -287,10 +275,7 @@ private:
   std::atomic<bool> stop_requested_{false};
   std::unique_ptr<RdmaControlPlaneService> service_;
   std::unique_ptr<grpc::Server> server_;
-  std::thread health_monitor_;
-  std::condition_variable health_cv_;
 
-  void HealthMonitorLoop();
   // Records an accepted heartbeat. The caller has already validated the
   // heartbeat identity against this endpoint.
   void RecordHeartbeat(int server_id);
