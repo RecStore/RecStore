@@ -19,6 +19,37 @@ DEFINE_int32(rdma_rc_response_slot_bytes,
 DEFINE_int32(rdma_wait_timeout_ms,
              60000,
              "RC write single RPC wait timeout in milliseconds");
+DEFINE_int32(rdma_cq_harvest_interval_ms,
+             50,
+             "Client lane completion harvest interval in milliseconds: a "
+             "request waiting longer than this drains its lane CQ, so a QP "
+             "completion error (retry exhaustion / flush) is classified and "
+             "fails fast instead of waiting for the wait-timeout budget; 0 "
+             "disables harvesting");
+DEFINE_bool(
+    rdma_lane_rebuild_enabled,
+    false,
+    "On a peer-side lane failure, rebuild the lane QP and resume service "
+    "instead of retiring the lane for good. Requires both ends (server and "
+    "client) to run with it enabled; off keeps the previous terminal-dirty "
+    "behavior");
+DEFINE_int32(rdma_lane_rebuild_max_attempts,
+             3,
+             "Rebuilds attempted per lane before the lane becomes Dead");
+DEFINE_int32(rdma_lane_rebuild_wait_ms,
+             2000,
+             "Deadline for the bilateral rebuild handshake (a peer ack) in "
+             "milliseconds");
+DEFINE_int32(rdma_lane_rebuild_poll_ms,
+             50,
+             "Server-side interval between client lane-generation checks in "
+             "milliseconds");
+DEFINE_int32(
+    rdma_lane_rebuild_cooldown_ms,
+    1000,
+    "Minimum interval between rebuild attempts on the same lane, so a "
+    "sustained outage does not burn the rebuild budget on every acquire in "
+    "milliseconds");
 DEFINE_int32(rdma_rc_profile_interval_ms,
              0,
              "RC write profiling summary interval in milliseconds; 0 disables "
@@ -61,6 +92,33 @@ DEFINE_int32(rdma_control_plane_port,
 DEFINE_int32(rdma_control_plane_timeout_ms,
              30000,
              "RDMA control-plane request timeout in milliseconds");
+DEFINE_int32(rdma_heartbeat_interval_ms,
+             1000,
+             "RDMA shard heartbeat interval in milliseconds");
+DEFINE_int32(rdma_health_stale_ms,
+             3000,
+             "RDMA control-plane health stale threshold in milliseconds; a "
+             "shard with no heartbeat within this window is Suspect");
+DEFINE_int32(
+    rdma_health_dead_ms,
+    9000,
+    "RDMA control-plane health dead threshold in milliseconds; a shard "
+    "with no heartbeat within this window is Dead");
+DEFINE_int32(rdma_health_probe_after_ms,
+             1000,
+             "Client slow-path health probe delay in milliseconds: a request "
+             "waiting longer than this queries shard health from the shard-0 "
+             "control plane; 0 disables slow-path probing");
+DEFINE_int32(rdma_health_probe_interval_ms,
+             1000,
+             "Minimum interval between client slow-path health probes in "
+             "milliseconds; also used as the TTL of the last verdict so "
+             "concurrent waiters share one query");
+DEFINE_int32(rdma_health_probe_timeout_ms,
+             1000,
+             "Deadline for a client slow-path health probe RPC in "
+             "milliseconds; a probe that times out keeps the request on its "
+             "data-path budgets");
 DEFINE_string(rdma_rc_namespace,
               "",
               "Override RC write shared-memory namespace");

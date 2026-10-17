@@ -695,6 +695,18 @@ target_link_libraries(test_rdma_control_plane PUBLIC
 )
 add_test(NAME test_rdma_control_plane COMMAND test_rdma_control_plane)
 
+# The fault-injection driver can only run on a host with RDMA hardware; its
+# scenario table is checked against the integration test source here instead.
+add_python_unittest(
+    petps_fault_injection_driver_py
+    src/test/scripts/test_run_petps_fault_injection.py
+)
+set_tests_properties(
+    petps_fault_injection_driver_py
+    PROPERTIES
+    LABELS "python"
+)
+
 add_executable(test_ps_transport_benchmark test_ps_transport_benchmark.cpp)
 target_link_libraries(test_ps_transport_benchmark PUBLIC
     base

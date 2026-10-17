@@ -15,6 +15,8 @@
 
 namespace petps {
 
+class RdmaControlPlaneClient;
+
 struct RawVerbsConfig {
   int global_id    = 0;
   int local_lane   = 0;
@@ -180,6 +182,92 @@ struct RawVerbsCompletion {
   ibv_wc_opcode opcode   = IBV_WC_SEND;
 };
 
+// Classification of a non-successful CQ completion (device-layer failure
+// semantics). Only the peer-side classes say the remote node stopped
+// answering; local classes mean the fault is ours and a QP rebuild would not
+// help.
+enum class RawVerbsErrorClass : std::uint8_t {
+  kPeerUnreachable = 0, // Retry / RNR retry exhausted: no ACK from the peer.
+  kPeerRejected    = 1, // The peer answered but rejected the operation.
+  kLocalError      = 2, // Local length/protection/QP-operation fault.
+  kFlushed         = 3, // The WR was flushed from a QP that was already dead.
+  kOther           = 4,
+};
+
+inline const char* RawVerbsErrorClassToString(RawVerbsErrorClass error_class) {
+  switch (error_class) {
+  case RawVerbsErrorClass::kPeerUnreachable:
+    return "peer_unreachable";
+  case RawVerbsErrorClass::kPeerRejected:
+    return "peer_rejected";
+  case RawVerbsErrorClass::kLocalError:
+    return "local_error";
+  case RawVerbsErrorClass::kFlushed:
+    return "flushed";
+  case RawVerbsErrorClass::kOther:
+    return "other";
+  }
+  return "other";
+}
+
+inline RawVerbsErrorClass
+ClassifyRawVerbsCompletionStatus(ibv_wc_status status) {
+  switch (status) {
+  case IBV_WC_RETRY_EXC_ERR:
+  case IBV_WC_RNR_RETRY_EXC_ERR:
+    return RawVerbsErrorClass::kPeerUnreachable;
+  case IBV_WC_REM_INV_REQ_ERR:
+  case IBV_WC_REM_ACCESS_ERR:
+  case IBV_WC_REM_OP_ERR:
+    return RawVerbsErrorClass::kPeerRejected;
+  case IBV_WC_LOC_LEN_ERR:
+  case IBV_WC_LOC_QP_OP_ERR:
+  case IBV_WC_LOC_PROT_ERR:
+  case IBV_WC_LOC_ACCESS_ERR:
+  case IBV_WC_LOC_RDD_VIOL_ERR:
+    return RawVerbsErrorClass::kLocalError;
+  case IBV_WC_WR_FLUSH_ERR:
+    return RawVerbsErrorClass::kFlushed;
+  default:
+    return RawVerbsErrorClass::kOther;
+  }
+}
+
+// True when the completion error means the shard cannot be reached on this
+// lane: the peer stopped answering, or the lane was already flushed dead.
+inline bool IsRawVerbsUnreachableError(RawVerbsErrorClass error_class) {
+  return error_class == RawVerbsErrorClass::kPeerUnreachable ||
+         error_class == RawVerbsErrorClass::kFlushed;
+}
+
+struct RawVerbsCompletionError {
+  ibv_wc_status status           = IBV_WC_SUCCESS;
+  std::uint64_t wr_id            = 0;
+  ibv_wc_opcode opcode           = IBV_WC_SEND;
+  RawVerbsErrorClass error_class = RawVerbsErrorClass::kOther;
+};
+
+// Human-readable form, e.g. "raw verbs CQ error: retry exceeded
+// class=peer_unreachable wr_id=0 opcode=0".
+std::string
+DescribeRawVerbsCompletionError(const RawVerbsCompletionError& error);
+
+class RawVerbsCompletionException : public std::runtime_error {
+public:
+  explicit RawVerbsCompletionException(const RawVerbsCompletionError& error,
+                                       const std::string& context = "");
+  const RawVerbsCompletionError& error() const { return error_; }
+
+private:
+  RawVerbsCompletionError error_;
+};
+
+enum class RawVerbsPollOutcome : std::uint8_t {
+  kEmpty,      // No completion available.
+  kCompletion, // A successful completion was returned.
+  kError,      // A completion error was returned instead of thrown.
+};
+
 struct RawVerbsSge {
   const void* data  = nullptr;
   std::size_t bytes = 0;
@@ -230,6 +318,9 @@ struct RawVerbsNodeMeta {
   std::int32_t gid_index         = -1;
   std::uint8_t active_mtu        = 0;
   std::uint8_t fabric_mode       = 0;
+  // This lane's rebuild generation. Bumped before the QP is republished so the
+  // peer can observe "this side rebuilt" and re-pair the QP.
+  std::uint64_t lane_generation = 0;
 };
 
 class RawVerbsTransport {
@@ -275,11 +366,44 @@ public:
   void SendDoorbell(
       std::uint16_t node_id, std::uint32_t imm_data, std::uint64_t wr_id);
   bool Poll(RawVerbsCompletion* completion, int timeout_ms);
+  // Non-blocking variant of Poll() for wait loops that must notice a broken QP
+  // without waiting for the next drain: a completion error is returned through
+  // `error` (which must not be null) instead of being thrown.
+  RawVerbsPollOutcome
+  TryPoll(RawVerbsCompletion* completion, RawVerbsCompletionError* error);
+  // Rebuilds the QP for one peer node after a device-layer failure, reusing the
+  // PD / MR / registered memory and the peer metadata captured by Connect():
+  // reset -> init -> RTR -> RTS. The reset flushes every outstanding WR on the
+  // QP, so those completions are dropped from the CQ afterwards and the receive
+  // queue is re-armed because reset flushes it too. Only peer-side failures
+  // (retry exhaustion / flush) are worth rebuilding; callers must decide that
+  // from RawVerbsErrorClass. The QP is a shared resource, so a rebuild is only
+  // half of recovery: the peer must rebuild its side too, which the caller
+  // coordinates through the control plane. Must not run concurrently with
+  // submits or polls on the same lane, and only on a QP whose CQ carries no
+  // other poster, because the post-reset drain would discard that peer's
+  // completions (see RcShardServerTransport::RebuildClientLaneIfStale).
+  void RebuildQp(std::uint16_t node_id);
+  // Lane generation handshake. The lane generation is the local side's rebuild
+  // counter toward `node_id`; `AdvanceLaneGeneration` bumps it and republishes
+  // the metadata so the peer can observe the change. `LaneGeneration` reads
+  // that counter back; the peer's counter is read from the meta returned by
+  // RefreshPeerMeta().
+  std::uint64_t AdvanceLaneGeneration(std::uint16_t node_id);
+  std::uint64_t LaneGeneration(std::uint16_t node_id) const;
+  // Re-reads `node_id`'s published metadata (GetMeta), validates it, and stores
+  // it for a subsequent RebuildQp(). Used to learn a peer's lane generation and
+  // to pick up addressing changes if the peer process restarted.
+  RawVerbsNodeMeta RefreshPeerMeta(std::uint16_t node_id);
   std::uint32_t max_inline_data(std::uint16_t node_id) const;
 
 private:
   struct Impl;
   ibv_mr* FindLocalMr(const void* ptr, std::size_t bytes) const;
+  // Lazily opens (and caches) the one control-plane client this transport owns.
+  // Publish()/Connect()/RefreshPeerMeta() share it so a lane uses a single
+  // channel instead of a fresh connection per metadata RPC.
+  RdmaControlPlaneClient& ControlPlane();
   std::unique_ptr<Impl> impl_;
 };
 

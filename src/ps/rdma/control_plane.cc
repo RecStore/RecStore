@@ -3,19 +3,25 @@
 #include <grpcpp/grpcpp.h>
 
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
+#include "base/log.h"
 #include "rdma_control_plane.grpc.pb.h"
 
 namespace petps {
+
 namespace {
 
 using recstoreps::rdma::GetMetaRequest;
 using recstoreps::rdma::GetMetaResponse;
+using recstoreps::rdma::GetServerHealthRequest;
+using recstoreps::rdma::GetServerHealthResponse;
 using recstoreps::rdma::ProbeRequest;
 using recstoreps::rdma::ProbeResponse;
 using recstoreps::rdma::PublishMetaRequest;
@@ -75,6 +81,20 @@ grpc::Status MakeUnavailable(const std::string& message) {
 
 } // namespace
 
+// One channel/stub per client. A shard handshakes and heartbeats, so opening a
+// connection per RPC would be wasteful; gRPC channels are thread-safe and serve
+// concurrent RPCs, so every RPC of one client shares this cache. Creating a
+// channel does not connect, so an unused client costs nothing.
+struct RdmaControlPlaneChannelCache {
+  explicit RdmaControlPlaneChannelCache(
+      const RdmaControlPlaneEndpoint& endpoint)
+      : stub(recstoreps::rdma::RdmaControlPlane::NewStub(grpc::CreateChannel(
+            EndpointString(endpoint), grpc::InsecureChannelCredentials()))) {}
+
+  // The generated stub keeps the channel alive.
+  std::unique_ptr<recstoreps::rdma::RdmaControlPlane::Stub> stub;
+};
+
 std::string EncodeRawVerbsNodeMeta(const RawVerbsNodeMeta& meta) {
   RawVerbsMetadata wire;
   wire.set_magic(kRawVerbsMetadataMagic);
@@ -97,6 +117,7 @@ std::string EncodeRawVerbsNodeMeta(const RawVerbsNodeMeta& meta) {
   wire.set_gid_index(meta.gid_index);
   wire.set_active_mtu(meta.active_mtu);
   wire.set_fabric_mode(meta.fabric_mode);
+  wire.set_lane_generation(meta.lane_generation);
   std::string payload;
   if (!wire.SerializeToString(&payload)) {
     throw std::runtime_error("failed to serialize RawVerbsNodeMeta");
@@ -146,11 +167,12 @@ RawVerbsNodeMeta DecodeRawVerbsNodeMeta(const std::string& payload) {
   meta.rkey                 = wire.rkey();
   meta.base_addr            = wire.base_addr();
   std::memcpy(meta.gid, wire.gid().data(), sizeof(meta.gid));
-  meta.port_num    = static_cast<std::uint8_t>(wire.port_num());
-  meta.link_layer  = static_cast<std::uint8_t>(wire.link_layer());
-  meta.gid_index   = wire.gid_index();
-  meta.active_mtu  = static_cast<std::uint8_t>(wire.active_mtu());
-  meta.fabric_mode = static_cast<std::uint8_t>(wire.fabric_mode());
+  meta.port_num        = static_cast<std::uint8_t>(wire.port_num());
+  meta.link_layer      = static_cast<std::uint8_t>(wire.link_layer());
+  meta.gid_index       = wire.gid_index();
+  meta.active_mtu      = static_cast<std::uint8_t>(wire.active_mtu());
+  meta.fabric_mode     = static_cast<std::uint8_t>(wire.fabric_mode());
+  meta.lane_generation = wire.lane_generation();
   return meta;
 }
 
@@ -339,10 +361,11 @@ public:
             grpc::StatusCode::FAILED_PRECONDITION,
             "draining server cannot become ready in same epoch");
       }
-      record = {request->protocol_version(),
-                request->configuration_digest(),
-                request->fabric_digest(),
-                RdmaControlPlaneServer::ReadyRecord::State::kServing};
+      record.protocol_version     = request->protocol_version();
+      record.configuration_digest = request->configuration_digest();
+      record.fabric_digest        = request->fabric_digest();
+      record.state     = RdmaControlPlaneServer::ReadyRecord::State::kServing;
+      record.last_seen = std::chrono::steady_clock::now();
     }
     owner_->cv_.notify_all();
     return grpc::Status::OK;
@@ -517,11 +540,49 @@ public:
     return grpc::Status::OK;
   }
 
-  grpc::Status
-  Probe(grpc::ServerContext*, const ProbeRequest*, ProbeResponse*) override {
+  grpc::Status Probe(grpc::ServerContext*,
+                     const ProbeRequest* request,
+                     ProbeResponse*) override {
+    const grpc::Status identity = ValidateDeploymentIdentity(
+        request->deployment_id(), request->deployment_epoch());
+    if (!identity.ok()) {
+      return identity;
+    }
+    if (request->server_id() < 0) {
+      return grpc::Status(
+          grpc::StatusCode::INVALID_ARGUMENT, "server id must be non-negative");
+    }
     if (owner_->stop_requested_.load(std::memory_order_relaxed)) {
       return MakeUnavailable("control-plane stopping");
     }
+    // Only a shard that already published READY has a liveness record; a
+    // heartbeat never creates one, and READY remains the only way to serve.
+    owner_->RecordHeartbeat(request->server_id());
+    return grpc::Status::OK;
+  }
+
+  grpc::Status GetServerHealth(grpc::ServerContext*,
+                               const GetServerHealthRequest* request,
+                               GetServerHealthResponse* response) override {
+    const grpc::Status identity = ValidateDeploymentIdentity(
+        request->deployment_id(), request->deployment_epoch());
+    if (!identity.ok()) {
+      return identity;
+    }
+    if (request->server_id() < 0) {
+      return grpc::Status(
+          grpc::StatusCode::INVALID_ARGUMENT, "server id must be non-negative");
+    }
+    if (owner_->stop_requested_.load(std::memory_order_relaxed)) {
+      return MakeUnavailable("control-plane stopping");
+    }
+    const RdmaServerHealthSnapshot snapshot =
+        owner_->ServerHealthSnapshot(request->server_id());
+    response->set_known(snapshot.known);
+    response->set_state(
+        snapshot.known ? static_cast<std::int32_t>(snapshot.health) : -1);
+    response->set_last_seen_age_ms(
+        snapshot.known ? snapshot.last_seen_age_ms : -1);
     return grpc::Status::OK;
   }
 
@@ -531,7 +592,11 @@ private:
 
 RdmaControlPlaneClient::RdmaControlPlaneClient(
     RdmaControlPlaneEndpoint endpoint)
-    : endpoint_(std::move(endpoint)) {}
+    : endpoint_(std::move(endpoint)),
+      channels_(std::make_unique<RdmaControlPlaneChannelCache>(endpoint_)) {}
+
+// Out of line because the cache type is incomplete in the header.
+RdmaControlPlaneClient::~RdmaControlPlaneClient() = default;
 
 void RdmaControlPlaneClient::PublishMeta(
     int publisher_node_id,
@@ -539,9 +604,7 @@ void RdmaControlPlaneClient::PublishMeta(
     int receiver_node_id,
     int receiver_lane,
     const RawVerbsNodeMeta& meta) const {
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   PublishMetaRequest request;
   request.set_publisher_node_id(publisher_node_id);
@@ -566,9 +629,7 @@ RawVerbsNodeMeta RdmaControlPlaneClient::GetMeta(
     int timeout_ms) const {
   const int effective_timeout_ms =
       timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   GetMetaRequest request;
   request.set_publisher_node_id(publisher_node_id);
@@ -587,9 +648,7 @@ RawVerbsNodeMeta RdmaControlPlaneClient::GetMeta(
 }
 
 void RdmaControlPlaneClient::PublishServerReady(int server_id) const {
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   PublishServerReadyRequest request;
   request.set_server_id(server_id);
@@ -607,9 +666,7 @@ void RdmaControlPlaneClient::PublishServerReady(int server_id) const {
 }
 
 void RdmaControlPlaneClient::PublishServerDraining(int server_id) const {
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   PublishServerDrainingRequest request;
   request.set_server_id(server_id);
@@ -626,12 +683,62 @@ void RdmaControlPlaneClient::PublishServerDraining(int server_id) const {
                "server_draining");
 }
 
+void RdmaControlPlaneClient::SendHeartbeat(int server_id) const {
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
+
+  ProbeRequest request;
+  request.set_server_id(server_id);
+  request.set_deployment_id(endpoint_.deployment_id);
+  request.set_deployment_epoch(endpoint_.deployment_epoch);
+
+  ProbeResponse response;
+  grpc::ClientContext context;
+  context.set_deadline(DeadlineFromNow(endpoint_.timeout_ms));
+  ThrowIfNotOk(stub->Probe(&context, request, &response), "probe");
+}
+
+RdmaServerHealthSnapshot
+RdmaControlPlaneClient::GetServerHealth(int server_id, int timeout_ms) const {
+  const int effective_timeout_ms =
+      timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
+  RdmaServerHealthSnapshot snapshot;
+
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
+
+  GetServerHealthRequest request;
+  request.set_server_id(server_id);
+  request.set_deployment_id(endpoint_.deployment_id);
+  request.set_deployment_epoch(endpoint_.deployment_epoch);
+
+  GetServerHealthResponse response;
+  grpc::ClientContext context;
+  context.set_deadline(DeadlineFromNow(effective_timeout_ms));
+  const grpc::Status status =
+      stub->GetServerHealth(&context, request, &response);
+  if (!status.ok()) {
+    VLOG(1) << "component=rdma_control_plane event=get_server_health_failed"
+            << " server_id=" << server_id
+            << " status=" << GrpcStatusText(status);
+    return snapshot;
+  }
+  if (!response.known()) {
+    return snapshot;
+  }
+  const auto state = response.state();
+  if (state < static_cast<std::int32_t>(RdmaServerHealth::kServing) ||
+      state > static_cast<std::int32_t>(RdmaServerHealth::kDead)) {
+    return snapshot;
+  }
+  snapshot.known            = true;
+  snapshot.health           = static_cast<RdmaServerHealth>(state);
+  snapshot.last_seen_age_ms = response.last_seen_age_ms();
+  return snapshot;
+}
+
 void RdmaControlPlaneClient::WaitServer(int server_id, int timeout_ms) const {
   const int effective_timeout_ms =
       timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   WaitServerRequest request;
   request.set_server_id(server_id);
@@ -652,9 +759,7 @@ void RdmaControlPlaneClient::WaitServerReady(int num_servers,
                                              int timeout_ms) const {
   const int effective_timeout_ms =
       timeout_ms > 0 ? timeout_ms : endpoint_.timeout_ms;
-  auto channel = grpc::CreateChannel(
-      EndpointString(endpoint_), grpc::InsecureChannelCredentials());
-  auto stub = RdmaControlPlane::NewStub(channel);
+  RdmaControlPlane::Stub* stub = channels_->stub.get();
 
   WaitServerReadyRequest request;
   request.set_num_servers(num_servers);
@@ -748,6 +853,43 @@ bool RdmaControlPlaneServer::HasDrainingServer(
     }
   }
   return false;
+}
+
+RdmaServerHealthSnapshot
+RdmaControlPlaneServer::ServerHealthSnapshot(int server_id) const {
+  std::lock_guard<std::mutex> guard(mu_);
+  const auto it = ready_servers_.find(
+      ReadyKey{endpoint_.deployment_id, endpoint_.deployment_epoch, server_id});
+  if (it == ready_servers_.end()) {
+    return RdmaServerHealthSnapshot{};
+  }
+  const auto now = std::chrono::steady_clock::now();
+  RdmaServerHealthSnapshot snapshot;
+  snapshot.known  = true;
+  snapshot.health = EvaluateServerHealth(
+      it->second.last_seen,
+      now,
+      endpoint_.health_stale_ms,
+      endpoint_.health_dead_ms);
+  if (it->second.last_seen != std::chrono::steady_clock::time_point{}) {
+    snapshot.last_seen_age_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - it->second.last_seen)
+            .count();
+  }
+  return snapshot;
+}
+
+void RdmaControlPlaneServer::RecordHeartbeat(int server_id) {
+  std::lock_guard<std::mutex> guard(mu_);
+  const auto it = ready_servers_.find(
+      ReadyKey{endpoint_.deployment_id, endpoint_.deployment_epoch, server_id});
+  if (it == ready_servers_.end()) {
+    // Unknown shard: not ready yet, or never ready. A heartbeat never creates a
+    // record; READY remains the only way to become serving.
+    return;
+  }
+  it->second.last_seen = std::chrono::steady_clock::now();
 }
 
 void RdmaControlPlaneServer::Start() {

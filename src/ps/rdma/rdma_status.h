@@ -1,8 +1,20 @@
 #pragma once
 
 #include <cstdint>
+#include <stdexcept>
+#include <string>
 
 namespace petps {
+
+// Client-visible failure raised when a shard is judged unreachable by the
+// slow-path health verdict, or when its lane was retired after losing a
+// completion. Kept distinct from the server-returned RpcStatus codes and from
+// a plain wait timeout so callers can fail fast without retrying blindly.
+class ShardUnreachableError : public std::runtime_error {
+public:
+  explicit ShardUnreachableError(const std::string& message)
+      : std::runtime_error(message) {}
+};
 
 enum class RpcStatus : std::int32_t {
   kPending           = 123456789,

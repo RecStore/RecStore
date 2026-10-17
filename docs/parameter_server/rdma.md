@@ -70,8 +70,10 @@ qps-per-client-per-shard * slots-per-qp
 ### 2.3 控制面
 
 `global_id=0` 的 `petps_server` 在启动时监听 TCP 控制面端口。client 和其他
-server 通过它交换 `RawVerbsNodeMeta` 并等待 ready；控制面只负责启动期协调，
-不参与热路径 GET/PUT/UPDATE。
+server 通过它交换 `RawVerbsNodeMeta` 并等待 ready。控制面额外承担 shard 存活
+观测：每个 shard 周期上报心跳（记录 `last_seen`），并按 `stale`/`dead` 阈值给出
+`serving`/`suspect`/`dead`；client 仅在请求等待超过阈值后（慢路径）按需查询
+`GetServerHealth`。因此控制面仍不参与热路径 GET/PUT/UPDATE。
 
 常用字段：
 
@@ -93,6 +95,23 @@ server 通过它交换 `RawVerbsNodeMeta` 并等待 ready；控制面只负责�
 - Debug/O0 适合调试，不应作为吞吐结果；benchmark 报告使用 Release 构建。
 - 源码修改后必须重编对应的 `petps_server`、benchmark、integration 或 op-layer target，
   否则旧 binary 可能掩盖修改结果。
+- RDMA RC QP **不提供**空闲时的"远端进程存活"信号：只有在有 WR 在飞时，链路层才靠 ACK
+  超时把"对端不可达"暴露成 CQ error。因此 client 的失败快速通道分两层——节点层（shard
+  心跳判 `dead`）与设备层（等待期对 lane CQ 收割并按 completion status 分类）；两者都把
+  故障 lane **整条置脏**（其 slot 不再交给新请求）并抛 `ShardUnreachableError`，不做应用层
+  重试。默认（重建关闭）下这个退化行为是终态的，在测试中被固定为断言。
+- 开启 `--rdma-lane-rebuild-enabled`（默认关闭，需 server 与 client 同时开启）后，置脏 lane
+  可以自愈。只有 peer-side 原因（`wait_timeout` / `health_dead` / `drain_timeout` /
+  `cq_peer_unreachable` / `cq_flushed`）会被标记为可重建；client 在下一次 slot acquire 时
+  按冷却间隔懒重建 lane QP，并通过控制面 metadata 的 `lane_generation` 与 server 做双边
+  握手（server 在轮询线程观察到 generation 变化后重建自己一侧）。重建 QP 时会先 reset 冲刷
+  未完成 WR，再 drain 清除这些 completion、清空该 lane 的 slot，并递增 lane epoch，使仍
+  在等待旧响应的请求快速失败，而不是静默读到被复用的 slot。重建次数默认上限 3，耗尽后 lane
+  进入终态 `dead`。
+- lane 重建要求 `num_os_clients == 1`：`num_os_clients > 1` 时 server 的一条 lane CQ 被多个
+  client 进程的 QP 共享，reset 后无法安全 drain（会丢失其他 client 的 completion），因此两端
+  都会拒绝重建并保持终态置脏，只记录一次 warning。
+- 热点路径零开销：正常请求（µs 级完成）既不查控制面（1s 后才查）也不收割 CQ（50ms 后才收割）。
 
 ## 4. 关键参数
 
@@ -107,6 +126,18 @@ server 通过它交换 `RawVerbsNodeMeta` 并等待 ready；控制面只负责�
 | `--rdma-put-protocol-version` | PUT 协议版本；`2` 是当前主路径 |
 | `--rdma-put-v2-transfer-mode` | PUT-v2 payload 方式：`read` 或 `push` |
 | `--rdma-wait-timeout-ms` | RDMA 请求等待超时 |
+| `--rdma-heartbeat-interval-ms` | shard 心跳上报周期；默认 `1000` |
+| `--rdma-health-stale-ms` | 无心跳判 `suspect` 的空闲阈值；默认 `3000` |
+| `--rdma-health-dead-ms` | 无心跳判 `dead` 的空闲阈值；默认 `9000` |
+| `--rdma-health-probe-after-ms` | 慢路径健康查询起始等待；默认 `1000`，`0` 关闭慢路径 |
+| `--rdma-health-probe-interval-ms` | 慢路径查询/判定间隔；默认 `1000` |
+| `--rdma-health-probe-timeout-ms` | 慢路径健康查询 RPC 超时；默认 `1000` |
+| `--rdma-cq-harvest-interval-ms` | 等待期 CQ 收割间隔；默认 `50`，`0` 关闭（旧行为） |
+| `--rdma-lane-rebuild-enabled` | 置脏 lane 的 QP 重建自愈；默认关闭，需 server 与 client 同时开启 |
+| `--rdma-lane-rebuild-max-attempts` | 每条 lane 的重建次数上限，超过进入终态 `dead`；默认 `3` |
+| `--rdma-lane-rebuild-wait-ms` | 双边重建握手等待 peer ack 的期限；默认 `2000` |
+| `--rdma-lane-rebuild-poll-ms` | server 轮询 client `lane_generation` 的间隔；默认 `50` |
+| `--rdma-lane-rebuild-cooldown-ms` | 同一 lane 两次重建尝试的最小间隔；默认 `1000` |
 | `--rdma-get-response-mode` | GET response 路径：`auto`、`direct_sg` 或 `staging_copy` |
 | `--server-rdma-threads` | generic PS runner 的 server polling thread 数 |
 | `--rdma-rc-server-get-workers` | GET payload worker 数；`0` 表示 poller 同步处理 |

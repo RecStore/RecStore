@@ -93,6 +93,26 @@ set_tests_properties(
         LABELS "rdma_integration"
 )
 
+add_test(
+    NAME petps_lane_rebuild_test
+    COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/src/test/scripts/run_petps_integration.py
+            --server-count 1
+            --config-path ${PROJECT_SOURCE_DIR}/src/test/configs/recstore_config.rdma_test.json
+            --test-binary $<TARGET_FILE:petps_integration_test>
+            --gtest-filter=PetPSIntegrationTest.LaneRebuildResumesServiceSingleShard
+            --rdma-lane-rebuild
+            --client-timeout 60
+            --cluster-timeout 60
+)
+set_tests_properties(
+    petps_lane_rebuild_test
+    PROPERTIES
+        SKIP_RETURN_CODE 77
+        TIMEOUT 120
+        LABELS "rdma_integration"
+)
+
 if(ENABLE_RDMA_INTEGRATION_TESTS)
 add_test(
         NAME petps_single_shard_test
@@ -165,4 +185,24 @@ add_test(
             TIMEOUT 120
             LABELS "rdma_integration"
     )
+
+    # Fault injection in shard 1 while the test drives the client. The driver
+    # owns the per-scenario flags; it only needs the scenario name.
+    foreach(fault_scenario fast_fail rebuild killed)
+        add_test(
+            NAME petps_fault_injection_${fault_scenario}_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${PROJECT_SOURCE_DIR}/src/test/scripts/run_petps_fault_injection.py
+                    --scenario ${fault_scenario}
+                    --config-path ${PROJECT_SOURCE_DIR}/src/test/configs/recstore_config.rdma_multishard_test.json
+                    --test-binary $<TARGET_FILE:petps_integration_test>
+        )
+        set_tests_properties(
+            petps_fault_injection_${fault_scenario}_test
+            PROPERTIES
+                SKIP_RETURN_CODE 77
+                TIMEOUT 300
+                LABELS "rdma_integration"
+        )
+    endforeach()
 endif()

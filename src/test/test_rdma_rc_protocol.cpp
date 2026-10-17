@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "base/tensor.h"
+#include "ps/rdma/raw_verbs_transport.h"
 #include "ps/rdma/rdma_protocol.h"
 
 namespace {
@@ -246,6 +247,55 @@ TEST(RdmaRcProtocolTest, WaitTimeoutHasDistinctErrorType) {
   EXPECT_THROW(
       petps::WaitStatusWord(status, 9, /*timeout_ms=*/1, /*spin_iterations=*/0),
       petps::RdmaRequestTimeout);
+}
+
+TEST(RdmaRcProtocolTest, ClassifiesCompletionStatuses) {
+  using petps::RawVerbsErrorClass;
+  struct Case {
+    ibv_wc_status status;
+    RawVerbsErrorClass expected;
+    bool unreachable;
+  };
+  const Case cases[] = {
+      {IBV_WC_RETRY_EXC_ERR, RawVerbsErrorClass::kPeerUnreachable, true},
+      {IBV_WC_RNR_RETRY_EXC_ERR, RawVerbsErrorClass::kPeerUnreachable, true},
+      // A flushed WR means the QP was already dead: unreachable until rebuilt.
+      {IBV_WC_WR_FLUSH_ERR, RawVerbsErrorClass::kFlushed, true},
+      // The peer answered, so it is alive: a rebuild is not a liveness action.
+      {IBV_WC_REM_INV_REQ_ERR, RawVerbsErrorClass::kPeerRejected, false},
+      {IBV_WC_REM_ACCESS_ERR, RawVerbsErrorClass::kPeerRejected, false},
+      {IBV_WC_REM_OP_ERR, RawVerbsErrorClass::kPeerRejected, false},
+      {IBV_WC_LOC_LEN_ERR, RawVerbsErrorClass::kLocalError, false},
+      {IBV_WC_LOC_QP_OP_ERR, RawVerbsErrorClass::kLocalError, false},
+      {IBV_WC_LOC_PROT_ERR, RawVerbsErrorClass::kLocalError, false},
+      {IBV_WC_LOC_ACCESS_ERR, RawVerbsErrorClass::kLocalError, false},
+      {IBV_WC_LOC_RDD_VIOL_ERR, RawVerbsErrorClass::kLocalError, false},
+      {IBV_WC_BAD_RESP_ERR, RawVerbsErrorClass::kOther, false},
+      {IBV_WC_GENERAL_ERR, RawVerbsErrorClass::kOther, false},
+  };
+  for (const Case& c : cases) {
+    EXPECT_EQ(petps::ClassifyRawVerbsCompletionStatus(c.status), c.expected)
+        << "status=" << static_cast<int>(c.status);
+    EXPECT_EQ(petps::IsRawVerbsUnreachableError(c.expected), c.unreachable)
+        << "status=" << static_cast<int>(c.status);
+  }
+}
+
+TEST(RdmaRcProtocolTest, RendersCompletionErrorClassNames) {
+  using petps::RawVerbsErrorClass;
+  EXPECT_STREQ(
+      petps::RawVerbsErrorClassToString(RawVerbsErrorClass::kPeerUnreachable),
+      "peer_unreachable");
+  EXPECT_STREQ(
+      petps::RawVerbsErrorClassToString(RawVerbsErrorClass::kPeerRejected),
+      "peer_rejected");
+  EXPECT_STREQ(
+      petps::RawVerbsErrorClassToString(RawVerbsErrorClass::kLocalError),
+      "local_error");
+  EXPECT_STREQ(petps::RawVerbsErrorClassToString(RawVerbsErrorClass::kFlushed),
+               "flushed");
+  EXPECT_STREQ(petps::RawVerbsErrorClassToString(RawVerbsErrorClass::kOther),
+               "other");
 }
 
 } // namespace
