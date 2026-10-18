@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#recstore" class="md-skip">
+        <a href="#build-recstore" class="md-skip">
           跳转至
         </a>
       
@@ -426,8 +426,6 @@
       <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
       
       
-        
-      
       
         <label class="md-nav__link md-nav__link--active" for="__toc">
           
@@ -470,8 +468,6 @@
   
   
   
-    
-  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -491,10 +487,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#cite" class="md-nav__link">
+  <a href="#documentation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Cite
+        Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#citation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Citation
       
     </span>
   </a>
@@ -1918,8 +1925,6 @@
   
   
   
-    
-  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -1939,10 +1944,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#cite" class="md-nav__link">
+  <a href="#documentation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Cite
+        Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#citation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Citation
       
     </span>
   </a>
@@ -1974,62 +1990,82 @@
   
 
 
-<h1 id="recstore">RecStore<a class="headerlink" href="#recstore" title="Permanent link">&para;</a></h1>
+<h1 align="center">RecStore</h1>
+
+<p align="center">
+  <em>High-performance distributed parameter storage for recommendation models.</em>
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
+</p>
+
 <p>RecStore is a high-performance parameter storage system designed to meet the growing demands of recommendation models in modern AI data centers. Unlike NLP and vision models, where computation dominates, recommendation models are bottlenecked by memory due to massive, trillion-scale sparse embedding parameters. RecStore addresses this challenge by abstracting heterogeneous, networked memory as a unified embedding pool. It provides key functionalities—parameter indexing, memory management, near-memory computation, and communication—as modular components within the system.</p>
 <p>RecStore is:
-- Universal: Easily integrated into existing DL frameworks via minimal OP implementations.
-- Efficient: Optimized for the unique access patterns of recommendation models, leveraging GPU and NIC hardware acceleration.
-- Cost-effective: Utilizes low-cost storage (e.g., SSDs, persistent memory) to expand memory capacity and reduce large model serving costs.</p>
+- <strong>Universal</strong> - Easily integrated into existing DL frameworks via minimal OP implementations.
+- <strong>Efficient</strong> - Optimized for the unique access patterns of recommendation models, leveraging GPU and NIC hardware acceleration.
+- <strong>Cost-effective</strong> - Utilizes low-cost storage (e.g., SSDs, persistent memory) to expand memory capacity and reduce large model serving costs.</p>
 <h2 id="build-recstore">Build RecStore<a class="headerlink" href="#build-recstore" title="Permanent link">&para;</a></h2>
 <p>RecStore uses a Docker-based workflow: complete dependency setup and container initialization first, then build inside the container using the standard CMake flow.</p>
 <p>See the complete build steps here: <a href="https://recstore.github.io/RecStore/quickstart/">Quickstart</a></p>
-<h2 id="cite">Cite<a class="headerlink" href="#cite" title="Permanent link">&para;</a></h2>
+<h2 id="documentation">Documentation<a class="headerlink" href="#documentation" title="Permanent link">&para;</a></h2>
+<p>Full documentation lives at <a href="https://recstore.github.io/RecStore/">recstore.github.io/RecStore</a>. Main sections:</p>
+<ul>
+<li><a href="https://recstore.github.io/RecStore/quickstart/">Quickstart</a> — environment setup and build</li>
+<li><a href="https://recstore.github.io/RecStore/config/">Configuration</a> — project configuration</li>
+<li><a href="https://recstore.github.io/RecStore/architecture/overview/">Architecture</a> — layered design</li>
+<li><a href="https://recstore.github.io/RecStore/dev/performance/">Performance</a> — performance analysis</li>
+</ul>
+<h2 id="citation">Citation<a class="headerlink" href="#citation" title="Permanent link">&para;</a></h2>
 <p>We would appreciate citations to the following papers:</p>
-<div class="highlight"><pre><span></span><code>@inproceedings{xie2025frugal,
-    title={Frugal: Efficient and Economic Embedding Model Training with Commodity GPUs},
-    author={Xie, Minhui and Zeng, Shaoxun and Guo, Hao and Gao, Shiwei and Lu, Youyou},
-    booktitle={Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 1},
-    pages={509--523},
-    year={2025}
-}
+<details>
+<summary>BibTeX</summary>
 
-@inproceedings{fan2024maxembed,
-    title={MaxEmbed: Maximizing SSD Bandwidth Utilization for Huge Embedding Models Serving},
-    author={Fan, Ruwen and Xie, Minhui and Jiang, Haodi and Lu, Youyou},
-    booktitle={The 29th Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS'24)},
-    year={2024}
-}
-
-
-@article{xie2023petps,
-    title={PetPS: supporting huge embedding models with persistent memory},
-    author={Xie, Minhui and Lu, Youyou and Wang, Qing and Feng, Yangyang and Liu, Jiaqiang and Ren, Kai and Shu, Jiwu},
-    journal={Proceedings of the VLDB Endowment},
-    volume={16},
-    number={5},
-    pages={1013--1022},
-    year={2023},
-    publisher={VLDB Endowment}
-}
-
-
-@inproceedings{xie2022fleche,
-    title={Fleche: an efficient gpu embedding cache for personalized recommendations},
-    author={Xie, Minhui and Lu, Youyou and Lin, Jiazhen and Wang, Qing and Gao, Jian and Ren, Kai and Shu, Jiwu},
-    booktitle={Proceedings of the Seventeenth European Conference on Computer Systems},
-    pages={402--416},
-    year={2022}
-}
-
-@inproceedings{xie2020kraken,
-    title={Kraken: memory-efficient continual learning for large-scale real-time recommendations},
-    author={Xie, Minhui and Ren, Kai and Lu, Youyou and Yang, Guangxu and Xu, Qingxing and Wu, Bihai and Lin, Jiazhen and Ao, Hongbo and Xu, Wanhong and Shu, Jiwu},
-    booktitle={SC20: International Conference for High Performance Computing, Networking, Storage and Analysis},
-    pages={1--17},
-    year={2020},
-    organization={IEEE}
-}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nc">@inproceedings</span><span class="p">{</span><span class="nl">xie2025frugal</span><span class="p">,</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="na">title</span><span class="p">=</span><span class="s">{Frugal: Efficient and Economic Embedding Model Training with Commodity GPUs}</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Xie, Minhui and Zeng, Shaoxun and Guo, Hao and Gao, Shiwei and Lu, Youyou}</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="na">booktitle</span><span class="p">=</span><span class="s">{Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 1}</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="na">pages</span><span class="p">=</span><span class="s">{509--523}</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="na">year</span><span class="p">=</span><span class="s">{2025}</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">}</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nc">@inproceedings</span><span class="p">{</span><span class="nl">fan2024maxembed</span><span class="p">,</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="na">title</span><span class="p">=</span><span class="s">{MaxEmbed: Maximizing SSD Bandwidth Utilization for Huge Embedding Models Serving}</span><span class="p">,</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Fan, Ruwen and Xie, Minhui and Jiang, Haodi and Lu, Youyou}</span><span class="p">,</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="na">booktitle</span><span class="p">=</span><span class="s">{The 29th Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS'24)}</span><span class="p">,</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="na">year</span><span class="p">=</span><span class="s">{2024}</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="p">}</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="nc">@article</span><span class="p">{</span><span class="nl">xie2023petps</span><span class="p">,</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">    </span><span class="na">title</span><span class="p">=</span><span class="s">{PetPS: supporting huge embedding models with persistent memory}</span><span class="p">,</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Xie, Minhui and Lu, Youyou and Wang, Qing and Feng, Yangyang and Liu, Jiaqiang and Ren, Kai and Shu, Jiwu}</span><span class="p">,</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">    </span><span class="na">journal</span><span class="p">=</span><span class="s">{Proceedings of the VLDB Endowment}</span><span class="p">,</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">    </span><span class="na">volume</span><span class="p">=</span><span class="s">{16}</span><span class="p">,</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">    </span><span class="na">number</span><span class="p">=</span><span class="s">{5}</span><span class="p">,</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="na">pages</span><span class="p">=</span><span class="s">{1013--1022}</span><span class="p">,</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">    </span><span class="na">year</span><span class="p">=</span><span class="s">{2023}</span><span class="p">,</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">    </span><span class="na">publisher</span><span class="p">=</span><span class="s">{VLDB Endowment}</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="p">}</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="nc">@inproceedings</span><span class="p">{</span><span class="nl">xie2022fleche</span><span class="p">,</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">    </span><span class="na">title</span><span class="p">=</span><span class="s">{Fleche: an efficient gpu embedding cache for personalized recommendations}</span><span class="p">,</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Xie, Minhui and Lu, Youyou and Lin, Jiazhen and Wang, Qing and Gao, Jian and Ren, Kai and Shu, Jiwu}</span><span class="p">,</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">    </span><span class="na">booktitle</span><span class="p">=</span><span class="s">{Proceedings of the Seventeenth European Conference on Computer Systems}</span><span class="p">,</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">    </span><span class="na">pages</span><span class="p">=</span><span class="s">{402--416}</span><span class="p">,</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">    </span><span class="na">year</span><span class="p">=</span><span class="s">{2022}</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="p">}</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="nc">@inproceedings</span><span class="p">{</span><span class="nl">xie2020kraken</span><span class="p">,</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="w">    </span><span class="na">title</span><span class="p">=</span><span class="s">{Kraken: memory-efficient continual learning for large-scale real-time recommendations}</span><span class="p">,</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Xie, Minhui and Ren, Kai and Lu, Youyou and Yang, Guangxu and Xu, Qingxing and Wu, Bihai and Lin, Jiazhen and Ao, Hongbo and Xu, Wanhong and Shu, Jiwu}</span><span class="p">,</span>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="w">    </span><span class="na">booktitle</span><span class="p">=</span><span class="s">{SC20: International Conference for High Performance Computing, Networking, Storage and Analysis}</span><span class="p">,</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="w">    </span><span class="na">pages</span><span class="p">=</span><span class="s">{1--17}</span><span class="p">,</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="w">    </span><span class="na">year</span><span class="p">=</span><span class="s">{2020}</span><span class="p">,</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="w">    </span><span class="na">organization</span><span class="p">=</span><span class="s">{IEEE}</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="p">}</span>
 </code></pre></div>
+
+</details>
 
 
 

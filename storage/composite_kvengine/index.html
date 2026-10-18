@@ -2654,6 +2654,11 @@
 </tbody>
 </table>
 <p>必填：<code>capacity_bytes</code>。遗留别名见 <code>memory/allocators/allocator_factory.h</code>（如 <code>PERSIST_LOOP_SHM_MALLOC</code>）。</p>
+<p><code>CONCURRENT_SLAB_MEMORY_POOL</code> 支持可选 <code>size_classes</code>（正整数数组，单位字节）。尺寸类含 8 字节元数据头，
+请求 <code>r</code> 由第一个满足 <code>class &gt;= 8 + r</code> 的档位承接；默认
+<code>[8+32, 8+64, 8+80, 8+128, 8+272, 8+512, 8+1024]</code>，其中 <code>8 + dim*4</code> 两档服务 dim 20 / dim 68 的行，
+避免被抬到 136 / 520。类表最大档决定可支持的 value 尺寸上限（默认 1024 字节），更宽的行需要显式列进
+<code>size_classes</code>。其他 DRAM 分配器没有注册带 <code>size_classes</code> 的工厂，配置该字段会抛 <code>std::invalid_argument</code>。</p>
 <hr />
 <h2 id="ssd-allocatorvaluessd_allocatortype">SSD Allocator（<code>value.ssd_allocator.type</code>）<a class="headerlink" href="#ssd-allocatorvaluessd_allocatortype" title="Permanent link">&para;</a></h2>
 <p><code>SsdValueStore</code> 内联构造；默认 <strong><code>SSD_SLAB</code></strong>。</p>

@@ -2445,7 +2445,7 @@
 <td><code>value.dram_allocator</code></td>
 <td>object</td>
 <td><code>DRAM_VALUE_STORE</code>、<code>TIERED_VALUE_STORE</code></td>
-<td>DRAM 分配器配置，常用字段为 <code>type</code>、<code>capacity_bytes</code>；<code>DRAM_VALUE_STORE</code> 不允许 <code>dram_allocator.path</code></td>
+<td>DRAM 分配器配置，常用字段为 <code>type</code>、<code>capacity_bytes</code>；<code>CONCURRENT_SLAB_MEMORY_POOL</code> 可加 <code>size_classes</code> 覆盖尺寸类；<code>DRAM_VALUE_STORE</code> 不允许 <code>dram_allocator.path</code></td>
 </tr>
 <tr>
 <td><code>value.ssd_allocator</code></td>
