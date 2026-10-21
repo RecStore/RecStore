@@ -1236,10 +1236,88 @@
   <a href="#3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. 运行时约束
+        3. 生命周期、错误处理与重试
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="3. 生命周期、错误处理与重试">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-lane" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 一条 lane 的生命周期
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 错误分七层
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.2 错误分七层">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        三种没有设备层信号的失败
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 重试：四层，只有一层是真重试
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 故障时延与恢复包线
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5 运行时约束
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2135,10 +2213,88 @@
   <a href="#3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. 运行时约束
+        3. 生命周期、错误处理与重试
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="3. 生命周期、错误处理与重试">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-lane" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 一条 lane 的生命周期
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 错误分七层
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.2 错误分七层">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        三种没有设备层信号的失败
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 重试：四层，只有一层是真重试
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 故障时延与恢复包线
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5 运行时约束
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2367,7 +2523,267 @@ server 通过它交换 <code>RawVerbsNodeMeta</code> 并等待 ready。控制面
 </tr>
 </tbody>
 </table>
-<h2 id="3">3. 运行时约束<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
+<h2 id="3">3. 生命周期、错误处理与重试<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
+<p>本节回答三个问题：一条 lane 从启动到报废经过哪些阶段；失败在什么时刻被谁发现；发现之后
+会不会自动重试。</p>
+<h3 id="31-lane">3.1 一条 lane 的生命周期<a class="headerlink" href="#31-lane" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>做什么</th>
+<th>失败后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>配置解析</td>
+<td>解析 <code>ResolvedRdmaDeployment</code>（deployment id / epoch / digests）与本机 fabric（设备、port、GID、IB 或 RoCE v1/v2）</td>
+<td>进程启动失败</td>
+</tr>
+<tr>
+<td>资源创建</td>
+<td><strong>每条 lane 独立</strong>：设备 → PD → CQ（深度 4096）→ 注册内存（默认 128 MiB）→ RC QP（<code>max_send_wr=1024</code>）</td>
+<td>进程启动失败</td>
+</tr>
+<tr>
+<td>元数据交换</td>
+<td><code>Publish()</code> 发布本端每个 QP 的 QPN 与 <code>lane_generation</code>；<code>Connect()</code> 拉取对端元数据并校验</td>
+<td>启动失败（默认 30 s deadline）</td>
+</tr>
+<tr>
+<td>QP 建连</td>
+<td><code>RESET → INIT → RTR → RTS</code>，并挂满 1024 个 receive WR</td>
+<td>启动失败</td>
+</tr>
+<tr>
+<td>稳态</td>
+<td>slot 提交、服务端扫描、响应回写</td>
+<td>见 3.2</td>
+</tr>
+<tr>
+<td>退化与恢复</td>
+<td>lane 置脏 → 懒重建 → 恢复为 <code>Active</code> 或进入终态 <code>dead</code></td>
+<td>见 3.3</td>
+</tr>
+<tr>
+<td>关闭</td>
+<td>client 析构时 drain 未收割的 signaled WR；server <code>Stop()</code> 停 payload worker、join 全部轮询与心跳线程，<strong>不发 draining</strong></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>启动路径全部是"快速失败"：任何一步失败都直接抛异常、进程起不来。运行路径才是
+"降级 + 有限自愈"。读代码时看到启动期的 <code>throw</code> 不必意外，那是设计。</p>
+<p>单条 lane 的运行时状态只有四个：</p>
+<pre class="mermaid"><code>stateDiagram-v2
+    [*] --&gt; Active: 建连成功
+    Active --&gt; Dirty: 检测到故障
+    Dirty --&gt; Rebuilding: 下一次取 slot 且可重建且冷却已过
+    Rebuilding --&gt; Active: 双边握手成功
+    Rebuilding --&gt; Dirty: 握手超时或异常
+    Dirty --&gt; Dead: 重建预算耗尽
+    Dead --&gt; [*]: 只能重建 client 进程</code></pre>
+<p>四个标志位都在 <code>PetPSClient::QpContext</code> 上：<code>dirty</code>（当前不可用）、<code>rebuildable</code>
+（这个原因能否靠重建治）、<code>dead</code>（终态）、<code>epoch</code>（每次重建 +1，让等待旧 slot 的请求立刻失败）。</p>
+<h3 id="32">3.2 错误分七层<a class="headerlink" href="#32" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>检测点</th>
+<th>信号</th>
+<th>lane 是否置脏</th>
+<th>可恢复</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>本地用法</td>
+<td>参数与容量校验</td>
+<td><code>std::runtime_error</code></td>
+<td>否</td>
+<td>改参数</td>
+</tr>
+<tr>
+<td>verbs post</td>
+<td><code>ibv_post_send</code> 返回值</td>
+<td><code>std::runtime_error</code></td>
+<td><strong>否（已知缺口）</strong></td>
+<td>通常不能</td>
+</tr>
+<tr>
+<td>设备层</td>
+<td>CQE <code>status != SUCCESS</code></td>
+<td><code>RawVerbsCompletionException</code></td>
+<td>是</td>
+<td>仅 peer 侧可重建</td>
+</tr>
+<tr>
+<td>tracked write 超时</td>
+<td>等不到 signaled WR 的 CQE</td>
+<td><code>RcTrackedCompletionTimeout</code></td>
+<td>是</td>
+<td>仅 peer 侧可重建</td>
+</tr>
+<tr>
+<td>等待超时</td>
+<td>等 status word 超过 <code>--rdma-wait-timeout-ms</code></td>
+<td>普通 <code>runtime_error</code></td>
+<td>是</td>
+<td>可重建</td>
+</tr>
+<tr>
+<td>节点层裁决</td>
+<td>控制面 <code>GetServerHealth</code> 返回 <code>dead</code></td>
+<td><code>ShardUnreachableError</code></td>
+<td>是</td>
+<td>可重建</td>
+</tr>
+<tr>
+<td>服务端业务</td>
+<td>status word 里的 <code>RpcStatus</code></td>
+<td>正常响应（0 / -1..-6）</td>
+<td>否</td>
+<td>由调用方决定</td>
+</tr>
+</tbody>
+</table>
+<p>三条规则把上表串起来：</p>
+<ol>
+<li><strong>只有 peer 侧故障可重建。</strong> CQE 错误按 <code>peer_unreachable</code>（retry 用尽）、<code>flushed</code>、
+   <code>peer_rejected</code>、<code>local_error</code>、<code>other</code> 分类，只有前两类说明"对端不说话了"，
+   重建才有意义；本地错和对端拒绝重建治不了。</li>
+<li><strong>只要 slot 内存可能仍被对端引用，就报废整条 lane。</strong> 等待超时、drain 超时、CQE 错误
+   都属此类。代价是丢一条 lane，收益是绝不出现"两个请求的 payload 混在一起"这种静默错误。</li>
+<li><strong>服务端业务错误不涉及 lane。</strong> <code>RpcStatus</code> 走 status word，是正常响应；
+   重试一次大概率还是同一个错误码，所以传输层不做任何重试。</li>
+</ol>
+<h4 id="_1">三种没有设备层信号的失败<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h4>
+<p>RDMA RC 只在<strong>有 WR 在飞</strong>时才通过 ACK 超时暴露链路问题。因此：</p>
+<ul>
+<li><strong>对端进程被杀死、但 WRITE 已被 ACK</strong>：这次 WRITE 的 CQE 是成功；下一次 WRITE 才会撞
+  <code>RETRY_EXC_ERR</code>。杀死瞬间在飞的请求没有设备层信号。</li>
+<li><strong>对端重启但链路空闲</strong>：QP 空闲不发包，本地看不到任何异常，旧 QPN 的 QP 看起来正常。</li>
+<li><strong>控制面本身不可达</strong>：<code>GetServerHealth</code> 返回 <code>known=false</code>，这<strong>不是</strong>"不健康"，
+  请求退回自己的等待预算，不会误判。</li>
+</ul>
+<p>前两种只能靠节点层心跳（<code>dead</code> 阈值默认 9 s）或等待超时兜住——这是"设备层 + 节点层"
+两条检测通道必须同时在的原因。</p>
+<h3 id="33">3.3 重试：四层，只有一层是真重试<a class="headerlink" href="#33" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>机制</th>
+<th>重试对象</th>
+<th>应用可见</th>
+<th>默认</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>硬件</td>
+<td>verbs RC 重试（<code>timeout=14</code>、<code>retry_cnt=7</code>、<code>rnr_retry=7</code>）</td>
+<td>单个 WQE</td>
+<td>不可见</td>
+<td>恒开</td>
+</tr>
+<tr>
+<td>传输</td>
+<td>tracked-write 重等：复用 slot 前先等上一个 CQE</td>
+<td>完成事件（不是请求）</td>
+<td>不可见</td>
+<td>恒开</td>
+</tr>
+<tr>
+<td>lane</td>
+<td>QP 重建（reset → drain → 重配 → 双边 generation 握手）</td>
+<td>整条 lane</td>
+<td>可见</td>
+<td><code>--rdma-lane-rebuild-enabled</code>，默认关</td>
+</tr>
+<tr>
+<td>请求</td>
+<td><strong>不存在</strong></td>
+<td>—</td>
+<td>可见（异常）</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>lane 重建的几个稳定语义：</p>
+<ul>
+<li><strong>触发点是取 slot，不是后台线程。</strong> 没有流量就不会重建；一条 lane 能服务时，其余降级
+  lane 不会被主动修（无 sweep），容量会持续偏低直到流量落到那条 lane。</li>
+<li><strong>预算是进程生命周期累计。</strong> <code>rebuild_attempts</code> 只增不减，成功恢复也不清零：默认 3 次是
+  "这条 lane 一生能救几次"，不是"每次中断的配额"。</li>
+<li><strong>握手成功的判据是对端 generation 变大</strong>，不是"我 reset 完就算成功"。两侧独立计数，
+  所以一次失败的握手把 generation 推高，也不会让下一次误判成功。</li>
+<li><strong>重建成功后，被打断的请求是失败，不是重放。</strong> 重建时无法判断该请求是否已被服务端执行
+  （<code>UPDATE</code> 走 optimizer 应用梯度，重复执行会改变结果），所以在"可能重复执行"和"一定失败"
+  之间选择后者，由上层决定是否整批重来。</li>
+<li><strong><code>num_os_clients &gt; 1</code> 拒绝重建。</strong> 服务端一条 lane 的 CQ 上挂着多个 client 进程的 QP，
+  reset 后无法安全 drain，两端都保持终态置脏并记一次 warning。</li>
+</ul>
+<p>请求级重试当前不存在：<code>ShardUnreachableError</code> 会一路冒到调用方，多 shard batch 里任一 shard
+失败即整批失败，由上层整批重试。异常里只有拼好的文本，没有结构化的 shard / lane 字段，
+因此上层还不能只重试失败的那个 shard。</p>
+<h3 id="34">3.4 故障时延与恢复包线<a class="headerlink" href="#34" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>量</th>
+<th>值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>硬件 ACK 超时</td>
+<td>≈67 ms / 次，7 次重试</td>
+<td><code>timeout=14</code>、<code>retry_cnt=7</code></td>
+</tr>
+<tr>
+<td>设备层发现"对端不回 ACK"</td>
+<td>实测 4.2–4.4 s</td>
+<td>理论 ≈0.5 s，差距原因未定位</td>
+</tr>
+<tr>
+<td>慢路径健康查询起始</td>
+<td>1 s</td>
+<td><code>--rdma-health-probe-after-ms</code></td>
+</tr>
+<tr>
+<td>等待期 CQ 收割间隔</td>
+<td>50 ms</td>
+<td><code>--rdma-cq-harvest-interval-ms</code></td>
+</tr>
+<tr>
+<td>心跳 / <code>suspect</code> / <code>dead</code></td>
+<td>1 s / 3 s / 9 s</td>
+<td><code>--rdma-heartbeat-interval-ms</code> 等</td>
+</tr>
+<tr>
+<td>单次重建尝试最坏</td>
+<td>≈4 s</td>
+<td><code>--rdma-lane-rebuild-wait-ms</code> × 2（取 meta + 等 ack）</td>
+</tr>
+<tr>
+<td>默认恢复包线</td>
+<td>≈13.3 s，之后终态 <code>dead</code></td>
+<td>实测"首个 <code>lane_dirty</code> → 最后一个 <code>lane_rebuild_exhausted</code>"</td>
+</tr>
+<tr>
+<td>重建预算</td>
+<td>3 次，进程生命周期累计</td>
+<td><code>--rdma-lane-rebuild-max-attempts</code></td>
+</tr>
+</tbody>
+</table>
+<p>排障时按报错时延就能大致定位通道：<strong>1 s 内</strong>报错通常是慢路径健康裁决；<strong>4 s 左右</strong>是设备层
+CQE；<strong>等到接近等待超时</strong>说明收割与慢路径都被关了（对应 flag 设 0），或控制面不可达。</p>
+<h3 id="35">3.5 运行时约束<a class="headerlink" href="#35" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>async_stream</code> 要求 <code>qps-per-client-per-shard * slots-per-qp &gt;= async-depth</code>。</li>
 <li>QP 资源不足时，<code>RawVerbsTransport</code> 会在初始化阶段失败；常见错误是
@@ -2379,23 +2795,8 @@ server 通过它交换 <code>RawVerbsNodeMeta</code> 并等待 ready。控制面
 <li>Debug/O0 适合调试，不应作为吞吐结果；benchmark 报告使用 Release 构建。</li>
 <li>源码修改后必须重编对应的 <code>petps_server</code>、benchmark、integration 或 op-layer target，
   否则旧 binary 可能掩盖修改结果。</li>
-<li>RDMA RC QP <strong>不提供</strong>空闲时的"远端进程存活"信号：只有在有 WR 在飞时，链路层才靠 ACK
-  超时把"对端不可达"暴露成 CQ error。因此 client 的失败快速通道分两层——节点层（shard
-  心跳判 <code>dead</code>）与设备层（等待期对 lane CQ 收割并按 completion status 分类）；两者都把
-  故障 lane <strong>整条置脏</strong>（其 slot 不再交给新请求）并抛 <code>ShardUnreachableError</code>，不做应用层
-  重试。默认（重建关闭）下这个退化行为是终态的，在测试中被固定为断言。</li>
-<li>开启 <code>--rdma-lane-rebuild-enabled</code>（默认关闭，需 server 与 client 同时开启）后，置脏 lane
-  可以自愈。只有 peer-side 原因（<code>wait_timeout</code> / <code>health_dead</code> / <code>drain_timeout</code> /
-  <code>cq_peer_unreachable</code> / <code>cq_flushed</code>）会被标记为可重建；client 在下一次 slot acquire 时
-  按冷却间隔懒重建 lane QP，并通过控制面 metadata 的 <code>lane_generation</code> 与 server 做双边
-  握手（server 在轮询线程观察到 generation 变化后重建自己一侧）。重建 QP 时会先 reset 冲刷
-  未完成 WR，再 drain 清除这些 completion、清空该 lane 的 slot，并递增 lane epoch，使仍
-  在等待旧响应的请求快速失败，而不是静默读到被复用的 slot。重建次数默认上限 3，耗尽后 lane
-  进入终态 <code>dead</code>。</li>
-<li>lane 重建要求 <code>num_os_clients == 1</code>：<code>num_os_clients &gt; 1</code> 时 server 的一条 lane CQ 被多个
-  client 进程的 QP 共享，reset 后无法安全 drain（会丢失其他 client 的 completion），因此两端
-  都会拒绝重建并保持终态置脏，只记录一次 warning。</li>
-<li>热点路径零开销：正常请求（µs 级完成）既不查控制面（1s 后才查）也不收割 CQ（50ms 后才收割）。</li>
+<li>热点路径零开销：正常请求（µs 级完成）既不查控制面（1 s 后才查）也不收割 CQ
+  （50 ms 后才收割）；lane 重建检查在开关关闭时直接返回。</li>
 </ul>
 <h2 id="4">4. 关键参数<a class="headerlink" href="#4" title="Permanent link">&para;</a></h2>
 <p>以下只保留容易影响语义或排障的参数；当前 benchmark 默认值和完整参数组合见
@@ -2430,7 +2831,7 @@ server 通过它交换 <code>RawVerbsNodeMeta</code> 并等待 ready。控制面
 </tr>
 <tr>
 <td><code>--rdma-wait-timeout-ms</code></td>
-<td>RDMA 请求等待超时</td>
+<td>RDMA 请求等待超时；默认 <code>60000</code>。实际报错通常更早，由慢路径或 CQ 收割先命中（见 3.4）</td>
 </tr>
 <tr>
 <td><code>--rdma-heartbeat-interval-ms</code></td>
@@ -2466,7 +2867,7 @@ server 通过它交换 <code>RawVerbsNodeMeta</code> 并等待 ready。控制面
 </tr>
 <tr>
 <td><code>--rdma-lane-rebuild-max-attempts</code></td>
-<td>每条 lane 的重建次数上限，超过进入终态 <code>dead</code>；默认 <code>3</code></td>
+<td>每条 lane <strong>进程生命周期内累计</strong>的重建次数上限，超过进入终态 <code>dead</code>；成功恢复不重置计数；默认 <code>3</code></td>
 </tr>
 <tr>
 <td><code>--rdma-lane-rebuild-wait-ms</code></td>
@@ -2475,6 +2876,14 @@ server 通过它交换 <code>RawVerbsNodeMeta</code> 并等待 ready。控制面
 <tr>
 <td><code>--rdma-lane-rebuild-poll-ms</code></td>
 <td>server 轮询 client <code>lane_generation</code> 的间隔；默认 <code>50</code></td>
+</tr>
+<tr>
+<td><code>--rdma-lane-rebuild-poll-max-ms</code></td>
+<td>空闲退避上限：每轮未重建则间隔翻倍，最高到此值；默认 <code>500</code></td>
+</tr>
+<tr>
+<td><code>--rdma-lane-rebuild-poll-timeout-ms</code></td>
+<td>server 侧重建轮询里 <code>GetMeta</code> 的超时；默认 <code>100</code>，避免控制面拖住数据面线程</td>
 </tr>
 <tr>
 <td><code>--rdma-lane-rebuild-cooldown-ms</code></td>
@@ -2530,7 +2939,59 @@ row copy 和 response completion 可分别定位查找、清零、搬运和回�
    <code>--use-local-memcached</code>，优先检查是否运行了旧 binary 或旧 runner。</li>
 <li>若请求卡住，检查 MR 注册、QP metadata 的 shard/lane 匹配、CQ 消费线程以及
    client/server transport mode。</li>
+<li>若已知是故障场景，直接用日志事件定位到 3.2 的层：</li>
 </ol>
+<table>
+<thead>
+<tr>
+<th>日志事件</th>
+<th>层</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>event=lane_dirty</code></td>
+<td>设备层 / 等待超时 / 节点层</td>
+<td>某条 lane 被判死；<code>reason=</code> 指明触发点，<code>verdict=</code> 是当时的心跳裁决</td>
+</tr>
+<tr>
+<td><code>event=lane_recovered</code></td>
+<td>恢复</td>
+<td>重建成功；<code>attempts</code> 是生命周期累计值</td>
+</tr>
+<tr>
+<td><code>event=lane_rebuild_timeout</code></td>
+<td>恢复</td>
+<td>握手 2 s 内未收到对端新 generation；先确认对端是否也开了重建</td>
+</tr>
+<tr>
+<td><code>event=lane_rebuild_failed</code></td>
+<td>恢复</td>
+<td>握手抛异常；<code>error=</code> 区分控制面还是 verbs</td>
+</tr>
+<tr>
+<td><code>event=lane_rebuild_exhausted</code></td>
+<td>恢复</td>
+<td>预算耗尽，该 lane 进入终态 <code>dead</code></td>
+</tr>
+<tr>
+<td><code>event=lane_rebuild_skipped</code></td>
+<td>恢复</td>
+<td><code>reason=shared_server_cq</code>，即 <code>num_os_clients&gt;1</code>，属部署形态而非缺陷</td>
+</tr>
+<tr>
+<td><code>event=handler_exception</code></td>
+<td>服务端业务</td>
+<td>handler 抛异常，客户端会收到 <code>-6</code>（<code>kInternalError</code>），进程不退出</td>
+</tr>
+<tr>
+<td><code>event=get_payload_dropped_stale</code></td>
+<td>服务端 fence</td>
+<td>payload 因重建作废、不再写 status；这是"防住了"，不是故障</td>
+</tr>
+</tbody>
+</table>
 <p>构建、RDMA verbs 检查、PetPS integration、op-layer 测试、脚本单测和最小真实 RDMA
 闭环命令见 <code>rs-benchmark-ps</code> skill。</p>
 <h2 id="7">7. 维护边界<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
