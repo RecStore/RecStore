@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <new>
+#include <stdexcept>
 
 #include "base/factory.h"
 #include "storage/index/index.h"
@@ -10,6 +11,13 @@
 class DramPetHashIndex : public Index {
 public:
   explicit DramPetHashIndex(const BaseKVConfig& config) : Index(config) {
+    if (config.json_config_.contains("index")) {
+      prefetch_distance_ =
+          config.json_config_.at("index").value("prefetch_distance", 1);
+    }
+    if (prefetch_distance_ < 0 || prefetch_distance_ > 64) {
+      throw std::invalid_argument("prefetch_distance must be in [0, 64]");
+    }
     const uint64_t capacity =
         config.json_config_.at("capacity").get<uint64_t>();
     const size_t bytes =
@@ -47,9 +55,10 @@ public:
                 Value_t* pointers,
                 unsigned tid) override {
     (void)tid;
+    const int distance = prefetch_distance_;
     for (int i = 0; i < keys.Size(); ++i) {
-      if (i + 1 < keys.Size()) {
-        impl_->HintPrefetch(keys[i + 1]);
+      if (distance != 0 && i < keys.Size() - distance) {
+        impl_->HintPrefetch(keys[i + distance]);
       }
       auto [value, exists] = impl_->Get(keys[i]);
       pointers[i]          = exists ? value : NONE;
@@ -68,6 +77,7 @@ public:
   size_t Capacity() override { return impl_->Capacity(); }
 
 private:
+  int prefetch_distance_                      = 1;
   base::PetHash<Key_t, Value_t, false>* impl_ = nullptr;
 };
 

@@ -160,8 +160,7 @@ public:
     TrackKeys(keys, tid);
   }
 
-  uint64_t BatchDelete(base::ConstArray<uint64_t> keys,
-                       unsigned tid) override {
+  uint64_t BatchDelete(base::ConstArray<uint64_t> keys, unsigned tid) override {
     if (keys.Size() == 0) {
       return 0;
     }
@@ -326,17 +325,18 @@ public:
     return true;
   }
 
-  bool BatchGetFlatRange(base::ConstArray<uint64_t> keys,
-                         float* values,
-                         int64_t num_rows,
-                         int64_t row_dim,
-                         int64_t value_offset,
-                         int64_t value_dim,
-                         unsigned tid,
-                         BatchGetFlatStats* stats = nullptr,
-                         bool collect_profile = true) override {
-    if (values == nullptr || num_rows < 0 || row_dim <= 0 ||
-        value_offset < 0 || value_dim <= 0 || value_offset > row_dim ||
+  bool BatchGetFlatRange(
+      base::ConstArray<uint64_t> keys,
+      float* values,
+      int64_t num_rows,
+      int64_t row_dim,
+      int64_t value_offset,
+      int64_t value_dim,
+      unsigned tid,
+      BatchGetFlatStats* stats = nullptr,
+      bool collect_profile     = true) override {
+    if (values == nullptr || num_rows < 0 || row_dim <= 0 || value_offset < 0 ||
+        value_dim <= 0 || value_offset > row_dim ||
         value_dim > row_dim - value_offset ||
         keys.Size() != static_cast<size_t>(num_rows)) {
       return false;
@@ -355,9 +355,9 @@ public:
     const bool profile_enabled = stats != nullptr && collect_profile;
     if (stats != nullptr) {
       stats->index_lookup_ns = 0;
-      stats->zero_fill_ns = 0;
-      stats->row_copy_ns = 0;
-      stats->missing_rows = 0;
+      stats->zero_fill_ns    = 0;
+      stats->row_copy_ns     = 0;
+      stats->missing_rows    = 0;
     }
     const auto index_lookup_start =
         profile_enabled ? std::chrono::steady_clock::now()
@@ -377,8 +377,12 @@ public:
         profile_enabled ? std::chrono::steady_clock::now()
                         : std::chrono::steady_clock::time_point{};
     if (!value_store_->ReadFlatFixedRowSlices(
-            handles.data(), static_cast<size_t>(num_rows), values,
-            stored_row_bytes, source_offset_bytes, output_row_bytes,
+            handles.data(),
+            static_cast<size_t>(num_rows),
+            values,
+            stored_row_bytes,
+            source_offset_bytes,
+            output_row_bytes,
             &missing_rows)) {
       return false;
     }
@@ -390,6 +394,70 @@ public:
                 .count());
       }
       stats->missing_rows = missing_rows;
+    }
+    return true;
+  }
+
+  bool BatchGetIndexedFlat(
+      base::ConstArray<uint64_t> keys,
+      int64_t* indices,
+      float* values,
+      bool* found,
+      int64_t num_rows,
+      int64_t value_dim,
+      unsigned tid,
+      BatchGetFlatStats* stats = nullptr,
+      bool collect_profile     = true) override {
+    if (stats != nullptr)
+      *stats = BatchGetFlatStats{};
+    if (num_rows < 0 || value_dim <= 0 ||
+        keys.Size() != static_cast<size_t>(num_rows) ||
+        static_cast<uint64_t>(value_dim) >
+            ((std::numeric_limits<size_t>::max)() - sizeof(int64_t)) /
+                sizeof(float) ||
+        (num_rows != 0 && (keys.Data() == nullptr || indices == nullptr ||
+                           values == nullptr || found == nullptr))) {
+      return false;
+    }
+    const size_t value_bytes = static_cast<size_t>(value_dim) * sizeof(float);
+    if (default_value_size_hint_ != sizeof(int64_t) + value_bytes ||
+        static_cast<uint64_t>(num_rows) >
+            (std::numeric_limits<size_t>::max)() / value_bytes) {
+      return false;
+    }
+    if (num_rows == 0)
+      return true;
+
+    thread_local std::vector<Value_t> handles;
+    handles.assign(keys.Size(), kValueHandleNone);
+    const bool profile = stats != nullptr && collect_profile;
+    using Clock        = std::chrono::steady_clock;
+    const auto start   = profile ? Clock::now() : Clock::time_point{};
+    index_->BatchGet(keys, handles.data(), tid);
+    const auto after_index = profile ? Clock::now() : Clock::time_point{};
+    uint64_t missing       = 0;
+    if (!value_store_->ReadIndexedFixedRows(
+            handles.data(),
+            static_cast<size_t>(num_rows),
+            indices,
+            values,
+            found,
+            value_bytes,
+            &missing)) {
+      return false;
+    }
+    if (stats != nullptr) {
+      stats->missing_rows = missing;
+      if (profile) {
+        stats->index_lookup_ns = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                after_index - start)
+                .count());
+        stats->row_copy_ns = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                Clock::now() - after_index)
+                .count());
+      }
     }
     return true;
   }
@@ -565,9 +633,9 @@ public:
           direct_row.size != row_bytes) {
         return false;
       }
-      float* value = reinterpret_cast<float*>(
-                         const_cast<char*>(direct_row.data)) +
-                     update_offset;
+      float* value =
+          reinterpret_cast<float*>(const_cast<char*>(direct_row.data)) +
+          update_offset;
       const float* grad = grads + row * update_dim;
 #pragma omp simd
       for (int64_t column = 0; column < update_dim; ++column) {
@@ -585,8 +653,8 @@ public:
                      const void* value,
                      unsigned tid,
                      BulkLoadStats* stats = nullptr) override {
-    using clock = std::chrono::steady_clock;
-    const auto total_start = clock::now();
+    using clock             = std::chrono::steady_clock;
+    const auto total_start  = clock::now();
     const auto& j           = config_.json_config_;
     const size_t value_size = j.at("value").value("default_value_size_hint", 0);
     if (value_size == 0) {
@@ -602,9 +670,9 @@ public:
     for (int i = 0; i < keys.Size(); ++i) {
       specs.push_back(ValueStore::WriteSpec{data + i * value_size, value_size});
     }
-    const auto prepare_end = clock::now();
+    const auto prepare_end        = clock::now();
     std::vector<uint64_t> handles = value_store_->BatchAllocAndWrite(specs);
-    const auto alloc_end = clock::now();
+    const auto alloc_end          = clock::now();
     if (handles.size() != static_cast<size_t>(keys.Size())) {
       LOG(FATAL) << "KVEngine::BulkLoad allocation result size mismatch";
     }
@@ -625,12 +693,12 @@ public:
             std::chrono::duration_cast<std::chrono::nanoseconds>(duration)
                 .count());
       };
-      stats->prepare_ns = ns(prepare_end - total_start);
-      stats->value_alloc_ns = ns(alloc_end - prepare_end);
+      stats->prepare_ns         = ns(prepare_end - total_start);
+      stats->value_alloc_ns     = ns(alloc_end - prepare_end);
       stats->handle_validate_ns = ns(validate_end - alloc_end);
-      stats->index_put_ns = ns(index_end - validate_end);
-      stats->key_track_ns = ns(track_end - index_end);
-      stats->total_ns = ns(track_end - total_start);
+      stats->index_put_ns       = ns(index_end - validate_end);
+      stats->key_track_ns       = ns(track_end - index_end);
+      stats->total_ns           = ns(track_end - total_start);
     }
   }
 
@@ -642,7 +710,7 @@ public:
       int64_t value_dim,
       unsigned tid,
       BulkLoadStats* stats = nullptr) override {
-    using clock = std::chrono::steady_clock;
+    using clock            = std::chrono::steady_clock;
     const auto total_start = clock::now();
     if (row_indices == nullptr || values == nullptr || num_rows < 0 ||
         value_dim <= 0 || keys.Size() != static_cast<size_t>(num_rows)) {
@@ -655,8 +723,8 @@ public:
     }
 
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
-    std::vector<uint64_t> handles(static_cast<size_t>(num_rows),
-                                  kValueHandleNone);
+    std::vector<uint64_t> handles(
+        static_cast<size_t>(num_rows), kValueHandleNone);
     const auto prepare_end = clock::now();
     for (int64_t row_index = 0; row_index < num_rows; ++row_index) {
       const uint64_t handle = value_store_->Alloc(row_bytes);
@@ -675,7 +743,7 @@ public:
                   static_cast<size_t>(value_dim) * sizeof(float));
       handles[static_cast<size_t>(row_index)] = handle;
     }
-    const auto alloc_end = clock::now();
+    const auto alloc_end    = clock::now();
     const auto validate_end = alloc_end;
     index_->BatchPut(keys, handles.data(), tid);
     const auto index_end = clock::now();
@@ -687,12 +755,12 @@ public:
             std::chrono::duration_cast<std::chrono::nanoseconds>(duration)
                 .count());
       };
-      stats->prepare_ns = ns(prepare_end - total_start);
-      stats->value_alloc_ns = ns(alloc_end - prepare_end);
+      stats->prepare_ns         = ns(prepare_end - total_start);
+      stats->value_alloc_ns     = ns(alloc_end - prepare_end);
       stats->handle_validate_ns = ns(validate_end - alloc_end);
-      stats->index_put_ns = ns(index_end - validate_end);
-      stats->key_track_ns = ns(track_end - index_end);
-      stats->total_ns = ns(track_end - total_start);
+      stats->index_put_ns       = ns(index_end - validate_end);
+      stats->key_track_ns       = ns(track_end - index_end);
+      stats->total_ns           = ns(track_end - total_start);
     }
     return true;
   }
@@ -880,9 +948,7 @@ public:
     return true;
   }
 
-  uint64_t CheckpointRecordCount() const override {
-    return ActiveKeyCount();
-  }
+  uint64_t CheckpointRecordCount() const override { return ActiveKeyCount(); }
 
   // CollectCheckpointKeys traverses checkpoint_keys_by_thread_ while the put
   // path (TrackKeys) push_backs into it under a *shared* lock, so collectors
@@ -1032,11 +1098,12 @@ private:
     if (!deleted_keys.empty()) {
       for (auto& tracked_keys : checkpoint_keys_by_thread_) {
         tracked_keys.erase(
-            std::remove_if(tracked_keys.begin(), tracked_keys.end(),
-                           [&](uint64_t key) {
-                             return deleted_keys.find(key) !=
-                                    deleted_keys.end();
-                           }),
+            std::remove_if(
+                tracked_keys.begin(),
+                tracked_keys.end(),
+                [&](uint64_t key) {
+                  return deleted_keys.find(key) != deleted_keys.end();
+                }),
             tracked_keys.end());
       }
     }

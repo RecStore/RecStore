@@ -236,11 +236,19 @@ class ConcurrentSlabMemoryPool : public MallocApi {
   };
 
   struct ThreadLocalPool {
+    uint64_t generation = 0;
     std::unordered_map<int, SlabChunk*> hot_by_slab;
   };
 
-  static ThreadLocalPool& PoolTls() {
+  ThreadLocalPool& PoolTls() {
     thread_local ThreadLocalPool tls;
+    // A thread may serve multiple allocators, and allocator addresses may be
+    // reused after destruction. Never retain another instance's hot chunks.
+    // Dropped hot chunks remain discoverable through their owner's active list.
+    if (tls.generation != tls_generation_) {
+      tls.hot_by_slab.clear();
+      tls.generation = tls_generation_;
+    }
     return tls;
   }
 
@@ -352,6 +360,9 @@ public:
       state.partial.clear();
       state.active.clear();
     }
+    // Invalidate cached chunks on every worker, not just the resetting thread.
+    tls_generation_ =
+        next_tls_generation_.fetch_add(1, std::memory_order_relaxed);
     PoolTls().hot_by_slab.clear();
     total_malloc_.store(0, std::memory_order_relaxed);
   }
@@ -531,6 +542,9 @@ private:
   std::unordered_map<int, SlabState> slab_states_;
   std::set<int> allocated_slab_sizes_;
   std::atomic<int64> total_malloc_{0};
+  inline static std::atomic<uint64_t> next_tls_generation_{1};
+  uint64_t tls_generation_ =
+      next_tls_generation_.fetch_add(1, std::memory_order_relaxed);
   DISALLOW_COPY_AND_ASSIGN(ConcurrentSlabMemoryPool);
 };
 

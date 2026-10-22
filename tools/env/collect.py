@@ -89,7 +89,6 @@ DEFAULT_PIP_PATTERNS = {
     "nvidia",
     "nccl",
     "recstore",
-    "quantarec",
     "transformers",
     "pybind",
     "gdr",

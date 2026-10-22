@@ -130,13 +130,30 @@ public:
       int64_t value_dim,
       unsigned tid,
       BatchGetFlatStats* stats = nullptr,
-      bool collect_profile = true) {
+      bool collect_profile     = true) {
     return false;
   }
 
   virtual bool BatchGetIndexOnly(base::ConstArray<uint64_t> keys,
                                  unsigned tid,
                                  BatchGetFlatStats* stats = nullptr) {
+    return false;
+  }
+
+  // Fixed indexed rows contain an int64 row index followed by value_dim
+  // floats. Misses write index=-1, zero values, and found=false. This read
+  // does not allocate row indices or insert keys. Unsupported stores return
+  // false; callers must not consume partially written output on failure.
+  virtual bool BatchGetIndexedFlat(
+      base::ConstArray<uint64_t> keys,
+      int64_t* indices,
+      float* values,
+      bool* found,
+      int64_t num_rows,
+      int64_t value_dim,
+      unsigned tid,
+      BatchGetFlatStats* stats = nullptr,
+      bool collect_profile     = true) {
     return false;
   }
 
