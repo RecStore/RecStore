@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -29,10 +29,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1879,6 +1879,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#prescanned-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prescanned execution
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1944,6 +1955,26 @@ table, so the Python mirror is keyed by embedding ID rather than by local slot.<
 errors, not reasons to fall back to replace-style fills: a fallback could evict
 a key without updating the mirror. An external cache reset is also a hard error
 because dirty local updates cannot be reconstructed safely after the reset.</p>
+<h2 id="prescanned-execution">Prescanned execution<a class="headerlink" href="#prescanned-execution" title="Permanent link">&para;</a></h2>
+<p>BagPipe has one public plugin name, <code>bagpipe</code>. In the DLRM runner, enable
+precomputed collective layouts with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>--read-mode bagpipe --optimization-prescan
+</code></pre></div>
+<p>Without prescan, BagPipe uses the dynamic C++ cache described above. With
+prescan, it scans the configured training steps, loads the complete touched
+working set into a compact FP32 tensor on each rank, and communicates gradients
+using fixed per-step layouts. The internal resident controller shares the
+same plugin, read path, and sparse optimizer. No separate <code>bagpipe_planned</code>
+plugin is registered.</p>
+<p>This upgrades the earlier shared-ID-only prescan: it requires an exactly
+repeatable batch sequence, one ID per feature per sample, and sufficient
+capacity for the entire working set plus plan metadata. The row limit is
+<code>cache_capacity * 64</code>, matching the C++ cache's capacity unit. Capacity or
+schedule violations fail explicitly; they do not silently switch controllers.</p>
+<p>Each step applies the mean FP32 gradient across ranks before the next lookup.
+The final update is drained before validation, and rank 0 writes authoritative
+rows back to the PS before shutdown. Prescan, initial loading, and final PS
+writeback costs must be reported separately from steady training throughput.</p>
 
 
 
@@ -2015,10 +2046,10 @@ because dirty local updates cannot be reconstructed safely after the reset.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.tracking", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.tracking", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>
