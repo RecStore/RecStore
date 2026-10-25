@@ -2,6 +2,7 @@ add_subdirectory(base)
 add_subdirectory(ps)
 add_subdirectory(memory)
 add_subdirectory(storage)
+add_subdirectory(python/bindings)
 add_subdirectory(optimizer)
 add_subdirectory(benchmark)
 

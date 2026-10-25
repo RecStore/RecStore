@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -216,6 +217,57 @@ public:
     if (missing_rows != nullptr) {
       *missing_rows = local_missing;
     }
+    return true;
+  }
+
+  bool ReadIndexedFixedRows(
+      const uint64_t* handles,
+      size_t num_rows,
+      int64_t* indices,
+      void* values,
+      bool* found,
+      size_t value_bytes,
+      uint64_t* missing_rows) const override {
+    if (missing_rows != nullptr)
+      *missing_rows = 0;
+    if (value_bytes == 0 ||
+        value_bytes > (std::numeric_limits<size_t>::max)() - sizeof(int64_t) ||
+        num_rows > (std::numeric_limits<size_t>::max)() / value_bytes ||
+        num_rows > (std::numeric_limits<size_t>::max)() / sizeof(int64_t) ||
+        (num_rows != 0 && (handles == nullptr || indices == nullptr ||
+                           values == nullptr || found == nullptr))) {
+      return false;
+    }
+    const size_t row_bytes = sizeof(int64_t) + value_bytes;
+    uint64_t missing       = 0;
+    auto* dst              = static_cast<char*>(values);
+    for (size_t row = 0; row < num_rows; ++row) {
+      char* row_dst = dst + row * value_bytes;
+      if (handles[row] == kValueHandleNone) {
+        indices[row] = -1;
+        found[row]   = false;
+        std::memset(row_dst, 0, value_bytes);
+        ++missing;
+        continue;
+      }
+      const char* src = Ptr(handles[row]);
+      if (src == nullptr) {
+        return false;
+      }
+      // Reuse the resolved pointer. The offset overload would resolve the
+      // same handle again before reading exactly this allocation's metadata.
+      const int capacity = allocator_->GetMallocSize(src);
+      if (capacity < 0 || static_cast<size_t>(capacity) < row_bytes) {
+        return false;
+      }
+      // A fixed-size memcpy compiles to a load/store without imposing extra
+      // alignment or aliasing requirements on allocator-owned row storage.
+      std::memcpy(indices + row, src, sizeof(int64_t));
+      std::memcpy(row_dst, src + sizeof(int64_t), value_bytes);
+      found[row] = true;
+    }
+    if (missing_rows != nullptr)
+      *missing_rows = missing;
     return true;
   }
 

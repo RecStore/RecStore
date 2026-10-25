@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A 图（Quanta figA 风格）：2n1g bs=3072，一步内 GPU 在忙什么 + 网卡什么时候有流量。
+"""A 图：2n1g bs=3072，一步内 GPU 在忙什么 + 网卡什么时候有流量。
 
 横轴 = 一步内的时间。每个 arm 两块共用 x 轴：
   上：GPU 占用（堆叠：前向 / 反向 / NCCL / 稀疏更新 / BagPipe 取数 / 其他），
@@ -464,7 +464,7 @@ def main(argv: list[str] | None = None) -> int:
             return None
         return (span["start"] - step["start"]) * 1e3, (span["end"] - step["start"]) * 1e3
 
-    # 阶段条（Quanta 风格）：主条 = 步内主机阶段，子条 = 预取窗口
+    # 阶段条：主条 = 步内主机阶段，子条 = 预取窗口
     ruler_y, ruler_h = 1.10, 0.115
     ax1_gpu.add_patch(Rectangle((0, ruler_y), step1_ms, ruler_h, facecolor="#F4F4F4",
                                 edgecolor="#CCCCCC", lw=0.6, clip_on=False, zorder=1))

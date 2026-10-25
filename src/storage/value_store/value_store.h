@@ -112,6 +112,20 @@ public:
     return false;
   }
 
+  // Split a fixed [int64 index | value bytes] row into caller-owned outputs
+  // without materializing DirectFixedRow descriptors. Implementations must
+  // retain the same capacity validation as GetDirectFixedRows.
+  virtual bool ReadIndexedFixedRows(
+      const uint64_t* handles,
+      size_t num_rows,
+      int64_t* indices,
+      void* values,
+      bool* found,
+      size_t value_bytes,
+      uint64_t* missing_rows) const {
+    return false;
+  }
+
   virtual std::vector<uint64_t>
   BatchAllocAndWrite(const std::vector<WriteSpec>& specs) {
     std::vector<uint64_t> handles;

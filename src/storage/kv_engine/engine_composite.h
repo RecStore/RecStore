@@ -398,6 +398,70 @@ public:
     return true;
   }
 
+  bool BatchGetIndexedFlat(
+      base::ConstArray<uint64_t> keys,
+      int64_t* indices,
+      float* values,
+      bool* found,
+      int64_t num_rows,
+      int64_t value_dim,
+      unsigned tid,
+      BatchGetFlatStats* stats = nullptr,
+      bool collect_profile     = true) override {
+    if (stats != nullptr)
+      *stats = BatchGetFlatStats{};
+    if (num_rows < 0 || value_dim <= 0 ||
+        keys.Size() != static_cast<size_t>(num_rows) ||
+        static_cast<uint64_t>(value_dim) >
+            ((std::numeric_limits<size_t>::max)() - sizeof(int64_t)) /
+                sizeof(float) ||
+        (num_rows != 0 && (keys.Data() == nullptr || indices == nullptr ||
+                           values == nullptr || found == nullptr))) {
+      return false;
+    }
+    const size_t value_bytes = static_cast<size_t>(value_dim) * sizeof(float);
+    if (default_value_size_hint_ != sizeof(int64_t) + value_bytes ||
+        static_cast<uint64_t>(num_rows) >
+            (std::numeric_limits<size_t>::max)() / value_bytes) {
+      return false;
+    }
+    if (num_rows == 0)
+      return true;
+
+    thread_local std::vector<Value_t> handles;
+    handles.assign(keys.Size(), kValueHandleNone);
+    const bool profile = stats != nullptr && collect_profile;
+    using Clock        = std::chrono::steady_clock;
+    const auto start   = profile ? Clock::now() : Clock::time_point{};
+    index_->BatchGet(keys, handles.data(), tid);
+    const auto after_index = profile ? Clock::now() : Clock::time_point{};
+    uint64_t missing       = 0;
+    if (!value_store_->ReadIndexedFixedRows(
+            handles.data(),
+            static_cast<size_t>(num_rows),
+            indices,
+            values,
+            found,
+            value_bytes,
+            &missing)) {
+      return false;
+    }
+    if (stats != nullptr) {
+      stats->missing_rows = missing;
+      if (profile) {
+        stats->index_lookup_ns = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                after_index - start)
+                .count());
+        stats->row_copy_ns = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                Clock::now() - after_index)
+                .count());
+      }
+    }
+    return true;
+  }
+
   bool BatchGetIndexOnly(base::ConstArray<uint64_t> keys,
                          unsigned tid,
                          BatchGetFlatStats* stats = nullptr) override {

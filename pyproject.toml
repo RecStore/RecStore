@@ -31,9 +31,9 @@ cmake.build-type = "Release"
 # The repository's dev/CI CMake trees use Unix Makefiles; keep the generator in
 # sync so an existing build-dir can be reused as-is.
 cmake.args = ["-G", "Unix Makefiles"]
-# Only the Python extension is needed for the wheel; the test and benchmark
+# Only the Python extensions are needed for the wheel; the test and benchmark
 # targets stay out of the wheel build.
-build.targets = ["recstore_torch_ops"]
+build.targets = ["recstore_torch_ops", "_recstore_kv"]
 # Only install() rules tagged COMPONENT python end up in the wheel, which keeps
 # the third_party/ subprojects from leaking into the distribution.
 install.components = ["python"]

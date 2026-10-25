@@ -170,6 +170,18 @@ target_link_libraries(test_kvengine PUBLIC
 )
 add_test(NAME test_kvengine COMMAND test_kvengine)
 
+add_executable(test_indexed_flat_read test_indexed_flat_read.cc)
+target_link_libraries(test_indexed_flat_read PUBLIC
+    extendible_hash
+    base
+    base_memory
+    kv_engine
+    pthread
+    TBB::tbb
+)
+add_test(NAME test_indexed_flat_read COMMAND test_indexed_flat_read
+    "${CMAKE_CURRENT_BINARY_DIR}/indexed_flat_read")
+
 add_executable(test_kvengine_checkpoint test_kvengine_checkpoint.cpp)
 target_link_libraries(test_kvengine_checkpoint PUBLIC
     extendible_hash
