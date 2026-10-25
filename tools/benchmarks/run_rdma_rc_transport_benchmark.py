@@ -428,6 +428,7 @@ def main():
             "get",
             "async_get",
             "async_stream",
+            "adapter_get",
             "mixed",
         ],
         default="all",

@@ -144,7 +144,7 @@ void ValidateFlags() {
   CHECK_GT(FLAGS_batch_keys, 0);
   CHECK(FLAGS_op == "all" || FLAGS_op == "put" || FLAGS_op == "get" ||
         FLAGS_op == "async_get" || FLAGS_op == "async_stream" ||
-        FLAGS_op == "mixed")
+        FLAGS_op == "adapter_get" || FLAGS_op == "mixed")
       << "Invalid --op: " << FLAGS_op;
   CHECK_GT(FLAGS_async_depth, 0);
   CHECK_GE(FLAGS_get_ratio, 0);
@@ -505,6 +505,24 @@ int main(int argc, char** argv) {
             VerifyFlatOutput(input, output, "get", iteration);
             raw->RevokeRPCResource(rpc_id);
             (void)iteration;
+          },
+          input.keys.size());
+    }
+
+    if (ShouldRunOp(FLAGS_op, "adapter_get")) {
+      const int dim = FLAGS_value_size / sizeof(float);
+      std::vector<float> output(
+          input.keys.size() * static_cast<std::size_t>(dim) + 1, 0.0f);
+      base::RecTensor output_view(
+          output.data(),
+          {static_cast<int64_t>(input.keys.size()), static_cast<int64_t>(dim)});
+      RunOperation(
+          "adapter_get",
+          [&](int iteration) {
+            CHECK_EQ(adapter->GetParameter(input.key_array, output_view), 0)
+                << "RDMA RC adapter GetParameter failed at iteration="
+                << iteration;
+            VerifyFlatOutput(input, output, "adapter_get", iteration);
           },
           input.keys.size());
     }
