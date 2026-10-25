@@ -47,6 +47,7 @@ class BenchmarkConfig:
     repeat: int = 3
     read_mode: str = "prefetch"
     prefetch_depth: int = 0
+    ps_threads: int = 0
     optimization_cache_capacity: int = 0
     bagpipe_prescan: bool = False
     optimization_lookahead: int = 0

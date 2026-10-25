@@ -17,6 +17,7 @@ from .runtime import (
     build_runtime_config,
     build_server_command,
     build_torchrec_command,
+    resolve_ps_threads,
     start_rdma_ps_cluster,
     stop_rdma_ps_cluster,
 )
@@ -220,6 +221,13 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
         (cfg.output_dir / "summary.md").write_text(render_summary_md(cfg, summary_rows), encoding="utf-8")
         return 0
 
+    # Recorded per run so the PS thread budget is recoverable from artifacts.
+    ps_threads = (
+        resolve_ps_threads(cfg, probe=not dry_run)
+        if any(transport.upper() == "RDMA" for transport in transports)
+        else 0
+    )
+
     if not cfg.skip_build and not dry_run:
         _checked_run(["cmake", "-S", ".", "-B", "build"], cwd=ROOT)
         build_targets = ["ps_server", "recstore_torch_ops"]
@@ -326,6 +334,7 @@ def run_custom_benchmark(cfg: BenchmarkConfig, transports: tuple[str, ...], *, d
                         "embedding_dim": cfg.embedding_dim,
                         "num_embeddings": cfg.num_embeddings,
                         "repeat_index": repeat_index,
+                        "ps_threads": ps_threads if transport.upper() == "RDMA" else "",
                         "main_csv": str(main_csv),
                         "log_path": str(log_path),
                     }

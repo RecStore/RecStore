@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -173,6 +174,41 @@ def _rdma_client_env(runner: Any, *, response_mode: str) -> dict[str, str]:
     return env
 
 
+@lru_cache(maxsize=8)
+def _physical_cores(ssh_host: str, ssh_port: int, repo_root: Path, probe: bool) -> int:
+    # Physical, not logical: a hyperthreaded 9-core host reports 18 CPUs, and
+    # the poll threads compete for cores, not for sibling slots.
+    cmd = ["lscpu", "-p=CORE,SOCKET"]
+    if probe and ssh_host not in {"", "local", "localhost"}:
+        cmd = wrap_remote_command(cmd, ssh_host, cwd=repo_root, ssh_port=ssh_port)
+    pairs: set[str] = set()
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
+        pairs = {line for line in proc.stdout.splitlines() if line and not line.startswith("#")}
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return len(pairs) or max(1, (os.cpu_count() or 2) // 2)
+
+
+def resolve_ps_threads(cfg: BenchmarkConfig, *, probe: bool = True) -> int:
+    """RC poll threads per PS host.
+
+    An explicit --ps-threads wins, then RECSTORE_E2E_RDMA_SERVER_THREADS, then
+    the auto default. Auto keeps the trainer on most of the physical cores:
+    the old fixed 16 oversubscribed a 9-core host and cost ~55% throughput
+    (RecStore#295).
+    """
+    requested = int(cfg.ps_threads)
+    if requested <= 0:
+        env_raw = os.environ.get("RECSTORE_E2E_RDMA_SERVER_THREADS", "").strip()
+        requested = int(env_raw) if env_raw else 0
+    if requested > 0:
+        return requested
+    server = sorted(cfg.servers, key=lambda item: item.shard_id)[0]
+    cores = _physical_cores(server.ssh_host, int(server.ssh_port), server.repo_root, probe)
+    return max(1, min(16, cores // 4))
+
+
 def start_rdma_ps_cluster(
     *,
     cfg: BenchmarkConfig,
@@ -213,6 +249,7 @@ def start_rdma_ps_cluster(
     value_size = int(cfg.embedding_dim) * 4
     max_kv_num_per_request = max(1, int(cfg.batch_size) * SPARSE_FEATURES_PER_SAMPLE)
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    ps_threads = resolve_ps_threads(cfg)
     server_path = os.environ.get(
         "RECSTORE_E2E_PETPS_SERVER", str(repo_root / "build/bin/petps_server")
     )
@@ -221,7 +258,7 @@ def start_rdma_ps_cluster(
         config_path=str(config_path),
         num_servers=len(cfg.servers),
         num_clients=_rdma_client_process_count(cfg.clients),
-        thread_num=int(os.getenv("RECSTORE_E2E_RDMA_SERVER_THREADS", "16")),
+        thread_num=ps_threads,
         value_size=value_size,
         max_kv_num_per_request=max_kv_num_per_request,
         timeout=180,
@@ -252,6 +289,7 @@ def start_rdma_ps_cluster(
             f"namespace={runner.rdma_namespace}\n"
             f"control_plane={runner.rdma_control_plane_host}:{runner.rdma_control_plane_port}\n"
             f"num_clients={runner.num_clients}\n"
+            f"ps_threads={ps_threads}\n"
         )
     runner._rs_demo_log_path = log_path  # type: ignore[attr-defined]
     cleanup_commands = []

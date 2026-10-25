@@ -13,6 +13,9 @@ remote_gpu_id="0"
 
 ps_port="15000"
 master_port="29500"
+# RDMA PS poll threads per host; 0 = auto (a quarter of the physical cores).
+# The trainer is colocated, so an explicit high value oversubscribes the host.
+ps_threads="${PS_THREADS:-0}"
 output_dir="${OUTPUT_DIR:-results/e2e_$(date +%m%d%H%M)}"
 jobs="${JOBS:-$(nproc)}"
 
@@ -157,6 +160,7 @@ benchmark_args=(
     --repeat 3
     --read-mode prefetch
     --prefetch-depth 0
+    --ps-threads "$ps_threads"
     --index-type DRAM_PET_HASH
     --master-port "$master_port"
     --skip-build

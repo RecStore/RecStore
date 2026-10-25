@@ -168,6 +168,14 @@ def render_summary_md(cfg: BenchmarkConfig, rows: list[dict[str, Any]]) -> str:
         if cfg.read_mode == "bagpipe"
         else ""
     )
+    ps_threads = sorted(
+        {
+            int(row["ps_threads"])
+            for row in rows
+            if str(row.get("ps_threads", "")).strip() not in {"", "0"}
+        }
+    )
+    ps_threads_text = ",".join(str(value) for value in ps_threads) if ps_threads else "-"
 
     def table(metrics: list[tuple[str, list[str]]]) -> list[str]:
         return [
@@ -191,6 +199,7 @@ def render_summary_md(cfg: BenchmarkConfig, rows: list[dict[str, Any]]) -> str:
             f"batch_size={cfg.batch_size}，embedding_dim={cfg.embedding_dim}，"
             f"num_embeddings={cfg.num_embeddings}，steps={cfg.steps}，warmup_steps={cfg.warmup_steps}，"
             f"repeat={cfg.repeat}，read_mode={cfg.read_mode}，prefetch_depth={cfg.prefetch_depth}，"
+            f"ps_threads={ps_threads_text}，"
             f"index_type={cfg.index_type}，{bagpipe_capacity}"
             f"TorchRec baseline={','.join(cfg.torchrec_baselines) or 'disabled'}，"
             f"dataset={cfg.dataset_path}，runtime={cfg.resolved_runtime_dir}，"

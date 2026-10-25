@@ -136,6 +136,15 @@ python3 -m tools.benchmarks.e2e.custom.cli \
 ```
 
 Two-node RDMA helper (optional): `tools/benchmarks/e2e/run_two_node_rdma_compare.sh`.
+It takes `PS_THREADS` (default `0` = auto) for the RDMA PS poll threads per host.
+
+RDMA PS thread budget: `--ps-threads N` (or
+`RECSTORE_E2E_RDMA_SERVER_THREADS=N`) sets the `petps_server` RC poll threads
+per PS host; `0`/unset means auto = `max(1, min(16, physical_cores // 4))`.
+When the trainer is colocated, leaving the poll threads at a fixed 16
+oversubscribes small hosts (RecStore#295 measured ~55% throughput loss on a
+9-physical-core host). The effective value is recorded in the runtime log
+header, `summary.md`, `summary_e2e.csv`, and `manifest.csv`.
 
 Manual fallback below when the custom runner cannot be used. Create
 `<runtime_dir>/recstore_config.json` with the requested PS type and shard

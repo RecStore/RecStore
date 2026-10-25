@@ -40,6 +40,7 @@ def _build_config_from_args(args: argparse.Namespace) -> tuple[BenchmarkConfig, 
         repeat=args.repeat,
         read_mode=args.read_mode,
         prefetch_depth=args.prefetch_depth,
+        ps_threads=args.ps_threads,
         optimization_cache_capacity=args.optimization_cache_capacity,
         bagpipe_prescan=args.bagpipe_prescan,
         optimization_lookahead=args.optimization_lookahead,
@@ -87,6 +88,16 @@ def main(argv: list[str] | None = None) -> int:
         default="prefetch",
     )
     parser.add_argument("--prefetch-depth", type=int, default=0)
+    parser.add_argument(
+        "--ps-threads",
+        type=int,
+        default=0,
+        help=(
+            "RDMA PS RC poll threads per PS host; the trainer shares those "
+            "cores. 0 = auto: max(1, min(16, physical_cores // 4)). "
+            "RECSTORE_E2E_RDMA_SERVER_THREADS overrides auto, this flag wins."
+        ),
+    )
     parser.add_argument(
         "--optimization-lookahead",
         type=int,
