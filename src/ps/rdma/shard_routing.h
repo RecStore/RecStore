@@ -38,10 +38,14 @@ struct PendingShardRpc {
 
 // A caller batch spread across one or more PendingShardRpc.
 struct BatchRequest {
-  float* user_buffer          = nullptr; // Final output buffer owned by caller.
-  bool assembled              = false;   // True once shard RPCs are merged.
-  std::size_t total_key_count = 0;       // Total keys across all shards.
-  int value_size              = 0;       // Row bytes for this batch.
+  float* user_buffer = nullptr; // Final output buffer owned by caller.
+  bool assembled     = false;   // True once shard RPCs are merged.
+  // The trailing status word lives just past the last row, which callers that
+  // hand over their own exactly-sized buffer cannot host. Those callers read
+  // the status from WaitBatch instead and turn this off.
+  bool write_status_word      = true;
+  std::size_t total_key_count = 0; // Total keys across all shards.
+  int value_size              = 0; // Row bytes for this batch.
   std::int32_t status_code =
       static_cast<std::int32_t>(petps::RpcStatus::kPending);
   std::vector<std::vector<char>> receive_buffers;

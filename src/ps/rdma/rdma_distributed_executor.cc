@@ -33,6 +33,7 @@ RdmaDistributedExecutor::~RdmaDistributedExecutor() {
       LOG(ERROR) << "failed to release RDMA batch during shutdown: "
                  << error.what();
     }
+    RecycleReceiveBuffers(&batch.receive_buffers);
   }
   for (auto& [update_id, update] : pending_updates_) {
     (void)update_id;
@@ -55,12 +56,55 @@ petps::PetPSClient* RdmaDistributedExecutor::ClientAt(int client_index) const {
   return clients_[static_cast<std::size_t>(client_index)];
 }
 
+std::vector<char>
+RdmaDistributedExecutor::AcquireReceiveBuffer(std::size_t bytes) const {
+  {
+    std::lock_guard<std::mutex> guard(recv_pool_mu_);
+    for (auto it = recv_pool_.begin(); it != recv_pool_.end(); ++it) {
+      if (it->size() < bytes) {
+        continue;
+      }
+      std::vector<char> buffer = std::move(*it);
+      recv_pool_bytes_ -= buffer.size();
+      recv_pool_.erase(it);
+      return buffer;
+    }
+  }
+  // Cold path: first call for this size. The server overwrites the whole
+  // response before reporting kOk, so this zero-fill only exists because
+  // std::vector cannot grow without initializing.
+  return std::vector<char>(bytes, 0);
+}
+
+void RdmaDistributedExecutor::RecycleReceiveBuffers(
+    std::vector<std::vector<char>>* buffers) const {
+  if (buffers == nullptr || buffers->empty()) {
+    return;
+  }
+  // Idle buffers are capped by count and by bytes: peak count tracks in-flight
+  // chunks (bounded by max_keys_per_request), while the byte budget keeps large
+  // value sizes from turning the pool into a second copy of the table.
+  constexpr std::size_t kMaxPooledReceiveBuffers = 64;
+  constexpr std::size_t kMaxPooledReceiveBytes   = 64ull * 1024 * 1024;
+  std::lock_guard<std::mutex> guard(recv_pool_mu_);
+  for (auto& buffer : *buffers) {
+    if (recv_pool_.size() >= kMaxPooledReceiveBuffers ||
+        recv_pool_bytes_ + buffer.size() > kMaxPooledReceiveBytes) {
+      break;
+    }
+    recv_pool_bytes_ += buffer.size();
+    recv_pool_.push_back(std::move(buffer));
+  }
+  buffers->clear();
+}
+
 int RdmaDistributedExecutor::RegisterBatch(shard_routing::BatchRequest batch) {
   std::unique_lock<std::mutex> guard(batches_mu_);
   if (next_id_ < std::numeric_limits<int>::min() ||
       next_id_ > std::numeric_limits<int>::max()) {
     guard.unlock();
     ReleaseShardRpcs(&batch.shard_rpcs);
+    RecycleReceiveBuffers(&batch.receive_buffers);
     throw std::runtime_error("RDMA distributed batch handle space exhausted");
   }
   const int batch_id = static_cast<int>(next_id_);
@@ -68,6 +112,7 @@ int RdmaDistributedExecutor::RegisterBatch(shard_routing::BatchRequest batch) {
   if (batches_.find(batch_id) != batches_.end()) {
     guard.unlock();
     ReleaseShardRpcs(&batch.shard_rpcs);
+    RecycleReceiveBuffers(&batch.receive_buffers);
     throw std::runtime_error("duplicate RDMA distributed batch handle");
   }
   if (!batches_.emplace(batch_id, std::move(batch)).second) {
@@ -83,16 +128,20 @@ int RdmaDistributedExecutor::SubmitGetParameter(
     float* values,
     bool is_async,
     int async_req_id,
-    std::size_t max_in_flight) {
+    std::size_t max_in_flight,
+    bool write_status_word) {
   if (values == nullptr || value_size <= 0 || max_in_flight == 0) {
     throw std::invalid_argument("invalid RDMA GET request");
   }
 
   shard_routing::BatchRequest batch;
-  batch.user_buffer     = values;
-  batch.total_key_count = total_key_count;
-  batch.value_size      = value_size;
-  shard_routing::WriteBatchStatus(&batch, value_size);
+  batch.user_buffer       = values;
+  batch.total_key_count   = total_key_count;
+  batch.value_size        = value_size;
+  batch.write_status_word = write_status_word;
+  if (write_status_word) {
+    shard_routing::WriteBatchStatus(&batch, value_size);
+  }
   batch.receive_buffers.reserve(chunks.size());
   batch.shard_rpcs.reserve(chunks.size());
   std::vector<shard_routing::PendingShardRpc> window;
@@ -121,10 +170,9 @@ int RdmaDistributedExecutor::SubmitGetParameter(
         }
       }
       auto* client = ClientAt(chunk.client_index);
-      batch.receive_buffers.emplace_back(
+      batch.receive_buffers.push_back(AcquireReceiveBuffer(
           chunk.keys.size() * static_cast<std::size_t>(value_size) +
-              sizeof(std::int32_t),
-          0);
+          sizeof(std::int32_t)));
       void* recv = batch.receive_buffers.back().data();
       shard_routing::PendingShardRpc pending{
           chunk.shard_id,
@@ -151,6 +199,7 @@ int RdmaDistributedExecutor::SubmitGetParameter(
   } catch (...) {
     ReleaseShardRpcs(&window);
     ReleaseShardRpcs(&batch.shard_rpcs);
+    RecycleReceiveBuffers(&batch.receive_buffers);
     throw;
   }
   for (auto& pending : window) {
@@ -175,7 +224,9 @@ bool RdmaDistributedExecutor::FinalizeBatch(
   if (batch->status_code == static_cast<std::int32_t>(petps::RpcStatus::kOk)) {
     shard_routing::MergeBatchRows(batch, batch->value_size);
   }
-  shard_routing::WriteBatchStatus(batch, batch->value_size);
+  if (batch->write_status_word) {
+    shard_routing::WriteBatchStatus(batch, batch->value_size);
+  }
   batch->assembled = true;
   return batch->status_code == static_cast<std::int32_t>(petps::RpcStatus::kOk);
 }
@@ -550,7 +601,7 @@ int RdmaDistributedExecutor::WaitUpdateParameterFlat(std::uint64_t update_id) {
   return WaitUpdateRpcs(&update.shard_rpcs);
 }
 
-void RdmaDistributedExecutor::WaitBatch(int batch_id) {
+bool RdmaDistributedExecutor::WaitBatch(int batch_id) {
   std::vector<shard_routing::PendingShardRpc> shard_rpcs;
   {
     std::lock_guard<std::mutex> guard(batches_mu_);
@@ -559,7 +610,8 @@ void RdmaDistributedExecutor::WaitBatch(int batch_id) {
       throw std::runtime_error("unknown RDMA distributed batch handle");
     }
     if (it->second.assembled) {
-      return;
+      return it->second.status_code ==
+             static_cast<std::int32_t>(petps::RpcStatus::kOk);
     }
     shard_rpcs = it->second.shard_rpcs;
   }
@@ -569,7 +621,7 @@ void RdmaDistributedExecutor::WaitBatch(int batch_id) {
   if (it == batches_.end()) {
     throw std::runtime_error("RDMA distributed batch released while waiting");
   }
-  FinalizeBatch(&it->second);
+  return FinalizeBatch(&it->second);
 }
 
 void RdmaDistributedExecutor::ReleaseBatch(int batch_id) {
@@ -585,6 +637,7 @@ void RdmaDistributedExecutor::ReleaseBatch(int batch_id) {
     batches_.erase(it);
   }
   ReleaseShardRpcs(&batch.shard_rpcs);
+  RecycleReceiveBuffers(&batch.receive_buffers);
 }
 
 } // namespace recstore

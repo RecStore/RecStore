@@ -77,11 +77,13 @@ private:
   std::size_t MaxInFlightGetRpcs() const;
   std::vector<ShardChunk> BuildChunks(base::ConstArray<uint64_t> keys,
                                       std::size_t max_keys_per_rpc) const;
-  int SubmitGetParameter(base::ConstArray<uint64_t> keys,
-                         float* values,
-                         bool isAsync,
-                         int async_req_id,
-                         int64_t embedding_dim);
+  int SubmitGetParameter(
+      base::ConstArray<uint64_t> keys,
+      float* values,
+      bool isAsync,
+      int async_req_id,
+      int64_t embedding_dim,
+      bool write_status_word = true);
   bool QueryRPCFinished(int rpc_id);
   void WaitRPCFinish(int rpc_id);
   void RevokeRPCResource(int rpc_id);

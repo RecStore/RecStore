@@ -435,11 +435,14 @@ int RDMAPSClientAdapter::SubmitGetParameter(
     float* values,
     bool isAsync,
     int async_req_id,
-    int64_t embedding_dim) {
+    int64_t embedding_dim,
+    bool write_status_word) {
   EnsureThreadInitialized();
   if (keys.Size() == 0) {
-    auto* status = reinterpret_cast<std::int32_t*>(values);
-    *status      = static_cast<std::int32_t>(petps::RpcStatus::kOk);
+    if (write_status_word) {
+      auto* status = reinterpret_cast<std::int32_t*>(values);
+      *status      = static_cast<std::int32_t>(petps::RpcStatus::kOk);
+    }
     return 0;
   }
   const int value_size =
@@ -451,7 +454,8 @@ int RDMAPSClientAdapter::SubmitGetParameter(
       values,
       isAsync,
       async_req_id,
-      MaxInFlightGetRpcs());
+      MaxInFlightGetRpcs(),
+      write_status_word);
 }
 
 int RDMAPSClientAdapter::GetParameter(const base::ConstArray<uint64_t>& keys,
@@ -467,26 +471,20 @@ int RDMAPSClientAdapter::GetParameter(const base::ConstArray<uint64_t>& keys,
   const int value_size =
       static_cast<int>(static_cast<std::size_t>(embedding_dim) * sizeof(float));
 
-  const std::size_t response_bytes =
-      petps::FixedSlotResponseBytes(keys.Size(), value_size);
-  std::vector<float> recv_storage(
-      (response_bytes + sizeof(float) - 1) / sizeof(float), 0.0f);
-  float* recv = recv_storage.data();
-
-  const int rpc_id = SubmitGetParameter(keys, recv, false, 0, embedding_dim);
-  WaitRPCFinish(rpc_id);
-  const auto* status_word =
-      petps::FixedSlotStatusWord(recv, keys.Size(), value_size);
-  if (*status_word != static_cast<std::int32_t>(petps::RpcStatus::kOk)) {
-    RevokeRPCResource(rpc_id);
-    return -1;
-  }
-
-  std::memcpy(values.data_as<float>(),
-              recv,
-              keys.Size() * static_cast<std::size_t>(value_size));
+  // The shard merge writes every requested row, so submit the caller's tensor
+  // as the batch destination instead of round-tripping through a scratch
+  // buffer. `values` has no room for the trailing status word, so read the
+  // batch verdict from WaitBatch.
+  const int rpc_id = SubmitGetParameter(
+      keys,
+      values.data_as<float>(),
+      /*isAsync=*/false,
+      /*async_req_id=*/0,
+      embedding_dim,
+      /*write_status_word=*/false);
+  const bool ok = executor_->WaitBatch(rpc_id);
   RevokeRPCResource(rpc_id);
-  return 0;
+  return ok ? 0 : -1;
 }
 
 int RDMAPSClientAdapter::PutParameter(const base::ConstArray<uint64_t>& keys,
