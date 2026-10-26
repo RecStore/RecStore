@@ -1441,6 +1441,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ssd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        静态 SSD 布局
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2232,6 +2243,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ssd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        静态 SSD 布局
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2517,6 +2539,11 @@
 <td>需非空 <code>value.path</code>、<code>value.ssd_allocator</code>（含 <code>io</code>）</td>
 </tr>
 <tr>
+<td><code>SSD_STATIC_LAYOUT_VALUE_STORE</code></td>
+<td><code>SsdStaticLayoutValueStore</code></td>
+<td>固定 Bandana/MaxEmbed 布局，见下文</td>
+</tr>
+<tr>
 <td><code>TIERED_VALUE_STORE</code></td>
 <td><code>HybridValueStore</code></td>
 <td>需 <code>dram_allocator</code> + <code>ssd_allocator</code>；无顶层 <code>value.path</code></td>
@@ -2661,7 +2688,7 @@
 <code>size_classes</code>。其他 DRAM 分配器没有注册带 <code>size_classes</code> 的工厂，配置该字段会抛 <code>std::invalid_argument</code>。</p>
 <hr />
 <h2 id="ssd-allocatorvaluessd_allocatortype">SSD Allocator（<code>value.ssd_allocator.type</code>）<a class="headerlink" href="#ssd-allocatorvaluessd_allocatortype" title="Permanent link">&para;</a></h2>
-<p><code>SsdValueStore</code> 内联构造；默认 <strong><code>SSD_SLAB</code></strong>。</p>
+<p><code>SsdValueStore</code> 内联构造；默认 <strong><code>SSD_SLAB</code></strong>。静态 Bandana/MaxEmbed 布局不使用这两个 allocator。</p>
 <table>
 <thead>
 <tr>
@@ -2683,7 +2710,31 @@
 </tr>
 </tbody>
 </table>
-<p>均需嵌套 <code>io</code> 对象。</p>
+<p>均需嵌套 <code>io</code> 对象。<code>plain</code> 是省略 <code>value.ssd_layout</code> 或显式 <code>"strategy": "plain"</code> 的现有 <code>SSD_VALUE_STORE</code>。</p>
+<h2 id="ssd">静态 SSD 布局<a class="headerlink" href="#ssd" title="Permanent link">&para;</a></h2>
+<p><code>SSD_STATIC_LAYOUT_VALUE_STORE</code> 直接保存 <code>key -&gt; [(page, offset), ...]</code>。handle 是 <code>key + 1</code>，<code>0</code> 仍表示缺失；<code>TIERED_VALUE_STORE</code> 在 SSD 层继续加最高位。key 必须小于 <code>2^63-1</code>。</p>
+<table>
+<thead>
+<tr>
+<th><code>value.ssd_layout.strategy</code></th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bandana</code></td>
+<td>每个 key 一个固定页槽</td>
+</tr>
+<tr>
+<td><code>maxembed</code></td>
+<td>每个 key 一个 primary 槽，外加预算内的副本页</td>
+</tr>
+</tbody>
+</table>
+<p>离线命令是 <code>recstore_ssd_layout partition|replicate|shrink|inspect</code>。<code>bandana</code> 只跑 partition；<code>maxembed</code> 在 partition 之后跑 replicate，需要更低副本率时再 shrink。运行时加载 artifact，并要求 <code>strategy</code> 和 <code>default_value_size_hint</code> 与文件一致。输入和 artifact 字节布局见 <a href="../../src/storage/ssd_layout/ssd_layout.md">ssd_layout.md</a>。</p>
+<p>固定槽位不会 <code>Alloc</code> 或 <code>Free</code>。更新覆盖该 key 的全部副本；mapping 中没有的 key、变长 value 会直接失败。换 strategy 或 artifact 不能热切换，必须用空 engine 重新 <code>BulkLoad</code> 或 <code>LoadCheckpoint</code>。</p>
+<p>Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 checkpoint 只能恢复到 plain engine；identity 不一致时拒绝加载，不会静默退回 plain。</p>
+<p><code>TIERED_VALUE_STORE</code> 可以把静态 store 当作 SSD 子 store。DRAM 选择仍是现有高水位：<code>dram_bytes_reserved + size &lt;= capacity * high_watermark_ratio</code>。这里没有 LRU，也没有 SSD miss 后的 promotion。</p>
 <hr />
 <h2 id="_6">配置样例<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <p><strong>DRAM + DRAM（仓库默认组合）</strong></p>
