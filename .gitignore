@@ -54,7 +54,8 @@ docs/superpowers/
 rpc_data/
 Testing/
 build_release/
-tmp/
+# ./tmp - project process memory, kept out of version control (whole dir)
+/tmp/
 CURRENT_STATUS_*.md
 dockerfiles/docker_config/.env
 
