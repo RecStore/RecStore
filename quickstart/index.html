@@ -2093,8 +2093,12 @@
 <p>然后获取 RecStore 仓库并更新子模块（取决于网络状况，首次执行拉取子模块可能耗时较长，请耐心等待）：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>clone<span class="w"> </span>--depth<span class="w"> </span><span class="m">1</span><span class="w"> </span>--single-branch<span class="w"> </span>https://github.com/RecStore/RecStore.git
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">cd</span><span class="w"> </span>RecStore
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>git<span class="w"> </span>submodule<span class="w"> </span>update<span class="w"> </span>--init<span class="w"> </span>--recursive
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>git<span class="w"> </span>config<span class="w"> </span>core.hooksPath<span class="w"> </span>.githooks<span class="w">  </span><span class="c1"># 启用仓库自带的提交前格式化检查</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>mapfile<span class="w"> </span>-t<span class="w"> </span>submodules<span class="w"> </span>&lt;<span class="w"> </span>&lt;<span class="o">(</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span>git<span class="w"> </span>config<span class="w"> </span>-f<span class="w"> </span>.gitmodules<span class="w"> </span>--get-regexp<span class="w"> </span>path<span class="w"> </span><span class="p">|</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">        </span>awk<span class="w"> </span><span class="s1">'$2 != "third_party/faster" &amp;&amp; $2 != "third_party/HugeCTR" { print $2 }'</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="o">)</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>git<span class="w"> </span>submodule<span class="w"> </span>update<span class="w"> </span>--init<span class="w"> </span>--recursive<span class="w"> </span>--<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">submodules</span><span class="p">[@]</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>git<span class="w"> </span>config<span class="w"> </span>core.hooksPath<span class="w"> </span>.githooks<span class="w">  </span><span class="c1"># 启用仓库自带的提交前格式化检查</span>
 </code></pre></div>
 <details class="note">
 <summary>下载打包后的子模块</summary>
@@ -2152,17 +2156,25 @@
 <div class="highlight"><span class="filename">初始化环境依赖</span><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">cd</span><span class="w"> </span>dockerfiles
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>bash<span class="w"> </span>init_env_inside_docker.sh<span class="w"> </span>&gt;<span class="w"> </span>init_env.log<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
 </code></pre></div>
-<div class="highlight"><span class="filename">初始化 PyTorch 依赖</span><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># in RecStore/dockerfiles directory</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>bash<span class="w"> </span>init_dlrm.sh<span class="w"> </span>--mirror<span class="o">=</span><span class="m">0</span>
+<p>FASTERKV 和 HPS 默认不安装。如需使用，可增量执行：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>bash<span class="w"> </span>init_env_inside_docker.sh<span class="w"> </span>--third-party-engines<span class="w"> </span>&gt;<span class="w"> </span>init_engines.log<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+</code></pre></div>
+<div class="highlight"><span class="filename">初始化 PyTorch 依赖</span><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># in RecStore/dockerfiles directory</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>bash<span class="w"> </span>init_dlrm.sh<span class="w"> </span>--mirror<span class="o">=</span><span class="m">0</span>
 </code></pre></div>
 <h2 id="4-recstore">4. 编译 RecStore<a class="headerlink" href="#4-recstore" title="Permanent link">&para;</a></h2>
 <p>最后，编译项目：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># in RecStore root directory</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>build
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># in RecStore root directory</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>build
 </code></pre></div>
-<div class="highlight"><span class="filename">编译 RecStore</span><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># in RecStore/build directory</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>cmake<span class="w"> </span>-DCMAKE_POLICY_VERSION_MINIMUM<span class="o">=</span><span class="m">3</span>.10<span class="w"> </span>..
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>make<span class="w"> </span>-j
+<div class="highlight"><span class="filename">编译 RecStore</span><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># in RecStore/build directory</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span>-DCMAKE_POLICY_VERSION_MINIMUM<span class="o">=</span><span class="m">3</span>.10<span class="w"> </span>..
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>make<span class="w"> </span>-j
+</code></pre></div>
+<p>Release 默认构建测试，关闭性能上报和第三方存储引擎。启用 FASTERKV 和 HPS 时，增加：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span>-DRECSTORE_ENABLE_THIRD_PARTY_ENGINES<span class="o">=</span>ON<span class="w"> </span>..
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>make<span class="w"> </span>-j
 </code></pre></div>
 <h2 id="_2">环境信息<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <details class="note">
@@ -2176,8 +2188,8 @@
 </ul>
 <p>其中 <code>torch</code> 需要满足 <code>torch.compiled_with_cxx11_abi() == True</code>。<code>dockerfiles/init_dlrm.sh</code> 默认会复用已经安装好的全局 <code>torch</code>，并安装与其匹配的 TorchRec 依赖。</p>
 <p>如需手动安装，可直接执行：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--index-url<span class="w"> </span>https://download.pytorch.org/whl/cu118<span class="w"> </span><span class="nv">torch</span><span class="o">==</span><span class="m">2</span>.7.1
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="nv">torchrec</span><span class="o">==</span><span class="m">1</span>.2.0<span class="w"> </span>fbgemm-gpu<span class="o">==</span><span class="m">1</span>.2.0<span class="w"> </span><span class="nv">torchmetrics</span><span class="o">==</span><span class="m">1</span>.0.3<span class="w"> </span>tqdm
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--index-url<span class="w"> </span>https://download.pytorch.org/whl/cu118<span class="w"> </span><span class="nv">torch</span><span class="o">==</span><span class="m">2</span>.7.1
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="nv">torchrec</span><span class="o">==</span><span class="m">1</span>.2.0<span class="w"> </span>fbgemm-gpu<span class="o">==</span><span class="m">1</span>.2.0<span class="w"> </span><span class="nv">torchmetrics</span><span class="o">==</span><span class="m">1</span>.0.3<span class="w"> </span>tqdm
 </code></pre></div>
 </details>
 <details class="note">
