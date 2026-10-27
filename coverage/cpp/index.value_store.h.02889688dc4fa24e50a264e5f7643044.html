@@ -38,18 +38,18 @@
     <div class="col-sm-12 col-lg-3 float-left d-flex flex-column text-right flex-justify-end pr-3">
       <div class="d-flex">
         <div class="mr-2">Lines:</div>
-        <div class="mr-2" style="margin: auto;">9 / 40</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">22.5%</span></div>
+        <div class="mr-2" style="margin: auto;">19 / 56</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">33.9%</span></div>
       </div>
       <div class="d-flex">
         <div class="mr-2">Branches:</div>
-        <div class="mr-2" style="margin: auto;">5 / 24</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">20.8%</span></div>
+        <div class="mr-2" style="margin: auto;">9 / 42</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">21.4%</span></div>
       </div>
       <div class="d-flex">
         <div class="mr-2">Functions:</div>
-        <div class="mr-2" style="margin: auto;">4 / 13</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">30.8%</span></div>
+        <div class="mr-2" style="margin: auto;">9 / 18</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">50.0%</span></div>
       </div>
     </div>
   </div>
@@ -69,11 +69,25 @@
     <div role="rowheader" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2 sortable">Blocks</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L125">ValueStore::AllocAndWrite(unsigned long, void const*, unsigned long) (src/storage/value_store/value_store.h:125)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="256810">called 256810 times</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L116">ValueStore::BatchAllocAndWrite(std::vector&lt;ValueStore::WriteSpec, std::allocator&lt;ValueStore::WriteSpec&gt; &gt; const&amp;) (src/storage/value_store/value_store.h:116)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="246">called 246 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="268">called 268 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">85.7%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">62.5%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">82.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L130">ValueStore::BatchAllocAndWrite(std::vector&lt;unsigned long, std::allocator&lt;unsigned long&gt; &gt; const&amp;, std::vector&lt;ValueStore::WriteSpec, std::allocator&lt;ValueStore::WriteSpec&gt; &gt; const&amp;) (src/storage/value_store/value_store.h:130)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="376">called 376 times</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">36.4%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">22.2%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">33.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L53">ValueStore::BatchRead(std::vector&lt;unsigned long, std::allocator&lt;unsigned long&gt; &gt; const&amp;, std::vector&lt;ValueStore::ReadResult, std::allocator&lt;ValueStore::ReadResult&gt; &gt;&amp;) (src/storage/value_store/value_store.h:53)</a>    </div>
@@ -91,13 +105,13 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L36">ValueStore::DirectPtr(unsigned long) const (src/storage/value_store/value_store.h:36)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="73918">called 73918 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="73780">called 73780 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L126">ValueStore::ExtraResultFields[abi:cxx11]() const (src/storage/value_store/value_store.h:126)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L156">ValueStore::ExtraResultFields[abi:cxx11]() const (src/storage/value_store/value_store.h:156)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
@@ -111,11 +125,25 @@
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L125">ValueStore::GetInfo[abi:cxx11]() const (src/storage/value_store/value_store.h:125)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L155">ValueStore::GetInfo[abi:cxx11]() const (src/storage/value_store/value_store.h:155)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L152">ValueStore::GetLayoutId() const (src/storage/value_store/value_store.h:152)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="726">called 726 times</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L149">ValueStore::LayoutId::plain() const (src/storage/value_store/value_store.h:149)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="722">called 722 times</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L37">ValueStore::RDMABackingData() const (src/storage/value_store/value_store.h:37)</a>    </div>
@@ -140,6 +168,13 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L69">ValueStore::ReadFlatFixedRows(unsigned long const*, unsigned long, void*, unsigned long, unsigned long*) const (src/storage/value_store/value_store.h:69)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="4">called 4 times</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L154">ValueStore::ResetStats() (src/storage/value_store/value_store.h:154)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
@@ -147,14 +182,14 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L35">ValueStore::Retire(unsigned long) (src/storage/value_store/value_store.h:35)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="83604">called 83604 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="83692">called 83692 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L28">ValueStore::~ValueStore() (src/storage/value_store/value_store.h:28)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="1776">called 1776 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="1832">called 1832 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
@@ -168,9 +203,9 @@
   <div class="Box-header d-flex flex-space-between sticky">
     storage/value_store/value_store.h
     <div class="toggle-buttons">
-      <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">7 covered</button>
-      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">31 uncovered</button>
-      <button type="button" class="button_toggle_partialCoveredLine show_partialCoveredLine" value="partialCoveredLine" title="Toggle partial covered lines">2 partial covered</button>
+      <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">14 covered</button>
+      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">37 uncovered</button>
+      <button type="button" class="button_toggle_partialCoveredLine show_partialCoveredLine" value="partialCoveredLine" title="Toggle partial covered lines">5 partial covered</button>
     </div>
     <div class="nav">
       <a class="nav prev" href="index.ssd_value_store.h.b34abf158c9263387c4ec0ce48184d36.html"></a>
@@ -379,7 +414,7 @@
         <td class="text-right src linenos"><a class="normal" id="L28" href="#L28">28</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1776</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1832</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="o">~</span><span class="n">ValueStore</span><span class="p">()</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">default</span><span class="p">;</span></td>
       </tr>
       <tr>
@@ -428,14 +463,14 @@
         <td class="text-right src linenos"><a class="normal" id="L35" href="#L35">35</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">83604</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">83692</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">Retire</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">handle</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">Free</span><span class="p">(</span><span class="n">handle</span><span class="p">);</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L36" href="#L36">36</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">73918</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">73780</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">DirectPtr</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">handle</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
@@ -708,8 +743,8 @@
         <td class="text-right src linenos"><a class="normal" id="L69" href="#L69">69</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">ReadFlatFixedRows</span><span class="p">(</span></td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">4</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">ReadFlatFixedRows</span><span class="p">(</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L70" href="#L70">70</a></td>
@@ -785,8 +820,8 @@
         <td class="text-right src linenos"><a class="normal" id="L80" href="#L80">80</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span></td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">4</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L81" href="#L81">81</a></td>
@@ -1037,14 +1072,14 @@
         <td class="text-right src linenos"><a class="normal" id="L116" href="#L116">116</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">246</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">268</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">BatchAllocAndWrite</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">WriteSpec</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">specs</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L117" href="#L117">117</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">246</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">268</td>
         <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">handles</span><span class="p">;</span></td>
       </tr>
       <tr>
@@ -1053,12 +1088,12 @@
           <details class="normal details-overlay">
             <summary>1/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 2 taken 246 times.</div>
+              <div class="color-taken-branch">&check; Branch 2 taken 268 times.</div>
               <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">246</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">268</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="n">handles</span><span class="p">.</span><span class="n">reserve</span><span class="p">(</span><span class="n">specs</span><span class="p">.</span><span class="n">size</span><span class="p">());</span></td>
       </tr>
       <tr>
@@ -1067,12 +1102,12 @@
           <details class="normal details-overlay">
             <summary>2/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 4 taken 806 times.</div>
-              <div class="color-taken-branch">&check; Branch 5 taken 246 times.</div>
+              <div class="color-taken-branch">&check; Branch 4 taken 1008 times.</div>
+              <div class="color-taken-branch">&check; Branch 5 taken 268 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1052</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1276</td>
         <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">specs</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
@@ -1081,14 +1116,14 @@
           <details class="normal details-overlay">
             <summary>2/4</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 1 taken 806 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 1008 times.</div>
               <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
-              <div class="color-taken-branch">&check; Branch 4 taken 806 times.</div>
+              <div class="color-taken-branch">&check; Branch 4 taken 1008 times.</div>
               <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">806</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">1008</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">      </span><span class="n">handles</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">AllocAndWrite</span><span class="p">(</span><span class="n">spec</span><span class="p">.</span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="n">spec</span><span class="p">.</span><span class="n">size</span><span class="p">));</span></td>
       </tr>
       <tr>
@@ -1102,7 +1137,7 @@
         <td class="text-right src linenos"><a class="normal" id="L122" href="#L122">122</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">246</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">268</td>
         <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">handles</span><span class="p">;</span></td>
       </tr>
       <tr>
@@ -1122,6 +1157,269 @@
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L125" href="#L125">125</a></td>
         <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">256810</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">AllocAndWrite</span><span class="p">(</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">size</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L126" href="#L126">126</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">key</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L127" href="#L127">127</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">256810</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">AllocAndWrite</span><span class="p">(</span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="n">size</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L128" href="#L128">128</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L129" href="#L129">129</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L130" href="#L130">130</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">376</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">BatchAllocAndWrite</span><span class="p">(</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L131" href="#L131">131</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">WriteSpec</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">specs</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L132" href="#L132">132</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 3 taken 376 times.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">376</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">size</span><span class="p">()</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">specs</span><span class="p">.</span><span class="n">size</span><span class="p">())</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L133" href="#L133">133</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">&quot;BatchAllocAndWrite size mismatch&quot;</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L134" href="#L134">134</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L135" href="#L135">135</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>2/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 376 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 4 taken 376 times.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">376</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">GetLayoutId</span><span class="p">().</span><span class="n">plain</span><span class="p">())</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L136" href="#L136">136</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 376 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">376</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="n">BatchAllocAndWrite</span><span class="p">(</span><span class="n">specs</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L137" href="#L137">137</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L138" href="#L138">138</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">handles</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L139" href="#L139">139</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">handles</span><span class="p">.</span><span class="n">reserve</span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">size</span><span class="p">());</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L140" href="#L140">140</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">keys</span><span class="p">.</span><span class="n">size</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L141" href="#L141">141</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 8 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">handles</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">AllocAndWrite</span><span class="p">(</span><span class="n">keys</span><span class="p">[</span><span class="n">i</span><span class="p">],</span><span class="w"> </span><span class="n">specs</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="n">specs</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">size</span><span class="p">));</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L142" href="#L142">142</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L143" href="#L143">143</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">handles</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L144" href="#L144">144</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L145" href="#L145">145</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L146" href="#L146">146</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="k">struct</span><span class="w"> </span><span class="nc">LayoutId</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L147" href="#L147">147</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L148" href="#L148">148</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">checksum</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L149" href="#L149">149</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">722</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="nf">plain</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">strategy</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L150" href="#L150">150</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="p">};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L151" href="#L151">151</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L152" href="#L152">152</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">726</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="n">LayoutId</span><span class="w"> </span><span class="n">GetLayoutId</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="p">{};</span><span class="w"> </span><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L153" href="#L153">153</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L154" href="#L154">154</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">ResetStats</span><span class="p">()</span><span class="w"> </span><span class="p">{}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L155" href="#L155">155</a></td>
+        <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>0/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
@@ -1134,7 +1432,7 @@
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">GetInfo</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;(no info)&quot;</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L126" href="#L126">126</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L156" href="#L156">156</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>0/2</summary>
@@ -1148,14 +1446,14 @@
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">ExtraResultFields</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L127" href="#L127">127</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L157" href="#L157">157</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="p">};</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L128" href="#L128">128</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L158" href="#L158">158</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
@@ -1168,7 +1466,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
-          at 2026-10-25 14:16:19+00:00
+          at 2026-10-27 12:02:41+00:00
         </footer>
       </div>
     </div>

@@ -38,18 +38,18 @@
     <div class="col-sm-12 col-lg-3 float-left d-flex flex-column text-right flex-justify-end pr-3">
       <div class="d-flex">
         <div class="mr-2">Lines:</div>
-        <div class="mr-2" style="margin: auto;">272 / 420</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">64.8%</span></div>
+        <div class="mr-2" style="margin: auto;">272 / 432</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">63.0%</span></div>
       </div>
       <div class="d-flex">
         <div class="mr-2">Branches:</div>
-        <div class="mr-2" style="margin: auto;">195 / 718</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">27.2%</span></div>
+        <div class="mr-2" style="margin: auto;">195 / 750</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">26.0%</span></div>
       </div>
       <div class="d-flex">
         <div class="mr-2">Functions:</div>
-        <div class="mr-2" style="margin: auto;">15 / 19</div>
-        <div class="Label--minw"><span class="coverage-medium IssueLabel color-fg-on-emphasis mr-1">78.9%</span></div>
+        <div class="mr-2" style="margin: auto;">15 / 20</div>
+        <div class="Label--minw"><span class="coverage-medium IssueLabel color-fg-on-emphasis mr-1">75.0%</span></div>
       </div>
     </div>
   </div>
@@ -95,6 +95,13 @@
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">70.6%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">23.9%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">39.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L760">GRPCParameterClient::ExchangeSparseGradientCommit(std::__cxx11::basic_string&lt;char, std::char_traits&lt;char&gt;, std::allocator&lt;char&gt; &gt; const&amp;, std::__cxx11::basic_string&lt;char, std::char_traits&lt;char&gt;, std::allocator&lt;char&gt; &gt; const&amp;) (src/ps/grpc/grpc_ps_client.cpp:760)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L64">GRPCParameterClient::GRPCParameterClient(nlohmann::json_abi_v3_11_2::basic_json&lt;std::map, std::vector, std::__cxx11::basic_string&lt;char, std::char_traits&lt;char&gt;, std::allocator&lt;char&gt; &gt;, bool, long, unsigned long, double, std::allocator, nlohmann::json_abi_v3_11_2::adl_serializer, std::vector&lt;unsigned char, std::allocator&lt;unsigned char&gt; &gt;, void&gt;) (src/ps/grpc/grpc_ps_client.cpp:64)</a>    </div>
@@ -211,7 +218,7 @@
     ps/grpc/grpc_ps_client.cpp
     <div class="toggle-buttons">
       <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">136 covered</button>
-      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">148 uncovered</button>
+      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">160 uncovered</button>
       <button type="button" class="button_toggle_partialCoveredLine show_partialCoveredLine" value="partialCoveredLine" title="Toggle partial covered lines">136 partial covered</button>
     </div>
     <div class="nav">
@@ -7389,6 +7396,214 @@
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"></td>
       </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L760" href="#L760">760</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="kt">int64_t</span><span class="w"> </span><span class="n">GRPCParameterClient</span><span class="o">::</span><span class="n">ExchangeSparseGradientCommit</span><span class="p">(</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L761" href="#L761">761</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">payload</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L762" href="#L762">762</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">recstoreps</span><span class="o">::</span><span class="n">SparseGradientCommitRequest</span><span class="w"> </span><span class="n">request</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L763" href="#L763">763</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">recstoreps</span><span class="o">::</span><span class="n">SparseGradientCommitResponse</span><span class="w"> </span><span class="n">response</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L764" href="#L764">764</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="n">request</span><span class="p">.</span><span class="n">set_table_name</span><span class="p">(</span><span class="n">table</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L765" href="#L765">765</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="n">request</span><span class="p">.</span><span class="n">set_payload</span><span class="p">(</span><span class="n">payload</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L766" href="#L766">766</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">grpc</span><span class="o">::</span><span class="n">ClientContext</span><span class="w"> </span><span class="n">context</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L767" href="#L767">767</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">SetRpcDeadline</span><span class="p">(</span><span class="o">&amp;</span><span class="n">context</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L768" href="#L768">768</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L769" href="#L769">769</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">stubs_</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">-&gt;</span><span class="n">SparseGradientCommit</span><span class="p">(</span><span class="o">&amp;</span><span class="n">context</span><span class="p">,</span><span class="w"> </span><span class="n">request</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">response</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L770" href="#L770">770</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/8</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 8 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 9 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 10 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">status</span><span class="p">.</span><span class="n">ok</span><span class="p">()</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="n">response</span><span class="p">.</span><span class="n">error</span><span class="p">().</span><span class="n">empty</span><span class="p">())</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L771" href="#L771">771</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L772" href="#L772">772</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="s">&quot;SparseGradientCommit: &quot;</span><span class="w"> </span><span class="o">+</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L773" href="#L773">773</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/8</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 8 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 9 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 11 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 12 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="p">(</span><span class="n">status</span><span class="p">.</span><span class="n">ok</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">response</span><span class="p">.</span><span class="n">error</span><span class="p">()</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">status</span><span class="p">.</span><span class="n">error_message</span><span class="p">()));</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L774" href="#L774">774</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L775" href="#L775">775</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">response</span><span class="p">.</span><span class="n">committed_step</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L776" href="#L776">776</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L777" href="#L777">777</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
     </table>
   </div>
 </div>
@@ -7396,7 +7611,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
-          at 2026-10-25 14:16:19+00:00
+          at 2026-10-27 12:02:41+00:00
         </footer>
       </div>
     </div>

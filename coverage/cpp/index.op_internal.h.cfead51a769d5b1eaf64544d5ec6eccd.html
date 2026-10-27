@@ -38,18 +38,18 @@
     <div class="col-sm-12 col-lg-3 float-left d-flex flex-column text-right flex-justify-end pr-3">
       <div class="d-flex">
         <div class="mr-2">Lines:</div>
-        <div class="mr-2" style="margin: auto;">12 / 45</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">26.7%</span></div>
+        <div class="mr-2" style="margin: auto;">12 / 27</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">44.4%</span></div>
       </div>
       <div class="d-flex">
         <div class="mr-2">Branches:</div>
-        <div class="mr-2" style="margin: auto;">9 / 56</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">16.1%</span></div>
+        <div class="mr-2" style="margin: auto;">9 / 36</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">25.0%</span></div>
       </div>
       <div class="d-flex">
         <div class="mr-2">Functions:</div>
-        <div class="mr-2" style="margin: auto;">2 / 10</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">20.0%</span></div>
+        <div class="mr-2" style="margin: auto;">2 / 5</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">40.0%</span></div>
       </div>
     </div>
   </div>
@@ -69,70 +69,35 @@
     <div role="rowheader" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2 sortable">Blocks</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L109">recstore::framework::ElapsedMs(std::chrono::time_point&lt;std::chrono::_V2::steady_clock, std::chrono::duration&lt;long, std::ratio&lt;1l, 1000000000l&gt; &gt; &gt;) (src/framework/pytorch/op_internal.h:109)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-  </div>
-  <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L71">recstore::framework::GetConcreteKVClientOp() (src/framework/pytorch/op_internal.h:71)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="10">called 10 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L64">recstore::framework::GetConcreteKVClientOp() (src/framework/pytorch/op_internal.h:64)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="62">called 62 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">50.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">60.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L36">recstore::framework::IsLocalFastPathBackend(std::__cxx11::basic_string&lt;char, std::char_traits&lt;char&gt;, std::allocator&lt;char&gt; &gt; const&amp;) (src/framework/pytorch/op_internal.h:36)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L42">recstore::framework::PinnedCpuOptions(c10::ScalarType) (src/framework/pytorch/op_internal.h:42)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L49">recstore::framework::PinnedCpuOptions(c10::ScalarType) (src/framework/pytorch/op_internal.h:49)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-  </div>
-  <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L115">recstore::framework::ResetLocalLookupFlatProfile() (src/framework/pytorch/op_internal.h:115)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-  </div>
-  <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L121">recstore::framework::ResetLocalUpdateFlatProfile() (src/framework/pytorch/op_internal.h:121)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L49">recstore::framework::StageCudaTensorToPinnedCpu(at::Tensor const&amp;, c10::ScalarType) (src/framework/pytorch/op_internal.h:49)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L56">recstore::framework::StageCudaTensorToPinnedCpu(at::Tensor const&amp;, c10::ScalarType) (src/framework/pytorch/op_internal.h:56)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-  </div>
-  <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L64">recstore::framework::StageCudaTensorToPinnedCpuAsyncNoCast(at::Tensor const&amp;) (src/framework/pytorch/op_internal.h:64)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L57">recstore::framework::StageCudaTensorToPinnedCpuAsyncNoCast(at::Tensor const&amp;) (src/framework/pytorch/op_internal.h:57)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L105">recstore::framework::SteadyNow() (src/framework/pytorch/op_internal.h:105)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
-  </div>
-  <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L41">recstore::framework::ToRecTensor(at::Tensor const&amp;, base::DataType) (src/framework/pytorch/op_internal.h:41)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L34">recstore::framework::ToRecTensor(at::Tensor const&amp;, base::DataType) (src/framework/pytorch/op_internal.h:34)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="108">called 108 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">58.3%</div>
@@ -148,7 +113,7 @@
     framework/pytorch/op_internal.h
     <div class="toggle-buttons">
       <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">7 covered</button>
-      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">33 uncovered</button>
+      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">15 uncovered</button>
       <button type="button" class="button_toggle_partialCoveredLine show_partialCoveredLine" value="partialCoveredLine" title="Toggle partial covered lines">5 partial covered</button>
     </div>
     <div class="nav">
@@ -184,189 +149,189 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="c1">// Internal shared state and helpers for the recstore_ops translation units.</span></td>
+        <td class="src"><span class="c1">// Tensor/device conversion helpers shared by the PyTorch op adapters.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L4" href="#L4">4</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="c1">// This header owns the process-wide profile counters and the GPU cache</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L5" href="#L5">5</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="c1">// adaptive-bypass / pending-update state so the per-family .cc files do not</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;torch/extension.h&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L6" href="#L6">6</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="c1">// each carry their own copy.</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L7" href="#L7">7</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;algorithm&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L8" href="#L8">8</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;torch/extension.h&gt;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;chrono&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L9" href="#L9">9</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;cstddef&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L10" href="#L10">10</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;algorithm&gt;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;cstdint&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L11" href="#L11">11</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;chrono&gt;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;memory&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L12" href="#L12">12</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;cstddef&gt;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;string&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L13" href="#L13">13</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;cstdint&gt;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;vector&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L14" href="#L14">14</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;memory&gt;</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L15" href="#L15">15</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;mutex&gt;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/tensor.h&quot;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L16" href="#L16">16</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;string&gt;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;framework/op.h&quot;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L17" href="#L17">17</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;unordered_map&gt;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;framework/common/op_profile.h&quot;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L18" href="#L18">18</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;vector&gt;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;framework/cache/cache_profile.h&quot;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L19" href="#L19">19</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;framework/pytorch/op_cuda_runtime.h&quot;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L20" href="#L20">20</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/tensor.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;ps/local_shm/local_shm_client.h&quot;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L21" href="#L21">21</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;framework/op.h&quot;</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L22" href="#L22">22</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;framework/pytorch/op_cuda_runtime.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;glog/logging.h&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L23" href="#L23">23</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;ps/local_shm/local_shm_client.h&quot;</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L24" href="#L24">24</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="cp">#ifdef RECSTORE_ENABLE_GPU_CACHE</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L25" href="#L25">25</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;glog/logging.h&gt;</span></td>
+        <td class="src"><span class="cp">#</span><span class="w">  </span><span class="cp">include</span><span class="w"> </span><span class="cpf">&quot;framework/pytorch/cache/gpu_cache_adapter.h&quot;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L26" href="#L26">26</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="cp">#endif</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L27" href="#L27">27</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#ifdef RECSTORE_ENABLE_GPU_CACHE</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L28" href="#L28">28</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#</span><span class="w">  </span><span class="cp">include</span><span class="w"> </span><span class="cpf">&quot;framework/gpu/gpu_embedding_cache.h&quot;</span></td>
+        <td class="src"><span class="n">namespace</span><span class="w"> </span><span class="n">recstore</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L29" href="#L29">29</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#endif</span></td>
+        <td class="src"><span class="n">namespace</span><span class="w"> </span><span class="n">framework</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L30" href="#L30">30</a></td>
@@ -380,96 +345,38 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="n">namespace</span><span class="w"> </span><span class="n">recstore</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src"><span class="c1">// --- Shared predicates and tensor helpers ----------------------------------</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L32" href="#L32">32</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="n">namespace</span><span class="w"> </span><span class="n">framework</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L33" href="#L33">33</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L34" href="#L34">34</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="c1">// --- Shared predicates and tensor helpers ----------------------------------</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L35" href="#L35">35</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L36" href="#L36">36</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="kr">inline</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="nf">IsLocalFastPathBackend</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">backend</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L37" href="#L37">37</a></td>
-        <td class="text-right src linenos ws-unset">
-          <details class="normal details-overlay">
-            <summary>0/4</summary>
-            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
-            </div>
-          </details>
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">backend</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;local_shm&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">backend</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;hierkv&quot;</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L38" href="#L38">38</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L39" href="#L39">39</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L40" href="#L40">40</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">RecTensor</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L41" href="#L41">41</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L34" href="#L34">34</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">108</td>
         <td class="src coveredLine show_coveredLine"><span class="nf">ToRecTensor</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">tensor</span><span class="p">,</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">DataType</span><span class="w"> </span><span class="n">dtype</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L42" href="#L42">42</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L35" href="#L35">35</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">108</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">shape</span><span class="p">;</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L43" href="#L43">43</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L36" href="#L36">36</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>3/4</summary>
@@ -485,7 +392,7 @@
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">tensor</span><span class="p">.</span><span class="n">dim</span><span class="p">();</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L44" href="#L44">44</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L37" href="#L37">37</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>2/4</summary>
@@ -501,14 +408,14 @@
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="n">shape</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">tensor</span><span class="p">.</span><span class="n">size</span><span class="p">(</span><span class="n">i</span><span class="p">));</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L45" href="#L45">45</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L38" href="#L38">38</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="w">  </span><span class="p">}</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L46" href="#L46">46</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L39" href="#L39">39</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>2/4</summary>
@@ -524,11 +431,60 @@
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">RecTensor</span><span class="p">(</span><span class="n">const_cast</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">*&gt;</span><span class="p">(</span><span class="n">tensor</span><span class="p">.</span><span class="n">data_ptr</span><span class="p">()),</span><span class="w"> </span><span class="n">shape</span><span class="p">,</span><span class="w"> </span><span class="n">dtype</span><span class="p">);</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L47" href="#L47">47</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L40" href="#L40">40</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">108</td>
         <td class="src coveredLine show_coveredLine"><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L41" href="#L41">41</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L42" href="#L42">42</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="kr">inline</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">TensorOptions</span><span class="w"> </span><span class="nf">PinnedCpuOptions</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">ScalarType</span><span class="w"> </span><span class="n">dtype</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L43" href="#L43">43</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">TensorOptions</span><span class="p">()</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L44" href="#L44">44</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="p">.</span><span class="n">device</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">kCPU</span><span class="p">)</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L45" href="#L45">45</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="p">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L46" href="#L46">46</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="p">.</span><span class="n">pinned_memory</span><span class="p">(</span><span class="nb">true</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L47" href="#L47">47</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L48" href="#L48">48</a></td>
@@ -542,66 +498,17 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="kr">inline</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">TensorOptions</span><span class="w"> </span><span class="nf">PinnedCpuOptions</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">ScalarType</span><span class="w"> </span><span class="n">dtype</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L50" href="#L50">50</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">TensorOptions</span><span class="p">()</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L51" href="#L51">51</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="p">.</span><span class="n">device</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">kCPU</span><span class="p">)</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L52" href="#L52">52</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="p">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L53" href="#L53">53</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="p">.</span><span class="n">pinned_memory</span><span class="p">(</span><span class="nb">true</span><span class="p">);</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L54" href="#L54">54</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L55" href="#L55">55</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L56" href="#L56">56</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
         <td class="src uncoveredLine show_uncoveredLine"><span class="kr">inline</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="w"> </span><span class="nf">StageCudaTensorToPinnedCpu</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">tensor</span><span class="p">,</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L57" href="#L57">57</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L50" href="#L50">50</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="w">                                                </span><span class="n">torch</span><span class="o">::</span><span class="n">ScalarType</span><span class="w"> </span><span class="n">dtype</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L58" href="#L58">58</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L51" href="#L51">51</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>0/6</summary>
@@ -619,7 +526,7 @@
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">cpu_tensor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">empty</span><span class="p">(</span><span class="n">tensor</span><span class="p">.</span><span class="n">sizes</span><span class="p">(),</span><span class="w"> </span><span class="n">PinnedCpuOptions</span><span class="p">(</span><span class="n">dtype</span><span class="p">));</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L59" href="#L59">59</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L52" href="#L52">52</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>0/4</summary>
@@ -635,49 +542,49 @@
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">cpu_tensor</span><span class="p">.</span><span class="n">copy_</span><span class="p">(</span><span class="n">tensor</span><span class="p">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="p">),</span><span class="w"> </span><span class="cm">/*non_blocking=*/</span><span class="nb">false</span><span class="p">);</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L60" href="#L60">60</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L53" href="#L53">53</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">cpu_tensor</span><span class="p">;</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L61" href="#L61">61</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L54" href="#L54">54</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
         <td class="src uncoveredLine show_uncoveredLine"><span class="p">}</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L62" href="#L62">62</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L55" href="#L55">55</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L63" href="#L63">63</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L56" href="#L56">56</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L64" href="#L64">64</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L57" href="#L57">57</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
         <td class="src uncoveredLine show_uncoveredLine"><span class="nf">StageCudaTensorToPinnedCpuAsyncNoCast</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">tensor</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L65" href="#L65">65</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L58" href="#L58">58</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">cpu_tensor</span><span class="w"> </span><span class="o">=</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L66" href="#L66">66</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L59" href="#L59">59</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>0/8</summary>
@@ -697,7 +604,7 @@
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">torch</span><span class="o">::</span><span class="n">empty</span><span class="p">(</span><span class="n">tensor</span><span class="p">.</span><span class="n">sizes</span><span class="p">(),</span><span class="w"> </span><span class="n">PinnedCpuOptions</span><span class="p">(</span><span class="n">tensor</span><span class="p">.</span><span class="n">scalar_type</span><span class="p">()));</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L67" href="#L67">67</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L60" href="#L60">60</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>0/2</summary>
@@ -711,18 +618,81 @@
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">cpu_tensor</span><span class="p">.</span><span class="n">copy_</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span><span class="w"> </span><span class="cm">/*non_blocking=*/</span><span class="nb">true</span><span class="p">);</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L68" href="#L68">68</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L61" href="#L61">61</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">cpu_tensor</span><span class="p">;</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L69" href="#L69">69</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L62" href="#L62">62</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
         <td class="src uncoveredLine show_uncoveredLine"><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L63" href="#L63">63</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L64" href="#L64">64</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">62</td>
+        <td class="src coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">KVClientOp</span><span class="o">&gt;</span><span class="w"> </span><span class="n">GetConcreteKVClientOp</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L65" href="#L65">65</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 62 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">62</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">op</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="n">GetKVClientOp</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L66" href="#L66">66</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">62</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">kv_op</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">dynamic_pointer_cast</span><span class="o">&lt;</span><span class="n">KVClientOp</span><span class="o">&gt;</span><span class="p">(</span><span class="n">op</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L67" href="#L67">67</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 2 taken 62 times.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">62</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">kv_op</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;storage backend is not KVClientOp&quot;</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L68" href="#L68">68</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">124</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">kv_op</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L69" href="#L69">69</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">62</td>
+        <td class="src coveredLine show_coveredLine"><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L70" href="#L70">70</a></td>
@@ -735,1331 +705,123 @@
         <td class="text-right src linenos"><a class="normal" id="L71" href="#L71">71</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">10</td>
-        <td class="src coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">KVClientOp</span><span class="o">&gt;</span><span class="w"> </span><span class="n">GetConcreteKVClientOp</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="c1">// Tensor adapters for the framework-independent op/cache runtime.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L72" href="#L72">72</a></td>
         <td class="text-right src linenos ws-unset">
-          <details class="normal details-overlay">
-            <summary>1/2</summary>
-            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 1 taken 10 times.</div>
-              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
-            </div>
-          </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">10</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">op</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="n">GetKVClientOp</span><span class="p">();</span></td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="kt">void</span><span class="w"> </span><span class="n">CheckKeys</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">contiguous</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L73" href="#L73">73</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">10</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">kv_op</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">dynamic_pointer_cast</span><span class="o">&lt;</span><span class="n">KVClientOp</span><span class="o">&gt;</span><span class="p">(</span><span class="n">op</span><span class="p">);</span></td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="kt">void</span><span class="w"> </span><span class="nf">CheckRows</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L74" href="#L74">74</a></td>
         <td class="text-right src linenos ws-unset">
-          <details class="normal details-overlay">
-            <summary>1/2</summary>
-            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
-              <div class="color-taken-branch">&check; Branch 2 taken 10 times.</div>
-            </div>
-          </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">10</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">kv_op</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;storage backend is not KVClientOp&quot;</span><span class="p">);</span></td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">               </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L75" href="#L75">75</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">20</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">kv_op</span><span class="p">;</span></td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">               </span><span class="kt">bool</span><span class="w"> </span><span class="n">contiguous</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L76" href="#L76">76</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">10</td>
-        <td class="src coveredLine show_coveredLine"><span class="p">}</span></td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="n">std</span><span class="o">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="p">,</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L77" href="#L77">77</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="n">CudaCacheRows</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L78" href="#L78">78</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="c1">// --- Local fast-path profile state -----------------------------------------</span></td>
+        <td class="src"><span class="n">CacheUpdateActions</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L79" href="#L79">79</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="nf">CacheActions</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">dim</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L80" href="#L80">80</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="k">enum</span><span class="w"> </span><span class="n">LookupProfileIndex</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src"><span class="n">std</span><span class="o">::</span><span class="n">tuple</span><span class="o">&lt;</span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="p">,</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">CachedReadTorch</span><span class="p">(</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L81" href="#L81">81</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kLookupTotalMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span></td>
+        <td class="src"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L82" href="#L82">82</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kLookupKeysStageMs</span><span class="p">,</span></td>
+        <td class="src"><span class="w">    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">dim</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L83" href="#L83">83</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kLookupSubmitMs</span><span class="p">,</span></td>
+        <td class="src"><span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="n">local</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L84" href="#L84">84</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kLookupWaitMs</span><span class="p">,</span></td>
+        <td class="src"><span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="n">no_evict</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L85" href="#L85">85</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kLookupPayloadPinMs</span><span class="p">,</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L86" href="#L86">86</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kLookupFallbackCopyMs</span><span class="p">,</span></td>
+        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace framework</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L87" href="#L87">87</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kLookupValuesH2DEnqueueMs</span><span class="p">,</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L88" href="#L88">88</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kLookupProfileSize</span><span class="p">,</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L89" href="#L89">89</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">};</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L90" href="#L90">90</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L91" href="#L91">91</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="k">enum</span><span class="w"> </span><span class="n">UpdateProfileIndex</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L92" href="#L92">92</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kUpdateTotalMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L93" href="#L93">93</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kUpdateKeysStageMs</span><span class="p">,</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L94" href="#L94">94</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kUpdateGradsStageMs</span><span class="p">,</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L95" href="#L95">95</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kUpdateShmCallMs</span><span class="p">,</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L96" href="#L96">96</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kUpdateStageWaitMs</span><span class="p">,</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L97" href="#L97">97</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">kUpdateProfileSize</span><span class="p">,</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L98" href="#L98">98</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">};</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L99" href="#L99">99</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L100" href="#L100">100</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="k">thread_local</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L101" href="#L101">101</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">g_last_local_lookup_flat_profile</span><span class="p">(</span><span class="n">kLookupProfileSize</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L102" href="#L102">102</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="k">thread_local</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L103" href="#L103">103</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">g_last_local_update_flat_profile</span><span class="p">(</span><span class="n">kUpdateProfileSize</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L104" href="#L104">104</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L105" href="#L105">105</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="kr">inline</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">chrono</span><span class="o">::</span><span class="n">steady_clock</span><span class="o">::</span><span class="n">time_point</span><span class="w"> </span><span class="nf">SteadyNow</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L106" href="#L106">106</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">chrono</span><span class="o">::</span><span class="n">steady_clock</span><span class="o">::</span><span class="n">now</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L107" href="#L107">107</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L108" href="#L108">108</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L109" href="#L109">109</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="kr">inline</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="nf">ElapsedMs</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">chrono</span><span class="o">::</span><span class="n">steady_clock</span><span class="o">::</span><span class="n">time_point</span><span class="w"> </span><span class="n">start</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L110" href="#L110">110</a></td>
-        <td class="text-right src linenos ws-unset">
-          <details class="normal details-overlay">
-            <summary>0/2</summary>
-            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
-            </div>
-          </details>
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">chrono</span><span class="o">::</span><span class="n">duration_cast</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">chrono</span><span class="o">::</span><span class="n">duration</span><span class="o">&lt;</span><span class="kt">double</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">milli</span><span class="o">&gt;&gt;</span><span class="p">(</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L111" href="#L111">111</a></td>
-        <td class="text-right src linenos ws-unset">
-          <details class="normal details-overlay">
-            <summary>0/2</summary>
-            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
-            </div>
-          </details>
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">             </span><span class="n">SteadyNow</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">start</span><span class="p">)</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L112" href="#L112">112</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="p">.</span><span class="n">count</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L113" href="#L113">113</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L114" href="#L114">114</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L115" href="#L115">115</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">ResetLocalLookupFlatProfile</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L116" href="#L116">116</a></td>
-        <td class="text-right src linenos ws-unset">
-          <details class="normal details-overlay">
-            <summary>0/4</summary>
-            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
-            </div>
-          </details>
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">fill</span><span class="p">(</span><span class="n">g_last_local_lookup_flat_profile</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L117" href="#L117">117</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">            </span><span class="n">g_last_local_lookup_flat_profile</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L118" href="#L118">118</a></td>
-        <td class="text-right src linenos ws-unset">
-          <details class="normal details-overlay">
-            <summary>0/2</summary>
-            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
-            </div>
-          </details>
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">            </span><span class="mf">0.0</span><span class="p">);</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L119" href="#L119">119</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L120" href="#L120">120</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L121" href="#L121">121</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">ResetLocalUpdateFlatProfile</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L122" href="#L122">122</a></td>
-        <td class="text-right src linenos ws-unset">
-          <details class="normal details-overlay">
-            <summary>0/4</summary>
-            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
-            </div>
-          </details>
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">fill</span><span class="p">(</span><span class="n">g_last_local_update_flat_profile</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L123" href="#L123">123</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">            </span><span class="n">g_last_local_update_flat_profile</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L124" href="#L124">124</a></td>
-        <td class="text-right src linenos ws-unset">
-          <details class="normal details-overlay">
-            <summary>0/2</summary>
-            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
-              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
-            </div>
-          </details>
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">            </span><span class="mf">0.0</span><span class="p">);</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L125" href="#L125">125</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L126" href="#L126">126</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L127" href="#L127">127</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#ifdef RECSTORE_ENABLE_GPU_CACHE</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L128" href="#L128">128</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L129" href="#L129">129</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="c1">// --- GPU cache adaptive-bypass and pending-update state --------------------</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L130" href="#L130">130</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L131" href="#L131">131</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="k">struct</span><span class="w"> </span><span class="nc">PendingGpuCacheUpdate</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L132" href="#L132">132</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="w"> </span><span class="n">keys</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L133" href="#L133">133</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="w"> </span><span class="n">grads</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L134" href="#L134">134</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">};</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L135" href="#L135">135</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L136" href="#L136">136</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">mutex</span><span class="w"> </span><span class="n">g_pending_gpu_cache_updates_mu</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L137" href="#L137">137</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">unordered_map</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="p">,</span><span class="w"> </span><span class="n">PendingGpuCacheUpdate</span><span class="o">&gt;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L138" href="#L138">138</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">g_pending_gpu_cache_updates</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L139" href="#L139">139</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L140" href="#L140">140</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="k">constexpr</span><span class="w"> </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">kGpuCacheBypassMinRows</span><span class="w">                   </span><span class="o">=</span><span class="w"> </span><span class="mi">1024</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L141" href="#L141">141</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="k">constexpr</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">kGpuCacheLowHitLimit</span><span class="w">                         </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L142" href="#L142">142</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="k">constexpr</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="n">kGpuCacheLowHitRatio</span><span class="w">                      </span><span class="o">=</span><span class="w"> </span><span class="mf">0.05</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L143" href="#L143">143</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="k">thread_local</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">g_gpu_cache_low_hit_streak</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L144" href="#L144">144</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="k">thread_local</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">g_gpu_cache_lookup_bypassed</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L145" href="#L145">145</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="k">thread_local</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">g_gpu_cache_lookup_bypass_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L146" href="#L146">146</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L147" href="#L147">147</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kt">void</span><span class="w"> </span><span class="nf">SafeClearGpuCacheNoThrow</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L148" href="#L148">148</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L149" href="#L149">149</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">ResetGpuCacheBypassState</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L150" href="#L150">150</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">g_gpu_cache_low_hit_streak</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L151" href="#L151">151</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">g_gpu_cache_lookup_bypassed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L152" href="#L152">152</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L153" href="#L153">153</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L154" href="#L154">154</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="nf">ShouldBypassGpuCacheLookup</span><span class="p">(</span><span class="kt">int64_t</span><span class="w"> </span><span class="n">num_keys</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L155" href="#L155">155</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">g_gpu_cache_lookup_bypass_enabled</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L156" href="#L156">156</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">         </span><span class="n">num_keys</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">kGpuCacheBypassMinRows</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L157" href="#L157">157</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">         </span><span class="n">g_gpu_cache_low_hit_streak</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">kGpuCacheLowHitLimit</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L158" href="#L158">158</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L159" href="#L159">159</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L160" href="#L160">160</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">RecordGpuCacheLookupOutcome</span><span class="p">(</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L161" href="#L161">161</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">num_keys</span><span class="p">,</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="n">hit_count</span><span class="p">,</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="n">request_count</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L162" href="#L162">162</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">num_keys</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">kGpuCacheBypassMinRows</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">request_count</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mf">0.0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L163" href="#L163">163</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="k">return</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L164" href="#L164">164</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L165" href="#L165">165</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="n">hit_ratio</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">hit_count</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">request_count</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L166" href="#L166">166</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">hit_ratio</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">kGpuCacheLowHitRatio</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L167" href="#L167">167</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="o">++</span><span class="n">g_gpu_cache_low_hit_streak</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L168" href="#L168">168</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L169" href="#L169">169</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">g_gpu_cache_low_hit_streak</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L170" href="#L170">170</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">g_gpu_cache_lookup_bypassed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L171" href="#L171">171</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L172" href="#L172">172</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L173" href="#L173">173</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L174" href="#L174">174</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="nf">ShouldBypassGpuCacheMaintenance</span><span class="p">(</span><span class="kt">int64_t</span><span class="w"> </span><span class="n">num_keys</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L175" href="#L175">175</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">g_gpu_cache_lookup_bypass_enabled</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L176" href="#L176">176</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">         </span><span class="n">num_keys</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">kGpuCacheBypassMinRows</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">g_gpu_cache_lookup_bypassed</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L177" href="#L177">177</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L178" href="#L178">178</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L179" href="#L179">179</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">MarkGpuCacheLookupBypassed</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L180" href="#L180">180</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">g_gpu_cache_lookup_bypassed</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L181" href="#L181">181</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">SafeClearGpuCacheNoThrow</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L182" href="#L182">182</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">g_gpu_cache_low_hit_streak</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">kGpuCacheLowHitLimit</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L183" href="#L183">183</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L184" href="#L184">184</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">g_gpu_cache_lookup_bypassed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L185" href="#L185">185</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L186" href="#L186">186</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L187" href="#L187">187</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">EnsureGpuCacheSafeForLookup</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L188" href="#L188">188</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">g_gpu_cache_lookup_bypassed</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L189" href="#L189">189</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">SafeClearGpuCacheNoThrow</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L190" href="#L190">190</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">ResetGpuCacheBypassState</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L191" href="#L191">191</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L192" href="#L192">192</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L193" href="#L193">193</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L194" href="#L194">194</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">SafeClearGpuCacheNoThrow</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L195" href="#L195">195</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">try</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L196" href="#L196">196</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">gpu</span><span class="o">::</span><span class="n">ClearGpuCache</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L197" href="#L197">197</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="n">catch</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">exception</span><span class="o">&amp;</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L198" href="#L198">198</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">WARNING</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;Failed to clear GPU cache: &quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">e</span><span class="p">.</span><span class="n">what</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L199" href="#L199">199</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="n">catch</span><span class="w"> </span><span class="p">(...)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L200" href="#L200">200</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">WARNING</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;Failed to clear GPU cache: unknown exception&quot;</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L201" href="#L201">201</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L202" href="#L202">202</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L203" href="#L203">203</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L204" href="#L204">204</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">SetGpuCacheLookupBypassEnabled</span><span class="p">(</span><span class="kt">bool</span><span class="w"> </span><span class="n">enabled</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L205" href="#L205">205</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">g_gpu_cache_lookup_bypass_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">enabled</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L206" href="#L206">206</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">enabled</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L207" href="#L207">207</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">ResetGpuCacheBypassState</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L208" href="#L208">208</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L209" href="#L209">209</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L210" href="#L210">210</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L211" href="#L211">211</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">MaintainGpuCacheAfterUpdateNoThrow</span><span class="p">(</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L212" href="#L212">212</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L213" href="#L213">213</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">grads</span><span class="p">,</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L214" href="#L214">214</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">embedding_dim</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L215" href="#L215">215</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">grads</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L216" href="#L216">216</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">gpu</span><span class="o">::</span><span class="n">IsGpuCacheEnabled</span><span class="p">())</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L217" href="#L217">217</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="k">return</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L218" href="#L218">218</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L219" href="#L219">219</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// When the adaptive bypass system is explicitly disabled, an external</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L220" href="#L220">220</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// controller (e.g. BagPipe) owns cache invalidation: it pushes deltas the</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L221" href="#L221">221</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// cache has already applied, so invalidating here (or clearing the whole</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L222" href="#L222">222</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// cache when keys are on CPU) would needlessly evict valid entries.</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L223" href="#L223">223</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">g_gpu_cache_lookup_bypass_enabled</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L224" href="#L224">224</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="k">return</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L225" href="#L225">225</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L226" href="#L226">226</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ShouldBypassGpuCacheMaintenance</span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">numel</span><span class="p">()))</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L227" href="#L227">227</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">gpu</span><span class="o">::</span><span class="n">ResetLastGpuCacheProfile</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L228" href="#L228">228</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="k">return</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L229" href="#L229">229</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L230" href="#L230">230</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">gpu</span><span class="o">::</span><span class="n">CanUseGpuCache</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">embedding_dim</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L231" href="#L231">231</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">try</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L232" href="#L232">232</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="n">gpu</span><span class="o">::</span><span class="n">InvalidateGpuCache</span><span class="p">(</span><span class="n">keys</span><span class="p">);</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L233" href="#L233">233</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="k">return</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L234" href="#L234">234</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="n">catch</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">exception</span><span class="o">&amp;</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L235" href="#L235">235</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="n">LOG</span><span class="p">(</span><span class="n">WARNING</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;GPU cache invalidation failed after backend update &quot;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L236" href="#L236">236</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                      </span><span class="s">&quot;succeeded; clearing cache and continuing: &quot;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L237" href="#L237">237</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                   </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">e</span><span class="p">.</span><span class="n">what</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L238" href="#L238">238</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="n">catch</span><span class="w"> </span><span class="p">(...)</span><span class="w"> </span><span class="p">{</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L239" href="#L239">239</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="n">LOG</span><span class="p">(</span><span class="n">WARNING</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;GPU cache invalidation failed after backend update &quot;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L240" href="#L240">240</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                      </span><span class="s">&quot;succeeded; clearing cache and continuing: &quot;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L241" href="#L241">241</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                   </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;unknown exception&quot;</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L242" href="#L242">242</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L243" href="#L243">243</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L244" href="#L244">244</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">SafeClearGpuCacheNoThrow</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L245" href="#L245">245</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">gpu</span><span class="o">::</span><span class="n">ResetLastGpuCacheProfile</span><span class="p">();</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L246" href="#L246">246</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L247" href="#L247">247</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L248" href="#L248">248</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#endif </span><span class="c1">// RECSTORE_ENABLE_GPU_CACHE</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L249" href="#L249">249</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L250" href="#L250">250</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace framework</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L251" href="#L251">251</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace recstore</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L252" href="#L252">252</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L88" href="#L88">88</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
@@ -2072,7 +834,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
-          at 2026-10-25 14:16:19+00:00
+          at 2026-10-27 12:02:41+00:00
         </footer>
       </div>
     </div>

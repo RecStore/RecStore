@@ -1,0 +1,1962 @@
+<!DOCTYPE html>
+<html class="theme-green">
+
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <title>framework/pytorch/cache/tensor_adapter.cc - GCC Code Coverage Report</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <link rel="stylesheet" href="index.css"/>
+    <script src="index.js" charset="UTF-8"></script>
+  </head>
+
+  <body>
+    <div class="Layout-main">
+      <div class="Layout-main-centered-lg" style="max-width: 1280px;">
+        <div class="d-flex flex-justify-center">
+          <h1>GCC Code Coverage Report</h1>
+        </div>
+        <hr class="block-separator"/>
+        <header>
+<div id="summary-index.tensor_adapter.cc.1b64068a9e32d22a2602c581e1ea953a.html">
+  <div class="containter-xl clearfix">
+    <div class="col-sm-12 col-lg-9 float-left d-flex flex-column pl-3">
+      <div class="d-flex">
+        <div class="mr-2 color-fg-accent transy-2">
+          <svg aria-label="Directory" aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" class="octicon octicon-file-directory-fill hx_color-icon-directory">
+            <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"></path>
+          </svg>
+        </div>
+        <span>src/</span>
+      </div>
+      <div class="d-flex flex-wrap" style="margin-bottom: 2px;">
+        <div class="mr-2" style="min-width: 70px;">Coverage:</div>
+        <div class="IssueLabel coverage-low color-fg-on-emphasis mr-1">low: &ge; 0%</div>
+        <div class="IssueLabel coverage-medium color-fg-on-emphasis mr-1">medium: &ge; 75.0%</div>
+        <div class="IssueLabel coverage-high color-fg-on-emphasis mr-1">high: &ge; 90.0%</div>
+      </div>
+    </div>
+    <div class="col-sm-12 col-lg-3 float-left d-flex flex-column text-right flex-justify-end pr-3">
+      <div class="d-flex">
+        <div class="mr-2">Lines:</div>
+        <div class="mr-2" style="margin: auto;">42 / 89</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">47.2%</span></div>
+      </div>
+      <div class="d-flex">
+        <div class="mr-2">Branches:</div>
+        <div class="mr-2" style="margin: auto;">48 / 240</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">20.0%</span></div>
+      </div>
+      <div class="d-flex">
+        <div class="mr-2">Functions:</div>
+        <div class="mr-2" style="margin: auto;">6 / 10</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">60.0%</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+        </header>
+        <hr/>
+        <nav>
+<div class="m-3">
+  <details>
+    <summary>List of functions</summary>
+<div class="Box m-3 functionslist">
+  <div class="Box-header py-2 d-flex sticky">
+    <div role="rowheader" class="color-fg-muted flex-auto min-width-0 col-md-2 sortable sorted-ascending">Function (File:Line)</div>
+    <div role="rowheader" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline sortable">Calls</div>
+    <div role="rowheader" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2 sortable">Lines</div>
+    <div role="rowheader" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2 sortable">Branches</div>
+    <div role="rowheader" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2 sortable">Blocks</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L49">recstore::framework::(anonymous namespace)::ReadLocalValues(std::shared_ptr&lt;recstore::KVClientOp&gt; const&amp;, at::Tensor const&amp;, long, c10::Device const&amp;) (src/framework/pytorch/cache/tensor_adapter.cc:49)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L77">recstore::framework::(anonymous namespace)::ReadLocalValues(std::shared_ptr&lt;recstore::KVClientOp&gt; const&amp;, at::Tensor const&amp;, long, c10::Device const&amp;)::{lambda()#2}::operator()() const (src/framework/pytorch/cache/tensor_adapter.cc:77)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L63">recstore::framework::(anonymous namespace)::ReadLocalValues(std::shared_ptr&lt;recstore::KVClientOp&gt; const&amp;, at::Tensor const&amp;, long, c10::Device const&amp;)::{lambda(void*)#1}::operator()(void*) const (src/framework/pytorch/cache/tensor_adapter.cc:63)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L30">recstore::framework::CacheActions(at::Tensor const&amp;, long) (src/framework/pytorch/cache/tensor_adapter.cc:30)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="30">called 30 times</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L92">recstore::framework::CachedReadTorch(at::Tensor const&amp;, long, bool, bool) (src/framework/pytorch/cache/tensor_adapter.cc:92)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="32">called 32 times</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">56.2%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">20.6%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">33.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L128">recstore::framework::CachedReadTorch(at::Tensor const&amp;, long, bool, bool)::{lambda()#2}::operator()() const (src/framework/pytorch/cache/tensor_adapter.cc:128)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="32">called 32 times</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">83.3%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">40.6%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">62.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L112">recstore::framework::CachedReadTorch(at::Tensor const&amp;, long, bool, bool)::{lambda(at::Tensor const&amp;, c10::Device const&amp;)#1}::operator()(at::Tensor const&amp;, c10::Device const&amp;) const (src/framework/pytorch/cache/tensor_adapter.cc:112)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="32">called 32 times</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">93.3%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">42.9%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">55.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L5">recstore::framework::CheckKeys(at::Tensor const&amp;, bool) (src/framework/pytorch/cache/tensor_adapter.cc:5)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="52">called 52 times</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">50.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">74.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L11">recstore::framework::CheckRows(at::Tensor const&amp;, at::Tensor const&amp;, bool) (src/framework/pytorch/cache/tensor_adapter.cc:11)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="20">called 20 times</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">50.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">77.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L22">recstore::framework::CudaCacheRows(at::Tensor const&amp;, at::Tensor const&amp;) (src/framework/pytorch/cache/tensor_adapter.cc:22)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
+  </div>
+</div>  </details>
+</div>
+
+        </nav>
+        <main>
+<div class="Box m-3">
+  <div class="Box-header d-flex flex-space-between sticky">
+    framework/pytorch/cache/tensor_adapter.cc
+    <div class="toggle-buttons">
+      <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">17 covered</button>
+      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">47 uncovered</button>
+      <button type="button" class="button_toggle_partialCoveredLine show_partialCoveredLine" value="partialCoveredLine" title="Toggle partial covered lines">25 partial covered</button>
+    </div>
+    <div class="nav">
+      <a class="nav prev" href="index.cache_bindings.cc.40631bc304a1cca686af2a037e703758.html"></a>
+      <a class="nav index" href="index.html"></a>
+      <a class="nav next" href="index.op_base.cc.c16a9d076e70281e790a77974cb6a168.html"></a>
+    </div>
+  </div>
+  <div class="source-table-container">
+    <table class="text-mono text-small" style="width:100%;">
+      <tr>
+        <th class="p-2">Line</th>
+        <th class="p-2">Branch</th>
+        <th class="p-2">Exec</th>
+        <th class="p-2 text-left" style="width: 100%;">Source</th>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L1" href="#L1">1</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;framework/pytorch/op_internal.h&quot;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L2" href="#L2">2</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L3" href="#L3">3</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="k">namespace</span><span class="w"> </span><span class="nn">recstore</span><span class="o">::</span><span class="nn">framework</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L4" href="#L4">4</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L5" href="#L5">5</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">52</td>
+        <td class="src coveredLine show_coveredLine"><span class="kt">void</span><span class="w"> </span><span class="nf">CheckKeys</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">contiguous</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L6" href="#L6">6</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>7/14</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 52 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 5 taken 52 times.</div>
+              <div class="color-taken-branch">&check; Branch 6 taken 52 times.</div>
+              <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 8 taken 52 times.</div>
+              <div class="color-fg-danger">&cross; Branch 9 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 11 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 12 taken 52 times.</div>
+              <div class="color-fg-danger">&cross; Branch 13 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 14 taken 52 times.</div>
+              <div class="color-fg-danger">&cross; Branch 15 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 16 taken 52 times.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">52</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">dim</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">.</span><span class="n">scalar_type</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">kInt64</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L7" href="#L7">7</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">                  </span><span class="p">(</span><span class="o">!</span><span class="n">contiguous</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">keys</span><span class="p">.</span><span class="n">is_contiguous</span><span class="p">()),</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L8" href="#L8">8</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">              </span><span class="s">&quot;Keys must be contiguous 1-D int64&quot;</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L9" href="#L9">9</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">52</td>
+        <td class="src coveredLine show_coveredLine"><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L10" href="#L10">10</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L11" href="#L11">11</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">20</td>
+        <td class="src coveredLine show_coveredLine"><span class="kt">void</span><span class="w"> </span><span class="nf">CheckRows</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L12" href="#L12">12</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">               </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L13" href="#L13">13</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">               </span><span class="kt">bool</span><span class="w"> </span><span class="n">contiguous</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L14" href="#L14">14</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">20</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">CheckKeys</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">contiguous</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L15" href="#L15">15</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>9/18</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 20 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 5 taken 20 times.</div>
+              <div class="color-taken-branch">&check; Branch 6 taken 20 times.</div>
+              <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 8 taken 20 times.</div>
+              <div class="color-fg-danger">&cross; Branch 9 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 11 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 12 taken 20 times.</div>
+              <div class="color-fg-danger">&cross; Branch 13 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 14 taken 20 times.</div>
+              <div class="color-taken-branch">&check; Branch 15 taken 20 times.</div>
+              <div class="color-fg-danger">&cross; Branch 16 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 19 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 20 taken 20 times.</div>
+              <div class="color-fg-danger">&cross; Branch 21 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 22 taken 20 times.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">20</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">values</span><span class="p">.</span><span class="n">dim</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">scalar_type</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">kFloat32</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L16" href="#L16">16</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">                  </span><span class="p">(</span><span class="o">!</span><span class="n">contiguous</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">is_contiguous</span><span class="p">())</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L17" href="#L17">17</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">                  </span><span class="n">values</span><span class="p">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">keys</span><span class="p">.</span><span class="n">numel</span><span class="p">(),</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L18" href="#L18">18</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">              </span><span class="s">&quot;Values must be contiguous 2-D float32 with one row per key&quot;</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L19" href="#L19">19</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">20</td>
+        <td class="src coveredLine show_coveredLine"><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L20" href="#L20">20</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L21" href="#L21">21</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="n">std</span><span class="o">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="p">,</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&gt;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L22" href="#L22">22</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="n">CudaCacheRows</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L23" href="#L23">23</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/10</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 8 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 9 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 10 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 11 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">()</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">(),</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L24" href="#L24">24</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">              </span><span class="s">&quot;Cache rows require a CUDA tensor&quot;</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L25" href="#L25">25</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/8</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 9 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 10 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">device</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">device</span><span class="p">()</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">keys</span><span class="p">.</span><span class="n">device</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L26" href="#L26">26</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/12</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 10 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 11 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 13 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 14 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 16 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 17 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{(</span><span class="n">keys</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">keys</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">keys</span><span class="p">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)).</span><span class="n">contiguous</span><span class="p">(),</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L27" href="#L27">27</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/12</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 10 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 11 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 13 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 14 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 16 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 17 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="p">(</span><span class="n">values</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">values</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)).</span><span class="n">contiguous</span><span class="p">()};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L28" href="#L28">28</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L29" href="#L29">29</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L30" href="#L30">30</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">30</td>
+        <td class="src coveredLine show_coveredLine"><span class="n">CacheUpdateActions</span><span class="w"> </span><span class="n">CacheActions</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">dim</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L31" href="#L31">31</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="cp">#ifdef RECSTORE_ENABLE_GPU_CACHE</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L32" href="#L32">32</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">torch_cache</span><span class="o">::</span><span class="n">IsGpuCacheEnabled</span><span class="p">();</span><span class="w"> </span><span class="p">},</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L33" href="#L33">33</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">          </span><span class="p">[</span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">dim</span><span class="p">]</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L34" href="#L34">34</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="n">keys</span><span class="p">.</span><span class="n">defined</span><span class="p">()</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">torch_cache</span><span class="o">::</span><span class="n">CanUseGpuCache</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">dim</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L35" href="#L35">35</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">          </span><span class="p">},</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L36" href="#L36">36</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">          </span><span class="p">[</span><span class="n">keys</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">torch_cache</span><span class="o">::</span><span class="n">InvalidateGpuCache</span><span class="p">(</span><span class="n">keys</span><span class="p">);</span><span class="w"> </span><span class="p">},</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L37" href="#L37">37</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">          </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L38" href="#L38">38</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">            </span><span class="n">torch_cache</span><span class="o">::</span><span class="n">ClearGpuCache</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L39" href="#L39">39</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">            </span><span class="n">gpu</span><span class="o">::</span><span class="n">ResetLastGpuCacheProfile</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L40" href="#L40">40</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">          </span><span class="p">}};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L41" href="#L41">41</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="cp">#else</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L42" href="#L42">42</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">30</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L43" href="#L43">43</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="cp">#endif</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L44" href="#L44">44</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L45" href="#L45">45</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L46" href="#L46">46</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="k">namespace</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L47" href="#L47">47</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="c1">// Allocation and transport-buffer wrapping only. The common op owns the lease</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L48" href="#L48">48</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="c1">// and validates its payload. The CUDA event retains it through the H2D copy.</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L49" href="#L49">49</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="w"> </span><span class="nf">ReadLocalValues</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">KVClientOp</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">op</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L50" href="#L50">50</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">                              </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">cpu_keys</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L51" href="#L51">51</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">                              </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">dim</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L52" href="#L52">52</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">                              </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Device</span><span class="o">&amp;</span><span class="w"> </span><span class="n">device</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L53" href="#L53">53</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">keys</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ToRecTensor</span><span class="p">(</span><span class="n">cpu_keys</span><span class="p">,</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">DataType</span><span class="o">::</span><span class="n">UINT64</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L54" href="#L54">54</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/8</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 8 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 9 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 10 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">device</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">()</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">op</span><span class="o">-&gt;</span><span class="n">SupportsBorrowedLocalLookup</span><span class="p">())</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L55" href="#L55">55</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">lease</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="n">op</span><span class="o">-&gt;</span><span class="n">AcquireLocalLookupFlat</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">dim</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L56" href="#L56">56</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">start</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="n">SteadyNow</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L57" href="#L57">57</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">bytes</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">lease</span><span class="o">-&gt;</span><span class="n">num_elements</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L58" href="#L58">58</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">pinned</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">EnsurePinnedLocalShmPayload</span><span class="p">(</span><span class="n">lease</span><span class="o">-&gt;</span><span class="n">data</span><span class="p">(),</span><span class="w"> </span><span class="n">bytes</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L59" href="#L59">59</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">g_last_local_lookup_flat_profile</span><span class="p">[</span><span class="n">kLookupPayloadPinMs</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ElapsedMs</span><span class="p">(</span><span class="n">start</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L60" href="#L60">60</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">view</span><span class="w">                                             </span><span class="o">=</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">from_blob</span><span class="p">(</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L61" href="#L61">61</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">        </span><span class="n">lease</span><span class="o">-&gt;</span><span class="n">data</span><span class="p">(),</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L62" href="#L62">62</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="p">{</span><span class="n">cpu_keys</span><span class="p">.</span><span class="n">numel</span><span class="p">(),</span><span class="w"> </span><span class="n">dim</span><span class="p">},</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L63" href="#L63">63</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="p">[</span><span class="n">op</span><span class="p">,</span><span class="w"> </span><span class="n">lease</span><span class="p">](</span><span class="kt">void</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="p">{},</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L64" href="#L64">64</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/6</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 10 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 11 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 16 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 17 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="n">torch</span><span class="o">::</span><span class="n">TensorOptions</span><span class="p">().</span><span class="n">dtype</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">kFloat32</span><span class="p">).</span><span class="n">pinned_memory</span><span class="p">(</span><span class="n">pinned</span><span class="p">));</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L65" href="#L65">65</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="w"> </span><span class="n">staging</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">view</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L66" href="#L66">66</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 0 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">pinned</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L67" href="#L67">67</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">start</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">SteadyNow</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L68" href="#L68">68</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/6</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 8 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 9 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">staging</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">empty</span><span class="p">(</span><span class="n">view</span><span class="p">.</span><span class="n">sizes</span><span class="p">(),</span><span class="w"> </span><span class="n">PinnedCpuOptions</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">kFloat32</span><span class="p">));</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L69" href="#L69">69</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">staging</span><span class="p">.</span><span class="n">copy_</span><span class="p">(</span><span class="n">view</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L70" href="#L70">70</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">g_last_local_lookup_flat_profile</span><span class="p">[</span><span class="n">kLookupFallbackCopyMs</span><span class="p">]</span><span class="w"> </span><span class="o">=</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L71" href="#L71">71</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="n">ElapsedMs</span><span class="p">(</span><span class="n">start</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L72" href="#L72">72</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L73" href="#L73">73</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">start</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="n">SteadyNow</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L74" href="#L74">74</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">staging</span><span class="p">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">,</span><span class="w"> </span><span class="cm">/*non_blocking=*/</span><span class="nb">true</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L75" href="#L75">75</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="c1">// from_blob storage is not owned by the PyTorch pinned allocator. Retain</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L76" href="#L76">76</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="c1">// the transport lease explicitly until this stream finishes reading it.</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L77" href="#L77">77</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">RetainUntilCudaComplete</span><span class="p">(</span><span class="n">result</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="n">op</span><span class="p">,</span><span class="w"> </span><span class="n">lease</span><span class="p">]</span><span class="w"> </span><span class="p">{});</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L78" href="#L78">78</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">g_last_local_lookup_flat_profile</span><span class="p">[</span><span class="n">kLookupValuesH2DEnqueueMs</span><span class="p">]</span><span class="w"> </span><span class="o">=</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L79" href="#L79">79</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="n">ElapsedMs</span><span class="p">(</span><span class="n">start</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L80" href="#L80">80</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">result</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L81" href="#L81">81</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L82" href="#L82">82</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">values</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">empty</span><span class="p">(</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L83" href="#L83">83</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="p">{</span><span class="n">cpu_keys</span><span class="p">.</span><span class="n">numel</span><span class="p">(),</span><span class="w"> </span><span class="n">dim</span><span class="p">},</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L84" href="#L84">84</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">device</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">PinnedCpuOptions</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">kFloat32</span><span class="p">)</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L85" href="#L85">85</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/6</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 10 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 11 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">                       </span><span class="o">:</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">TensorOptions</span><span class="p">().</span><span class="n">dtype</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">kFloat32</span><span class="p">));</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L86" href="#L86">86</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">out</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ToRecTensor</span><span class="p">(</span><span class="n">values</span><span class="p">,</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">DataType</span><span class="o">::</span><span class="n">FLOAT32</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L87" href="#L87">87</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">op</span><span class="o">-&gt;</span><span class="n">LocalLookupFlat</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">out</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L88" href="#L88">88</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">,</span><span class="w"> </span><span class="cm">/*non_blocking=*/</span><span class="nb">true</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L89" href="#L89">89</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L90" href="#L90">90</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L91" href="#L91">91</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L92" href="#L92">92</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src coveredLine show_coveredLine"><span class="n">std</span><span class="o">::</span><span class="n">tuple</span><span class="o">&lt;</span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="p">,</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">CachedReadTorch</span><span class="p">(</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L93" href="#L93">93</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">dim</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">local</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">no_evict</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L94" href="#L94">94</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">CheckKeys</span><span class="p">(</span><span class="n">keys</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L95" href="#L95">95</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 0 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">dim</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Embedding dimension must be positive&quot;</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L96" href="#L96">96</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">ResetLocalLookupFlatProfile</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L97" href="#L97">97</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">start</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SteadyNow</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L98" href="#L98">98</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">KVClientOp</span><span class="o">&gt;</span><span class="w"> </span><span class="n">op</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L99" href="#L99">99</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 0 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">local</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L100" href="#L100">100</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">op</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">GetConcreteKVClientOp</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L101" href="#L101">101</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">op</span><span class="o">-&gt;</span><span class="n">RequireLocalBackend</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L102" href="#L102">102</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L103" href="#L103">103</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">resident</span><span class="w"> </span><span class="o">=</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L104" href="#L104">104</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">no_evict</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">ones</span><span class="p">({</span><span class="n">keys</span><span class="p">.</span><span class="n">numel</span><span class="p">()},</span><span class="w"> </span><span class="n">keys</span><span class="p">.</span><span class="n">options</span><span class="p">().</span><span class="n">dtype</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">kBool</span><span class="p">))</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L105" href="#L105">105</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 0 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">               </span><span class="o">:</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L106" href="#L106">106</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>2/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 4 taken 32 times.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">keys</span><span class="p">.</span><span class="n">numel</span><span class="p">())</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L107" href="#L107">107</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L108" href="#L108">108</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="n">torch</span><span class="o">::</span><span class="n">empty</span><span class="p">({</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">dim</span><span class="p">},</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L109" href="#L109">109</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">                     </span><span class="n">no_evict</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">keys</span><span class="p">.</span><span class="n">options</span><span class="p">().</span><span class="n">dtype</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">kFloat32</span><span class="p">)</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L110" href="#L110">110</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">                              </span><span class="o">:</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">TensorOptions</span><span class="p">().</span><span class="n">dtype</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">kFloat32</span><span class="p">)),</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L111" href="#L111">111</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="n">resident</span><span class="p">};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L112" href="#L112">112</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">read</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="p">](</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">cpu_keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Device</span><span class="o">&amp;</span><span class="w"> </span><span class="n">device</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L113" href="#L113">113</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">op</span><span class="p">)</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L114" href="#L114">114</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">      </span><span class="n">op</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">GetConcreteKVClientOp</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L115" href="#L115">115</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 0 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">local</span><span class="p">)</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L116" href="#L116">116</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="n">ReadLocalValues</span><span class="p">(</span><span class="n">op</span><span class="p">,</span><span class="w"> </span><span class="n">cpu_keys</span><span class="p">,</span><span class="w"> </span><span class="n">dim</span><span class="p">,</span><span class="w"> </span><span class="n">device</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L117" href="#L117">117</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">values</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">empty</span><span class="p">(</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L118" href="#L118">118</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">        </span><span class="p">{</span><span class="n">cpu_keys</span><span class="p">.</span><span class="n">numel</span><span class="p">(),</span><span class="w"> </span><span class="n">dim</span><span class="p">},</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L119" href="#L119">119</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">        </span><span class="n">device</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">PinnedCpuOptions</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">kFloat32</span><span class="p">)</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L120" href="#L120">120</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>3/6</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 2 taken 32 times.</div>
+              <div class="color-taken-branch">&check; Branch 4 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 10 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 11 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">96</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">                         </span><span class="o">:</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">TensorOptions</span><span class="p">().</span><span class="n">dtype</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">kFloat32</span><span class="p">));</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L121" href="#L121">121</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">k</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ToRecTensor</span><span class="p">(</span><span class="n">cpu_keys</span><span class="p">,</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">DataType</span><span class="o">::</span><span class="n">UINT64</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L122" href="#L122">122</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ToRecTensor</span><span class="p">(</span><span class="n">values</span><span class="p">,</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">DataType</span><span class="o">::</span><span class="n">FLOAT32</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L123" href="#L123">123</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 2 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="n">op</span><span class="o">-&gt;</span><span class="n">EmbRead</span><span class="p">(</span><span class="n">k</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L124" href="#L124">124</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>2/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 2 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 5 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">,</span><span class="w"> </span><span class="cm">/*non_blocking=*/</span><span class="nb">true</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L125" href="#L125">125</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="p">};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L126" href="#L126">126</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="w"> </span><span class="n">output</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L127" href="#L127">127</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">CacheLookupActions</span><span class="w"> </span><span class="n">io</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L128" href="#L128">128</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">io</span><span class="p">.</span><span class="n">read_all</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="p">]</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L129" href="#L129">129</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">stage_start</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SteadyNow</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L130" href="#L130">130</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">cpu_keys</span><span class="w"> </span><span class="o">=</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L131" href="#L131">131</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>3/8</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 4 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 6 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 9 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 10 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">        </span><span class="n">keys</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">StageCudaTensorToPinnedCpu</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">kInt64</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">keys</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L132" href="#L132">132</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>2/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 4 taken 32 times.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">())</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L133" href="#L133">133</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">g_last_local_lookup_flat_profile</span><span class="p">[</span><span class="n">kLookupKeysStageMs</span><span class="p">]</span><span class="w"> </span><span class="o">=</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L134" href="#L134">134</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="n">ElapsedMs</span><span class="p">(</span><span class="n">stage_start</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L135" href="#L135">135</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>2/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 4 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="n">output</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read</span><span class="p">(</span><span class="n">cpu_keys</span><span class="p">,</span><span class="w"> </span><span class="n">keys</span><span class="p">.</span><span class="n">device</span><span class="p">());</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L136" href="#L136">136</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">64</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="p">};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L137" href="#L137">137</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="cp">#ifdef RECSTORE_ENABLE_GPU_CACHE</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L138" href="#L138">138</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="n">gpu</span><span class="o">::</span><span class="n">ResetLastGpuCacheProfile</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L139" href="#L139">139</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="n">torch_cache</span><span class="o">::</span><span class="n">GpuCacheLookupResult</span><span class="w"> </span><span class="n">cached</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L140" href="#L140">140</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="w"> </span><span class="n">miss_keys</span><span class="p">,</span><span class="w"> </span><span class="n">miss_values</span><span class="p">,</span><span class="w"> </span><span class="n">inserted</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L141" href="#L141">141</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="n">io</span><span class="p">.</span><span class="n">usable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">torch_cache</span><span class="o">::</span><span class="n">CanUseGpuCache</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">dim</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L142" href="#L142">142</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="n">io</span><span class="p">.</span><span class="n">query</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="p">]</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L143" href="#L143">143</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="n">cached</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">torch_cache</span><span class="o">::</span><span class="n">QueryGpuCache</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">dim</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L144" href="#L144">144</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="n">output</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cached</span><span class="p">.</span><span class="n">values</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L145" href="#L145">145</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">cached</span><span class="p">.</span><span class="n">missing_count</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L146" href="#L146">146</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="p">};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L147" href="#L147">147</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="n">io</span><span class="p">.</span><span class="n">read_missing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="p">]</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L148" href="#L148">148</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">begin</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">SteadyNow</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L149" href="#L149">149</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">values</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read</span><span class="p">(</span><span class="n">cached</span><span class="p">.</span><span class="n">missing_keys_cpu</span><span class="p">.</span><span class="n">contiguous</span><span class="p">(),</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">kCPU</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L150" href="#L150">150</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="n">gpu</span><span class="o">::</span><span class="n">AddGpuCacheBackendLookupMs</span><span class="p">(</span><span class="n">ElapsedMs</span><span class="p">(</span><span class="n">begin</span><span class="p">));</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L151" href="#L151">151</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="n">miss_keys</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">cached</span><span class="p">.</span><span class="n">missing_keys_cpu</span><span class="p">.</span><span class="n">to</span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">device</span><span class="p">());</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L152" href="#L152">152</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="n">miss_values</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">to</span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">device</span><span class="p">());</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L153" href="#L153">153</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="p">};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L154" href="#L154">154</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="n">io</span><span class="p">.</span><span class="n">fill</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="p">]</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L155" href="#L155">155</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">no_evict</span><span class="p">)</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L156" href="#L156">156</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">      </span><span class="n">inserted</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">torch_cache</span><span class="o">::</span><span class="n">FillGpuCacheNoEvict</span><span class="p">(</span><span class="n">miss_keys</span><span class="p">,</span><span class="w"> </span><span class="n">miss_values</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L157" href="#L157">157</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="k">else</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L158" href="#L158">158</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">      </span><span class="n">torch_cache</span><span class="o">::</span><span class="n">FillGpuCache</span><span class="p">(</span><span class="n">miss_keys</span><span class="p">,</span><span class="w"> </span><span class="n">miss_values</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L159" href="#L159">159</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="p">};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L160" href="#L160">160</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="n">io</span><span class="p">.</span><span class="n">scatter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="p">]</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L161" href="#L161">161</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="n">torch_cache</span><span class="o">::</span><span class="n">ScatterMissValues</span><span class="p">(</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L162" href="#L162">162</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">        </span><span class="o">&amp;</span><span class="n">output</span><span class="p">,</span><span class="w"> </span><span class="n">cached</span><span class="p">.</span><span class="n">missing_positions_cpu</span><span class="p">,</span><span class="w"> </span><span class="n">miss_values</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L163" href="#L163">163</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">no_evict</span><span class="p">)</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L164" href="#L164">164</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">      </span><span class="n">resident</span><span class="p">.</span><span class="n">index_put_</span><span class="p">(</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L165" href="#L165">165</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">          </span><span class="p">{</span><span class="n">cached</span><span class="p">.</span><span class="n">missing_positions_cpu</span><span class="p">.</span><span class="n">to</span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">device</span><span class="p">())},</span><span class="w"> </span><span class="n">inserted</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L166" href="#L166">166</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="p">};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L167" href="#L167">167</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="n">io</span><span class="p">.</span><span class="n">clear</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L168" href="#L168">168</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="n">torch_cache</span><span class="o">::</span><span class="n">ClearGpuCache</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L169" href="#L169">169</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="n">gpu</span><span class="o">::</span><span class="n">ResetLastGpuCacheProfile</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L170" href="#L170">170</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="p">};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L171" href="#L171">171</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="cp">#endif</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L172" href="#L172">172</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>2/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 4 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">g_cache_aware_op</span><span class="p">.</span><span class="n">Lookup</span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">numel</span><span class="p">(),</span><span class="w"> </span><span class="n">io</span><span class="p">,</span><span class="w"> </span><span class="n">no_evict</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L173" href="#L173">173</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>2/4</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 4 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 5 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">g_last_local_lookup_flat_profile</span><span class="p">[</span><span class="n">kLookupTotalMs</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ElapsedMs</span><span class="p">(</span><span class="n">start</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L174" href="#L174">174</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 32 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="n">output</span><span class="p">,</span><span class="w"> </span><span class="n">resident</span><span class="p">};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L175" href="#L175">175</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">32</td>
+        <td class="src coveredLine show_coveredLine"><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L176" href="#L176">176</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L177" href="#L177">177</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace recstore::framework</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L178" href="#L178">178</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+    </table>
+  </div>
+</div>
+        </main>
+        <hr class="block-separator"/>
+        <footer class="text-center">
+          Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
+          at 2026-10-27 12:02:41+00:00
+        </footer>
+      </div>
+    </div>
+  </body>
+
+</html>
