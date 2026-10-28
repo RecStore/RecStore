@@ -13,7 +13,10 @@
     <div class="Layout-main">
       <div class="Layout-main-centered-lg" style="max-width: 1280px;">
         <div class="d-flex flex-justify-center">
-          <h1>GCC Code Coverage Report</h1>
+          <h1>
+            <a href="index.html" style="cursor: default; text-decoration: none">
+              GCC Code Coverage Report</a>
+          </h1>
         </div>
         <hr class="block-separator"/>
         <header>
@@ -38,8 +41,8 @@
     <div class="col-sm-12 col-lg-3 float-left d-flex flex-column text-right flex-justify-end pr-3">
       <div class="d-flex">
         <div class="mr-2">Lines:</div>
-        <div class="mr-2" style="margin: auto;">4 / 60</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">6.7%</span></div>
+        <div class="mr-2" style="margin: auto;">2 / 60</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">3.3%</span></div>
       </div>
       <div class="d-flex">
         <div class="mr-2">Branches:</div>
@@ -48,8 +51,8 @@
       </div>
       <div class="d-flex">
         <div class="mr-2">Functions:</div>
-        <div class="mr-2" style="margin: auto;">3 / 28</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">10.7%</span></div>
+        <div class="mr-2" style="margin: auto;">2 / 28</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">7.1%</span></div>
       </div>
     </div>
   </div>
@@ -91,7 +94,7 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L47">BaseKV::BaseKV(BaseKVConfig const&amp;) (src/storage/kv_engine/base_kv.h:47)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="1162">called 1162 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="1140">called 1140 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
@@ -119,10 +122,10 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L115">BaseKV::BatchGetFlat(base::ConstArray&lt;unsigned long&gt;, float*, long, long, unsigned int, BaseKV::BatchGetFlatStats*) (src/storage/kv_engine/base_kv.h:115)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="2">called 2 times</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
-    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L125">BaseKV::BatchGetFlatRange(base::ConstArray&lt;unsigned long&gt;, float*, long, long, long, long, unsigned int, BaseKV::BatchGetFlatStats*, bool) (src/storage/kv_engine/base_kv.h:125)</a>    </div>
@@ -259,7 +262,7 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L45">BaseKV::~BaseKV() (src/storage/kv_engine/base_kv.h:45)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="1162">called 1162 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="1140">called 1140 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
@@ -273,12 +276,12 @@
   <div class="Box-header d-flex flex-space-between sticky">
     storage/kv_engine/base_kv.h
     <div class="toggle-buttons">
-      <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">4 covered</button>
-      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">56 uncovered</button>
+      <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">2 covered</button>
+      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">58 uncovered</button>
     </div>
     <div class="nav">
       <a class="nav prev" href="index.io_uring_backend.cpp.71f4e438e3cb9dd492bc9377856d1f67.html"></a>
-      <a class="nav index" href="index.html"></a>
+      <a class="nav index" href="index.kv_engine.88cacfefc1387cc4377a72adba926d64.html"></a>
       <a class="nav next" href="index.benchmark_kv_engine.cc.0859fca320827a5fd5793d0d72b77d09.html"></a>
     </div>
   </div>
@@ -344,21 +347,21 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/array.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/array.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L9" href="#L9">9</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/json.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/json.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L10" href="#L10">10</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/log.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/log.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L11" href="#L11">11</a></td>
@@ -449,70 +452,70 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cm">  &quot;engine_type&quot;: &quot;KVEngineComposite&quot;,</span></td>
+        <td class="src"><span class="cm">  "engine_type": "KVEngineComposite",</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L24" href="#L24">24</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cm">  &quot;capacity&quot;: 1000000,</span></td>
+        <td class="src"><span class="cm">  "capacity": 1000000,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L25" href="#L25">25</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cm">  &quot;index&quot;: {&quot;type&quot;: &quot;DRAM_EXTENDIBLE_HASH&quot;},</span></td>
+        <td class="src"><span class="cm">  "index": {"type": "DRAM_EXTENDIBLE_HASH"},</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L26" href="#L26">26</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cm">  &quot;value&quot;: {</span></td>
+        <td class="src"><span class="cm">  "value": {</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L27" href="#L27">27</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cm">    &quot;type&quot;: &quot;DRAM_VALUE_STORE&quot;,</span></td>
+        <td class="src"><span class="cm">    "type": "DRAM_VALUE_STORE",</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L28" href="#L28">28</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cm">    &quot;path&quot;: &quot;/tmp/recstore/value&quot;,</span></td>
+        <td class="src"><span class="cm">    "path": "/tmp/recstore/value",</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L29" href="#L29">29</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cm">    &quot;default_value_size_hint&quot;: 128,</span></td>
+        <td class="src"><span class="cm">    "default_value_size_hint": 128,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L30" href="#L30">30</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cm">    &quot;dram_allocator&quot;: {</span></td>
+        <td class="src"><span class="cm">    "dram_allocator": {</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L31" href="#L31">31</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cm">      &quot;type&quot;: &quot;PERSIST_LOOP_SLAB&quot;,</span></td>
+        <td class="src"><span class="cm">      "type": "PERSIST_LOOP_SLAB",</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L32" href="#L32">32</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cm">      &quot;capacity_bytes&quot;: 128000000</span></td>
+        <td class="src"><span class="cm">      "capacity_bytes": 128000000</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L33" href="#L33">33</a></td>
@@ -602,7 +605,7 @@
         <td class="text-right src linenos"><a class="normal" id="L45" href="#L45">45</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1162</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1140</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="o">~</span><span class="n">BaseKV</span><span class="p">()</span><span class="w"> </span><span class="p">{}</span></td>
       </tr>
       <tr>
@@ -616,7 +619,7 @@
         <td class="text-right src linenos"><a class="normal" id="L47" href="#L47">47</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1162</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1140</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">explicit</span><span class="w"> </span><span class="n">BaseKV</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BaseKVConfig</span><span class="o">&amp;</span><span class="w"> </span><span class="n">config</span><span class="p">){};</span></td>
       </tr>
       <tr>
@@ -638,7 +641,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;BaseKV Util: no impl&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">"BaseKV Util: no impl"</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L51" href="#L51">51</a></td>
@@ -666,7 +669,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">ExtraResultFields</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">ExtraResultFields</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">""</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L54" href="#L54">54</a></td>
@@ -787,7 +790,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">FATAL</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;not implemented&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">FATAL</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">"not implemented"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L69" href="#L69">69</a></td>
@@ -845,7 +848,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">FATAL</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;not implemented&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">FATAL</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">"not implemented"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L76" href="#L76">76</a></td>
@@ -1124,8 +1127,8 @@
         <td class="text-right src linenos"><a class="normal" id="L115" href="#L115">115</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">2</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">BatchGetFlat</span><span class="p">(</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">BatchGetFlat</span><span class="p">(</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L116" href="#L116">116</a></td>
@@ -1173,8 +1176,8 @@
         <td class="text-right src linenos"><a class="normal" id="L122" href="#L122">122</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">2</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L123" href="#L123">123</a></td>
@@ -1449,7 +1452,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">FATAL</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;not implemented&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">FATAL</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">"not implemented"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L161" href="#L161">161</a></td>
@@ -1661,7 +1664,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">FATAL</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;not implemented&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">FATAL</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">"not implemented"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L190" href="#L190">190</a></td>
@@ -1959,7 +1962,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">WARNING</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;clear() not fully implemented for this KV engine&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">WARNING</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">"clear() not fully implemented for this KV engine"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L225" href="#L225">225</a></td>
@@ -2142,8 +2145,8 @@
         </main>
         <hr class="block-separator"/>
         <footer class="text-center">
-          Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
-          at 2026-10-27 12:11:50+00:00
+          Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
+          at 2026-10-28 05:57:45+00:00
         </footer>
       </div>
     </div>

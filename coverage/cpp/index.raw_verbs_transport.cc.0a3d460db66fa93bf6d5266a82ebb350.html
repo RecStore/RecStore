@@ -13,7 +13,10 @@
     <div class="Layout-main">
       <div class="Layout-main-centered-lg" style="max-width: 1280px;">
         <div class="d-flex flex-justify-center">
-          <h1>GCC Code Coverage Report</h1>
+          <h1>
+            <a href="index.html" style="cursor: default; text-decoration: none">
+              GCC Code Coverage Report</a>
+          </h1>
         </div>
         <hr class="block-separator"/>
         <header>
@@ -403,7 +406,7 @@
     </div>
     <div class="nav">
       <a class="nav prev" href="index.petps_server.cc.181dc2e613f0757b935c8e0dcf0ea99c.html"></a>
-      <a class="nav index" href="index.html"></a>
+      <a class="nav index" href="index.rdma.e75d66aa365386efec5afc8449edce65.html"></a>
       <a class="nav next" href="index.raw_verbs_transport.h.0eb01167c57d8afc70ea375410d2ef7c.html"></a>
     </div>
   </div>
@@ -420,7 +423,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;ps/rdma/raw_verbs_transport.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"ps/rdma/raw_verbs_transport.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L2" href="#L2">2</a></td>
@@ -539,14 +542,14 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;ps/rdma/control_plane.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"ps/rdma/control_plane.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L19" href="#L19">19</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/log.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/log.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L20" href="#L20">20</a></td>
@@ -618,7 +621,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="nf">IbvError</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">op</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="n">op</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">&quot; failed&quot;</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="nf">IbvError</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">op</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="n">op</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">" failed"</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L29" href="#L29">29</a></td>
@@ -653,7 +656,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">           </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;invalid&quot;</span></td>
+        <td class="src"><span class="w">           </span><span class="o">?</span><span class="w"> </span><span class="s">"invalid"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L34" href="#L34">34</a></td>
@@ -697,7 +700,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;ibv_create_qp failed: likely insufficient RDMA QP resources &quot;</span></td>
+        <td class="src"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="s">"ibv_create_qp failed: likely insufficient RDMA QP resources "</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L39" href="#L39">39</a></td>
@@ -711,7 +714,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">&quot;(global_id=&quot;</span><span class="w"> </span><span class="o">+</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">"(global_id="</span><span class="w"> </span><span class="o">+</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L40" href="#L40">40</a></td>
@@ -745,7 +748,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">&quot;, local_lane=&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">local_lane</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">", local_lane="</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">local_lane</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L42" href="#L42">42</a></td>
@@ -763,7 +766,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">&quot;, remote_lane=&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">remote_lane</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">", remote_lane="</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">remote_lane</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L43" href="#L43">43</a></td>
@@ -781,7 +784,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">&quot;, node=&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">node</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">", node="</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">node</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L44" href="#L44">44</a></td>
@@ -799,7 +802,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">&quot;, num_servers=&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">num_servers</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">", num_servers="</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">num_servers</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L45" href="#L45">45</a></td>
@@ -813,7 +816,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">&quot;, num_clients=&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">num_clients</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">", num_clients="</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">num_clients</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L46" href="#L46">46</a></td>
@@ -827,7 +830,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">&quot;). Reduce --client-count or --qps-per-client-per-shard.&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">"). Reduce --client-count or --qps-per-client-per-shard."</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L47" href="#L47">47</a></td>
@@ -959,7 +962,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">Record</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">op</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">self</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">node</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="n">bytes</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">Record</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">op</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">self</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">node</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="n">bytes</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L64" href="#L64">64</a></td>
@@ -1057,14 +1060,14 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">        </span><span class="s">&quot;{</span><span class="se">\&quot;</span><span class="s">t</span><span class="se">\&quot;</span><span class="s">:%llu,</span><span class="se">\&quot;</span><span class="s">tag</span><span class="se">\&quot;</span><span class="s">:</span><span class="se">\&quot;</span><span class="s">%s</span><span class="se">\&quot;</span><span class="s">,</span><span class="se">\&quot;</span><span class="s">pid</span><span class="se">\&quot;</span><span class="s">:%d,</span><span class="se">\&quot;</span><span class="s">op</span><span class="se">\&quot;</span><span class="s">:</span><span class="se">\&quot;</span><span class="s">%s</span><span class="se">\&quot;</span><span class="s">,&quot;</span></td>
+        <td class="src"><span class="w">        </span><span class="s">"{</span><span class="se">\"</span><span class="s">t</span><span class="se">\"</span><span class="s">:%llu,</span><span class="se">\"</span><span class="s">tag</span><span class="se">\"</span><span class="s">:</span><span class="se">\"</span><span class="s">%s</span><span class="se">\"</span><span class="s">,</span><span class="se">\"</span><span class="s">pid</span><span class="se">\"</span><span class="s">:%d,</span><span class="se">\"</span><span class="s">op</span><span class="se">\"</span><span class="s">:</span><span class="se">\"</span><span class="s">%s</span><span class="se">\"</span><span class="s">,"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L77" href="#L77">77</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">        </span><span class="s">&quot;</span><span class="se">\&quot;</span><span class="s">self</span><span class="se">\&quot;</span><span class="s">:%d,</span><span class="se">\&quot;</span><span class="s">node</span><span class="se">\&quot;</span><span class="s">:%d,</span><span class="se">\&quot;</span><span class="s">bytes</span><span class="se">\&quot;</span><span class="s">:%llu}</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span></td>
+        <td class="src"><span class="w">        </span><span class="s">"</span><span class="se">\"</span><span class="s">self</span><span class="se">\"</span><span class="s">:%d,</span><span class="se">\"</span><span class="s">node</span><span class="se">\"</span><span class="s">:%d,</span><span class="se">\"</span><span class="s">bytes</span><span class="se">\"</span><span class="s">:%llu}</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L78" href="#L78">78</a></td>
@@ -1402,7 +1405,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">getenv</span><span class="p">(</span><span class="s">&quot;RECSTORE_RDMA_WIRE_TRACE&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">getenv</span><span class="p">(</span><span class="s">"RECSTORE_RDMA_WIRE_TRACE"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L118" href="#L118">118</a></td>
@@ -1418,7 +1421,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">path</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nb">nullptr</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">*</span><span class="n">path</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;\0&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">path</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nb">nullptr</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">*</span><span class="n">path</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">'\0'</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L119" href="#L119">119</a></td>
@@ -1439,7 +1442,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">tag</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">getenv</span><span class="p">(</span><span class="s">&quot;RECSTORE_RDMA_WIRE_TRACE_TAG&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">tag</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">getenv</span><span class="p">(</span><span class="s">"RECSTORE_RDMA_WIRE_TRACE_TAG"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L122" href="#L122">122</a></td>
@@ -1463,7 +1466,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">tag_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">tag</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nb">nullptr</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">*</span><span class="n">tag</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="sc">&#39;\0&#39;</span><span class="p">)</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">tag</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">getpid</span><span class="p">());</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">tag_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">tag</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nb">nullptr</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">*</span><span class="n">tag</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="sc">'\0'</span><span class="p">)</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">tag</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">getpid</span><span class="p">());</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L123" href="#L123">123</a></td>
@@ -1526,7 +1529,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">file_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">fopen</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;a&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">file_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">fopen</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="s">"a"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L129" href="#L129">129</a></td>
@@ -1754,21 +1757,21 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// It sets MADV_DONTFORK on all mmap&#39;d regions (CQ/QP memory) so that</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// It sets MADV_DONTFORK on all mmap'd regions (CQ/QP memory) so that</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L160" href="#L160">160</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// forked child processes (e.g. DataLoader workers) don&#39;t inherit them.</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// forked child processes (e.g. DataLoader workers) don't inherit them.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L161" href="#L161">161</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// Without this, child exit corrupts the parent&#39;s RDMA state.</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Without this, child exit corrupts the parent's RDMA state.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L162" href="#L162">162</a></td>
@@ -1874,7 +1877,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;no RDMA devices found&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"no RDMA devices found"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L172" href="#L172">172</a></td>
@@ -1962,7 +1965,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_open_device failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_open_device failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L179" href="#L179">179</a></td>
@@ -2029,7 +2032,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;configured RDMA port is not active&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"configured RDMA port is not active"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L184" href="#L184">184</a></td>
@@ -2092,7 +2095,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="s">&quot;configured RDMA fabric mode does not match link layer&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="s">"configured RDMA fabric mode does not match link layer"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L190" href="#L190">190</a></td>
@@ -2157,7 +2160,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;configured RDMA gid_index is unavailable&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"configured RDMA gid_index is unavailable"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L196" href="#L196">196</a></td>
@@ -2203,7 +2206,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="s">&quot;/sys/class/infiniband/&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">device_name</span><span class="w"> </span><span class="o">+</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="s">"/sys/class/infiniband/"</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">device_name</span><span class="w"> </span><span class="o">+</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L200" href="#L200">200</a></td>
@@ -2223,7 +2226,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="s">&quot;/ports/&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">port_num</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">&quot;/gid_attrs/types/&quot;</span><span class="w"> </span><span class="o">+</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="s">"/ports/"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">port_num</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"/gid_attrs/types/"</span><span class="w"> </span><span class="o">+</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L201" href="#L201">201</a></td>
@@ -2281,7 +2284,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">              </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;RoCE v1&quot;</span></td>
+        <td class="src"><span class="w">              </span><span class="o">?</span><span class="w"> </span><span class="s">"RoCE v1"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L207" href="#L207">207</a></td>
@@ -2297,7 +2300,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">              </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;RoCE v2&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">              </span><span class="o">:</span><span class="w"> </span><span class="s">"RoCE v2"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L208" href="#L208">208</a></td>
@@ -2346,7 +2349,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">            </span><span class="s">&quot;configured RDMA GID type does not match fabric mode&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">            </span><span class="s">"configured RDMA GID type does not match fabric mode"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L212" href="#L212">212</a></td>
@@ -2416,7 +2419,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;configured RDMA device was not found&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"configured RDMA device was not found"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L219" href="#L219">219</a></td>
@@ -2525,7 +2528,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="n">IbvError</span><span class="p">(</span><span class="s">&quot;ibv_modify_qp INIT&quot;</span><span class="p">));</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="n">IbvError</span><span class="p">(</span><span class="s">"ibv_modify_qp INIT"</span><span class="p">));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L232" href="#L232">232</a></td>
@@ -2832,7 +2835,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="n">IbvError</span><span class="p">(</span><span class="s">&quot;ibv_query_port for active MTU&quot;</span><span class="p">));</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="n">IbvError</span><span class="p">(</span><span class="s">"ibv_query_port for active MTU"</span><span class="p">));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L272" href="#L272">272</a></td>
@@ -3025,7 +3028,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="n">IbvError</span><span class="p">(</span><span class="s">&quot;ibv_modify_qp RTR&quot;</span><span class="p">));</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="n">IbvError</span><span class="p">(</span><span class="s">"ibv_modify_qp RTR"</span><span class="p">));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L297" href="#L297">297</a></td>
@@ -3155,7 +3158,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="n">IbvError</span><span class="p">(</span><span class="s">&quot;ibv_modify_qp RTS&quot;</span><span class="p">));</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="n">IbvError</span><span class="p">(</span><span class="s">"ibv_modify_qp RTS"</span><span class="p">));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L313" href="#L313">313</a></td>
@@ -3224,7 +3227,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="s">&quot;raw verbs CQ error: &quot;</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">ibv_wc_status_str</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">status</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="s">"raw verbs CQ error: "</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">ibv_wc_status_str</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">status</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L321" href="#L321">321</a></td>
@@ -3240,7 +3243,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">&quot; class=&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">RawVerbsErrorClassToString</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">error_class</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">" class="</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">RawVerbsErrorClassToString</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">error_class</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L322" href="#L322">322</a></td>
@@ -3258,7 +3261,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">&quot; wr_id=&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">wr_id</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">" wr_id="</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">wr_id</span><span class="p">)</span><span class="w"> </span><span class="o">+</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L323" href="#L323">323</a></td>
@@ -3272,7 +3275,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">&quot; opcode=&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">opcode</span><span class="p">));</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">         </span><span class="s">" opcode="</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">opcode</span><span class="p">));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L324" href="#L324">324</a></td>
@@ -3330,7 +3333,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">                         </span><span class="p">(</span><span class="n">context</span><span class="p">.</span><span class="n">empty</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">()</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot; &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">context</span><span class="p">)),</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">                         </span><span class="p">(</span><span class="n">context</span><span class="p">.</span><span class="n">empty</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">()</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">" "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">context</span><span class="p">)),</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L330" href="#L330">330</a></td>
@@ -3621,7 +3624,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="s">&quot;RDMA device_name, port_num, and gid_index are required&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="s">"RDMA device_name, port_num, and gid_index are required"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L366" href="#L366">366</a></td>
@@ -3684,7 +3687,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">role</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">connect_to_servers</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;client&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;server&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">role</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">connect_to_servers</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">"client"</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">"server"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L372" href="#L372">372</a></td>
@@ -3707,7 +3710,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">        </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;component=rdma_verbs event=fabric_ready&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot; role=&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">role</span></td>
+        <td class="src"><span class="w">        </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">"component=rdma_verbs event=fabric_ready"</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">" role="</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">role</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L374" href="#L374">374</a></td>
@@ -3727,7 +3730,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot; node_id=&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">global_id</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot; device=&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">device_name</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">" node_id="</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">global_id</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">" device="</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">device_name</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L375" href="#L375">375</a></td>
@@ -3747,7 +3750,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot; port=&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">port_num</span><span class="p">)</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">" port="</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">port_num</span><span class="p">)</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L376" href="#L376">376</a></td>
@@ -3763,14 +3766,14 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot; gid_index=&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">gid_index</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot; gid=&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">GidString</span><span class="p">(</span><span class="n">opened</span><span class="p">.</span><span class="n">gid</span><span class="p">)</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">" gid_index="</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">gid_index</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">" gid="</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">GidString</span><span class="p">(</span><span class="n">opened</span><span class="p">.</span><span class="n">gid</span><span class="p">)</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L377" href="#L377">377</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">        </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot; link_layer=&quot;</span></td>
+        <td class="src"><span class="w">        </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">" link_layer="</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L378" href="#L378">378</a></td>
@@ -3784,14 +3787,14 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;ib&quot;</span></td>
+        <td class="src"><span class="w">                </span><span class="o">?</span><span class="w"> </span><span class="s">"ib"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L380" href="#L380">380</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;ethernet&quot;</span><span class="p">)</span></td>
+        <td class="src"><span class="w">                </span><span class="o">:</span><span class="w"> </span><span class="s">"ethernet"</span><span class="p">)</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L381" href="#L381">381</a></td>
@@ -3819,7 +3822,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot; active_mtu_bytes=&quot;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">" active_mtu_bytes="</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L382" href="#L382">382</a></td>
@@ -3882,7 +3885,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_alloc_pd failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_alloc_pd failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L387" href="#L387">387</a></td>
@@ -3938,7 +3941,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_create_cq failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_create_cq failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L392" href="#L392">392</a></td>
@@ -4015,7 +4018,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;posix_memalign failed for raw verbs region&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"posix_memalign failed for raw verbs region"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L400" href="#L400">400</a></td>
@@ -4113,7 +4116,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_reg_mr failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_reg_mr failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L411" href="#L411">411</a></td>
@@ -5090,7 +5093,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_reg_mr failed for extra raw verbs region&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_reg_mr failed for extra raw verbs region"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L517" href="#L517">517</a></td>
@@ -5269,7 +5272,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;pointer outside raw verbs local region&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"pointer outside raw verbs local region"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L539" href="#L539">539</a></td>
@@ -5367,7 +5370,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="s">&quot;raw verbs local pointer requested for remote node&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="s">"raw verbs local pointer requested for remote node"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L551" href="#L551">551</a></td>
@@ -5425,7 +5428,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;raw verbs local offset outside region&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"raw verbs local offset outside region"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L556" href="#L556">556</a></td>
@@ -5497,7 +5500,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_query_port failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_query_port failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L564" href="#L564">564</a></td>
@@ -5560,7 +5563,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_query_gid failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_query_gid failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L570" href="#L570">570</a></td>
@@ -5952,7 +5955,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="c1">// Fetches and validates `node`&#39;s published metadata over the transport&#39;s shared</span></td>
+        <td class="src"><span class="c1">// Fetches and validates `node`'s published metadata over the transport's shared</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L621" href="#L621">621</a></td>
@@ -6852,7 +6855,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_post_recv failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_post_recv failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L722" href="#L722">722</a></td>
@@ -6982,7 +6985,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;raw verbs rebuild: node is not connected&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"raw verbs rebuild: node is not connected"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L737" href="#L737">737</a></td>
@@ -7091,7 +7094,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="n">IbvError</span><span class="p">(</span><span class="s">&quot;ibv_modify_qp RESET&quot;</span><span class="p">));</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="n">IbvError</span><span class="p">(</span><span class="s">"ibv_modify_qp RESET"</span><span class="p">));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L749" href="#L749">749</a></td>
@@ -7119,7 +7122,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// discard another peer QP&#39;s completions.</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// discard another peer QP's completions.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L753" href="#L753">753</a></td>
@@ -7175,7 +7178,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_poll_cq failed during raw verbs rebuild&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_poll_cq failed during raw verbs rebuild"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L758" href="#L758">758</a></td>
@@ -7408,7 +7411,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_post_recv failed during rebuild&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_post_recv failed during rebuild"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L784" href="#L784">784</a></td>
@@ -7471,7 +7474,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;raw verbs generation: node out of range&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"raw verbs generation: node out of range"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L791" href="#L791">791</a></td>
@@ -7606,7 +7609,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;raw verbs peer meta: node is not connected&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"raw verbs peer meta: node is not connected"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L807" href="#L807">807</a></td>
@@ -7767,7 +7770,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;raw verbs write remote node out of range&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"raw verbs write remote node out of range"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L827" href="#L827">827</a></td>
@@ -7837,7 +7840,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;raw verbs write local buffer is not registered&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"raw verbs write local buffer is not registered"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L834" href="#L834">834</a></td>
@@ -8009,7 +8012,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_post_send write failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_post_send write failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L853" href="#L853">853</a></td>
@@ -8039,7 +8042,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="s">&quot;write&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">impl_</span><span class="o">-&gt;</span><span class="n">config</span><span class="p">.</span><span class="n">global_id</span><span class="p">,</span><span class="w"> </span><span class="n">remote</span><span class="p">.</span><span class="n">nodeID</span><span class="p">,</span><span class="w"> </span><span class="n">bytes</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="s">"write"</span><span class="p">,</span><span class="w"> </span><span class="n">impl_</span><span class="o">-&gt;</span><span class="n">config</span><span class="p">.</span><span class="n">global_id</span><span class="p">,</span><span class="w"> </span><span class="n">remote</span><span class="p">.</span><span class="n">nodeID</span><span class="p">,</span><span class="w"> </span><span class="n">bytes</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L856" href="#L856">856</a></td>
@@ -8116,7 +8119,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;raw verbs write-sg remote node out of range&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"raw verbs write-sg remote node out of range"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L865" href="#L865">865</a></td>
@@ -8242,7 +8245,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;raw verbs write-sg entry too large&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"raw verbs write-sg entry too large"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L877" href="#L877">877</a></td>
@@ -8298,7 +8301,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="s">&quot;raw verbs write-sg local buffer is not registered&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="s">"raw verbs write-sg local buffer is not registered"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L882" href="#L882">882</a></td>
@@ -8524,7 +8527,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_post_send write-sg failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_post_send write-sg failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L908" href="#L908">908</a></td>
@@ -8554,7 +8557,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="s">&quot;write_sg&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">impl_</span><span class="o">-&gt;</span><span class="n">config</span><span class="p">.</span><span class="n">global_id</span><span class="p">,</span><span class="w"> </span><span class="n">remote</span><span class="p">.</span><span class="n">nodeID</span><span class="p">,</span><span class="w"> </span><span class="n">total_sg_bytes</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="s">"write_sg"</span><span class="p">,</span><span class="w"> </span><span class="n">impl_</span><span class="o">-&gt;</span><span class="n">config</span><span class="p">.</span><span class="n">global_id</span><span class="p">,</span><span class="w"> </span><span class="n">remote</span><span class="p">.</span><span class="n">nodeID</span><span class="p">,</span><span class="w"> </span><span class="n">total_sg_bytes</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L911" href="#L911">911</a></td>
@@ -8659,7 +8662,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="s">&quot;raw verbs write-with-imm remote node out of range&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="s">"raw verbs write-with-imm remote node out of range"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L923" href="#L923">923</a></td>
@@ -8859,7 +8862,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_post_send write-with-imm failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_post_send write-with-imm failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L946" href="#L946">946</a></td>
@@ -8889,7 +8892,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="s">&quot;write_imm&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">impl_</span><span class="o">-&gt;</span><span class="n">config</span><span class="p">.</span><span class="n">global_id</span><span class="p">,</span><span class="w"> </span><span class="n">remote</span><span class="p">.</span><span class="n">nodeID</span><span class="p">,</span><span class="w"> </span><span class="n">bytes</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="s">"write_imm"</span><span class="p">,</span><span class="w"> </span><span class="n">impl_</span><span class="o">-&gt;</span><span class="n">config</span><span class="p">.</span><span class="n">global_id</span><span class="p">,</span><span class="w"> </span><span class="n">remote</span><span class="p">.</span><span class="n">nodeID</span><span class="p">,</span><span class="w"> </span><span class="n">bytes</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L949" href="#L949">949</a></td>
@@ -8973,7 +8976,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;raw verbs read remote node out of range&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"raw verbs read remote node out of range"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L959" href="#L959">959</a></td>
@@ -9115,7 +9118,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_post_send read failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_post_send read failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L976" href="#L976">976</a></td>
@@ -9145,7 +9148,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="s">&quot;read&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">impl_</span><span class="o">-&gt;</span><span class="n">config</span><span class="p">.</span><span class="n">global_id</span><span class="p">,</span><span class="w"> </span><span class="n">remote</span><span class="p">.</span><span class="n">nodeID</span><span class="p">,</span><span class="w"> </span><span class="n">bytes</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="s">"read"</span><span class="p">,</span><span class="w"> </span><span class="n">impl_</span><span class="o">-&gt;</span><span class="n">config</span><span class="p">.</span><span class="n">global_id</span><span class="p">,</span><span class="w"> </span><span class="n">remote</span><span class="p">.</span><span class="n">nodeID</span><span class="p">,</span><span class="w"> </span><span class="n">bytes</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L979" href="#L979">979</a></td>
@@ -9201,7 +9204,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;raw verbs doorbell remote node out of range&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"raw verbs doorbell remote node out of range"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L985" href="#L985">985</a></td>
@@ -9294,7 +9297,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_post_send doorbell failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_post_send doorbell failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L996" href="#L996">996</a></td>
@@ -9406,7 +9409,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_poll_cq failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_poll_cq failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L1007" href="#L1007">1007</a></td>
@@ -9678,7 +9681,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;ibv_post_recv repost failed&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"ibv_post_recv repost failed"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L1037" href="#L1037">1037</a></td>
@@ -9955,7 +9958,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;raw verbs inline query remote node out of range&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"raw verbs inline query remote node out of range"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L1067" href="#L1067">1067</a></td>
@@ -10005,8 +10008,8 @@
         </main>
         <hr class="block-separator"/>
         <footer class="text-center">
-          Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
-          at 2026-10-27 12:11:50+00:00
+          Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
+          at 2026-10-28 05:57:45+00:00
         </footer>
       </div>
     </div>

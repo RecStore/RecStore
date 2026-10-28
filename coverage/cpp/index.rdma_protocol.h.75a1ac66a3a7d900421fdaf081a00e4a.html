@@ -13,7 +13,10 @@
     <div class="Layout-main">
       <div class="Layout-main-centered-lg" style="max-width: 1280px;">
         <div class="d-flex flex-justify-center">
-          <h1>GCC Code Coverage Report</h1>
+          <h1>
+            <a href="index.html" style="cursor: default; text-decoration: none">
+              GCC Code Coverage Report</a>
+          </h1>
         </div>
         <hr class="block-separator"/>
         <header>
@@ -196,7 +199,7 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L355">petps::StatusWordDone(petps::StatusWord const&amp;, unsigned long) (src/ps/rdma/rdma_protocol.h:355)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="5076">called 5076 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="5124">called 5124 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
@@ -244,7 +247,7 @@
     </div>
     <div class="nav">
       <a class="nav prev" href="index.rdma_distributed_executor.cc.f95a204b0bb865d03794831e9de15cab.html"></a>
-      <a class="nav index" href="index.html"></a>
+      <a class="nav index" href="index.rdma.e75d66aa365386efec5afc8449edce65.html"></a>
       <a class="nav next" href="index.rdma_ps_client_adapter.cc.50ac430e984ee5052d69de861a6164b7.html"></a>
     </div>
   </div>
@@ -366,42 +369,42 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/array.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/array.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L17" href="#L17">17</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/flatc.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/flatc.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L18" href="#L18">18</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/log.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/log.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L19" href="#L19">19</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/tensor.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/tensor.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L20" href="#L20">20</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;ps/base/parameters.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"ps/base/parameters.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L21" href="#L21">21</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;ps/rdma/rdma_status.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"ps/rdma/rdma_status.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L22" href="#L22">22</a></td>
@@ -898,28 +901,28 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="k">static_assert</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">RequestDescriptor</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">192</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;RequestDescriptor size&quot;</span><span class="p">);</span></td>
+        <td class="src"><span class="k">static_assert</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">RequestDescriptor</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">192</span><span class="p">,</span><span class="w"> </span><span class="s">"RequestDescriptor size"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L93" href="#L93">93</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="k">static_assert</span><span class="p">(</span><span class="k">alignof</span><span class="p">(</span><span class="n">RequestDescriptor</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;RequestDescriptor align&quot;</span><span class="p">);</span></td>
+        <td class="src"><span class="k">static_assert</span><span class="p">(</span><span class="k">alignof</span><span class="p">(</span><span class="n">RequestDescriptor</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="s">"RequestDescriptor align"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L94" href="#L94">94</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="k">static_assert</span><span class="p">(</span><span class="k">alignof</span><span class="p">(</span><span class="n">CommitWord</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;CommitWord align&quot;</span><span class="p">);</span></td>
+        <td class="src"><span class="k">static_assert</span><span class="p">(</span><span class="k">alignof</span><span class="p">(</span><span class="n">CommitWord</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="s">"CommitWord align"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L95" href="#L95">95</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="k">static_assert</span><span class="p">(</span><span class="k">alignof</span><span class="p">(</span><span class="n">StatusWord</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;StatusWord align&quot;</span><span class="p">);</span></td>
+        <td class="src"><span class="k">static_assert</span><span class="p">(</span><span class="k">alignof</span><span class="p">(</span><span class="n">StatusWord</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="s">"StatusWord align"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L96" href="#L96">96</a></td>
@@ -1315,7 +1318,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;payload buffer is null&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"payload buffer is null"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L147" href="#L147">147</a></td>
@@ -1384,7 +1387,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;values pointer or embedding dim is invalid&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"values pointer or embedding dim is invalid"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L153" href="#L153">153</a></td>
@@ -1621,7 +1624,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;keys and values size mismatch&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"keys and values size mismatch"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L179" href="#L179">179</a></td>
@@ -1979,7 +1982,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;payload buffer or values is null&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"payload buffer or values is null"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L225" href="#L225">225</a></td>
@@ -2056,7 +2059,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;invalid flat update shape&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"invalid flat update shape"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L234" href="#L234">234</a></td>
@@ -2286,7 +2289,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;flat update gather input is null&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"flat update gather input is null"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L262" href="#L262">262</a></td>
@@ -2358,7 +2361,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;flat update gather payload does not fit&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"flat update gather payload does not fit"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L270" href="#L270">270</a></td>
@@ -2470,7 +2473,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">2</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">        </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;flat update gather row index is out of range&quot;</span><span class="p">;</span></td>
+        <td class="src coveredLine show_coveredLine"><span class="w">        </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"flat update gather row index is out of range"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L283" href="#L283">283</a></td>
@@ -2607,7 +2610,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">storage</span><span class="o">-&gt;</span><span class="n">fill</span><span class="p">(</span><span class="sc">&#39;\0&#39;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">storage</span><span class="o">-&gt;</span><span class="n">fill</span><span class="p">(</span><span class="sc">'\0'</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L300" href="#L300">300</a></td>
@@ -2684,7 +2687,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="n">descriptor</span><span class="p">.</span><span class="n">table_name</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span><span class="w"> </span><span class="n">descriptor</span><span class="p">.</span><span class="n">table_name</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span><span class="w"> </span><span class="sc">&#39;\0&#39;</span><span class="p">)</span><span class="w"> </span><span class="o">-</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="n">descriptor</span><span class="p">.</span><span class="n">table_name</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span><span class="w"> </span><span class="n">descriptor</span><span class="p">.</span><span class="n">table_name</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span><span class="w"> </span><span class="sc">'\0'</span><span class="p">)</span><span class="w"> </span><span class="o">-</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L310" href="#L310">310</a></td>
@@ -2775,7 +2778,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;bad request magic&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"bad request magic"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L321" href="#L321">321</a></td>
@@ -2831,7 +2834,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;bad request version&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"bad request version"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L327" href="#L327">327</a></td>
@@ -2915,7 +2918,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;request payload exceeds slot capacity&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"request payload exceeds slot capacity"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L336" href="#L336">336</a></td>
@@ -2971,7 +2974,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;response exceeds slot capacity&quot;</span><span class="p">;</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="o">*</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"response exceeds slot capacity"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L342" href="#L342">342</a></td>
@@ -3068,7 +3071,7 @@
         <td class="text-right src linenos"><a class="normal" id="L355" href="#L355">355</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">5076</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">5124</td>
         <td class="src coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="nf">StatusWordDone</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">StatusWord</span><span class="o">&amp;</span><span class="w"> </span><span class="n">status</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">seq</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
@@ -3078,11 +3081,11 @@
             <summary>2/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
               <div class="color-taken-branch">&check; Branch 1 taken 8 times.</div>
-              <div class="color-taken-branch">&check; Branch 2 taken 5068 times.</div>
+              <div class="color-taken-branch">&check; Branch 2 taken 5116 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">10160</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">10256</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">status</span><span class="p">.</span><span class="n">state</span><span class="p">.</span><span class="n">load</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">memory_order_acquire</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">kRcSlotDone</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
       </tr>
       <tr>
@@ -3096,7 +3099,7 @@
             </div>
           </details>
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">5092</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">5140</td>
         <td class="src coveredLine show_coveredLine"><span class="w">         </span><span class="n">status</span><span class="p">.</span><span class="n">seq</span><span class="p">.</span><span class="n">load</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">memory_order_acquire</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">seq</span><span class="p">;</span></td>
       </tr>
       <tr>
@@ -3203,12 +3206,12 @@
           <details class="normal details-overlay">
             <summary>1/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 1 taken 5064 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 5112 times.</div>
               <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">5064</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">5112</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">StatusWordDone</span><span class="p">(</span><span class="n">status</span><span class="p">,</span><span class="w"> </span><span class="n">seq</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
@@ -3218,11 +3221,11 @@
             <summary>1/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
               <div class="color-fg-danger">&cross; Branch 0 not taken.</div>
-              <div class="color-taken-branch">&check; Branch 1 taken 5064 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 5112 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">5064</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">5112</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">spins</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">spin_iterations</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
@@ -3243,14 +3246,14 @@
         <td class="text-right src linenos"><a class="normal" id="L376" href="#L376">376</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">5064</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">5112</td>
         <td class="src coveredLine show_coveredLine"><span class="w">      </span><span class="n">spins</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L377" href="#L377">377</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">5064</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">5112</td>
         <td class="src coveredLine show_coveredLine"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="n">this_thread</span><span class="o">::</span><span class="n">yield</span><span class="p">();</span></td>
       </tr>
       <tr>
@@ -3266,12 +3269,12 @@
           <details class="normal details-overlay">
             <summary>1/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 0 taken 5064 times.</div>
+              <div class="color-taken-branch">&check; Branch 0 taken 5112 times.</div>
               <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">10128</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">10224</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">timeout_ms</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
       </tr>
       <tr>
@@ -3280,12 +3283,12 @@
           <details class="normal details-overlay">
             <summary>1/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 1 taken 5064 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 5112 times.</div>
               <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">5064</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">5112</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">        </span><span class="n">std</span><span class="o">::</span><span class="n">chrono</span><span class="o">::</span><span class="n">duration_cast</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">chrono</span><span class="o">::</span><span class="n">milliseconds</span><span class="o">&gt;</span><span class="p">(</span></td>
       </tr>
       <tr>
@@ -3294,14 +3297,14 @@
           <details class="normal details-overlay">
             <summary>3/4</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 2 taken 5064 times.</div>
+              <div class="color-taken-branch">&check; Branch 2 taken 5112 times.</div>
               <div class="color-fg-danger">&cross; Branch 3 not taken.</div>
               <div class="color-taken-branch">&check; Branch 4 taken 2 times.</div>
-              <div class="color-taken-branch">&check; Branch 5 taken 5062 times.</div>
+              <div class="color-taken-branch">&check; Branch 5 taken 5110 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">10128</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">10224</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">            </span><span class="n">std</span><span class="o">::</span><span class="n">chrono</span><span class="o">::</span><span class="n">steady_clock</span><span class="o">::</span><span class="n">now</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">start</span><span class="p">)</span></td>
       </tr>
       <tr>
@@ -3311,11 +3314,11 @@
             <summary>2/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
               <div class="color-taken-branch">&check; Branch 1 taken 2 times.</div>
-              <div class="color-taken-branch">&check; Branch 2 taken 5062 times.</div>
+              <div class="color-taken-branch">&check; Branch 2 taken 5110 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">5064</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">5112</td>
         <td class="src coveredLine show_coveredLine"><span class="w">                </span><span class="p">.</span><span class="n">count</span><span class="p">()</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">timeout_ms</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
@@ -3330,7 +3333,7 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">2</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">      </span><span class="n">throw</span><span class="w"> </span><span class="n">RdmaRequestTimeout</span><span class="p">(</span><span class="s">&quot;RDMA request wait timeout&quot;</span><span class="p">);</span></td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">      </span><span class="n">throw</span><span class="w"> </span><span class="n">RdmaRequestTimeout</span><span class="p">(</span><span class="s">"RDMA request wait timeout"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L384" href="#L384">384</a></td>
@@ -3650,8 +3653,8 @@
         </main>
         <hr class="block-separator"/>
         <footer class="text-center">
-          Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
-          at 2026-10-27 12:11:50+00:00
+          Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
+          at 2026-10-28 05:57:45+00:00
         </footer>
       </div>
     </div>

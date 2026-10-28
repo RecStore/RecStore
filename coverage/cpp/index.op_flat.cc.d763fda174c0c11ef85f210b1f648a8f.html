@@ -13,7 +13,10 @@
     <div class="Layout-main">
       <div class="Layout-main-centered-lg" style="max-width: 1280px;">
         <div class="d-flex flex-justify-center">
-          <h1>GCC Code Coverage Report</h1>
+          <h1>
+            <a href="index.html" style="cursor: default; text-decoration: none">
+              GCC Code Coverage Report</a>
+          </h1>
         </div>
         <hr class="block-separator"/>
         <header>
@@ -111,7 +114,7 @@
     </div>
     <div class="nav">
       <a class="nav prev" href="index.op_cuda_runtime_cpu.cc.2b50e3e5389bdd23680794f283fdea7c.html"></a>
-      <a class="nav index" href="index.html"></a>
+      <a class="nav index" href="index.pytorch.ee63f8fbe8e9ec1dcdcd24ba1fbe807d.html"></a>
       <a class="nav next" href="index.op_internal.h.cfead51a769d5b1eaf64544d5ec6eccd.html"></a>
     </div>
   </div>
@@ -128,7 +131,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;framework/pytorch/op_flat.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"framework/pytorch/op_flat.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L2" href="#L2">2</a></td>
@@ -156,7 +159,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;framework/pytorch/op_internal.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"framework/pytorch/op_internal.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L6" href="#L6">6</a></td>
@@ -303,7 +306,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="o">!</span><span class="n">table_name</span><span class="p">.</span><span class="n">empty</span><span class="p">(),</span><span class="w"> </span><span class="s">&quot;table_name must be non-empty&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="o">!</span><span class="n">table_name</span><span class="p">.</span><span class="n">empty</span><span class="p">(),</span><span class="w"> </span><span class="s">"table_name must be non-empty"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L25" href="#L25">25</a></td>
@@ -319,7 +322,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">dim</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Keys tensor must be 1-dimensional&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">dim</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="s">"Keys tensor must be 1-dimensional"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L26" href="#L26">26</a></td>
@@ -342,7 +345,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">              </span><span class="s">&quot;Keys tensor must have dtype int64&quot;</span><span class="p">);</span></td>
+        <td class="src"><span class="w">              </span><span class="s">"Keys tensor must have dtype int64"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L28" href="#L28">28</a></td>
@@ -358,7 +361,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">is_contiguous</span><span class="p">(),</span><span class="w"> </span><span class="s">&quot;Keys tensor must be contiguous&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">keys</span><span class="p">.</span><span class="n">is_contiguous</span><span class="p">(),</span><span class="w"> </span><span class="s">"Keys tensor must be contiguous"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L29" href="#L29">29</a></td>
@@ -381,7 +384,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">grads</span><span class="p">.</span><span class="n">dim</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Grads tensor must be 2-dimensional&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">grads</span><span class="p">.</span><span class="n">dim</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="s">"Grads tensor must be 2-dimensional"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L31" href="#L31">31</a></td>
@@ -404,7 +407,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">              </span><span class="s">&quot;Grads tensor must have dtype float32&quot;</span><span class="p">);</span></td>
+        <td class="src"><span class="w">              </span><span class="s">"Grads tensor must have dtype float32"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L33" href="#L33">33</a></td>
@@ -420,7 +423,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">grads</span><span class="p">.</span><span class="n">is_contiguous</span><span class="p">(),</span><span class="w"> </span><span class="s">&quot;Grads tensor must be contiguous&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">grads</span><span class="p">.</span><span class="n">is_contiguous</span><span class="p">(),</span><span class="w"> </span><span class="s">"Grads tensor must be contiguous"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L34" href="#L34">34</a></td>
@@ -445,7 +448,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">              </span><span class="s">&quot;Keys and grads tensors must have the same number of entries&quot;</span><span class="p">);</span></td>
+        <td class="src"><span class="w">              </span><span class="s">"Keys and grads tensors must have the same number of entries"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L36" href="#L36">36</a></td>
@@ -1189,7 +1192,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">14</td>
-        <td class="src coveredLine show_coveredLine"><span class="kt">void</span><span class="w"> </span><span class="n">RegisterFlatOps</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">Library</span><span class="o">&amp;</span><span class="w"> </span><span class="n">m</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src coveredLine show_coveredLine"><span class="kt">void</span><span class="w"> </span><span class="nf">RegisterFlatOps</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">Library</span><span class="o">&amp;</span><span class="w"> </span><span class="n">m</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L105" href="#L105">105</a></td>
@@ -1203,7 +1206,7 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">14</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">m</span><span class="p">.</span><span class="n">def</span><span class="p">(</span><span class="s">&quot;local_lookup_flat&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">local_lookup_flat_torch</span><span class="p">);</span></td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">m</span><span class="p">.</span><span class="n">def</span><span class="p">(</span><span class="s">"local_lookup_flat"</span><span class="p">,</span><span class="w"> </span><span class="n">local_lookup_flat_torch</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L106" href="#L106">106</a></td>
@@ -1217,7 +1220,7 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">14</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">m</span><span class="p">.</span><span class="n">def</span><span class="p">(</span><span class="s">&quot;local_update_flat&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">local_update_flat_torch</span><span class="p">);</span></td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">m</span><span class="p">.</span><span class="n">def</span><span class="p">(</span><span class="s">"local_update_flat"</span><span class="p">,</span><span class="w"> </span><span class="n">local_update_flat_torch</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L107" href="#L107">107</a></td>
@@ -1231,7 +1234,7 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">14</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">m</span><span class="p">.</span><span class="n">def</span><span class="p">(</span><span class="s">&quot;warmup_local_lookup_flat_cuda_region&quot;</span><span class="p">,</span></td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">m</span><span class="p">.</span><span class="n">def</span><span class="p">(</span><span class="s">"warmup_local_lookup_flat_cuda_region"</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L108" href="#L108">108</a></td>
@@ -1281,8 +1284,8 @@
         </main>
         <hr class="block-separator"/>
         <footer class="text-center">
-          Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
-          at 2026-10-27 12:11:50+00:00
+          Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
+          at 2026-10-28 05:57:45+00:00
         </footer>
       </div>
     </div>

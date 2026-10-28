@@ -13,7 +13,10 @@
     <div class="Layout-main">
       <div class="Layout-main-centered-lg" style="max-width: 1280px;">
         <div class="d-flex flex-justify-center">
-          <h1>GCC Code Coverage Report</h1>
+          <h1>
+            <a href="index.html" style="cursor: default; text-decoration: none">
+              GCC Code Coverage Report</a>
+          </h1>
         </div>
         <hr class="block-separator"/>
         <header>
@@ -109,7 +112,7 @@
     </div>
     <div class="nav">
       <a class="nav prev" href="index.op_base.cc.c16a9d076e70281e790a77974cb6a168.html"></a>
-      <a class="nav index" href="index.html"></a>
+      <a class="nav index" href="index.pytorch.ee63f8fbe8e9ec1dcdcd24ba1fbe807d.html"></a>
       <a class="nav next" href="index.op_flat.cc.d763fda174c0c11ef85f210b1f648a8f.html"></a>
     </div>
   </div>
@@ -126,7 +129,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;framework/pytorch/op_cuda_runtime.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"framework/pytorch/op_cuda_runtime.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L2" href="#L2">2</a></td>
@@ -210,7 +213,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="o">!</span><span class="n">tensor</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">(),</span><span class="w"> </span><span class="s">&quot;CUDA staging requires a CUDA build&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="o">!</span><span class="n">tensor</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">(),</span><span class="w"> </span><span class="s">"CUDA staging requires a CUDA build"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L13" href="#L13">13</a></td>
@@ -238,7 +241,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="kt">void</span><span class="w"> </span><span class="n">SynchronizeCurrentCudaStreamForTensor</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">tensor</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="kt">void</span><span class="w"> </span><span class="nf">SynchronizeCurrentCudaStreamForTensor</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">tensor</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L17" href="#L17">17</a></td>
@@ -266,7 +269,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="kt">void</span><span class="w"> </span><span class="n">RetainUntilCudaComplete</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="p">,</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="kt">void</span><span class="w"> </span><span class="nf">RetainUntilCudaComplete</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L21" href="#L21">21</a></td>
@@ -323,8 +326,8 @@
         </main>
         <hr class="block-separator"/>
         <footer class="text-center">
-          Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
-          at 2026-10-27 12:11:50+00:00
+          Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
+          at 2026-10-28 05:57:45+00:00
         </footer>
       </div>
     </div>

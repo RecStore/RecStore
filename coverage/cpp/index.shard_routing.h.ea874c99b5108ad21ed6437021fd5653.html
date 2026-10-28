@@ -13,7 +13,10 @@
     <div class="Layout-main">
       <div class="Layout-main-centered-lg" style="max-width: 1280px;">
         <div class="d-flex flex-justify-center">
-          <h1>GCC Code Coverage Report</h1>
+          <h1>
+            <a href="index.html" style="cursor: default; text-decoration: none">
+              GCC Code Coverage Report</a>
+          </h1>
         </div>
         <hr class="block-separator"/>
         <header>
@@ -116,7 +119,7 @@
     </div>
     <div class="nav">
       <a class="nav prev" href="index.rdma_status.h.27bdeeb57210385bf86c10f2b32ea5e1.html"></a>
-      <a class="nav index" href="index.html"></a>
+      <a class="nav index" href="index.rdma.e75d66aa365386efec5afc8449edce65.html"></a>
       <a class="nav next" href="index.ssd_block_allocator.h.2e8d44552a6ea3c838d58cd4469fe05f.html"></a>
     </div>
   </div>
@@ -175,7 +178,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="c1">// These structs and the partition/finalize logic are shared by the adapter&#39;s</span></td>
+        <td class="src"><span class="c1">// These structs and the partition/finalize logic are shared by the adapter's</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L8" href="#L8">8</a></td>
@@ -259,35 +262,35 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/array.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/array.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L20" href="#L20">20</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/hash.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/hash.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L21" href="#L21">21</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/log.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/log.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L22" href="#L22">22</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;ps/rdma/rdma_common.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"ps/rdma/rdma_common.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L23" href="#L23">23</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;ps/rdma/rdma_status.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"ps/rdma/rdma_status.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L24" href="#L24">24</a></td>
@@ -357,7 +360,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">original_positions</span><span class="p">;</span><span class="w"> </span><span class="c1">// Positions in caller&#39;s batch.</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">original_positions</span><span class="p">;</span><span class="w"> </span><span class="c1">// Positions in caller's batch.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L34" href="#L34">34</a></td>
@@ -609,7 +612,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">&quot;num_shards must be positive&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">"num_shards must be positive"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L68" href="#L68">68</a></td>
@@ -630,7 +633,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">hash_method</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;city_hash&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">hash_method</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">"city_hash"</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L70" href="#L70">70</a></td>
@@ -658,7 +661,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">hash_method</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;simple_mod&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">hash_method</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">"simple_mod"</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L73" href="#L73">73</a></td>
@@ -688,7 +691,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;unsupported shard hash method: &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">hash_method</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"unsupported shard hash method: "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">hash_method</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L76" href="#L76">76</a></td>
@@ -779,7 +782,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">&quot;max_keys_per_rpc must be positive&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">"max_keys_per_rpc must be positive"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L87" href="#L87">87</a></td>
@@ -804,7 +807,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">hash_method</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="s">&quot;city_hash&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">hash_method</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="s">&quot;simple_mod&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">hash_method</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="s">"city_hash"</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">hash_method</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="s">"simple_mod"</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L89" href="#L89">89</a></td>
@@ -832,7 +835,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="s">&quot;unsupported shard hash method: &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">hash_method</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="s">"unsupported shard hash method: "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">hash_method</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L91" href="#L91">91</a></td>
@@ -1435,8 +1438,8 @@
         </main>
         <hr class="block-separator"/>
         <footer class="text-center">
-          Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
-          at 2026-10-27 12:11:50+00:00
+          Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
+          at 2026-10-28 05:57:45+00:00
         </footer>
       </div>
     </div>

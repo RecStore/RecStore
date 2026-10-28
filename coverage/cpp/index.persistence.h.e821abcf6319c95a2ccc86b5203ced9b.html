@@ -13,7 +13,10 @@
     <div class="Layout-main">
       <div class="Layout-main-centered-lg" style="max-width: 1280px;">
         <div class="d-flex flex-justify-center">
-          <h1>GCC Code Coverage Report</h1>
+          <h1>
+            <a href="index.html" style="cursor: default; text-decoration: none">
+              GCC Code Coverage Report</a>
+          </h1>
         </div>
         <hr class="block-separator"/>
         <header>
@@ -70,21 +73,21 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L17">base::FENCE::sfence() (src/storage/nvm/pet_kv/persistence.h:17)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="113614">called 113614 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="113694">called 113694 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L20">base::clflushopt(void*) (src/storage/nvm/pet_kv/persistence.h:20)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="12374062">called 12374062 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="12374142">called 12374142 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L37">base::clflushopt_range(void*, unsigned long) (src/storage/nvm/pet_kv/persistence.h:37)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="113614">called 113614 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="113694">called 113694 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
@@ -102,7 +105,7 @@
     </div>
     <div class="nav">
       <a class="nav prev" href="index.kv_engine_register.cc.2156b52354b9eb4393cc3dd1e22734be.html"></a>
-      <a class="nav index" href="index.html"></a>
+      <a class="nav index" href="index.pet_kv.8d2d264f80d5e7b1438f2d73eddc8523.html"></a>
       <a class="nav next" href="index.pet_hash.h.8691aaa306531045512af2eee8c40db6.html"></a>
     </div>
   </div>
@@ -126,14 +129,14 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/base.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/base.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L3" href="#L3">3</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/log.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/log.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L4" href="#L4">4</a></td>
@@ -217,21 +220,21 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">mfence</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">&quot;mfence&quot;</span><span class="w"> </span><span class="o">:::</span><span class="w"> </span><span class="s">&quot;memory&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">}</span></td>
+        <td class="src"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">mfence</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">"mfence"</span><span class="w"> </span><span class="o">:::</span><span class="w"> </span><span class="s">"memory"</span><span class="p">);</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L16" href="#L16">16</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">lfence</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">&quot;lfence&quot;</span><span class="w"> </span><span class="o">:::</span><span class="w"> </span><span class="s">&quot;memory&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">}</span></td>
+        <td class="src"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">lfence</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">"lfence"</span><span class="w"> </span><span class="o">:::</span><span class="w"> </span><span class="s">"memory"</span><span class="p">);</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L17" href="#L17">17</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">113614</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">sfence</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">&quot;sfence&quot;</span><span class="w"> </span><span class="o">:::</span><span class="w"> </span><span class="s">&quot;memory&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">}</span></td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">113694</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">sfence</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">"sfence"</span><span class="w"> </span><span class="o">:::</span><span class="w"> </span><span class="s">"memory"</span><span class="p">);</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L18" href="#L18">18</a></td>
@@ -251,14 +254,14 @@
         <td class="text-right src linenos"><a class="normal" id="L20" href="#L20">20</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">12374062</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">12374142</td>
         <td class="src coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">clflushopt</span><span class="p">(</span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">addr</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L21" href="#L21">21</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">12374062</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">12374142</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="p">;</span></td>
       </tr>
       <tr>
@@ -266,21 +269,21 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">isClflushoptEnabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">!</span><span class="n">system</span><span class="p">(</span><span class="s">&quot;lscpu |grep clflushopt &gt;/dev/null&quot;</span><span class="p">);</span></td>
+        <td class="src"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">isClflushoptEnabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">!</span><span class="n">system</span><span class="p">(</span><span class="s">"lscpu |grep clflushopt &gt;/dev/null"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L23" href="#L23">23</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">isClwbEnabled</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="o">!</span><span class="n">system</span><span class="p">(</span><span class="s">&quot;lscpu |grep clfw &gt;/dev/null&quot;</span><span class="p">);</span></td>
+        <td class="src"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">isClwbEnabled</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="o">!</span><span class="n">system</span><span class="p">(</span><span class="s">"lscpu |grep clfw &gt;/dev/null"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L24" href="#L24">24</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">isClflushEnabled</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="o">!</span><span class="n">system</span><span class="p">(</span><span class="s">&quot;lscpu |grep clflush &gt;/dev/null&quot;</span><span class="p">);</span></td>
+        <td class="src"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">isClflushEnabled</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="o">!</span><span class="n">system</span><span class="p">(</span><span class="s">"lscpu |grep clflush &gt;/dev/null"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L25" href="#L25">25</a></td>
@@ -294,7 +297,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">&quot;.byte 0x66; clflush %0&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;+m&quot;</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="k">volatile</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="p">)(</span><span class="n">addr</span><span class="p">)));</span></td>
+        <td class="src"><span class="w">    </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">".byte 0x66; clflush %0"</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">"+m"</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="k">volatile</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="p">)(</span><span class="n">addr</span><span class="p">)));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L27" href="#L27">27</a></td>
@@ -308,7 +311,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">&quot;.byte 0x66; xsaveopt %0&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;+m&quot;</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="k">volatile</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="p">)(</span><span class="n">addr</span><span class="p">)));</span></td>
+        <td class="src"><span class="w">    </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">".byte 0x66; xsaveopt %0"</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">"+m"</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="k">volatile</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="p">)(</span><span class="n">addr</span><span class="p">)));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L29" href="#L29">29</a></td>
@@ -322,7 +325,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">&quot;clflush %0&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;+m&quot;</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="k">volatile</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="p">)</span><span class="n">addr</span><span class="p">));</span></td>
+        <td class="src"><span class="w">    </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">"clflush %0"</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">"+m"</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="k">volatile</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="p">)</span><span class="n">addr</span><span class="p">));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L31" href="#L31">31</a></td>
@@ -336,7 +339,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">FATAL</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;system does&#39;t support clflush-like instrs&quot;</span><span class="p">;</span></td>
+        <td class="src"><span class="w">    </span><span class="n">LOG</span><span class="p">(</span><span class="n">FATAL</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">"system does't support clflush-like instrs"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L33" href="#L33">33</a></td>
@@ -370,21 +373,21 @@
         <td class="text-right src linenos"><a class="normal" id="L37" href="#L37">37</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">113614</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">113694</td>
         <td class="src coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">clflushopt_range</span><span class="p">(</span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">des</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">size</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L38" href="#L38">38</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">113614</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">113694</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">addr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">reinterpret_cast</span><span class="o">&lt;</span><span class="kt">char</span><span class="o">*&gt;</span><span class="p">(</span><span class="n">des</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L39" href="#L39">39</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">113614</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">113694</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">size</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="n">size</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">((</span><span class="n">uint64</span><span class="p">)(</span><span class="n">addr</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">(</span><span class="n">kCACHELINE_SIZE</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">));</span></td>
       </tr>
       <tr>
@@ -393,19 +396,19 @@
           <details class="normal details-overlay">
             <summary>2/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 0 taken 12374062 times.</div>
-              <div class="color-taken-branch">&check; Branch 1 taken 113614 times.</div>
+              <div class="color-taken-branch">&check; Branch 0 taken 12374142 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 113694 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">12487676</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">12487836</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">size</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">kCACHELINE_SIZE</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L41" href="#L41">41</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">12374062</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">12374142</td>
         <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="n">clflushopt</span><span class="p">(</span><span class="n">addr</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">i</span><span class="p">);</span></td>
       </tr>
       <tr>
@@ -419,14 +422,14 @@
         <td class="text-right src linenos"><a class="normal" id="L43" href="#L43">43</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">113614</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">113694</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">FENCE</span><span class="o">::</span><span class="n">sfence</span><span class="p">();</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L44" href="#L44">44</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">113614</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">113694</td>
         <td class="src coveredLine show_coveredLine"><span class="p">}</span></td>
       </tr>
       <tr>
@@ -449,8 +452,8 @@
         </main>
         <hr class="block-separator"/>
         <footer class="text-center">
-          Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
-          at 2026-10-27 12:11:50+00:00
+          Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
+          at 2026-10-28 05:57:45+00:00
         </footer>
       </div>
     </div>

@@ -13,7 +13,10 @@
     <div class="Layout-main">
       <div class="Layout-main-centered-lg" style="max-width: 1280px;">
         <div class="d-flex flex-justify-center">
-          <h1>GCC Code Coverage Report</h1>
+          <h1>
+            <a href="index.html" style="cursor: default; text-decoration: none">
+              GCC Code Coverage Report</a>
+          </h1>
         </div>
         <hr class="block-separator"/>
         <header>
@@ -70,7 +73,7 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L16">base::ResolveEngine(BaseKVConfig) (src/storage/kv_engine/engine_selector.h:16)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="1134">called 1134 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="1112">called 1112 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">55.6%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">59.0%</div>
@@ -89,7 +92,7 @@
     </div>
     <div class="nav">
       <a class="nav prev" href="index.engine_petkv.h.c718bebe96e5c6cbbb28bcfa878fb076.html"></a>
-      <a class="nav index" href="index.html"></a>
+      <a class="nav index" href="index.kv_engine.88cacfefc1387cc4377a72adba926d64.html"></a>
       <a class="nav next" href="index.kv_engine_register.cc.2156b52354b9eb4393cc3dd1e22734be.html"></a>
     </div>
   </div>
@@ -148,7 +151,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base_kv.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base_kv.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L8" href="#L8">8</a></td>
@@ -210,14 +213,14 @@
         <td class="text-right src linenos"><a class="normal" id="L16" href="#L16">16</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1134</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1112</td>
         <td class="src coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="n">EngineResolved</span><span class="w"> </span><span class="nf">ResolveEngine</span><span class="p">(</span><span class="n">BaseKVConfig</span><span class="w"> </span><span class="n">cfg</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L17" href="#L17">17</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1134</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1112</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cfg</span><span class="p">.</span><span class="n">json_config_</span><span class="p">;</span></td>
       </tr>
       <tr>
@@ -233,15 +236,15 @@
           <details class="normal details-overlay">
             <summary>3/4</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 1 taken 1134 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 1112 times.</div>
               <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
               <div class="color-taken-branch">&check; Branch 3 taken 2 times.</div>
-              <div class="color-taken-branch">&check; Branch 4 taken 1132 times.</div>
+              <div class="color-taken-branch">&check; Branch 4 taken 1110 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">1134</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">j</span><span class="p">.</span><span class="n">contains</span><span class="p">(</span><span class="s">&quot;external_engine_type&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">1112</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">j</span><span class="p">.</span><span class="n">contains</span><span class="p">(</span><span class="s">"external_engine_type"</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L20" href="#L20">20</a></td>
@@ -262,7 +265,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">4</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">        </span><span class="s">&quot;external_engine_type is removed; use engine_type&quot;</span><span class="p">);</span></td>
+        <td class="src coveredLine show_coveredLine"><span class="w">        </span><span class="s">"external_engine_type is removed; use engine_type"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L22" href="#L22">22</a></td>
@@ -284,13 +287,13 @@
           <details class="normal details-overlay">
             <summary>1/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 1 taken 1132 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 1110 times.</div>
               <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">1132</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">      </span><span class="n">j</span><span class="p">.</span><span class="n">contains</span><span class="p">(</span><span class="s">&quot;engine_type&quot;</span><span class="p">)</span></td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">1110</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">      </span><span class="n">j</span><span class="p">.</span><span class="n">contains</span><span class="p">(</span><span class="s">"engine_type"</span><span class="p">)</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L25" href="#L25">25</a></td>
@@ -298,13 +301,13 @@
           <details class="normal details-overlay">
             <summary>1/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 1 taken 1094 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 1072 times.</div>
               <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">1094</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">          </span><span class="o">?</span><span class="w"> </span><span class="n">j</span><span class="p">.</span><span class="n">at</span><span class="p">(</span><span class="s">&quot;engine_type&quot;</span><span class="p">).</span><span class="n">get</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="p">()</span></td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">1072</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">          </span><span class="o">?</span><span class="w"> </span><span class="n">j</span><span class="p">.</span><span class="n">at</span><span class="p">(</span><span class="s">"engine_type"</span><span class="p">).</span><span class="n">get</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="p">()</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L26" href="#L26">26</a></td>
@@ -312,21 +315,21 @@
           <details class="normal details-overlay">
             <summary>6/10</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 0 taken 1094 times.</div>
+              <div class="color-taken-branch">&check; Branch 0 taken 1072 times.</div>
               <div class="color-taken-branch">&check; Branch 1 taken 38 times.</div>
-              <div class="color-taken-branch">&check; Branch 3 taken 1094 times.</div>
+              <div class="color-taken-branch">&check; Branch 3 taken 1072 times.</div>
               <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
               <div class="color-taken-branch">&check; Branch 7 taken 38 times.</div>
               <div class="color-fg-danger">&cross; Branch 8 not taken.</div>
               <div class="color-taken-branch">&check; Branch 9 taken 38 times.</div>
-              <div class="color-taken-branch">&check; Branch 10 taken 1094 times.</div>
+              <div class="color-taken-branch">&check; Branch 10 taken 1072 times.</div>
               <div class="color-fg-danger">&cross; Branch 11 not taken.</div>
               <div class="color-fg-danger">&cross; Branch 12 not taken.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">2226</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">          </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;KVEngineComposite&quot;</span><span class="p">;</span></td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">2182</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">          </span><span class="o">:</span><span class="w"> </span><span class="s">"KVEngineComposite"</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L27" href="#L27">27</a></td>
@@ -340,42 +343,42 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="s">&quot;KVEngineComposite&quot;</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="s">"KVEngineComposite"</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L29" href="#L29">29</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="s">&quot;KVEnginePetKV&quot;</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="s">"KVEnginePetKV"</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L30" href="#L30">30</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="s">&quot;KVEngineDETable&quot;</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="s">"KVEngineDETable"</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L31" href="#L31">31</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="s">&quot;KVEngineFasterKV&quot;</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="s">"KVEngineFasterKV"</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L32" href="#L32">32</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="s">&quot;KVEngineHPSHashMap&quot;</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="s">"KVEngineHPSHashMap"</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L33" href="#L33">33</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="s">&quot;KVEngineHPSRocksDB&quot;</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="s">"KVEngineHPSRocksDB"</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L34" href="#L34">34</a></td>
@@ -384,7 +387,7 @@
             <summary>12/24</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
               <div class="color-taken-branch">&check; Branch 0 taken 8 times.</div>
-              <div class="color-taken-branch">&check; Branch 1 taken 1124 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 1102 times.</div>
               <div class="color-taken-branch">&check; Branch 3 taken 8 times.</div>
               <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
               <div class="color-taken-branch">&check; Branch 7 taken 8 times.</div>
@@ -410,7 +413,7 @@
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">1180</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">1158</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="p">};</span></td>
       </tr>
       <tr>
@@ -419,14 +422,14 @@
           <details class="normal details-overlay">
             <summary>3/4</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 1 taken 1132 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 1110 times.</div>
               <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
               <div class="color-taken-branch">&check; Branch 3 taken 2 times.</div>
-              <div class="color-taken-branch">&check; Branch 4 taken 1130 times.</div>
+              <div class="color-taken-branch">&check; Branch 4 taken 1108 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">1132</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">1110</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">kKnownEngines</span><span class="p">.</span><span class="n">count</span><span class="p">(</span><span class="n">engine</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
@@ -443,7 +446,7 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">2</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="n">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">&quot;unknown engine_type: &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">engine</span><span class="p">);</span></td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="n">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">"unknown engine_type: "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">engine</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L37" href="#L37">37</a></td>
@@ -465,19 +468,19 @@
           <details class="normal details-overlay">
             <summary>1/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 1 taken 1130 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 1108 times.</div>
               <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">2260</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">2216</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">EngineResolved</span><span class="p">{</span><span class="n">engine</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span><span class="n">cfg</span><span class="p">)};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L40" href="#L40">40</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1132</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">1110</td>
         <td class="src coveredLine show_coveredLine"><span class="p">}</span></td>
       </tr>
       <tr>
@@ -507,8 +510,8 @@
         </main>
         <hr class="block-separator"/>
         <footer class="text-center">
-          Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
-          at 2026-10-27 12:11:50+00:00
+          Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
+          at 2026-10-28 05:57:45+00:00
         </footer>
       </div>
     </div>

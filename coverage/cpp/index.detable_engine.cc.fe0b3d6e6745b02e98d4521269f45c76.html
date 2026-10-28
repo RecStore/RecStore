@@ -13,7 +13,10 @@
     <div class="Layout-main">
       <div class="Layout-main-centered-lg" style="max-width: 1280px;">
         <div class="d-flex flex-justify-center">
-          <h1>GCC Code Coverage Report</h1>
+          <h1>
+            <a href="index.html" style="cursor: default; text-decoration: none">
+              GCC Code Coverage Report</a>
+          </h1>
         </div>
         <hr class="block-separator"/>
         <header>
@@ -216,8 +219,8 @@
     </div>
     <div class="nav">
       <a class="nav prev" href="index.lru_cache.h.8983e02004bbc9c1f3d579c139bdf829.html"></a>
-      <a class="nav index" href="index.html"></a>
-      <a class="nav next" href="index.fasterkv_backend.cc.5d4bd6911048b36ef21db8f143b50dc9.html"></a>
+      <a class="nav index" href="index.detable.6dab783dc98d72e9fe3026146c2ad423.html"></a>
+      <a class="nav next" href="index.extendible_hash.cpp.995d0f43ffe2e5db503877d44cf14725.html"></a>
     </div>
   </div>
   <div class="source-table-container">
@@ -296,21 +299,21 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;base/factory.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"base/factory.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L11" href="#L11">11</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;storage/external/detable/dynamic_kv_plugin.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"storage/external/detable/dynamic_kv_plugin.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L12" href="#L12">12</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;storage/kv_engine/base_kv.h&quot;</span></td>
+        <td class="src"><span class="cp">#include</span><span class="w"> </span><span class="cpf">"storage/kv_engine/base_kv.h"</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L13" href="#L13">13</a></td>
@@ -394,14 +397,14 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">8</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">j</span><span class="p">.</span><span class="n">contains</span><span class="p">(</span><span class="s">&quot;value_size&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">j</span><span class="p">.</span><span class="n">contains</span><span class="p">(</span><span class="s">"value_size"</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L24" href="#L24">24</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">8</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">j</span><span class="p">.</span><span class="n">at</span><span class="p">(</span><span class="s">&quot;value_size&quot;</span><span class="p">).</span><span class="n">get</span><span class="o">&lt;</span><span class="kt">size_t</span><span class="o">&gt;</span><span class="p">();</span></td>
+        <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">j</span><span class="p">.</span><span class="n">at</span><span class="p">(</span><span class="s">"value_size"</span><span class="p">).</span><span class="n">get</span><span class="o">&lt;</span><span class="kt">size_t</span><span class="o">&gt;</span><span class="p">();</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L25" href="#L25">25</a></td>
@@ -422,7 +425,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">j</span><span class="p">.</span><span class="n">contains</span><span class="p">(</span><span class="s">&quot;value&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">j</span><span class="p">.</span><span class="n">contains</span><span class="p">(</span><span class="s">"value"</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L27" href="#L27">27</a></td>
@@ -436,7 +439,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">j</span><span class="p">.</span><span class="n">at</span><span class="p">(</span><span class="s">&quot;value&quot;</span><span class="p">).</span><span class="n">value</span><span class="p">(</span><span class="s">&quot;default_value_size_hint&quot;</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">j</span><span class="p">.</span><span class="n">at</span><span class="p">(</span><span class="s">"value"</span><span class="p">).</span><span class="n">value</span><span class="p">(</span><span class="s">"default_value_size_hint"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L28" href="#L28">28</a></td>
@@ -485,7 +488,7 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">8</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">config</span><span class="p">.</span><span class="n">json_config_</span><span class="p">.</span><span class="n">contains</span><span class="p">(</span><span class="s">&quot;detable&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">config</span><span class="p">.</span><span class="n">json_config_</span><span class="p">.</span><span class="n">contains</span><span class="p">(</span><span class="s">"detable"</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L34" href="#L34">34</a></td>
@@ -499,7 +502,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">&quot;KVEngineDETable requires detable config&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">"KVEngineDETable requires detable config"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L35" href="#L35">35</a></td>
@@ -513,7 +516,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">8</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">json_config_</span><span class="p">.</span><span class="n">at</span><span class="p">(</span><span class="s">&quot;detable&quot;</span><span class="p">);</span></td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">json_config_</span><span class="p">.</span><span class="n">at</span><span class="p">(</span><span class="s">"detable"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L37" href="#L37">37</a></td>
@@ -587,7 +590,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="s">&quot; requires a non-zero float-aligned value_size&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="s">" requires a non-zero float-aligned value_size"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L44" href="#L44">44</a></td>
@@ -655,7 +658,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">error</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;\0&#39;</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;unknown provider error&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">data</span><span class="p">());</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">error</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">'\0'</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">"unknown provider error"</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">data</span><span class="p">());</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L51" href="#L51">51</a></td>
@@ -684,7 +687,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="s">&quot;KVEngineDETable &quot;</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">operation</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">&quot; failed: &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">detail</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="s">"KVEngineDETable "</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">operation</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">" failed: "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">detail</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L53" href="#L53">53</a></td>
@@ -860,7 +863,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">&quot;KVEngineDETable requires value_size&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">"KVEngineDETable requires value_size"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L70" href="#L70">70</a></td>
@@ -909,7 +912,7 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">8</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">        </span><span class="n">plugin</span><span class="p">.</span><span class="n">value</span><span class="p">(</span><span class="s">&quot;library_path&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">());</span></td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">        </span><span class="n">plugin</span><span class="p">.</span><span class="n">value</span><span class="p">(</span><span class="s">"library_path"</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">());</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L75" href="#L75">75</a></td>
@@ -944,7 +947,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">4</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">          </span><span class="s">&quot;KVEngineDETable requires detable.library_path&quot;</span><span class="p">);</span></td>
+        <td class="src coveredLine show_coveredLine"><span class="w">          </span><span class="s">"KVEngineDETable requires detable.library_path"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L78" href="#L78">78</a></td>
@@ -1009,7 +1012,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="s">&quot;KVEngineDETable failed to load provider: &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="n">dlerror</span><span class="p">()));</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="s">"KVEngineDETable failed to load provider: "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="n">dlerror</span><span class="p">()));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L84" href="#L84">84</a></td>
@@ -1116,7 +1119,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="s">&quot;KVEngineDETable provider entry point is unavailable: &quot;</span><span class="w"> </span><span class="o">+</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="s">"KVEngineDETable provider entry point is unavailable: "</span><span class="w"> </span><span class="o">+</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L96" href="#L96">96</a></td>
@@ -1139,7 +1142,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">              </span><span class="n">symbol_error</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nb">nullptr</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;unknown error&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">symbol_error</span><span class="p">));</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">              </span><span class="n">symbol_error</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nb">nullptr</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">"unknown error"</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">symbol_error</span><span class="p">));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L98" href="#L98">98</a></td>
@@ -1241,7 +1244,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;KVEngineDETable provider ABI mismatch&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"KVEngineDETable provider ABI mismatch"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L107" href="#L107">107</a></td>
@@ -1292,7 +1295,7 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">6</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">        </span><span class="n">config</span><span class="p">.</span><span class="n">json_config_</span><span class="p">.</span><span class="n">at</span><span class="p">(</span><span class="s">&quot;capacity&quot;</span><span class="p">).</span><span class="n">get</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="p">(),</span></td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">        </span><span class="n">config</span><span class="p">.</span><span class="n">json_config_</span><span class="p">.</span><span class="n">at</span><span class="p">(</span><span class="s">"capacity"</span><span class="p">).</span><span class="n">get</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="p">(),</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L113" href="#L113">113</a></td>
@@ -1313,7 +1316,7 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">6</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">        </span><span class="n">plugin</span><span class="p">.</span><span class="n">value</span><span class="p">(</span><span class="s">&quot;block_size&quot;</span><span class="p">,</span><span class="w"> </span><span class="kt">uint64_t</span><span class="p">{</span><span class="mi">10240</span><span class="p">})};</span></td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">        </span><span class="n">plugin</span><span class="p">.</span><span class="n">value</span><span class="p">(</span><span class="s">"block_size"</span><span class="p">,</span><span class="w"> </span><span class="kt">uint64_t</span><span class="p">{</span><span class="mi">10240</span><span class="p">})};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L115" href="#L115">115</a></td>
@@ -1378,7 +1381,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">exception</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">&quot;create&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">exception</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">"create"</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L120" href="#L120">120</a></td>
@@ -1632,7 +1635,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">&quot;get&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">"get"</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L149" href="#L149">149</a></td>
@@ -1739,7 +1742,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">&quot;exists&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">"exists"</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L161" href="#L161">161</a></td>
@@ -1809,7 +1812,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">&quot;KVEngineDETable requires fixed-size Put&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">"KVEngineDETable requires fixed-size Put"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L169" href="#L169">169</a></td>
@@ -1893,7 +1896,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">&quot;put&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">"put"</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L178" href="#L178">178</a></td>
@@ -1956,7 +1959,7 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">4</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="n">ValidateFloatAligned</span><span class="p">(</span><span class="n">value_size_</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;KVEngineDETable::BatchPut&quot;</span><span class="p">);</span></td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="n">ValidateFloatAligned</span><span class="p">(</span><span class="n">value_size_</span><span class="p">,</span><span class="w"> </span><span class="s">"KVEngineDETable::BatchPut"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L186" href="#L186">186</a></td>
@@ -1988,7 +1991,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">&quot;KVEngineDETable::BatchPut size mismatch&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">"KVEngineDETable::BatchPut size mismatch"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L188" href="#L188">188</a></td>
@@ -2065,7 +2068,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">            </span><span class="s">&quot;KVEngineDETable::BatchPut row size mismatch&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">            </span><span class="s">"KVEngineDETable::BatchPut row size mismatch"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L195" href="#L195">195</a></td>
@@ -2170,7 +2173,7 @@
           </details>
         </td>
         <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">2</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="n">ValidateFloatAligned</span><span class="p">(</span><span class="n">value_size_</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;KVEngineDETable::BatchGet&quot;</span><span class="p">);</span></td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="n">ValidateFloatAligned</span><span class="p">(</span><span class="n">value_size_</span><span class="p">,</span><span class="w"> </span><span class="s">"KVEngineDETable::BatchGet"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L208" href="#L208">208</a></td>
@@ -2198,7 +2201,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">&quot;KVEngineDETable::BatchGet values is null&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">"KVEngineDETable::BatchGet values is null"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L210" href="#L210">210</a></td>
@@ -2528,7 +2531,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="s">&quot;KVEngineDETable::BatchGetFlat shape mismatch&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">          </span><span class="s">"KVEngineDETable::BatchGetFlat shape mismatch"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L244" href="#L244">244</a></td>
@@ -2721,7 +2724,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">&quot;KVEngineDETable::BulkLoad value is null&quot;</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">"KVEngineDETable::BulkLoad value is null"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L264" href="#L264">264</a></td>
@@ -2793,7 +2796,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">&quot;clear&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">"clear"</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L272" href="#L272">272</a></td>
@@ -2933,7 +2936,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">&quot;batch_get&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">"batch_get"</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L289" href="#L289">289</a></td>
@@ -3052,7 +3055,7 @@
           </details>
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">&quot;batch_put&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">PluginError</span><span class="p">(</span><span class="s">"batch_put"</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L303" href="#L303">303</a></td>
@@ -3178,7 +3181,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">10</td>
-        <td class="src coveredLine show_coveredLine"><span class="k">extern</span><span class="w"> </span><span class="s">&quot;C&quot;</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">RecStoreForceLinkDETableEngine</span><span class="p">()</span><span class="w"> </span><span class="p">{}</span></td>
+        <td class="src coveredLine show_coveredLine"><span class="k">extern</span><span class="w"> </span><span class="s">"C"</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">RecStoreForceLinkDETableEngine</span><span class="p">()</span><span class="w"> </span><span class="p">{}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L320" href="#L320">320</a></td>
@@ -3207,8 +3210,8 @@
         </main>
         <hr class="block-separator"/>
         <footer class="text-center">
-          Created using <a href="http://gcovr.com/en/8.7">GCOVR (Version 8.7)</a>
-          at 2026-10-27 12:11:50+00:00
+          Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
+          at 2026-10-28 05:57:45+00:00
         </footer>
       </div>
     </div>
