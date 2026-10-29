@@ -86,6 +86,23 @@ void local_update_flat_torch(const std::string& table_name,
   g_last_local_update_flat_profile[kUpdateShmCallMs] =
       ElapsedMs(shm_call_start);
 
+  // Client-side split of the same round trip. The server half
+  // (kUpdateServerBackendMs) comes back in the slot header, so the remainder
+  // is slot acquire + copy + wake latency.
+  const auto last_request = GetLastLocalShmRequestProfile();
+  if (last_request.opcode == static_cast<uint32_t>(LocalOpcode::kUpdateFlat)) {
+    g_last_local_update_flat_profile[kUpdateSlotAcquireMs] =
+        last_request.acquire_slot_us / 1000.0;
+    g_last_local_update_flat_profile[kUpdateCopyEnqueueMs] =
+        last_request.enqueue_us / 1000.0;
+    g_last_local_update_flat_profile[kUpdateWaitMs] =
+        last_request.wait_us / 1000.0;
+    g_last_local_update_flat_profile[kUpdateServerQueueWaitMs] =
+        last_request.server_queue_wait_us / 1000.0;
+    g_last_local_update_flat_profile[kUpdateServerBackendMs] =
+        last_request.server_backend_us / 1000.0;
+  }
+
   g_last_local_update_flat_profile[kUpdateTotalMs] = ElapsedMs(total_start);
 }
 

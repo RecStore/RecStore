@@ -31,6 +31,33 @@ void ValidateFlatUpdateArgs(const base::ConstArray<uint64_t>& keys,
   }
 }
 
+// Splits one direct sparse update into its stages so the perf report can tell
+// index probing, value-store reads, and the in-place write-back apart. The
+// missing-row path is reported separately but is also part of writeback_ns.
+void ReportSgdUpdateFlatBreakdown(const BaseKV::UpdateFlatStats& stats) {
+  constexpr double kNsPerUs = 1000.0;
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_tag_us", stats.tag_ns / kNsPerUs);
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_batch_get_us", stats.batch_get_ns / kNsPerUs);
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_index_us", stats.index_lookup_ns / kNsPerUs);
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_store_read_us", stats.store_read_ns / kNsPerUs);
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_writeback_us", stats.writeback_ns / kNsPerUs);
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_missing_write_us", stats.missing_write_ns / kNsPerUs);
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_miss_alloc_us", stats.missing_alloc_ns / kNsPerUs);
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_miss_index_us", stats.missing_index_ns / kNsPerUs);
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_miss_track_us", stats.missing_track_ns / kNsPerUs);
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_missing_rows", static_cast<double>(stats.missing_rows));
+}
+
 void CheckUpdateKeyTag(
     uint64_t key, TAG_TYPE expected, const std::string& table) {
   const TAG_TYPE got = ExtractKeyTag(key);
@@ -191,11 +218,19 @@ void SGD::UpdateFlat(
   }
 
   const auto direct_update_start = std::chrono::steady_clock::now();
+  BaseKV::UpdateFlatStats update_stats;
   if (it->second->ApplySgdUpdateFlat(
-          keys, grads, num_rows, embedding_dim, learning_rate_, tid)) {
+          keys,
+          grads,
+          num_rows,
+          embedding_dim,
+          learning_rate_,
+          tid,
+          &update_stats)) {
     recstore::ReportLocalShmStageMetric(
         "sgd_update_direct_us",
         recstore::LocalShmElapsedUs(direct_update_start));
+    ReportSgdUpdateFlatBreakdown(update_stats);
     return;
   }
 

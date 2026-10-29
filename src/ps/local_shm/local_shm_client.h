@@ -124,4 +124,9 @@ private:
   std::unordered_map<uint64_t, std::future<base::RecTensor>> prefetch_map_;
 };
 
+// Per-thread profile of the last completed local_shm request. Exposed so
+// callers can see inside the shared-memory round trip (slot acquire, copy,
+// wake latency, server queue wait, server work) without new timers.
+LocalShmRequestProfile GetLastLocalShmRequestProfile();
+
 } // namespace recstore

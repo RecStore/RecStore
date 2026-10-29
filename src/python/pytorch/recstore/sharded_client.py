@@ -916,6 +916,19 @@ class ShardedRecstoreClient:
             "local_update_shm_call_ms": float(values[3]),
             "local_update_backend_call_ms": float(values[3]),
             "local_update_stage_wait_ms": float(values[4]) if len(values) > 4 else 0.0,
+            "local_update_slot_acquire_ms": (
+                float(values[5]) if len(values) > 9 else 0.0
+            ),
+            "local_update_copy_enqueue_ms": (
+                float(values[6]) if len(values) > 9 else 0.0
+            ),
+            "local_update_wait_ms": float(values[7]) if len(values) > 9 else 0.0,
+            "local_update_server_queue_wait_ms": (
+                float(values[8]) if len(values) > 9 else 0.0
+            ),
+            "local_update_server_backend_ms": (
+                float(values[9]) if len(values) > 9 else 0.0
+            ),
         }
 
     def sparse_gradient_commit_async(self, name, ids, grads, **kwargs):
