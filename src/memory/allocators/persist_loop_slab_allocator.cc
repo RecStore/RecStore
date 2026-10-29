@@ -14,6 +14,32 @@ uint64_t BitmapRangeMask(int bit_offset, int count) {
   return (~uint64{0} >> (64 - count)) << bit_offset;
 }
 
+int64 FindUsedBitmapBlock(const uint64* bits, int64 index, int remaining) {
+  while (remaining > 0) {
+    const int bit_offset = index & 63;
+    const int count      = std::min(64 - bit_offset, remaining);
+    const uint64 occupied =
+        bits[index >> 6] & BitmapRangeMask(bit_offset, count);
+    if (occupied != 0) {
+      // All candidate starts through this occupied block must be skipped.
+      return (index & ~int64{63}) + 63 - __builtin_clzll(occupied);
+    }
+    index += count;
+    remaining -= count;
+  }
+  return -1;
+}
+
+void SetBitmapRange(uint64* bits, int64 index, int remaining) {
+  while (remaining > 0) {
+    const int bit_offset = index & 63;
+    const int count      = std::min(64 - bit_offset, remaining);
+    bits[index >> 6] |= BitmapRangeMask(bit_offset, count);
+    index += count;
+    remaining -= count;
+  }
+}
+
 } // namespace
 
 PersistLoopShmMalloc::PersistLoopShmMalloc(
@@ -141,18 +167,13 @@ char* PersistLoopShmMalloc::New(int memory_size) {
     while (fast_malloc_list->size()) {
       int64 malloc_block = fast_malloc_list->front();
       fast_malloc_list->pop_front();
-      bool malloc_success = true;
-      for (int i = 0; i < memory_block_num + 1; ++i) {
-        // if (Used(malloc_block + i) && !Used(malloc_block + i + 1)) {
-        if (!Used(malloc_block + i) && Used(malloc_block + i + 1)) {
-          malloc_success = false;
-          break;
-        }
-      }
-      if (malloc_success) {
+      // Live headers have clear bits. Inspect the following bit too, unless
+      // the payload ends at the pool boundary, to avoid consuming a header.
+      const int check_blocks =
+          std::min<int64>(memory_block_num + 2, block_num_ - malloc_block);
+      if (FindUsedBitmapBlock(used_bits_, malloc_block, check_blocks) < 0) {
         Block()[malloc_block] = memory_size;
-        for (int i = 1; i < memory_block_num + 1; ++i)
-          UseBlock(malloc_block + i);
+        SetBitmapRange(used_bits_, malloc_block + 1, memory_block_num);
         total_used_ += memory_block_num + 1;
         total_malloc_++;
         total_fast_malloc_.Inc(1);
@@ -165,21 +186,13 @@ char* PersistLoopShmMalloc::New(int memory_size) {
   int64 malloc_block = last_malloc_block_;
   while (offset < block_num_) {
     if (malloc_block + memory_block_num + 1 <= block_num_) {
-      for (int i = 0; i < memory_block_num + 1; ++i) {
-        if (Used(malloc_block + i) || Used(malloc_block + i + 1)) {
-          malloc_block += i;
-          offset += i;
-          break;
-        }
-      }
-      // NOTE(xieminhui) remove Block()[malloc_block] == 0, because we only use
-      // bitmap to check if a block has been used.
-      if (!Used(malloc_block) && !Used(malloc_block + 1)) {
+      const int check_blocks =
+          std::min<int64>(memory_block_num + 2, block_num_ - malloc_block);
+      const int64 occupied =
+          FindUsedBitmapBlock(used_bits_, malloc_block, check_blocks);
+      if (occupied < 0) {
         Block()[malloc_block] = memory_size;
-        for (int i = 1; i < memory_block_num + 1; ++i) {
-          CHECK(!Used(malloc_block + i));
-          UseBlock(malloc_block + i);
-        }
+        SetBitmapRange(used_bits_, malloc_block + 1, memory_block_num);
         last_malloc_block_ = (malloc_block + memory_block_num + 1) % block_num_;
         total_used_ += memory_block_num + 1;
         total_malloc_++;
@@ -190,8 +203,9 @@ char* PersistLoopShmMalloc::New(int memory_size) {
         clflushopt_range(&Block()[malloc_block], sizeof(uint64));
         return data_ + sizeof(uint64) * (malloc_block + 1);
       }
-      malloc_block++;
-      offset++;
+      const int64 advance = occupied - malloc_block + 1;
+      malloc_block += advance;
+      offset += advance;
     } else {
       offset += block_num_ - malloc_block;
       malloc_block = 0;
