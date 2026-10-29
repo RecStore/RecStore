@@ -174,6 +174,7 @@ def _process_generic_module_with_trace(
 
     handles = []
     for name, entries in traces_by_name.items():
+        trace_started = perf_counter()
         if len(entries) == 1:
             all_ids, all_grads = entries[0]
         else:
@@ -194,8 +195,17 @@ def _process_generic_module_with_trace(
                 update_ids, update_grads = select_topk_rows(
                     update_ids, update_grads, keep_ratio
                 )
+        trace_done = perf_counter()
         # Backend sparse optimizers own learning-rate application for these modules.
         handle = module_kv_client.update_async(name=name, ids=update_ids, grads=update_grads)
+        update_done = perf_counter()
+        if hasattr(module_kv_client, "_perf_add"):
+            module_kv_client._perf_add(
+                "sparse_trace_ms", (trace_done - trace_started) * 1e3
+            )
+            module_kv_client._perf_add(
+                "sparse_update_call_ms", (update_done - trace_done) * 1e3
+            )
         handles.append(
             (
                 module_kv_client,
@@ -461,6 +471,7 @@ def _process_generic_module_with_trace_shared_local_shm_single_table(
     payloads: List[Dict[str, Any]] = []
     traces_by_name = _collect_traces_by_name(mod)
     for name, entries in traces_by_name.items():
+        trace_started = perf_counter()
         all_ids = torch.cat([ids for ids, _ in entries], dim=0)
         all_grads = torch.cat([grads for _, grads in entries], dim=0)
         local_unique_ids, local_summed_grads = _aggregate_ids_and_grads(all_ids, all_grads)
@@ -468,11 +479,20 @@ def _process_generic_module_with_trace_shared_local_shm_single_table(
             local_unique_ids, local_summed_grads = select_topk_rows(
                 local_unique_ids, local_summed_grads, keep_ratio
             )
+        trace_done = perf_counter()
         module_kv_client.local_update_flat(
             name=name,
             ids=local_unique_ids,
             grads=local_summed_grads,
         )
+        update_done = perf_counter()
+        if hasattr(module_kv_client, "_perf_add"):
+            module_kv_client._perf_add(
+                "sparse_trace_ms", (trace_done - trace_started) * 1e3
+            )
+            module_kv_client._perf_add(
+                "sparse_update_call_ms", (update_done - trace_done) * 1e3
+            )
         payloads.append(
             {
                 "module": mod,

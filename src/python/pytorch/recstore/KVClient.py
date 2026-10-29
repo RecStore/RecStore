@@ -51,6 +51,7 @@ class RecStoreClient:
         self._role = role
         self._next_async_handle = 1
         self._pending_async_ops = {}
+        self._perf_stats: Dict[str, float] = {}
         self._gpu_cache_table_name: Optional[str] = None
         self._gpu_cache_enabled = False
         self._gpu_cache_clear_count = 0
@@ -68,6 +69,20 @@ class RecStoreClient:
         """Get client ID"""
         # This is a mock value as there's no RPC-based client ID.
         return 0
+
+    def reset_perf_stats(self) -> None:
+        """Drop accumulated per-call timings (one step's worth)."""
+        self._perf_stats = {}
+
+    def _perf_add(self, key: str, delta_ms: float) -> None:
+        self._perf_stats[key] = self._perf_stats.get(key, 0.0) + float(delta_ms)
+
+    def consume_perf_stats(self, reset: bool = True) -> Dict[str, float]:
+        """Return accumulated timings, optionally clearing them."""
+        stats = dict(self._perf_stats)
+        if reset:
+            self.reset_perf_stats()
+        return stats
 
     @property
     def machine_id(self) -> int:
@@ -365,8 +380,12 @@ class RecStoreClient:
         tag = int(meta.get("tag", 0) or 0) if meta else 0
         if tag == 0 or ids.numel() == 0:
             return ids
+        encode_start = time.perf_counter()
         existing = ids.bitwise_right_shift(_KEY_TAG_SHIFT)
         if bool((existing == tag).all().item()):
+            self._perf_add(
+                "sparse_encode_ids_ms", (time.perf_counter() - encode_start) * 1e3
+            )
             return ids
         if not bool((existing == 0).all().item()):
             raise RuntimeError(
@@ -375,7 +394,11 @@ class RecStoreClient:
         tag_bits = torch.tensor(
             tag << _KEY_TAG_SHIFT, dtype=ids.dtype, device=ids.device
         )
-        return ids.bitwise_or(tag_bits)
+        encoded = ids.bitwise_or(tag_bits)
+        self._perf_add(
+            "sparse_encode_ids_ms", (time.perf_counter() - encode_start) * 1e3
+        )
+        return encoded
 
     def _reject_gpu_cache_reserved_ids(self, ids: torch.Tensor) -> None:
         if ids.numel() == 0:
@@ -734,6 +757,7 @@ class RecStoreClient:
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
 
+        update_start = time.perf_counter()
         self._require_local_shm_backend("local_update_flat")
         self._ensure_gpu_cache_table(name)
         ids = self._normalize_ids(ids, preserve_device=True, name=name)
@@ -746,6 +770,23 @@ class RecStoreClient:
         self.ops.local_update_flat(name, ids, grads)
         if ids.device.type == "cpu":
             self._clear_gpu_cache_if_available()
+        self._perf_add(
+            "sparse_local_update_ms", (time.perf_counter() - update_start) * 1e3
+        )
+        # Native stage split of the same call: keys/grads CUDA staging,
+        # pinned-buffer wait, and the shared-memory round trip.
+        profile_getter = getattr(
+            self.ops, "get_last_local_update_flat_profile", None
+        )
+        if callable(profile_getter):
+            values = profile_getter()
+            if isinstance(values, (list, tuple)) and len(values) >= 4:
+                self._perf_add("local_update_cpp_total_ms", float(values[0]))
+                self._perf_add("local_update_keys_stage_ms", float(values[1]))
+                self._perf_add("local_update_grads_stage_ms", float(values[2]))
+                self._perf_add("local_update_shm_call_ms", float(values[3]))
+                if len(values) > 4:
+                    self._perf_add("local_update_stage_wait_ms", float(values[4]))
 
     def push(self, name: str, ids: torch.Tensor, data: torch.Tensor):
         """Push data to KVServer.
@@ -818,9 +859,12 @@ class RecStoreClient:
         """Submit an embedding update and return a handle for synchronization."""
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
-        
+
+        submit_start = time.perf_counter()
         ids = self._normalize_ids(ids, name=name)
+        ids_done = time.perf_counter()
         grads = self._normalize_grads(grads)
+        grads_done = time.perf_counter()
 
         handle = self._next_async_handle
         self._next_async_handle += 1
@@ -840,6 +884,10 @@ class RecStoreClient:
                 ids.clone(),
                 grads.clone(),
             )
+        ops_done = time.perf_counter()
+        self._perf_add("sparse_ids_ms", (ids_done - submit_start) * 1e3)
+        self._perf_add("sparse_grads_ms", (grads_done - ids_done) * 1e3)
+        self._perf_add("sparse_ops_submit_ms", (ops_done - grads_done) * 1e3)
         return handle
 
     def wait(self, handle: int) -> None:
