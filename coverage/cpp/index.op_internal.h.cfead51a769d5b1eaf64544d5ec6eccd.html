@@ -41,18 +41,18 @@
     <div class="col-sm-12 col-lg-3 float-left d-flex flex-column text-right flex-justify-end pr-3">
       <div class="d-flex">
         <div class="mr-2">Lines:</div>
-        <div class="mr-2" style="margin: auto;">12 / 27</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">44.4%</span></div>
+        <div class="mr-2" style="margin: auto;">14 / 29</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">48.3%</span></div>
       </div>
       <div class="d-flex">
         <div class="mr-2">Branches:</div>
-        <div class="mr-2" style="margin: auto;">9 / 36</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">25.0%</span></div>
+        <div class="mr-2" style="margin: auto;">10 / 38</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">26.3%</span></div>
       </div>
       <div class="d-flex">
         <div class="mr-2">Functions:</div>
-        <div class="mr-2" style="margin: auto;">2 / 5</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">40.0%</span></div>
+        <div class="mr-2" style="margin: auto;">3 / 6</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">50.0%</span></div>
       </div>
     </div>
   </div>
@@ -72,8 +72,8 @@
     <div role="rowheader" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2 sortable">Blocks</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L64">recstore::framework::GetConcreteKVClientOp() (src/framework/pytorch/op_internal.h:64)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="62">called 62 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L68">recstore::framework::GetConcreteKVClientOp() (src/framework/pytorch/op_internal.h:68)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="64">called 64 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">50.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">60.0%</div>
@@ -100,6 +100,13 @@
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L64">recstore::framework::ToCpuTensor(at::Tensor const&amp;) (src/framework/pytorch/op_internal.h:64)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="42">called 42 times</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
+    <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">83.0%</div>
+  </div>
+  <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L34">recstore::framework::ToRecTensor(at::Tensor const&amp;, base::DataType) (src/framework/pytorch/op_internal.h:34)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="108">called 108 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
@@ -115,9 +122,9 @@
   <div class="Box-header d-flex flex-space-between sticky">
     framework/pytorch/op_internal.h
     <div class="toggle-buttons">
-      <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">7 covered</button>
+      <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">8 covered</button>
       <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">15 uncovered</button>
-      <button type="button" class="button_toggle_partialCoveredLine show_partialCoveredLine" value="partialCoveredLine" title="Toggle partial covered lines">5 partial covered</button>
+      <button type="button" class="button_toggle_partialCoveredLine show_partialCoveredLine" value="partialCoveredLine" title="Toggle partial covered lines">6 partial covered</button>
     </div>
     <div class="nav">
       <a class="nav prev" href="index.op_flat.cc.d763fda174c0c11ef85f210b1f648a8f.html"></a>
@@ -645,8 +652,8 @@
         <td class="text-right src linenos"><a class="normal" id="L64" href="#L64">64</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">62</td>
-        <td class="src coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">KVClientOp</span><span class="o">&gt;</span><span class="w"> </span><span class="n">GetConcreteKVClientOp</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">42</td>
+        <td class="src coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="w"> </span><span class="nf">ToCpuTensor</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">tensor</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L65" href="#L65">65</a></td>
@@ -654,177 +661,212 @@
           <details class="normal details-overlay">
             <summary>1/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 1 taken 62 times.</div>
-              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 2 taken 42 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">62</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">op</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="n">GetKVClientOp</span><span class="p">();</span></td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">42</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">tensor</span><span class="p">.</span><span class="n">is_cuda</span><span class="p">()</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">tensor</span><span class="p">.</span><span class="n">cpu</span><span class="p">()</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">tensor</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L66" href="#L66">66</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">62</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">kv_op</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">dynamic_pointer_cast</span><span class="o">&lt;</span><span class="n">KVClientOp</span><span class="o">&gt;</span><span class="p">(</span><span class="n">op</span><span class="p">);</span></td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L67" href="#L67">67</a></td>
-        <td class="text-right src linenos ws-unset">
-          <details class="normal details-overlay">
-            <summary>1/2</summary>
-            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
-              <div class="color-taken-branch">&check; Branch 2 taken 62 times.</div>
-            </div>
-          </details>
-        </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">62</td>
-        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">kv_op</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">,</span><span class="w"> </span><span class="s">"storage backend is not KVClientOp"</span><span class="p">);</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L68" href="#L68">68</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">124</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">kv_op</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L69" href="#L69">69</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">62</td>
-        <td class="src coveredLine show_coveredLine"><span class="p">}</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L70" href="#L70">70</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L71" href="#L71">71</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L68" href="#L68">68</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="c1">// Tensor adapters for the framework-independent op/cache runtime.</span></td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">64</td>
+        <td class="src coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">KVClientOp</span><span class="o">&gt;</span><span class="w"> </span><span class="n">GetConcreteKVClientOp</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L69" href="#L69">69</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-taken-branch">&check; Branch 1 taken 64 times.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">64</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">op</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="n">GetKVClientOp</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L70" href="#L70">70</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">64</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">kv_op</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">dynamic_pointer_cast</span><span class="o">&lt;</span><span class="n">KVClientOp</span><span class="o">&gt;</span><span class="p">(</span><span class="n">op</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L71" href="#L71">71</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>1/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-taken-branch">&check; Branch 2 taken 64 times.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">64</td>
+        <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">TORCH_CHECK</span><span class="p">(</span><span class="n">kv_op</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">,</span><span class="w"> </span><span class="s">"storage backend is not KVClientOp"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L72" href="#L72">72</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kt">void</span><span class="w"> </span><span class="n">CheckKeys</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">contiguous</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">);</span></td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">128</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">kv_op</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L73" href="#L73">73</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="kt">void</span><span class="w"> </span><span class="nf">CheckRows</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">64</td>
+        <td class="src coveredLine show_coveredLine"><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L74" href="#L74">74</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">               </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">,</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L75" href="#L75">75</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">               </span><span class="kt">bool</span><span class="w"> </span><span class="n">contiguous</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">);</span></td>
+        <td class="src"><span class="c1">// Tensor adapters for the framework-independent op/cache runtime.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L76" href="#L76">76</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="n">std</span><span class="o">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="p">,</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&gt;</span></td>
+        <td class="src"><span class="kt">void</span><span class="w"> </span><span class="n">CheckKeys</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">contiguous</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L77" href="#L77">77</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="n">CudaCacheRows</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">);</span></td>
+        <td class="src"><span class="kt">void</span><span class="w"> </span><span class="nf">CheckRows</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L78" href="#L78">78</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="n">CacheUpdateActions</span></td>
+        <td class="src"><span class="w">               </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L79" href="#L79">79</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="nf">CacheActions</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">dim</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span></td>
+        <td class="src"><span class="w">               </span><span class="kt">bool</span><span class="w"> </span><span class="n">contiguous</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L80" href="#L80">80</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="n">std</span><span class="o">::</span><span class="n">tuple</span><span class="o">&lt;</span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="p">,</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">CachedReadTorch</span><span class="p">(</span></td>
+        <td class="src"><span class="n">std</span><span class="o">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="p">,</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L81" href="#L81">81</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
+        <td class="src"><span class="n">CudaCacheRows</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L82" href="#L82">82</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">dim</span><span class="p">,</span></td>
+        <td class="src"><span class="n">CacheUpdateActions</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L83" href="#L83">83</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="n">local</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">,</span></td>
+        <td class="src"><span class="nf">CacheActions</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">dim</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L84" href="#L84">84</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="n">no_evict</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">);</span></td>
+        <td class="src"><span class="n">std</span><span class="o">::</span><span class="n">tuple</span><span class="o">&lt;</span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="p">,</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">CachedReadTorch</span><span class="p">(</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L85" href="#L85">85</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">torch</span><span class="o">::</span><span class="n">Tensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L86" href="#L86">86</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace framework</span></td>
+        <td class="src"><span class="w">    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">dim</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L87" href="#L87">87</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace recstore</span></td>
+        <td class="src"><span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="n">local</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L88" href="#L88">88</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="n">no_evict</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L89" href="#L89">89</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L90" href="#L90">90</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace framework</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L91" href="#L91">91</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace recstore</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L92" href="#L92">92</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
@@ -837,7 +879,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
-          at 2026-10-28 05:57:45+00:00
+          at 2026-10-29 07:29:21+00:00
         </footer>
       </div>
     </div>

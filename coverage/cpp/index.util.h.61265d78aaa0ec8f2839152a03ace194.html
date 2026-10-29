@@ -80,21 +80,21 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L17">ReadTSC() (src/storage/index/utils/util.h:17)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="291176">called 291176 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="290744">called 290744 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L27">clflush(char*, unsigned long) (src/storage/index/utils/util.h:27)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="107960">called 107960 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="107810">called 107810 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">90.9%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">75.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">92.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L25">mfence() (src/storage/index/utils/util.h:25)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="270268">called 270268 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="269960">called 269960 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
@@ -242,7 +242,7 @@
         <td class="text-right src linenos"><a class="normal" id="L17" href="#L17">17</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">291176</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">290744</td>
         <td class="src coveredLine show_coveredLine"><span class="k">static</span><span class="w"> </span><span class="kr">inline</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="nf">ReadTSC</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
@@ -263,21 +263,21 @@
         <td class="text-right src linenos"><a class="normal" id="L20" href="#L20">20</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">291176</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">290744</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">"rdtsc"</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">"=a"</span><span class="p">(</span><span class="n">lo</span><span class="p">),</span><span class="w"> </span><span class="s">"=d"</span><span class="p">(</span><span class="n">hi</span><span class="p">));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L21" href="#L21">21</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">291176</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">290744</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">var</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">((</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="kt">int</span><span class="p">)</span><span class="n">hi</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="mi">32</span><span class="p">)</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">lo</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L22" href="#L22">22</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">291176</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">290744</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">var</span><span class="p">;</span></td>
       </tr>
       <tr>
@@ -298,7 +298,7 @@
         <td class="text-right src linenos"><a class="normal" id="L25" href="#L25">25</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">270268</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">269960</td>
         <td class="src coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">mfence</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">"mfence"</span><span class="w"> </span><span class="o">:::</span><span class="w"> </span><span class="s">"memory"</span><span class="p">);</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
@@ -312,21 +312,21 @@
         <td class="text-right src linenos"><a class="normal" id="L27" href="#L27">27</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">107960</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">107810</td>
         <td class="src coveredLine show_coveredLine"><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">clflush</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">len</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L28" href="#L28">28</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">107960</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">107810</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">volatile</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">ptr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">char</span><span class="o">*</span><span class="p">)((</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="p">)</span><span class="n">data</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">(</span><span class="o">~</span><span class="p">(</span><span class="n">_kCacheLineSize</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">)));</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L29" href="#L29">29</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">107960</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">107810</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">mfence</span><span class="p">();</span></td>
       </tr>
       <tr>
@@ -335,12 +335,12 @@
           <details class="normal details-overlay">
             <summary>2/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 0 taken 145588 times.</div>
-              <div class="color-taken-branch">&check; Branch 1 taken 107960 times.</div>
+              <div class="color-taken-branch">&check; Branch 0 taken 145372 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 107810 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">253548</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">253182</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(;</span><span class="w"> </span><span class="n">ptr</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">data</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">len</span><span class="p">;</span><span class="w"> </span><span class="n">ptr</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">_kCacheLineSize</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
@@ -354,14 +354,14 @@
         <td class="text-right src linenos"><a class="normal" id="L32" href="#L32">32</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">145588</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">145372</td>
         <td class="src coveredLine show_coveredLine"><span class="w">        </span><span class="n">ReadTSC</span><span class="p">()</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="p">)(</span><span class="n">kWriteLatencyInNS</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">CPU_FREQ_MHZ</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">1000</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L33" href="#L33">33</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">145588</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">145372</td>
         <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="k">asm</span><span class="w"> </span><span class="k">volatile</span><span class="p">(</span><span class="s">"clflush %0"</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">"+m"</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="k">volatile</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="p">)</span><span class="n">ptr</span><span class="p">));</span></td>
       </tr>
       <tr>
@@ -371,11 +371,11 @@
             <summary>1/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
               <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
-              <div class="color-taken-branch">&check; Branch 2 taken 145588 times.</div>
+              <div class="color-taken-branch">&check; Branch 2 taken 145372 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">145588</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">145372</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">ReadTSC</span><span class="p">()</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">etcs</span><span class="p">)</span></td>
       </tr>
       <tr>
@@ -389,7 +389,7 @@
         <td class="text-right src linenos"><a class="normal" id="L36" href="#L36">36</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">145588</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">145372</td>
         <td class="src coveredLine show_coveredLine"><span class="w">    </span><span class="n">clflushCount</span><span class="o">++</span><span class="p">;</span></td>
       </tr>
       <tr>
@@ -403,14 +403,14 @@
         <td class="text-right src linenos"><a class="normal" id="L38" href="#L38">38</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">107960</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">107810</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">mfence</span><span class="p">();</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L39" href="#L39">39</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">107960</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">107810</td>
         <td class="src coveredLine show_coveredLine"><span class="p">}</span></td>
       </tr>
       <tr>
@@ -427,7 +427,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
-          at 2026-10-28 05:57:45+00:00
+          at 2026-10-29 07:29:21+00:00
         </footer>
       </div>
     </div>
