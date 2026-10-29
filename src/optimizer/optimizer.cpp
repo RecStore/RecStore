@@ -1,5 +1,6 @@
 #include "optimizer.h"
 #include "ps/local_shm/local_shm_stage_report.h"
+#include "storage/index/dram/extendible_hash.h"
 #include <algorithm>
 #include <cstring>
 #include <limits>
@@ -34,7 +35,8 @@ void ValidateFlatUpdateArgs(const base::ConstArray<uint64_t>& keys,
 // Splits one direct sparse update into its stages so the perf report can tell
 // index probing, value-store reads, and the in-place write-back apart. The
 // missing-row path is reported separately but is also part of writeback_ns.
-void ReportSgdUpdateFlatBreakdown(const BaseKV::UpdateFlatStats& stats) {
+void ReportSgdUpdateFlatBreakdown(const BaseKV::UpdateFlatStats& stats,
+                                  const ExtendibleHashInsertCounters& hash) {
   constexpr double kNsPerUs = 1000.0;
   recstore::ReportLocalShmStageMetric(
       "sgd_update_tag_us", stats.tag_ns / kNsPerUs);
@@ -56,6 +58,12 @@ void ReportSgdUpdateFlatBreakdown(const BaseKV::UpdateFlatStats& stats) {
       "sgd_update_miss_track_us", stats.missing_track_ns / kNsPerUs);
   recstore::ReportLocalShmStageMetric(
       "sgd_update_missing_rows", static_cast<double>(stats.missing_rows));
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_index_inserts", static_cast<double>(hash.insert_calls));
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_index_splits", static_cast<double>(hash.split_calls));
+  recstore::ReportLocalShmStageMetric(
+      "sgd_update_index_split_us", hash.split_ns / kNsPerUs);
 }
 
 void CheckUpdateKeyTag(
@@ -219,6 +227,8 @@ void SGD::UpdateFlat(
 
   const auto direct_update_start = std::chrono::steady_clock::now();
   BaseKV::UpdateFlatStats update_stats;
+  ExtendibleHashInsertCounters hash_before;
+  GetExtendibleHashInsertCounters(&hash_before);
   if (it->second->ApplySgdUpdateFlat(
           keys,
           grads,
@@ -230,7 +240,13 @@ void SGD::UpdateFlat(
     recstore::ReportLocalShmStageMetric(
         "sgd_update_direct_us",
         recstore::LocalShmElapsedUs(direct_update_start));
-    ReportSgdUpdateFlatBreakdown(update_stats);
+    ExtendibleHashInsertCounters hash_after;
+    GetExtendibleHashInsertCounters(&hash_after);
+    const ExtendibleHashInsertCounters hash_delta{
+        hash_after.insert_calls - hash_before.insert_calls,
+        hash_after.split_calls - hash_before.split_calls,
+        hash_after.split_ns - hash_before.split_ns};
+    ReportSgdUpdateFlatBreakdown(update_stats, hash_delta);
     return;
   }
 

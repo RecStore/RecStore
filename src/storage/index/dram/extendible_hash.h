@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <new>
@@ -8,6 +9,16 @@
 #include "storage/kv_engine/base_kv.h"
 #include "../utils/util.h"
 #define LSB
+
+// Diagnostic counters for the insert path; only maintained when
+// RECSTORE_EXTENDIBLE_HASH_COUNTERS is set (see extendible_hash.cpp).
+struct ExtendibleHashInsertCounters {
+  std::uint64_t insert_calls = 0;
+  std::uint64_t split_calls  = 0;
+  std::uint64_t split_ns     = 0;
+};
+
+void GetExtendibleHashInsertCounters(ExtendibleHashInsertCounters* out);
 
 const size_t kMask  = 256 - 1;
 const size_t kShift = 8;
