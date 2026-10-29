@@ -225,10 +225,15 @@ void SGD::UpdateFlat(
     CheckUpdateKeyTag(keys[0], it->second->Tag(), table);
   }
 
+  // Only ask for the sub-stage breakdown when the stage report is actually on;
+  // otherwise the per-update and per-insert clock reads are pure overhead.
+  const bool collect_stats       = recstore::IsLocalShmStageReportEnabled();
   const auto direct_update_start = std::chrono::steady_clock::now();
   BaseKV::UpdateFlatStats update_stats;
   ExtendibleHashInsertCounters hash_before;
-  GetExtendibleHashInsertCounters(&hash_before);
+  if (collect_stats) {
+    GetExtendibleHashInsertCounters(&hash_before);
+  }
   if (it->second->ApplySgdUpdateFlat(
           keys,
           grads,
@@ -236,17 +241,19 @@ void SGD::UpdateFlat(
           embedding_dim,
           learning_rate_,
           tid,
-          &update_stats)) {
+          collect_stats ? &update_stats : nullptr)) {
     recstore::ReportLocalShmStageMetric(
         "sgd_update_direct_us",
         recstore::LocalShmElapsedUs(direct_update_start));
-    ExtendibleHashInsertCounters hash_after;
-    GetExtendibleHashInsertCounters(&hash_after);
-    const ExtendibleHashInsertCounters hash_delta{
-        hash_after.insert_calls - hash_before.insert_calls,
-        hash_after.split_calls - hash_before.split_calls,
-        hash_after.split_ns - hash_before.split_ns};
-    ReportSgdUpdateFlatBreakdown(update_stats, hash_delta);
+    if (collect_stats) {
+      ExtendibleHashInsertCounters hash_after;
+      GetExtendibleHashInsertCounters(&hash_after);
+      const ExtendibleHashInsertCounters hash_delta{
+          hash_after.insert_calls - hash_before.insert_calls,
+          hash_after.split_calls - hash_before.split_calls,
+          hash_after.split_ns - hash_before.split_ns};
+      ReportSgdUpdateFlatBreakdown(update_stats, hash_delta);
+    }
     return;
   }
 

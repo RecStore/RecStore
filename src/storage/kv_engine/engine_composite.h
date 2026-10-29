@@ -539,7 +539,12 @@ public:
     BatchGetFlatStats get_stats;
     const auto batch_get_start = clock::now();
     if (!BatchGetDirectFixedRows(
-            tagged, num_rows, embedding_dim, tid, &rows, &get_stats)) {
+            tagged,
+            num_rows,
+            embedding_dim,
+            tid,
+            &rows,
+            stats != nullptr ? &get_stats : nullptr)) {
       return false;
     }
     if (stats != nullptr) {
