@@ -560,7 +560,7 @@ public:
       stats->missing_rows = get_stats.missing_rows;
     }
 
-    const auto writeback_start = clock::now();
+    const auto loop_start = clock::now();
     std::vector<float> missing_row(static_cast<size_t>(embedding_dim));
     for (int64_t r = 0; r < num_rows; ++r) {
       const auto& row   = rows[static_cast<size_t>(r)];
@@ -597,10 +597,16 @@ public:
       }
     }
     if (stats != nullptr) {
-      stats->writeback_ns = static_cast<std::uint64_t>(
+      const auto loop_ns = static_cast<std::uint64_t>(
           std::chrono::duration_cast<std::chrono::nanoseconds>(
-              clock::now() - writeback_start)
+              clock::now() - loop_start)
               .count());
+      // The miss path is timed separately; subtract it so the hit write-back
+      // bucket does not double count the inserts.
+      stats->writeback_ns =
+          loop_ns > stats->missing_write_ns
+              ? loop_ns - stats->missing_write_ns
+              : 0;
     }
     return true;
   }

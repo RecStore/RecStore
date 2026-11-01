@@ -33,8 +33,8 @@ void ValidateFlatUpdateArgs(const base::ConstArray<uint64_t>& keys,
 }
 
 // Splits one direct sparse update into its stages so the perf report can tell
-// index probing, value-store reads, and the in-place write-back apart. The
-// missing-row path is reported separately but is also part of writeback_ns.
+// index probing, value-store reads, the in-place write-back, and the
+// missing-row inserts apart. The stage buckets are disjoint.
 void ReportSgdUpdateFlatBreakdown(const BaseKV::UpdateFlatStats& stats,
                                   const ExtendibleHashInsertCounters& hash) {
   constexpr double kNsPerUs = 1000.0;
