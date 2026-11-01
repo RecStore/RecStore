@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -101,6 +102,141 @@ TEST_F(PersistLoopSlabBitmapTest, ZeroSizeSentinelPreservesLiveAllocation) {
   EXPECT_TRUE(allocator->Free(value));
   EXPECT_FALSE(allocator->Free(value));
   EXPECT_EQ(allocator->total_malloc(), 0);
+}
+
+TEST_F(PersistLoopSlabBitmapTest, RejectsStaleFreeListInsideLiveAllocation) {
+  auto allocator = MakeAllocator("stale-free-list");
+  char* first    = allocator->New(512);
+  char* middle   = allocator->New(512);
+  char* last     = allocator->New(512);
+  ASSERT_NE(first, nullptr);
+  ASSERT_NE(middle, nullptr);
+  ASSERT_NE(last, nullptr);
+  // Force the next larger allocation to wrap into the three freed slots.
+  const int tail_bytes = allocator->BackingSize() - (3 * 65 + 2) * 8;
+  char* tail           = allocator->New(tail_bytes);
+  ASSERT_NE(tail, nullptr);
+  ASSERT_TRUE(allocator->Free(first));
+  ASSERT_TRUE(allocator->Free(middle));
+  ASSERT_TRUE(allocator->Free(last));
+  char* larger = allocator->New(1536);
+  ASSERT_EQ(larger, first);
+  std::memset(larger, 0x5a, 1536);
+  // The old middle entry is now inside a live payload, not free space.
+  EXPECT_EQ(allocator->New(512), nullptr);
+  EXPECT_TRUE(std::all_of(larger, larger + 1536, [](char byte) {
+    return byte == 0x5a;
+  }));
+  EXPECT_EQ(allocator->total_malloc(), 2);
+  EXPECT_TRUE(allocator->Free(larger));
+  EXPECT_TRUE(allocator->Free(tail));
+  EXPECT_EQ(allocator->total_malloc(), 0);
+}
+
+TEST_F(PersistLoopSlabBitmapTest, StaleEntryCannotConsumeLiveHeader) {
+  auto allocator = MakeAllocator("live-header");
+  char* first    = allocator->New(512);
+  char* extra    = allocator->New(128);
+  ASSERT_NE(first, nullptr);
+  ASSERT_NE(extra, nullptr);
+  char* tail = allocator->New(allocator->BackingSize() - (65 + 17 + 2) * 8);
+  ASSERT_NE(tail, nullptr);
+  ASSERT_TRUE(allocator->Free(first));
+  ASSERT_TRUE(allocator->Free(extra));
+  char* prefix = allocator->New(504);
+  ASSERT_EQ(prefix, first);
+  char* live = allocator->New(64);
+  ASSERT_EQ(live, first + 512);
+  std::memset(live, 0x33, 64);
+  ASSERT_TRUE(allocator->Free(prefix));
+  // All bits in the stale range are clear, but its last bit is a live header.
+  EXPECT_EQ(allocator->New(512), nullptr);
+  EXPECT_EQ(allocator->GetMallocSize(live), 64);
+  EXPECT_TRUE(
+      std::all_of(live, live + 64, [](char byte) { return byte == 0x33; }));
+  EXPECT_TRUE(allocator->Free(live));
+  EXPECT_TRUE(allocator->Free(tail));
+  EXPECT_EQ(allocator->total_malloc(), 0);
+}
+
+TEST_F(PersistLoopSlabBitmapTest, PoolEndDoesNotReadPayloadAsBitmap) {
+  auto allocator = MakeAllocator("pool-end");
+  char* first    = allocator->New(8);
+  ASSERT_NE(first, nullptr);
+  const int tail_bytes = allocator->BackingSize() - 3 * 8;
+  char* tail           = allocator->New(tail_bytes);
+  ASSERT_NE(tail, nullptr);
+  ASSERT_EQ(tail + tail_bytes,
+            allocator->BackingData() + allocator->BackingSize());
+  ASSERT_TRUE(allocator->Free(first));
+  first = allocator->New(7);
+  ASSERT_NE(first, nullptr);
+  // An odd first length sets the bit immediately beyond the bitmap storage.
+  ASSERT_TRUE(allocator->Free(tail));
+  EXPECT_EQ(allocator->New(tail_bytes), tail);
+  EXPECT_TRUE(allocator->Free(tail));
+  EXPECT_TRUE(allocator->Free(first));
+  EXPECT_EQ(allocator->total_malloc(), 0);
+}
+
+TEST_F(PersistLoopSlabBitmapTest, MixedSizesMatchOccupiedRangeModel) {
+  auto allocator = MakeAllocator("mixed-sizes");
+  struct Live {
+    char* data;
+    int size;
+    char pattern;
+  };
+  std::vector<Live> live;
+  std::vector<bool> occupied(allocator->BackingSize() / 8, false);
+  std::mt19937 random(20261029);
+  auto release = [&](size_t index) {
+    const auto value = live[index];
+    EXPECT_EQ(allocator->GetMallocSize(value.data), value.size);
+    EXPECT_TRUE(
+        std::all_of(value.data, value.data + value.size, [&](char byte) {
+          return byte == value.pattern;
+        }));
+    EXPECT_TRUE(allocator->Free(value.data));
+    const auto start = allocator->GetMallocOffset(value.data) / 8 - 1;
+    const int blocks = (value.size + 7) / 8 + 1;
+    std::fill(
+        occupied.begin() + start, occupied.begin() + start + blocks, false);
+    live.erase(live.begin() + index);
+  };
+  for (int iteration = 0; iteration < 5000; ++iteration) {
+    SCOPED_TRACE(iteration);
+    if (!live.empty() && random() % 100 < 35) {
+      release(random() % live.size());
+    } else {
+      const int size   = 1 + random() % 1024;
+      const int blocks = (size + 7) / 8 + 1;
+      char* data       = allocator->New(size);
+      if (!data) {
+        EXPECT_EQ(
+            std::search_n(occupied.begin(), occupied.end(), blocks, false),
+            occupied.end());
+        continue;
+      }
+      const auto start = allocator->GetMallocOffset(data) / 8 - 1;
+      ASSERT_GE(start, 0);
+      ASSERT_LE(start + blocks, occupied.size());
+      ASSERT_TRUE(std::none_of(occupied.begin() + start,
+                               occupied.begin() + start + blocks,
+                               [](bool used) { return used; }));
+      std::fill(
+          occupied.begin() + start, occupied.begin() + start + blocks, true);
+      const char pattern = 1 + random() % 127;
+      std::memset(data, pattern, size);
+      live.push_back({data, size, pattern});
+    }
+    EXPECT_EQ(allocator->total_malloc(), live.size());
+    EXPECT_EQ(allocator->total_used(),
+              std::count(occupied.begin(), occupied.end(), true));
+  }
+  while (!live.empty())
+    release(live.size() - 1);
+  EXPECT_EQ(allocator->total_malloc(), 0);
+  EXPECT_EQ(allocator->total_used(), 0);
 }
 
 } // namespace
