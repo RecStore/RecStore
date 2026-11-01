@@ -23,7 +23,52 @@
 
 #include "storage/kv_engine/engine_factory.h"
 #include "storage/kv_engine/engine_selector.h"
+#include "storage/nvm/pet_kv/pet_hash.h"
 #include "test_io_uring_helper.h"
+
+TEST(PetHashTest, ShardedSizeTracksConcurrentMutations) {
+  using Hash                        = base::PetHash<uint64_t, uint64_t>;
+  using PersistentHash              = base::PetHash<uint64_t, uint64_t, true>;
+  constexpr uint64_t kCapacity      = 4096;
+  constexpr uint64_t kThreadCount   = 4;
+  constexpr uint64_t kKeysPerThread = 512;
+
+  EXPECT_EQ(sizeof(PersistentHash), 64);
+
+  const uint64_t memory_size = Hash::MemorySize(kCapacity);
+  void* memory               = nullptr;
+  ASSERT_EQ(posix_memalign(&memory, alignof(Hash), memory_size), 0);
+  auto* hash = new (memory) Hash();
+  hash->Initialize(kCapacity);
+
+  std::vector<std::thread> threads;
+  for (uint64_t thread_id = 0; thread_id < kThreadCount; ++thread_id) {
+    threads.emplace_back([hash, thread_id] {
+      for (uint64_t i = 0; i < kKeysPerThread; ++i) {
+        const uint64_t key = thread_id * kKeysPerThread + i + 1;
+        hash->Set(key, key);
+      }
+    });
+  }
+  for (auto& thread : threads)
+    thread.join();
+  EXPECT_EQ(hash->Size(), kThreadCount * kKeysPerThread);
+
+  threads.clear();
+  for (uint64_t thread_id = 0; thread_id < kThreadCount; ++thread_id) {
+    threads.emplace_back([hash, thread_id] {
+      for (uint64_t i = 0; i < kKeysPerThread; i += 2)
+        hash->Delete(thread_id * kKeysPerThread + i + 1);
+    });
+  }
+  for (auto& thread : threads)
+    thread.join();
+  EXPECT_EQ(hash->Size(), kThreadCount * kKeysPerThread / 2);
+  EXPECT_TRUE(hash->Valid(memory_size));
+
+  hash->~Hash();
+  free(memory);
+}
 
 class KVEngineCartesianTest
     : public ::testing::TestWithParam<
