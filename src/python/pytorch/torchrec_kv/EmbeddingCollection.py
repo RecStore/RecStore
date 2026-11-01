@@ -3,6 +3,8 @@ import torch
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
+from .fused_preload import preload_fused_rows
+
 try:
     from torchrec.sparse.jagged_tensor import JaggedTensor, KeyedJaggedTensor
     from torchrec.modules.embedding_configs import EmbeddingConfig
@@ -217,6 +219,15 @@ class RecStoreEmbeddingCollection(torch.nn.Module):
         initialize_values: bool,
         init_func: Optional[Callable[[Any, torch.dtype], torch.Tensor]],
     ) -> None:
+        if self._enable_fusion and base_offset != 0:
+            self._preload_fused_table(
+                config,
+                base_offset=base_offset,
+                initialize_values=initialize_values,
+                init_func=init_func,
+            )
+            return
+
         if self._init_data_supports_initialize_values():
             self.kv_client.init_data(
                 name=config.name,
@@ -265,6 +276,39 @@ class RecStoreEmbeddingCollection(torch.nn.Module):
             raise RuntimeError(
                 f"Failed to initialize embedding table '{config.name}' on backend."
             )
+
+    def _preload_fused_table(
+        self,
+        config: _EmbeddingConfigView,
+        *,
+        base_offset: int,
+        initialize_values: bool,
+        init_func: Optional[Callable[[Any, torch.dtype], torch.Tensor]],
+    ) -> None:
+        """Create a fused feature's rows where the fused lookup reads them.
+
+        The fused path addresses every feature through the master table, so
+        writing this table's rows under its own name would keep them out of
+        reach of both lookup and update.
+        """
+        rows = int(config.num_embeddings)
+        dim = int(config.embedding_dim)
+        values = None
+        if initialize_values:
+            if init_func is not None:
+                values = init_func((rows, dim), torch.float32)
+            else:
+                values = torch.zeros((rows, dim), dtype=torch.float32)
+        preload_fused_rows(
+            self.kv_client,
+            master_name=self._master_config.name,
+            name=config.name,
+            num_embeddings=rows,
+            embedding_dim=dim,
+            base_offset=base_offset,
+            values=values,
+            write_values=initialize_values,
+        )
 
     def _init_data_supports_initialize_values(self) -> bool:
         try:
