@@ -1,7 +1,13 @@
+import sys
 import unittest
 import warnings
+from pathlib import Path
 
 import torch
+
+# ctest runs from the repo root without PYTHONPATH; add src/ so the relative
+# imports inside torchrec_kv resolve the same way they do in the demo runner.
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from python.pytorch.torchrec_kv.EmbeddingBag import RecStoreEmbeddingBagCollection
 from python.pytorch.torchrec_kv.EmbeddingCollection import RecStoreEmbeddingCollection
