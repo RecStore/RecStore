@@ -85,9 +85,11 @@ struct F14Chunk {
     return value_ + i;
   }
   ItemT* Get(size_t i) { return value_ + i; }
-  void IncOverflow() {
-    if (overflow_count_ != 255)
-      ++overflow_count_;
+  bool IncOverflow() {
+    if (overflow_count_ == 255)
+      return false;
+    ++overflow_count_;
+    return true;
   }
   void DecOverflow() {
     if (overflow_count_ != 255)
@@ -523,6 +525,21 @@ public:
     }
   }
 
+  void BatchSet(base::ConstArray<KeyT> keys,
+                const ValueT* values,
+                ValueT* old_values = nullptr) {
+    for (int i = 0; i < keys.Size(); ++i) {
+      if (i + 1 < keys.Size()) {
+        HintPrefetch(keys[i + 1]);
+      }
+      Insert(keys[i],
+             values[i],
+             nullptr,
+             false,
+             old_values == nullptr ? nullptr : &old_values[i]);
+    }
+  }
+
   ValueT* Set(const KeyT& key,
               const ValueT& value,
               CheckFuncT check_func = nullptr,
@@ -585,7 +602,7 @@ public:
     if (UNLIKELY(touch_migrating_chunk)) {
       goto RETRY;
     }
-    return Insert(key, value, check_func, is_force);
+    return Insert(key, value, check_func, is_force, old_value_out);
   }
 
   std::pair<ChunkT*, size_t> HomeChunk(const KeyT& key) {
@@ -598,14 +615,42 @@ public:
   ValueT* Insert(const KeyT& key,
                  const ValueT& value,
                  CheckFuncT check_func = nullptr,
-                 bool force_insert     = false) {
-    uint64_t hash_value = Hash(key);
-    auto sign           = Sign(hash_value);
-    size_t step         = ProbeDelta(sign);
-    auto [chunk, pos]   = HomeChunk(key);
+                 bool force_insert     = false,
+                 ValueT* old_value_out = nullptr) {
+  RETRY:
+    static_assert(sizeof(ValueT) <= sizeof(uint64_t),
+                  "PetHash::Insert CAS update expects a 64-bit-or-smaller "
+                  "value");
+    if (old_value_out != nullptr) {
+      *old_value_out = ValueT();
+    }
+    uint64_t hash_value           = Hash(key);
+    auto sign                     = Sign(hash_value);
+    size_t step                   = ProbeDelta(sign);
+    auto [chunk, pos]             = HomeChunk(key);
+    size_t overflowed_chunk_count = 0;
+    std::vector<size_t> saturated_overflow_steps;
+    auto rollback_overflow = [&] {
+      size_t rollback_pos = hash_value & (chunk_num_ - 1);
+      size_t saturated_id = 0;
+      for (size_t overflow_step = 0; overflow_step < overflowed_chunk_count;
+           ++overflow_step) {
+        if (saturated_id < saturated_overflow_steps.size() &&
+            saturated_overflow_steps[saturated_id] == overflow_step) {
+          ++saturated_id;
+        } else {
+          chunk_table_[rollback_pos].DecOverflow();
+        }
+        rollback_pos = (rollback_pos + step) & (chunk_num_ - 1);
+      }
+    };
 
     for (size_t i = 0; i < chunk_num_; ++i) {
       base::AutoLock lock(chunk->lock_);
+      if (UNLIKELY(chunk->is_migrating)) {
+        rollback_overflow();
+        goto RETRY;
+      }
       // check whether KV expire
       if (UNLIKELY(check_func && chunk->Size() >= kChunkSize - 2)) {
         for (size_t id = 0; id < kChunkSize; ++id)
@@ -623,8 +668,26 @@ public:
           auto id  = it.Next();
           auto val = chunk->Get(id);
           if (LIKELY(key == val->first)) {
-            val->second = value;
-            return &val->second;
+            rollback_overflow();
+            while (LIKELY(key == val->first)) {
+              ValueT expected = val->second;
+              ValueT desired  = value;
+              if (__atomic_compare_exchange(
+                      &val->second,
+                      &expected,
+                      &desired,
+                      false,
+                      __ATOMIC_ACQ_REL,
+                      __ATOMIC_ACQUIRE)) {
+                if (old_value_out != nullptr) {
+                  *old_value_out = expected;
+                }
+                IF_Persistence(clflushopt_range(&val->second, sizeof(uint64)););
+                return &val->second;
+              }
+              __asm__ volatile("pause" ::: "memory");
+            }
+            goto RETRY;
           }
         }
       }
@@ -650,7 +713,10 @@ public:
           check_func(it->first, it->second, true);
         Delete(it->first);
       } else {
-        chunk->IncOverflow();
+        if (!chunk->IncOverflow()) {
+          saturated_overflow_steps.push_back(overflowed_chunk_count);
+        }
+        ++overflowed_chunk_count;
         pos   = (pos + step) & (chunk_num_ - 1);
         chunk = chunk_table_ + pos;
       }

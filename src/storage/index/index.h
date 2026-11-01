@@ -51,6 +51,13 @@ public:
   }
   virtual void
   BatchPut(base::ConstArray<Key_t> keys, Value_t* pointers, unsigned tid) = 0;
+  virtual void BatchPutWithOld(base::ConstArray<Key_t> keys,
+                               Value_t* pointers,
+                               Value_t* old_pointers,
+                               unsigned tid) {
+    for (int i = 0; i < keys.Size(); ++i)
+      old_pointers[i] = Put(keys[i], pointers[i], tid);
+  }
   virtual void BatchGet(base::ConstArray<Key_t> keys, Value_t* pointers) {
     BatchGet(keys, pointers, CurrentTid());
   }
