@@ -2,7 +2,7 @@
 
 本文档说明 RecStore Parameter Server 的 RDMA 主路径、入口边界和运行时约束。
 可执行的构建、正确性测试、benchmark 命令、默认值和报告规则统一维护在
-`rs-benchmark-ps` skill。
+`rs-benchmark-ps` skill；不要在本页复制测试命令或临时性能数字。
 面向真实跨机部署的配置、IB/RoCE v1/RoCE v2 选择和改造边界，以代码中的
 `ResolvedRdmaDeployment` 配置契约和本页的稳定架构说明为准。
 
