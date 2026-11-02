@@ -41,13 +41,13 @@
     <div class="col-sm-12 col-lg-3 float-left d-flex flex-column text-right flex-justify-end pr-3">
       <div class="d-flex">
         <div class="mr-2">Lines:</div>
-        <div class="mr-2" style="margin: auto;">5 / 66</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">7.6%</span></div>
+        <div class="mr-2" style="margin: auto;">5 / 78</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">6.4%</span></div>
       </div>
       <div class="d-flex">
         <div class="mr-2">Branches:</div>
-        <div class="mr-2" style="margin: auto;">3 / 146</div>
-        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">2.1%</span></div>
+        <div class="mr-2" style="margin: auto;">3 / 160</div>
+        <div class="Label--minw"><span class="coverage-low IssueLabel color-fg-on-emphasis mr-1">1.9%</span></div>
       </div>
       <div class="d-flex">
         <div class="mr-2">Functions:</div>
@@ -86,14 +86,14 @@
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L92">recstore::framework::(anonymous namespace)::warmup_local_lookup_flat_cuda_region_torch() (src/framework/pytorch/op_flat.cc:92)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L109">recstore::framework::(anonymous namespace)::warmup_local_lookup_flat_cuda_region_torch() (src/framework/pytorch/op_flat.cc:109)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L104">recstore::framework::RegisterFlatOps(torch::Library&amp;) (src/framework/pytorch/op_flat.cc:104)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L121">recstore::framework::RegisterFlatOps(torch::Library&amp;) (src/framework/pytorch/op_flat.cc:121)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="16">called 16 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">50.0%</div>
@@ -109,7 +109,7 @@
     framework/pytorch/op_flat.cc
     <div class="toggle-buttons">
       <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">2 covered</button>
-      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">61 uncovered</button>
+      <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">73 uncovered</button>
       <button type="button" class="button_toggle_partialCoveredLine show_partialCoveredLine" value="partialCoveredLine" title="Toggle partial covered lines">3 partial covered</button>
     </div>
     <div class="nav">
@@ -1046,6 +1046,174 @@
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L89" href="#L89">89</a></td>
         <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Client-side split of the same round trip. The server half</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L90" href="#L90">90</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="c1">// (kUpdateServerBackendMs) comes back in the slot header, so the remainder</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L91" href="#L91">91</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="c1">// is slot acquire + copy + wake latency.</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L92" href="#L92">92</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">last_request</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">GetLastLocalShmRequestProfile</span><span class="p">();</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L93" href="#L93">93</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 0 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">last_request</span><span class="p">.</span><span class="n">opcode</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">uint32_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">LocalOpcode</span><span class="o">::</span><span class="n">kUpdateFlat</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L94" href="#L94">94</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">g_last_local_update_flat_profile</span><span class="p">[</span><span class="n">kUpdateSlotAcquireMs</span><span class="p">]</span><span class="w"> </span><span class="o">=</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L95" href="#L95">95</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="n">last_request</span><span class="p">.</span><span class="n">acquire_slot_us</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000.0</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L96" href="#L96">96</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">g_last_local_update_flat_profile</span><span class="p">[</span><span class="n">kUpdateCopyEnqueueMs</span><span class="p">]</span><span class="w"> </span><span class="o">=</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L97" href="#L97">97</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="n">last_request</span><span class="p">.</span><span class="n">enqueue_us</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000.0</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L98" href="#L98">98</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">g_last_local_update_flat_profile</span><span class="p">[</span><span class="n">kUpdateWaitMs</span><span class="p">]</span><span class="w"> </span><span class="o">=</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L99" href="#L99">99</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="n">last_request</span><span class="p">.</span><span class="n">wait_us</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000.0</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L100" href="#L100">100</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">g_last_local_update_flat_profile</span><span class="p">[</span><span class="n">kUpdateServerQueueWaitMs</span><span class="p">]</span><span class="w"> </span><span class="o">=</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L101" href="#L101">101</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="n">last_request</span><span class="p">.</span><span class="n">server_queue_wait_us</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000.0</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L102" href="#L102">102</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="n">g_last_local_update_flat_profile</span><span class="p">[</span><span class="n">kUpdateServerBackendMs</span><span class="p">]</span><span class="w"> </span><span class="o">=</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L103" href="#L103">103</a></td>
+        <td class="text-right src linenos ws-unset">
+          <details class="normal details-overlay">
+            <summary>0/2</summary>
+            <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
+              <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
+              <div class="color-fg-danger">&cross; Branch 2 not taken.</div>
+            </div>
+          </details>
+        </td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">        </span><span class="n">last_request</span><span class="p">.</span><span class="n">server_backend_us</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000.0</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L104" href="#L104">104</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="p">}</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L105" href="#L105">105</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L106" href="#L106">106</a></td>
+        <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>0/4</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
@@ -1060,7 +1228,7 @@
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">g_last_local_update_flat_profile</span><span class="p">[</span><span class="n">kUpdateTotalMs</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ElapsedMs</span><span class="p">(</span><span class="n">total_start</span><span class="p">);</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L90" href="#L90">90</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L107" href="#L107">107</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>0/2</summary>
@@ -1074,21 +1242,21 @@
         <td class="src uncoveredLine show_uncoveredLine"><span class="p">}</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L91" href="#L91">91</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L108" href="#L108">108</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L92" href="#L92">92</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L109" href="#L109">109</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
         <td class="src uncoveredLine show_uncoveredLine"><span class="kt">bool</span><span class="w"> </span><span class="nf">warmup_local_lookup_flat_cuda_region_torch</span><span class="p">()</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L93" href="#L93">93</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L110" href="#L110">110</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>0/2</summary>
@@ -1102,21 +1270,21 @@
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">kv_op</span><span class="w">                </span><span class="o">=</span><span class="w"> </span><span class="n">GetConcreteKVClientOp</span><span class="p">();</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L94" href="#L94">94</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L111" href="#L111">111</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">payload_base</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">;</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L95" href="#L95">95</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L112" href="#L112">112</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="n">payload_bytes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L96" href="#L96">96</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L113" href="#L113">113</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>0/4</summary>
@@ -1132,21 +1300,21 @@
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">kv_op</span><span class="o">-&gt;</span><span class="n">GetLocalLookupFlatPayloadRegion</span><span class="p">(</span><span class="o">&amp;</span><span class="n">payload_base</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">payload_bytes</span><span class="p">))</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L97" href="#L97">97</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L114" href="#L114">114</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L98" href="#L98">98</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L115" href="#L115">115</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="w">  </span><span class="p">}</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L99" href="#L99">99</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L116" href="#L116">116</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>0/2</summary>
@@ -1160,42 +1328,42 @@
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">EnsurePinnedLocalShmPayload</span><span class="p">(</span><span class="n">payload_base</span><span class="p">,</span><span class="w"> </span><span class="n">payload_bytes</span><span class="p">);</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L100" href="#L100">100</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L117" href="#L117">117</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
         <td class="src uncoveredLine show_uncoveredLine"><span class="p">}</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L101" href="#L101">101</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L118" href="#L118">118</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L102" href="#L102">102</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L119" href="#L119">119</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L103" href="#L103">103</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L120" href="#L120">120</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L104" href="#L104">104</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L121" href="#L121">121</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">16</td>
         <td class="src coveredLine show_coveredLine"><span class="kt">void</span><span class="w"> </span><span class="nf">RegisterFlatOps</span><span class="p">(</span><span class="n">torch</span><span class="o">::</span><span class="n">Library</span><span class="o">&amp;</span><span class="w"> </span><span class="n">m</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L105" href="#L105">105</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L122" href="#L122">122</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>1/2</summary>
@@ -1209,7 +1377,7 @@
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">m</span><span class="p">.</span><span class="n">def</span><span class="p">(</span><span class="s">"local_lookup_flat"</span><span class="p">,</span><span class="w"> </span><span class="n">local_lookup_flat_torch</span><span class="p">);</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L106" href="#L106">106</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L123" href="#L123">123</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>1/2</summary>
@@ -1223,7 +1391,7 @@
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">m</span><span class="p">.</span><span class="n">def</span><span class="p">(</span><span class="s">"local_update_flat"</span><span class="p">,</span><span class="w"> </span><span class="n">local_update_flat_torch</span><span class="p">);</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L107" href="#L107">107</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L124" href="#L124">124</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>1/2</summary>
@@ -1237,42 +1405,42 @@
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="n">m</span><span class="p">.</span><span class="n">def</span><span class="p">(</span><span class="s">"warmup_local_lookup_flat_cuda_region"</span><span class="p">,</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L108" href="#L108">108</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L125" href="#L125">125</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="w">        </span><span class="n">warmup_local_lookup_flat_cuda_region_torch</span><span class="p">);</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L109" href="#L109">109</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L126" href="#L126">126</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">16</td>
         <td class="src coveredLine show_coveredLine"><span class="p">}</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L110" href="#L110">110</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L127" href="#L127">127</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L111" href="#L111">111</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L128" href="#L128">128</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace framework</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L112" href="#L112">112</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L129" href="#L129">129</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace recstore</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L113" href="#L113">113</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L130" href="#L130">130</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
@@ -1285,7 +1453,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
-          at 2026-11-02 02:47:06+00:00
+          at 2026-11-02 02:50:17+00:00
         </footer>
       </div>
     </div>

@@ -41,8 +41,8 @@
     <div class="col-sm-12 col-lg-3 float-left d-flex flex-column text-right flex-justify-end pr-3">
       <div class="d-flex">
         <div class="mr-2">Lines:</div>
-        <div class="mr-2" style="margin: auto;">34 / 35</div>
-        <div class="Label--minw"><span class="coverage-high IssueLabel color-fg-on-emphasis mr-1">97.1%</span></div>
+        <div class="mr-2" style="margin: auto;">35 / 36</div>
+        <div class="Label--minw"><span class="coverage-high IssueLabel color-fg-on-emphasis mr-1">97.2%</span></div>
       </div>
       <div class="d-flex">
         <div class="mr-2">Branches:</div>
@@ -72,7 +72,7 @@
     <div role="rowheader" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2 sortable">Blocks</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L51">SparseTensor::ApplySgdUpdateFlat(base::ConstArray&lt;unsigned long&gt; const&amp;, float const*, long, long, float, unsigned int) (src/optimizer/sparse_tensor.cpp:51)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L51">SparseTensor::ApplySgdUpdateFlat(base::ConstArray&lt;unsigned long&gt; const&amp;, float const*, long, long, float, unsigned int, BaseKV::UpdateFlatStats*) (src/optimizer/sparse_tensor.cpp:51)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="8">called 8 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">50.0%</div>
@@ -129,7 +129,7 @@
   <div class="Box-header d-flex flex-space-between sticky">
     optimizer/sparse_tensor.cpp
     <div class="toggle-buttons">
-      <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">28 covered</button>
+      <button type="button" class="button_toggle_coveredLine show_coveredLine" value="coveredLine" title="Toggle covered lines">29 covered</button>
       <button type="button" class="button_toggle_uncoveredLine show_uncoveredLine" value="uncoveredLine" title="Toggle uncovered lines">1 uncovered</button>
       <button type="button" class="button_toggle_partialCoveredLine show_partialCoveredLine" value="partialCoveredLine" title="Toggle partial covered lines">6 partial covered</button>
     </div>
@@ -581,10 +581,17 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src"><span class="w">    </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L58" href="#L58">58</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">    </span><span class="n">BaseKV</span><span class="o">::</span><span class="n">UpdateFlatStats</span><span class="o">*</span><span class="w"> </span><span class="n">stats</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L59" href="#L59">59</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>1/2</summary>
@@ -598,7 +605,7 @@
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">kv</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nb">nullptr</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L59" href="#L59">59</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L60" href="#L60">60</a></td>
         <td class="text-right src linenos ws-unset">
           <details class="normal details-overlay">
             <summary>1/2</summary>
@@ -612,21 +619,70 @@
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">         </span><span class="n">kv</span><span class="o">-&gt;</span><span class="n">ApplySgdUpdateFlat</span><span class="p">(</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L60" href="#L60">60</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L61" href="#L61">61</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">16</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">             </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">grads</span><span class="p">,</span><span class="w"> </span><span class="n">num_rows</span><span class="p">,</span><span class="w"> </span><span class="n">embedding_dim</span><span class="p">,</span><span class="w"> </span><span class="n">learning_rate</span><span class="p">,</span><span class="w"> </span><span class="n">tag</span><span class="p">,</span><span class="w"> </span><span class="n">tid</span><span class="p">);</span></td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">             </span><span class="n">keys</span><span class="p">,</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L61" href="#L61">61</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L62" href="#L62">62</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">             </span><span class="n">grads</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L63" href="#L63">63</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">             </span><span class="n">num_rows</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L64" href="#L64">64</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">             </span><span class="n">embedding_dim</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L65" href="#L65">65</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">             </span><span class="n">learning_rate</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L66" href="#L66">66</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">8</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">             </span><span class="n">tag</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L67" href="#L67">67</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">             </span><span class="n">tid</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L68" href="#L68">68</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">8</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">             </span><span class="n">stats</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L69" href="#L69">69</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="p">}</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L62" href="#L62">62</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L70" href="#L70">70</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
@@ -639,7 +695,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
-          at 2026-11-02 02:47:06+00:00
+          at 2026-11-02 02:50:17+00:00
         </footer>
       </div>
     </div>
