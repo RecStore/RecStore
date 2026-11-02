@@ -219,7 +219,13 @@ class RecStoreEmbeddingCollection(torch.nn.Module):
         initialize_values: bool,
         init_func: Optional[Callable[[Any, torch.dtype], torch.Tensor]],
     ) -> None:
-        if self._enable_fusion and base_offset != 0:
+        if (
+            self._enable_fusion
+            and base_offset != 0
+            # Legacy clients without register_tensor_meta() keep the tag-local
+            # path below, including init_func/initialize_values handling.
+            and callable(getattr(self.kv_client, "register_tensor_meta", None))
+        ):
             self._preload_fused_table(
                 config,
                 base_offset=base_offset,
@@ -272,7 +278,10 @@ class RecStoreEmbeddingCollection(torch.nn.Module):
             config.num_embeddings,
             config.embedding_dim,
         )
-        if ok is False:
+        # Backend tag on success (-1 on failure); bool for sharded clients.
+        if ok is False or (
+            isinstance(ok, int) and not isinstance(ok, bool) and ok < 0
+        ):
             raise RuntimeError(
                 f"Failed to initialize embedding table '{config.name}' on backend."
             )

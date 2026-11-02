@@ -47,10 +47,29 @@ def preload_fused_rows(
     """
     rows = int(num_embeddings)
     dim = int(embedding_dim)
-    if rows <= 0 or dim <= 0:
+    if rows < 0 or dim <= 0:
         return
 
-    kv_client.register_tensor_meta(
+    register_meta = getattr(kv_client, "register_tensor_meta", None)
+    if not callable(register_meta):
+        # Clients that only implement init_data() keep the previous behavior:
+        # rows are created under the feature's own tag and stay lazy. Failing
+        # here would break every client that predates register_tensor_meta.
+        init_data = getattr(kv_client, "init_data", None)
+        if not callable(init_data):
+            raise RuntimeError(
+                f"kv_client {type(kv_client).__name__} implements neither "
+                "register_tensor_meta() nor init_data()."
+            )
+        init_data(
+            name=name,
+            shape=(rows, dim),
+            dtype=torch.float32,
+            base_offset=base_offset,
+        )
+        return
+
+    register_meta(
         name=name,
         shape=(rows, dim),
         dtype=torch.float32,
@@ -63,11 +82,17 @@ def preload_fused_rows(
     init_table = getattr(kv_client, "init_embedding_table", None)
     if callable(init_table):
         ok = init_table(name, rows, dim)
-        if ok is False:
+        # init_embedding_table returns the backend tag on success (-1 on
+        # failure); sharded clients report a bool instead.
+        if ok is False or (
+            isinstance(ok, int) and not isinstance(ok, bool) and ok < 0
+        ):
             raise RuntimeError(
                 f"Failed to initialize embedding table '{name}' on backend."
             )
-    if not write_values:
+    if not write_values or rows == 0:
+        # Empty tables still carry metadata and the backend registration above;
+        # only the value write is skipped.
         return
 
     push = getattr(kv_client, "push", None)

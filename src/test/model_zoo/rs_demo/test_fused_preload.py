@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from python.pytorch.torchrec_kv.EmbeddingBag import RecStoreEmbeddingBagCollection
 from python.pytorch.torchrec_kv.EmbeddingCollection import RecStoreEmbeddingCollection
+from python.pytorch.torchrec_kv.fused_preload import preload_fused_rows
 
 
 class _RecordingBase:
@@ -63,6 +64,17 @@ class _RecordingClient(_RecordingBase):
 
 class _NoPushClient(_RecordingBase):
     """Stub without ``push``: rows can only be registered, not pre-created."""
+
+
+class _InitDataOnlyClient:
+    """Legacy client surface: ``init_data()`` but no ``register_tensor_meta()``."""
+
+    def __init__(self) -> None:
+        self.init_data_calls: list[tuple[str, int, int]] = []
+
+    def init_data(self, name, shape, dtype, base_offset=0):
+        self.init_data_calls.append((name, int(shape[0]), int(base_offset)))
+        return None
 
 
 def _bag_collection(enable_fusion: bool, client) -> RecStoreEmbeddingBagCollection:
@@ -158,6 +170,44 @@ class FusedBagPreloadTest(unittest.TestCase):
             any("not pre-created" in str(w.message) for w in caught),
             "a client without push() should report that rows stay lazy",
         )
+
+    def test_client_without_register_tensor_meta_keeps_tag_local_rows(self) -> None:
+        client = _InitDataOnlyClient()
+        _bag_collection(enable_fusion=True, client=client)
+
+        # Legacy clients only expose init_data(): every table, including the
+        # fused ones, keeps the previous tag-local initialization.
+        self.assertEqual(
+            [("t_f0", 1000, 0), ("t_f1", 40, 1 << 30), ("t_f2", 7, 2 << 30)],
+            client.init_data_calls,
+        )
+
+    def test_negative_backend_tag_is_reported_as_a_failure(self) -> None:
+        class _FailingInitTable(_RecordingClient):
+            def init_embedding_table(self, name, num_embeddings, embedding_dim):
+                return -1
+
+        with self.assertRaises(RuntimeError):
+            _bag_collection(enable_fusion=True, client=_FailingInitTable())
+
+
+class FusedPreloadHelperTest(unittest.TestCase):
+    def test_empty_table_keeps_metadata_and_backend_registration(self) -> None:
+        client = _RecordingClient()
+        preload_fused_rows(
+            client,
+            master_name="t_f0",
+            name="t_empty",
+            num_embeddings=0,
+            embedding_dim=4,
+            base_offset=1 << 30,
+        )
+
+        # An empty table must still be registered so that every rank opens the
+        # same set of backend tables; only the value write is skipped.
+        self.assertEqual([("t_empty", 0, 1 << 30)], client.registered)
+        self.assertEqual([("t_empty", 0, 4)], client.init_table_calls)
+        self.assertEqual([], client.pushes)
 
 
 class FusedCollectionPreloadTest(unittest.TestCase):
