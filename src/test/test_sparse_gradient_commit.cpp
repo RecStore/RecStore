@@ -1,8 +1,11 @@
 #include <gtest/gtest.h>
+#include <array>
 #include <map>
 #include <numeric>
-#include "base/sgd_update.h"
 #include <random>
+#include <set>
+#include "base/sgd_update.h"
+#include "framework/common/owner_merged_plan.h"
 #include "ps/base/sparse_gradient_commit.h"
 #include "framework/common/sparse_gradient_commit_runtime.h"
 
@@ -1397,4 +1400,197 @@ TEST(SparseGradientCommit, ExactOwnerWholeStepRowsAreBoundedBeforeApply) {
   EXPECT_THROW(c.Exchange("e", ExactPacket(ExactHeader(0, 0, 52, 53), {53248}), apply, 0), std::invalid_argument);
   EXPECT_THROW(c.Exchange("e", ExactControl(0, 1), apply, 0), std::runtime_error);
   EXPECT_EQ(calls, 0);
+}
+
+// ---- Merged-gradient owner plan (owner_merged_plan.h) ----
+
+namespace {
+int MergedOracleOwner(uint64_t key, uint64_t tag) {
+  const uint64_t physical = key | (tag << 56);
+  return static_cast<int>(
+      ::CityHash64(reinterpret_cast<const char*>(&physical), sizeof(physical)) % 2);
+}
+}  // namespace
+
+TEST(OwnerMergedPlan, RoutingMatchesCityHashOracleForBothRanks) {
+  std::mt19937_64 rng(20260330);
+  const std::vector<int64_t> boundaries = {0, 100, 200};
+  const std::vector<int64_t> types = {0, 1};
+  const int64_t features = 2, tag = 3;
+  for (int trial = 0; trial < 300; ++trial) {
+    std::vector<int64_t> keys[2], counts[2];
+    for (int rank = 0; rank < 2; ++rank) {
+      const int n = static_cast<int>(rng() % 40);
+      std::set<int64_t> unique;
+      for (int i = 0; i < n; ++i) unique.insert(static_cast<int64_t>(rng() % 200));
+      for (int64_t key : unique) {
+        keys[rank].push_back(key);
+        // Deliberately arbitrary per-key counts: the canonical per-feature
+        // occurrence-total equality must not be required for merged rows.
+        counts[rank].push_back(static_cast<int64_t>(rng() % 1024 + 1));
+      }
+    }
+    for (int rank = 0; rank < 2; ++rank) {
+      const auto plan = recstore::BuildOwnerMergedPlan(
+          static_cast<int64_t>(keys[0].size()), keys[0].data(), counts[0].data(),
+          static_cast<int64_t>(keys[1].size()), keys[1].data(), counts[1].data(),
+          features, boundaries.data(), types.data(), tag, rank, true);
+      // Independent oracle over the sorted union.
+      size_t i0 = 0, i1 = 0, owned_index = 0, local_position = 0, offset0 = 0, offset1 = 0;
+      std::vector<int64_t> expect_keys, expect_meta, expect_perm[2];
+      std::vector<int64_t> expect_fsend[2], expect_frecv_pos[2];
+      int64_t send[2] = {0, 0}, recv[2] = {0, 0}, fsend[2] = {0, 0}, frecv[2] = {0, 0};
+      int64_t local_row = 0;
+      while (i0 < keys[0].size() || i1 < keys[1].size()) {
+        const int64_t key = i1 == keys[1].size() ||
+            (i0 < keys[0].size() && keys[0][i0] < keys[1][i1]) ? keys[0][i0] : keys[1][i1];
+        const int64_t c0 = i0 < keys[0].size() && keys[0][i0] == key ? counts[0][i0++] : 0;
+        const int64_t c1 = i1 < keys[1].size() && keys[1][i1] == key ? counts[1][i1++] : 0;
+        const int owner = MergedOracleOwner(static_cast<uint64_t>(key), tag);
+        const int64_t type = types[key >= boundaries[1] ? 1 : 0];
+        const bool present[2] = {c0 > 0, c1 > 0};
+        if (present[rank]) {
+          expect_perm[owner].push_back(static_cast<int64_t>(local_position++));
+          expect_frecv_pos[owner].push_back(local_row++);
+          ++send[owner];
+        }
+        if (owner == rank) {
+          expect_keys.push_back(key);
+          expect_meta.insert(expect_meta.end(),
+              {key, c0, c1, type, static_cast<int64_t>(offset0), present[0],
+               static_cast<int64_t>(offset1), present[1]});
+          if (present[0]) ++offset0;
+          if (present[1]) ++offset1;
+          for (int destination = 0; destination < 2; ++destination)
+            if (present[destination]) expect_fsend[destination].push_back(owned_index);
+          ++owned_index;
+          for (int source = 0; source < 2; ++source)
+            if (present[source]) ++recv[source];
+        }
+      }
+      for (int peer = 0; peer < 2; ++peer) {
+        fsend[peer] = static_cast<int64_t>(expect_fsend[peer].size());
+        frecv[peer] = static_cast<int64_t>(expect_frecv_pos[peer].size());
+      }
+      std::vector<int64_t> expect_permutation = expect_perm[0];
+      expect_permutation.insert(expect_permutation.end(), expect_perm[1].begin(), expect_perm[1].end());
+      std::vector<int64_t> expect_fsend_index = expect_fsend[0];
+      expect_fsend_index.insert(expect_fsend_index.end(), expect_fsend[1].begin(), expect_fsend[1].end());
+      std::vector<int64_t> expect_reorder(local_row, -1);
+      int64_t received = 0;
+      for (int peer = 0; peer < 2; ++peer)
+        for (const auto position : expect_frecv_pos[peer])
+          expect_reorder[position] = received++;
+      EXPECT_EQ(plan.keys, expect_keys);
+      EXPECT_EQ(plan.meta, expect_meta);
+      EXPECT_EQ(plan.permutation, expect_permutation);
+      EXPECT_EQ(plan.send, (std::array<int64_t, 2>{send[0], send[1]}));
+      EXPECT_EQ(plan.recv, (std::array<int64_t, 2>{recv[0], recv[1]}));
+      EXPECT_EQ(plan.forward_send_index, expect_fsend_index);
+      EXPECT_EQ(plan.forward_reorder, expect_reorder);
+      EXPECT_EQ(plan.forward_send, (std::array<int64_t, 2>{fsend[0], fsend[1]}));
+      EXPECT_EQ(plan.forward_recv, (std::array<int64_t, 2>{frecv[0], frecv[1]}));
+      ASSERT_EQ(plan.meta.size() / 8, plan.keys.size());
+      for (size_t row = 0; row < plan.keys.size(); ++row) {
+        const auto* m = plan.meta.data() + row * 8;
+        EXPECT_TRUE(m[5] == 0 || m[5] == 1);
+        EXPECT_TRUE(m[7] == 0 || m[7] == 1);
+        EXPECT_EQ(m[5] != 0, m[1] != 0);
+        EXPECT_EQ(m[7] != 0, m[2] != 0);
+        EXPECT_LE(m[4] + m[5], plan.recv[0]);
+        EXPECT_LE(m[6] + m[7], plan.recv[1]);
+      }
+    }
+  }
+}
+
+TEST(OwnerMergedPlan, CrossRankSplitsAndEmptySidesAgree) {
+  const std::vector<int64_t> boundaries = {0, 100, 200};
+  const std::vector<int64_t> types = {0, 1};
+  {
+    std::vector<int64_t> k0 = {1, 5, 150}, c0 = {2, 1, 7}, k1 = {5, 199}, c1 = {3, 1};
+    auto p0 = recstore::BuildOwnerMergedPlan(3, k0.data(), c0.data(), 2, k1.data(), c1.data(),
+                                             2, boundaries.data(), types.data(), 0, 0);
+    auto p1 = recstore::BuildOwnerMergedPlan(3, k0.data(), c0.data(), 2, k1.data(), c1.data(),
+                                             2, boundaries.data(), types.data(), 0, 1);
+    EXPECT_EQ(p0.recv[1], p1.send[0]);
+    EXPECT_EQ(p1.recv[0], p0.send[1]);
+    EXPECT_EQ(p0.recv[0], p0.send[0]);
+    EXPECT_EQ(p1.recv[1], p1.send[1]);
+    EXPECT_EQ(p0.rows, (std::array<int64_t, 2>{3, 2}));
+    EXPECT_EQ(p0.send[0] + p0.send[1], 3);
+    EXPECT_EQ(p1.send[0] + p1.send[1], 2);
+  }
+  for (int rank = 0; rank < 2; ++rank) {
+    auto empty_side = rank == 0;
+    std::vector<int64_t> k0 = empty_side ? std::vector<int64_t>{7, 120} : std::vector<int64_t>{},
+                          c0 = empty_side ? std::vector<int64_t>{1, 2} : std::vector<int64_t>{};
+    std::vector<int64_t> k1 = empty_side ? std::vector<int64_t>{} : std::vector<int64_t>{7, 120},
+                          c1 = empty_side ? std::vector<int64_t>{} : std::vector<int64_t>{3, 1};
+    auto plan = recstore::BuildOwnerMergedPlan(static_cast<int64_t>(k0.size()), k0.data(), c0.data(),
+        static_cast<int64_t>(k1.size()), k1.data(), c1.data(),
+        2, boundaries.data(), types.data(), 0, rank, true);
+    EXPECT_EQ(plan.rows[rank], static_cast<int64_t>((rank == 0 ? k0 : k1).size()));
+    EXPECT_EQ(plan.rows[1 - rank], 0);
+    EXPECT_EQ(plan.permutation.size(), static_cast<size_t>(plan.rows[rank]));
+    EXPECT_EQ(plan.send[0] + plan.send[1], plan.rows[rank]);
+    // Ownership still routes the populated side's keys; the empty rank owns
+    // only whatever the hash assigns to it, never rows of its own.
+    EXPECT_LE(plan.recv[0], plan.rows[0]);
+    EXPECT_LE(plan.recv[1], plan.rows[1]);
+    for (int64_t key : plan.keys) {
+      const auto& side = rank == 0 ? k0 : k1;
+      EXPECT_NE(std::find(side.begin(), side.end(), key), side.end());
+    }
+    std::vector<int64_t> covered(plan.permutation);
+    std::sort(covered.begin(), covered.end());
+    std::vector<int64_t> range(static_cast<size_t>(plan.rows[rank]));
+    std::iota(range.begin(), range.end(), 0);
+    EXPECT_EQ(covered, range);
+    EXPECT_EQ(plan.forward_reorder.size(), static_cast<size_t>(plan.rows[rank]));
+  }
+  auto both = recstore::BuildOwnerMergedPlan(0, nullptr, nullptr, 0, nullptr, nullptr,
+                                             2, boundaries.data(), types.data(), 0, 0, true);
+  EXPECT_TRUE(both.permutation.empty() && both.keys.empty() && both.meta.empty());
+  EXPECT_EQ(both.forward_reorder.size(), 0u);
+}
+
+TEST(OwnerMergedPlan, AcceptsUnequalFeatureTotalsAndRejectsMalformedInputs) {
+  const std::vector<int64_t> boundaries = {0, 100, 200};
+  const std::vector<int64_t> types = {0, 1};
+  // Feature 1 has zero occurrences while feature 0 has three: canonical
+  // occurrence-total equality is intentionally absent for merged rows.
+  std::vector<int64_t> k0 = {5}, c0 = {3};
+  std::vector<int64_t> empty;
+  auto plan = recstore::BuildOwnerMergedPlan(1, k0.data(), c0.data(), 0, nullptr, nullptr,
+                                             2, boundaries.data(), types.data(), 9, 0);
+  EXPECT_EQ(plan.meta, (std::vector<int64_t>{5, 3, 0, 0, 0, 1, 0, 0}));
+  EXPECT_EQ(plan.rows, (std::array<int64_t, 2>{1, 0}));
+  EXPECT_THROW(recstore::BuildOwnerMergedPlan(1, empty.data(), c0.data(), 0, nullptr, nullptr,
+                  2, boundaries.data(), types.data(), 9, 0), std::invalid_argument);
+  for (int mode = 0; mode < 8; ++mode) {
+    std::vector<int64_t> keys = k0, counts = c0;
+    std::vector<int64_t> bad_boundaries = boundaries, bad_types = types;
+    int64_t tag = 0, rank = 0, features = 2;
+    switch (mode) {
+      case 0: keys = {5, 3}; counts = {1, 1}; break;      // unsorted
+      case 1: keys = {5, 5}; counts = {1, 1}; break;      // duplicate
+      case 2: counts = {0}; break;                        // zero occurrence
+      case 3: counts = {1025}; break;                     // above batch bound
+      case 4: keys = {200}; break;                        // outside final boundary
+      case 5: keys = {-1}; break;                         // below first boundary
+      case 6: tag = 256; break;                           // namespace overflow
+      case 7: rank = 2; break;                            // shard out of range
+    }
+    EXPECT_THROW(recstore::BuildOwnerMergedPlan(
+        static_cast<int64_t>(keys.size()), keys.data(), counts.data(), 0, nullptr, nullptr,
+        features, bad_boundaries.data(), bad_types.data(), tag, rank), std::invalid_argument)
+        << mode;
+  }
+  EXPECT_THROW(recstore::BuildOwnerMergedPlan(
+      1, k0.data(), c0.data(), 0, nullptr, nullptr,
+      2, std::vector<int64_t>{0, 100, 100}.data(), types.data(), 0, 0), std::invalid_argument);
+  EXPECT_THROW(recstore::BuildOwnerMergedPlan(
+      1, k0.data(), c0.data(), 0, nullptr, nullptr,
+      2, boundaries.data(), std::vector<int64_t>{0, 2}.data(), 0, 0), std::invalid_argument);
 }
