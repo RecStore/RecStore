@@ -62,12 +62,13 @@ class GPUOwnerExchange:
 
     Group ranks must equal physical owner ranks. Packed partials must be ready
     on the calling stream. No arithmetic reduction occurs in the collective.
+    Subclasses override the arithmetic hooks (_check_math_ready/_owner_math);
+    the exchange, staging, and cleanup contracts stay byte-identical.
     """
     def __init__(self, permutation, owner_keys, metadata, send_splits, recv_splits,
                  old_weights, *, process_group, device, source_refs=()):
         self.device = _cuda_device(device)
-        if _EXTENSION is None or self.device.index not in _WARMED_DEVICES:
-            raise RuntimeError('Call initialize_owner_math before training')
+        self._check_math_ready()
         if (process_group is None or not dist.is_initialized() or
                 dist.get_backend(process_group) != 'nccl' or
                 dist.get_world_size(process_group) != 2 or dist.get_world_size() != 2 or
@@ -113,6 +114,13 @@ class GPUOwnerExchange:
                 original.add_note('Owner preparation drain also failed: '+repr(cleanup))
             raise
 
+    def _check_math_ready(self):
+        if _EXTENSION is None or self.device.index not in _WARMED_DEVICES:
+            raise RuntimeError('Call initialize_owner_math before training')
+
+    def _owner_math(self, meta, v0, v1, weights, learning_rate):
+        return _EXTENSION.owner_math(meta, v0, v1, weights, float(learning_rate), False)
+
     def run(self, packed_partials, learning_rate):
         if self._ran:
             raise RuntimeError('An owner exchange cannot be retried or reused')
@@ -137,7 +145,7 @@ class GPUOwnerExchange:
             group=self.group, async_op=True)
         self._work.wait()  # Establish NCCL completion on this CUDA stream.
         v0, v1 = self._received.split(self.recv_splits, dim=0)
-        self._result = _EXTENSION.owner_math(meta, v0, v1, weights, float(learning_rate), False)
+        self._result = self._owner_math(meta, v0, v1, weights, learning_rate)
         return self._result[1], self._result[2]
 
     def drain(self):
