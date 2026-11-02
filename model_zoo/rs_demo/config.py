@@ -164,6 +164,10 @@ class RunConfig:
     torchrec_timing_sync_mode: str = "stage"
     torchrec_align_recstore_init: bool = False
     validation_state: bool = False
+    ps_pipeline_early_submit: bool = False
+    ps_pipeline_dependency_split: bool = False
+    ps_pipeline_canonical_plan: str = ""
+    dense_cuda_graph: bool = False
     torchrec_profiler_warmup: int = 0
     torchrec_profiler_active: int = 2
     torchrec_profiler_repeat: int = 1
@@ -349,12 +353,28 @@ def build_parser() -> argparse.ArgumentParser:
         "--read-mode",
         type=str,
         default="prefetch",
-        choices=["direct", "prefetch", "bagpipe"],
+        choices=["direct", "prefetch", "bagpipe", "ps_pipeline"],
         help=(
             "Embedding read strategy: direct=sync pull; prefetch=async with "
             "prefetch_depth window (may observe stale updates); bagpipe=async "
-            "with update-aware stalls (not wired yet)."
+            "with update-aware stalls; ps_pipeline=cache-free reads after global SGD commits."
         ),
+    )
+    parser.add_argument(
+        "--dense-cuda-graph", action="store_true",
+        help="Capture FP32 dense forward/backward for PS pipeline or replicated TorchRec.",
+    )
+    parser.add_argument(
+        "--ps-pipeline-early-submit", action="store_true",
+        help="PS pipeline: submit sparse SGD from the gradient-ready hook.",
+    )
+    parser.add_argument(
+        "--ps-pipeline-dependency-split", action="store_true",
+        help="Two-rank PS pipeline: read next-batch clean rows before current SGD commits.",
+    )
+    parser.add_argument(
+        "--ps-pipeline-canonical-plan", default="",
+        help="Experimental world2/D128 FBGEMM 1.2 canonical SGD; JSON table sharding map.",
     )
     parser.add_argument(
         "--prefetch-depth",
@@ -641,9 +661,22 @@ def dump_run_config(cfg: RunConfig, path: Path) -> Path:
     return path
 
 
+def validate_dense_cuda_graph(cfg: RunConfig) -> None:
+    if not cfg.dense_cuda_graph:
+        return
+    if cfg.ps_pipeline_early_submit:
+        raise RuntimeError("--dense-cuda-graph cannot combine with --ps-pipeline-early-submit")
+    if cfg.backend == "recstore" and cfg.read_mode.strip().lower() == "ps_pipeline":
+        return
+    if cfg.backend == "torchrec" and cfg.torchrec_dist_mode == "replicated":
+        return
+    raise RuntimeError("--dense-cuda-graph requires RecStore ps_pipeline or replicated TorchRec")
+
+
 def validate_hps_torch_config(cfg: RunConfig) -> None:
     if cfg.backend != "hps_torch":
         return
+    validate_dense_cuda_graph(cfg)
     resolve_num_embeddings_per_feature(cfg.num_embeddings, cfg.num_embeddings_per_feature)
     if cfg.nnodes != 1:
         raise RuntimeError("hps_torch backend currently supports single-node runs only.")
@@ -658,6 +691,7 @@ def validate_hps_torch_config(cfg: RunConfig) -> None:
 def validate_torchrec_config(cfg: RunConfig) -> None:
     if cfg.backend != "torchrec":
         return
+    validate_dense_cuda_graph(cfg)
     resolve_num_embeddings_per_feature(cfg.num_embeddings, cfg.num_embeddings_per_feature)
 
     if cfg.nnodes <= 0:
@@ -686,8 +720,19 @@ def validate_torchrec_config(cfg: RunConfig) -> None:
 
 
 def validate_recstore_config(cfg: RunConfig) -> None:
+    if cfg.ps_pipeline_canonical_plan and (
+            cfg.backend != "recstore" or cfg.read_mode.strip().lower() != "ps_pipeline"
+            or cfg.nnodes * cfg.nproc_per_node != 2 or cfg.steps < 1
+            or cfg.embedding_dim != 128 or not 1 <= cfg.batch_size <= 1024
+            or cfg.ps_type.upper() != "RDMA"):
+        raise RuntimeError("Canonical PS requires RDMA ps_pipeline, world2, D128, B<=1024 and positive steps")
+    if cfg.ps_pipeline_dependency_split and (
+            cfg.backend != "recstore" or cfg.read_mode.strip().lower() != "ps_pipeline"
+            or cfg.nnodes * cfg.nproc_per_node != 2 or cfg.steps < 1):
+        raise RuntimeError("--ps-pipeline-dependency-split requires RecStore ps_pipeline, world=2, and positive steps")
     if cfg.backend != "recstore":
         return
+    validate_dense_cuda_graph(cfg)
     resolve_num_embeddings_per_feature(cfg.num_embeddings, cfg.num_embeddings_per_feature)
 
     recstore_profiler_subargs_nondefault = any(
@@ -711,11 +756,18 @@ def validate_recstore_config(cfg: RunConfig) -> None:
     if cfg.node_rank < 0 or cfg.node_rank >= cfg.nnodes:
         raise RuntimeError("--node-rank must be within [0, nnodes).")
     read_mode = str(cfg.read_mode).strip().lower()
-    if read_mode not in {"direct", "prefetch", "bagpipe"}:
+    if read_mode not in {"direct", "prefetch", "bagpipe", "ps_pipeline"}:
         raise RuntimeError(
-            "--read-mode must be one of: direct, prefetch, bagpipe"
+            "--read-mode must be one of: direct, prefetch, bagpipe, ps_pipeline"
         )
     cfg.read_mode = read_mode
+    if cfg.ps_pipeline_early_submit and read_mode != "ps_pipeline":
+        raise RuntimeError("--ps-pipeline-early-submit requires --read-mode ps_pipeline")
+    if read_mode == "ps_pipeline":
+        if cfg.optimization.plugin != "none" or cfg.enable_gpu_cache or cfg.optimization.prescan:
+            raise RuntimeError("--read-mode ps_pipeline requires plugin=none, no GPU cache, and no prescan")
+        if not cfg.recstore_enable_fusion:
+            raise RuntimeError("--read-mode ps_pipeline requires embedding fusion")
     # When read_mode=bagpipe, auto-enable the bagpipe optimization plugin
     # so the runner picks up the BagPipeReadPath + BagPipeSparseSGD path.
     if read_mode == "bagpipe" and cfg.optimization.plugin == "none":

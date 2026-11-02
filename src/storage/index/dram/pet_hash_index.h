@@ -47,9 +47,13 @@ public:
                 Value_t* pointers,
                 unsigned tid) override {
     (void)tid;
+    constexpr int kPrefetchDistance = 16;
+    for (int i = 0; i < keys.Size() && i < kPrefetchDistance; ++i) {
+      impl_->HintPrefetch(keys[i]);
+    }
     for (int i = 0; i < keys.Size(); ++i) {
-      if (i + 1 < keys.Size()) {
-        impl_->HintPrefetch(keys[i + 1]);
+      if (keys.Size() - i > kPrefetchDistance) {
+        impl_->HintPrefetch(keys[i + kPrefetchDistance]);
       }
       auto [value, exists] = impl_->Get(keys[i]);
       pointers[i]          = exists ? value : NONE;

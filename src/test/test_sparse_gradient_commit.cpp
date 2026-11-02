@@ -1,5 +1,10 @@
 #include <gtest/gtest.h>
+#include <map>
+#include <numeric>
+#include "base/sgd_update.h"
+#include <random>
 #include "ps/base/sparse_gradient_commit.h"
+#include "framework/common/sparse_gradient_commit_runtime.h"
 
 using recstore::PackSparseGradientCommit;
 using recstore::SparseGradientCommitCoordinator;
@@ -200,5 +205,1196 @@ TEST(SparseGradientCommit, AbortRejectsPendingCommitAndQueries) {
   EXPECT_THROW(
       coordinator.Exchange("table", PackSparseGradientCommit(h), apply),
       std::runtime_error);
+  EXPECT_EQ(calls, 0);
+}
+
+namespace {
+struct GradientRows {
+  std::vector<uint64_t> keys;
+  std::vector<float> grads;
+};
+
+std::vector<std::string> MakePackets(
+    const std::vector<std::vector<GradientRows>>& ranks,
+    uint32_t dim,
+    uint32_t divisor, uint32_t version = 1) {
+  SparseGradientCommitHeader h;
+  h.version = version;
+  h.session = 21;
+  h.world = ranks.size();
+  h.dim = dim;
+  h.divisor = divisor;
+  std::vector<std::string> packets;
+  for (h.rank = 0; h.rank < h.world; ++h.rank) {
+    h.chunks = ranks[h.rank].size();
+    for (h.chunk = 0; h.chunk < h.chunks; ++h.chunk) {
+      const auto& rows = ranks[h.rank][h.chunk];
+      h.rows = rows.keys.size();
+      EXPECT_EQ(rows.grads.size(), rows.keys.size() * dim);
+      packets.push_back(PackSparseGradientCommit(
+          h, rows.keys.data(), rows.grads.data()));
+    }
+  }
+  return packets;
+}
+
+struct AggregatedRows {
+  std::vector<uint64_t> keys;
+  std::vector<float> grads;
+  int calls = 0;
+};
+
+AggregatedRows AggregatePackets(const std::vector<std::string>& packets,
+                               bool reserve) {
+  SparseGradientCommitCoordinator coordinator(reserve);
+  AggregatedRows result;
+  auto apply = [&](const auto& keys, const auto& grads) {
+    result.keys = keys;
+    result.grads = grads;
+    ++result.calls;
+  };
+  for (size_t i = 0; i < packets.size(); ++i) {
+    const int64_t expected = i + 1 == packets.size() ? 0 : -1;
+    EXPECT_EQ(coordinator.Exchange("table", packets[i], apply), expected);
+    // Both in-flight and post-commit duplicates must remain idempotent.
+    EXPECT_EQ(coordinator.Exchange("table", packets[i], apply), expected);
+  }
+  return result;
+}
+
+std::map<uint64_t, std::vector<uint32_t>> RowBits(
+    const AggregatedRows& rows, size_t dim) {
+  std::map<uint64_t, std::vector<uint32_t>> result;
+  for (size_t row = 0; row < rows.keys.size(); ++row) {
+    auto& bits = result[rows.keys[row]];
+    bits.resize(dim);
+    std::memcpy(bits.data(), rows.grads.data() + row * dim, dim * 4);
+  }
+  return result;
+}
+} // namespace
+
+TEST(SparseGradientCommit, ReservePreservesCancellationAndDuplicateOrder) {
+  const uint64_t max_key = std::numeric_limits<uint64_t>::max();
+  const std::vector<std::vector<GradientRows>> ranks{
+      {{{5, 5}, {1.0e20f, -1.0e20f}}, {{}, {}}, {{5, 9}, {3, 1.0e20f}}},
+      {{{5, 9}, {1, -1.0e20f}}, {{9, max_key}, {5, -0.0f}}},
+      {{{}, {}}, {{}, {}}},
+      {{{1, 9}, {8, 7}}},
+  };
+  auto packets = MakePackets(ranks, 1, 4);
+  std::reverse(packets.begin(), packets.end());
+  const auto original = AggregatePackets(packets, false);
+  const auto reserved = AggregatePackets(packets, true);
+  EXPECT_EQ(original.calls, 1);
+  EXPECT_EQ(reserved.calls, 1);
+  EXPECT_EQ(original.keys, std::vector<uint64_t>({5, 9, max_key, 1}));
+  EXPECT_EQ(reserved.keys, original.keys);
+  EXPECT_EQ(reserved.grads, std::vector<float>({1, 3, 0, 2}));
+  EXPECT_EQ(RowBits(reserved, 1), RowBits(original, 1));
+}
+
+TEST(SparseGradientCommit, ReserveHandlesWithinAndAcrossChunkDisorder) {
+  for (bool split : {false, true}) {
+    std::vector<std::vector<GradientRows>> ranks{
+        {{{7, 2}, {3, 5}}}, {{{1, 9}, {7, 11}}}};
+    if (split)
+      ranks[0] = {{{7}, {3}}, {{}, {}}, {{2}, {5}}};
+    const auto packets = MakePackets(ranks, 1, 2);
+    const auto original = AggregatePackets(packets, false);
+    const auto reserved = AggregatePackets(packets, true);
+    EXPECT_EQ(reserved.keys, original.keys);
+    EXPECT_EQ(reserved.keys, std::vector<uint64_t>({7, 2, 1, 9}));
+    EXPECT_EQ(RowBits(reserved, 1), RowBits(original, 1));
+    EXPECT_EQ(reserved.calls, 1);
+  }
+}
+
+TEST(SparseGradientCommit, ReserveRandomInputsMatchUnreservedPathBitForBit) {
+  std::mt19937 rng(9741);
+  const float values[] = {
+      1.0e20f, -1.0e20f, 3, -7, 0, -0.0f, 1.0e-20f, -1.0e-20f};
+  for (bool sorted : {false, true}) {
+    for (int trial = 0; trial < 40; ++trial) {
+      SCOPED_TRACE(::testing::Message() << "sorted=" << sorted
+                                       << " trial=" << trial);
+      const uint32_t world = 1u << (trial % 4);
+      const uint32_t dim = trial % 3 == 0 ? 128 : trial % 3 + 1;
+      const uint32_t divisor = trial % 2 == 0 ? 1 : world;
+      std::vector<std::vector<GradientRows>> ranks(world);
+      for (auto& rank : ranks) {
+        std::vector<uint64_t> keys(rng() % 65);
+        for (auto& key : keys)
+          key = rng() % 19;
+        if (sorted)
+          std::sort(keys.begin(), keys.end());
+        rank.push_back({{}, {}});
+        size_t begin = 0;
+        while (begin < keys.size()) {
+          const size_t end = std::min(keys.size(), begin + 1 + rng() % 7);
+          GradientRows chunk;
+          chunk.keys.assign(keys.begin() + begin, keys.begin() + end);
+          chunk.grads.resize(chunk.keys.size() * dim);
+          for (auto& value : chunk.grads)
+            value = values[rng() % (sizeof(values) / sizeof(values[0]))];
+          rank.push_back(std::move(chunk));
+          if (rng() % 3 == 0)
+            rank.push_back({{}, {}});
+          begin = end;
+        }
+        rank.push_back({{}, {}});
+      }
+      auto packets = MakePackets(ranks, dim, divisor);
+      std::shuffle(packets.begin(), packets.end(), rng);
+      const auto original = AggregatePackets(packets, false);
+      const auto reserved = AggregatePackets(packets, true);
+      EXPECT_EQ(reserved.calls, original.calls);
+      EXPECT_EQ(RowBits(reserved, dim), RowBits(original, dim));
+      EXPECT_EQ(reserved.keys, original.keys);
+    }
+  }
+}
+
+TEST(SparseGradientCommit, ReserveEmptyStepAndLargeWorld) {
+  std::vector<std::vector<GradientRows>> ranks(2);
+  for (auto& rank : ranks)
+    rank = {{{}, {}}, {{}, {}}};
+  EXPECT_EQ(AggregatePackets(MakePackets(ranks, 1, 2), true).calls, 0);
+  ranks.resize(9);
+  for (size_t rank = 0; rank < ranks.size(); ++rank)
+    ranks[rank] = {{{9 - rank}, {float(rank)}}};
+  const auto packets = MakePackets(ranks, 1, 9);
+  const auto original = AggregatePackets(packets, false);
+  const auto reserved = AggregatePackets(packets, true);
+  EXPECT_EQ(reserved.keys, original.keys);
+  EXPECT_EQ(RowBits(reserved, 1), RowBits(original, 1));
+}
+
+TEST(SparseGradientCommit, ReserveFailureAndConflictingRetryDoNotReapply) {
+  SparseGradientCommitCoordinator coordinator(true);
+  SparseGradientCommitHeader h;
+  h.session = 25;
+  h.world = 2;
+  h.dim = 1;
+  h.rows = 1;
+  const uint64_t key = 2;
+  const float first = 3, conflict = 7;
+  const auto first_packet = PackSparseGradientCommit(h, &key, &first);
+  int calls = 0;
+  auto fail = [&](const auto&, const auto&) {
+    ++calls;
+    throw std::runtime_error("storage failed");
+  };
+  EXPECT_EQ(coordinator.Exchange("table", first_packet, fail), -1);
+  EXPECT_THROW(coordinator.Exchange(
+                   "table", PackSparseGradientCommit(h, &key, &conflict), fail),
+               std::runtime_error);
+  h.rank = 1;
+  const auto last_packet = PackSparseGradientCommit(h, &key, &first);
+  EXPECT_THROW(coordinator.Exchange("table", last_packet, fail),
+               std::runtime_error);
+  EXPECT_THROW(coordinator.Exchange("table", last_packet, fail),
+               std::runtime_error);
+  EXPECT_THROW(coordinator.Exchange("table", first_packet, fail),
+               std::runtime_error);
+  EXPECT_EQ(calls, 1);
+  h.rows = 0;
+  for (h.kind = 1; h.kind <= 3; ++h.kind)
+    EXPECT_THROW(
+        coordinator.Exchange("table", PackSparseGradientCommit(h), fail),
+        std::runtime_error);
+}
+
+
+namespace {
+std::string ChangeHeader(const std::string& packet, uint32_t version,
+                         uint32_t kind = 0, int64_t step = -1) {
+  auto h = recstore::DecodeSparseGradientCommit(packet);
+  h.version = version;
+  h.kind = kind;
+  if (step >= 0)
+    h.step = step;
+  if (kind) {
+    h.rows = 0;
+    h.chunk = 0;
+    h.chunks = 1; // Control messages do not repeat submit chunk metadata.
+    return PackSparseGradientCommit(h);
+  }
+  auto result = packet;
+  std::memcpy(result.data(), &h, sizeof(h));
+  return result;
+}
+
+size_t CompareSortedPackets(const std::vector<std::string>& packets,
+                            const std::vector<size_t>& order) {
+  SparseGradientCommitCoordinator baseline(true), streaming(true);
+  AggregatedRows expected, actual;
+  const auto dim = recstore::DecodeSparseGradientCommit(packets[0]).dim;
+  auto collect = [&](const auto& keys, const auto& grads) {
+    actual.keys.insert(actual.keys.end(), keys.begin(), keys.end());
+    actual.grads.insert(actual.grads.end(), grads.begin(), grads.end());
+    ++actual.calls;
+  };
+  size_t early = 0;
+  for (size_t i = 0; i < order.size(); ++i) {
+    const auto& packet = packets[order[i]];
+    baseline.Exchange("t", packet, [&](const auto& keys, const auto& grads) {
+      expected.keys = keys;
+      expected.grads = grads;
+    });
+    const auto v2 = ChangeHeader(packet, 2);
+    const auto committed = i + 1 == order.size() ? 0 : -1;
+    EXPECT_EQ(streaming.Exchange("t", v2, collect), committed);
+    EXPECT_EQ(streaming.Exchange("t", v2, collect), committed);
+    EXPECT_EQ(streaming.Exchange("t", ChangeHeader(v2, 2, 1), collect), committed);
+    if (i + 1 < order.size())
+      early = actual.keys.size();
+  }
+  const auto bits = RowBits(actual, dim);
+  EXPECT_EQ(bits.size(), actual.keys.size()); // No key may be applied twice.
+  EXPECT_EQ(bits, RowBits(expected, dim));
+  return early;
+}
+} // namespace
+
+TEST(SparseGradientCommit, SortedFrontierAllChunkArrivalsPreserveExactArithmetic) {
+  const auto max = std::numeric_limits<uint64_t>::max();
+  const auto packets = MakePackets({
+      {{{0, 2}, {-0.f, 1e20f}}, {{2}, {-1e20f}}, {{2, max}, {3.25f, 7}}},
+      {{{}, {}}, {{0, 2}, {-1e20f, 1}}, {{2, max}, {4, -7}}}}, 1, 2);
+  std::vector<size_t> order{0, 1, 2, 3, 4, 5};
+  size_t early = 0;
+  do {
+    early += CompareSortedPackets(packets, order);
+  } while (std::next_permutation(order.begin(), order.end()));
+  EXPECT_GT(early, 0);
+}
+
+TEST(SparseGradientCommit, SortedFrontierRandomDuplicatesAndManyChunks) {
+  std::mt19937 rng(281);
+  const float values[] = {1e20f, -1e20f, 3, -7, 0, -0.f, 1e-20f};
+  for (int trial = 0; trial < 20; ++trial) {
+    SCOPED_TRACE(trial);
+    const uint32_t dim = trial % 2 ? 3 : 128;
+    const uint32_t count = trial == 0 ? 64 : 4 + rng() % 8;
+    std::vector<std::vector<GradientRows>> ranks(2);
+    for (auto& rank : ranks) {
+      std::vector<uint64_t> keys(count * 3);
+      for (auto& key : keys)
+        key = rng() % 23;
+      std::sort(keys.begin(), keys.end());
+      for (size_t chunk = 0; chunk < count; ++chunk) {
+        GradientRows rows;
+        if (chunk % 5) {
+          rows.keys.assign(keys.begin() + chunk * 3, keys.begin() + chunk * 3 + 3);
+          rows.grads.resize(rows.keys.size() * dim);
+          for (auto& grad : rows.grads)
+            grad = values[rng() % 7];
+        }
+        rank.push_back(std::move(rows));
+      }
+    }
+    const auto packets = MakePackets(ranks, dim, trial % 2 ? 1 : 2);
+    std::vector<size_t> order(packets.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::shuffle(order.begin(), order.end(), rng);
+    CompareSortedPackets(packets, order);
+  }
+}
+
+TEST(SparseGradientCommit, SortedFrontierUnknownEmptyPrefixAndMaxKey) {
+  const auto max = std::numeric_limits<uint64_t>::max();
+  auto packets = MakePackets({{{{max}, {3}}}, {{{}, {}}, {{}, {}}}}, 1, 2, 2);
+  SparseGradientCommitCoordinator coordinator;
+  int calls = 0;
+  auto apply = [&](const auto& keys, const auto& grads) {
+    ++calls;
+    EXPECT_EQ(keys, std::vector<uint64_t>{max});
+    EXPECT_EQ(grads, std::vector<float>{1.5f});
+  };
+  EXPECT_EQ(coordinator.Exchange("t", packets[0], apply), -1);
+  EXPECT_EQ(coordinator.Exchange("t", packets[1], apply), -1);
+  EXPECT_EQ(calls, 0);
+  EXPECT_EQ(coordinator.Exchange("t", packets[2], apply), 0);
+  EXPECT_EQ(calls, 1);
+  auto empty = MakePackets({{{{}, {}}}, {{{}, {}}}}, 1, 2);
+  EXPECT_EQ(CompareSortedPackets(empty, {1, 0}), 0);
+}
+
+TEST(SparseGradientCommit, SortedFrontierPrefixFailureIsStickyAndReadGateStaysClosed) {
+  for (int mode = 0; mode < 10; ++mode) {
+    SCOPED_TRACE(mode);
+    auto packets = MakePackets({{{{1, 5}, {1, 2}}, {{8}, {3}}},
+                                {{{2, 6}, {4, 5}}, {{9}, {6}}}}, 1, 2, 2);
+    SparseGradientCommitCoordinator coordinator;
+    size_t applied = 0;
+    auto apply = [&](const auto& keys, const auto&) {
+      applied += keys.size();
+      if (mode == 0)
+        throw std::runtime_error("partial storage apply");
+    };
+    EXPECT_EQ(coordinator.Exchange("t", packets[0], apply), -1);
+    if (mode == 0) {
+      EXPECT_THROW(coordinator.Exchange("t", packets[2], apply), std::runtime_error);
+    } else {
+      EXPECT_EQ(coordinator.Exchange("t", packets[2], apply), -1);
+      EXPECT_EQ(applied, 2);
+      EXPECT_EQ(coordinator.Exchange("t", ChangeHeader(packets[0], 2, 1), apply), -1);
+      std::string bad;
+      if (mode == 1) bad = MakePackets({{{{1}, {3}}}, {{{}, {}}}}, 1, 2, 2)[0];
+      if (mode == 2) { bad = packets[0]; bad.back() ^= 1; }
+      if (mode == 3) bad = ChangeHeader(packets[1], 1);
+      if (mode == 4) bad = ChangeHeader(packets[0], 2, 3);
+      if (mode == 5) bad = "truncated";
+      if (mode == 6) { bad = packets[1]; uint64_t key=0; std::memcpy(bad.data()+sizeof(SparseGradientCommitHeader), &key, 8); }
+      if (mode == 7) { bad = packets[1]; auto h=recstore::DecodeSparseGradientCommit(bad); h.learning_rate=0.5f; std::memcpy(bad.data(),&h,sizeof(h)); }
+      if (mode == 8) bad = ChangeHeader(packets[1], 2, 0, 2);
+      if (mode == 9) bad = MakePackets({{{{1, 5}, {1, 2}}, {{9, 8}, {3, 4}}},
+                                       {{{}, {}}}}, 1, 2, 2)[1];
+      EXPECT_THROW(coordinator.Exchange("t", bad, apply), std::exception);
+    }
+    const auto before = applied;
+    EXPECT_THROW(coordinator.Exchange("t", packets[0], apply), std::runtime_error);
+    EXPECT_THROW(coordinator.Exchange("t", packets[3], apply), std::runtime_error);
+    for (uint32_t kind = 1; kind <= 3; ++kind)
+      EXPECT_THROW(coordinator.Exchange("t", ChangeHeader(packets[0], 2, kind), apply), std::runtime_error);
+    EXPECT_EQ(applied, before);
+  }
+}
+
+TEST(SparseGradientCommit, SortedFrontierBoundsAreCheckedBeforeAnyApply) {
+  const auto packets = MakePackets({{{{1}, {2}}}, {{{2}, {3}}}}, 1, 2, 2);
+  for (int mode = 0; mode < 4; ++mode) {
+    SparseGradientCommitCoordinator coordinator;
+    int calls = 0;
+    auto apply = [&](const auto&, const auto&) { ++calls; };
+    EXPECT_EQ(coordinator.Exchange("t", packets[0], apply), -1);
+    auto bad = packets[1];
+    auto h = recstore::DecodeSparseGradientCommit(bad);
+    if (mode == 0) h.chunks = 65;
+    if (mode == 1) h.world = 3;
+    if (mode == 2) { h.rows = 100000; bad.resize(sizeof(h) + h.rows * 12); }
+    if (mode == 3) h.version = 1;
+    std::memcpy(bad.data(), &h, sizeof(h));
+    EXPECT_THROW(coordinator.Exchange("t", bad, apply), std::exception);
+    EXPECT_THROW(coordinator.Exchange("t", packets[1], apply), std::runtime_error);
+    EXPECT_EQ(calls, 0);
+  }
+}
+
+TEST(SparseGradientCommit, SortedFrontierNextStepCloseAndReopen) {
+  auto packets = MakePackets({{{{1}, {2}}}, {{{}, {}}}}, 1, 2, 2);
+  SparseGradientCommitCoordinator coordinator;
+  int calls = 0;
+  auto apply = [&](const auto&, const auto&) { ++calls; };
+  EXPECT_EQ(coordinator.Exchange("t", packets[0], apply), -1);
+  EXPECT_THROW(coordinator.Exchange("t", ChangeHeader(packets[0], 2, 2), apply), std::runtime_error);
+  EXPECT_EQ(coordinator.Exchange("t", packets[1], apply), 0);
+  EXPECT_EQ(coordinator.Exchange("t", packets[0], apply), 0);
+  EXPECT_EQ(calls, 1);
+  coordinator.Exchange("t", ChangeHeader(packets[0], 2, 0, 1), apply);
+  EXPECT_THROW(coordinator.Exchange("t", ChangeHeader(packets[0], 2, 2, 0), apply), std::runtime_error);
+  coordinator.Exchange("t", ChangeHeader(packets[1], 2, 0, 1), apply);
+  EXPECT_EQ(calls, 2);
+  for (const auto& packet : packets)
+    EXPECT_EQ(coordinator.Exchange("t", ChangeHeader(packet, 2, 2, 1), apply), 1);
+  EXPECT_EQ(coordinator.Exchange("t", packets[0], apply), -1);
+  EXPECT_EQ(coordinator.Exchange("t", packets[1], apply), 0);
+  EXPECT_EQ(calls, 3);
+}
+
+TEST(SparseGradientCommit, SortedStreamHeaderOptInKeepsWorldOneOnV1) {
+  const char* value = std::getenv("RECSTORE_SPARSE_COMMIT_SORTED_STREAM");
+  const bool existed = value != nullptr;
+  const std::string original = value ? value : "";
+  for (const char* enabled : {"0", "1"}) {
+    setenv("RECSTORE_SPARSE_COMMIT_SORTED_STREAM", enabled, 1);
+    for (int world : {1, 2, 3})
+      for (int kind = 0; kind <= 3; ++kind) {
+        const auto h = recstore::MakeSparseGradientCommitHeader(7, 0, 0, world, 1, .01, world, kind);
+        EXPECT_EQ(h.version, world == 2 && enabled[0] == '1' ? 2 : 1);
+      }
+  }
+  if (existed) setenv("RECSTORE_SPARSE_COMMIT_SORTED_STREAM", original.c_str(), 1);
+  else unsetenv("RECSTORE_SPARSE_COMMIT_SORTED_STREAM");
+}
+
+TEST(SparseGradientCommit, SortedFrontierCannotStartStepAfterAnyRankClosed) {
+  const auto packets = MakePackets({{{{1}, {2}}}, {{{}, {}}}}, 1, 2, 2);
+  SparseGradientCommitCoordinator coordinator;
+  int calls = 0;
+  auto apply = [&](const auto&, const auto&) { ++calls; };
+  for (const auto& packet : packets)
+    coordinator.Exchange("t", packet, apply);
+  EXPECT_EQ(coordinator.Exchange("t", ChangeHeader(packets[0], 2, 2), apply), 0);
+  EXPECT_EQ(coordinator.Exchange("t", packets[0], apply), 0);
+  EXPECT_THROW(coordinator.Exchange("t", ChangeHeader(packets[1], 2, 0, 1), apply), std::runtime_error);
+  EXPECT_EQ(calls, 1);
+}
+
+TEST(SparseGradientCommit, SortedFailureHookIsScopedToTableAndSession) {
+  auto packets = MakePackets({{{{1}, {2}}}, {{{2}, {3}}}}, 1, 2, 2);
+  SparseGradientCommitCoordinator coordinator;
+  int calls = 0;
+  auto apply = [&](const auto&, const auto&) { ++calls; };
+  coordinator.Exchange("a", packets[0], apply);
+  coordinator.Exchange("b", packets[0], apply);
+  auto other = packets[1];
+  auto h = recstore::DecodeSparseGradientCommit(other);
+  ++h.session;
+  h.chunks = 65;
+  std::memcpy(other.data(), &h, sizeof(h));
+  coordinator.FailSortedSession("a", other);
+  EXPECT_THROW(coordinator.Exchange("a", other, apply), std::invalid_argument);
+  EXPECT_EQ(coordinator.Exchange("a", ChangeHeader(packets[0], 2, 1), apply), -1);
+  coordinator.FailSortedSession("a", packets[0]);
+  EXPECT_THROW(coordinator.Exchange("a", packets[1], apply), std::runtime_error);
+  EXPECT_EQ(coordinator.Exchange("b", packets[1], apply), 0);
+  EXPECT_EQ(calls, 1);
+  coordinator.Exchange("v1", ChangeHeader(packets[0], 1), apply);
+  coordinator.FailSortedSession("v1", packets[0]);
+  EXPECT_EQ(coordinator.Exchange("v1", ChangeHeader(packets[1], 1), apply), 0);
+}
+
+
+TEST(SparseGradientCommit, OptionalFmaPreservesOffAndMatchesScalarFmaBitwise) {
+  std::mt19937 rng(90271);
+  const float edges[] = {0.0f, -0.0f, 1.0f, -1.0f, 1e20f, -1e20f,
+                        1e-20f, -1e-20f, std::numeric_limits<float>::denorm_min()};
+  for (size_t count : {0, 1, 7, 8, 9, 15, 16, 17, 127, 128, 129}) {
+    for (bool initialize : {false, true}) {
+      for (float lr : {0.0f, 0.01f, 0.1f, 1.0f}) {
+        for (int trial = 0; trial < 30; ++trial) {
+          std::vector<float> values(count + 2, 7), grads(count + 2, 9);
+          for (size_t i = 1; i <= count; ++i) {
+            auto finite = [&] {
+              uint32_t bits = rng();
+              bits = (bits & 0x807fffffu) | (uint32_t(rng() % 254) << 23);
+              float value; std::memcpy(&value, &bits, 4); return value;
+            };
+            values[i] = trial % 2 ? finite() : edges[rng() % 9];
+            grads[i] = trial % 2 ? finite() : edges[rng() % 9];
+          }
+          auto expected = values, actual = values, scalar = values;
+          for (size_t i = 1; i <= count; ++i) {
+            if (recstore::SparseCommitFmaEnabled())
+              expected[i] = std::fma(-lr, grads[i], initialize ? 0.f : values[i]);
+            else if (initialize)
+              expected[i] = -lr * grads[i];
+            else {
+              volatile float product = lr * grads[i];
+              expected[i] = values[i] - product;
+            }
+          }
+          recstore::ApplySgdRow(actual.data() + 1, grads.data() + 1, count, lr, initialize);
+          EXPECT_EQ(std::memcmp(actual.data(), expected.data(), actual.size() * 4), 0);
+          recstore::SgdFmaScalar(scalar.data() + 1, grads.data() + 1, count, lr, initialize);
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+          if (recstore::SgdFmaAvx2Supported()) {
+            auto vectorized = values;
+            recstore::SgdFmaAvx2(vectorized.data() + 1, grads.data() + 1, count, lr, initialize);
+            EXPECT_EQ(std::memcmp(vectorized.data(), scalar.data(), scalar.size() * 4), 0);
+          }
+#endif
+        }
+      }
+    }
+  }
+  float value = 1, grad = 0;
+  recstore::ApplySgdRow(&value, &grad, 1, 0.01f, true);
+  EXPECT_EQ(std::signbit(value), !recstore::SparseCommitFmaEnabled());
+}
+
+namespace {
+using CanonicalRecord = recstore::CanonicalSparseRecord;
+using CanonicalRow = std::array<float, 128>;
+
+float CanonicalReferenceAdd(float a, float b) {
+  volatile float result = a + b;
+  return result;
+}
+CanonicalRow CanonicalReferenceSerial(const std::vector<CanonicalRow>& rows,
+                                      size_t begin, size_t end) {
+  CanonicalRow out{};
+  for (size_t i = begin; i < end; ++i)
+    for (size_t col = 0; col < out.size(); ++col)
+      out[col] = CanonicalReferenceAdd(out[col], rows[i][col]);
+  return out;
+}
+CanonicalRow CanonicalReferenceTree(const std::vector<CanonicalRow>& rows,
+                                    size_t begin, size_t end) {
+  const size_t q = (end - begin + 31) / 32;
+  std::array<CanonicalRow, 32> leaves{};
+  for (size_t j = 0; j < 32; ++j)
+    leaves[j] = CanonicalReferenceSerial(rows, std::min(begin + j*q, end),
+                                        std::min(begin + (j+1)*q, end));
+  for (size_t stride : {16, 8, 4, 2, 1})
+    for (size_t j = 0; j < stride; ++j)
+      for (size_t col = 0; col < 128; ++col)
+        leaves[j][col] = CanonicalReferenceAdd(leaves[j][col], leaves[j+stride][col]);
+  return leaves[0];
+}
+float CanonicalReferenceFtz(float value) {
+  if (std::fpclassify(value) == FP_SUBNORMAL) return std::copysign(0.0f, value);
+  return value;
+}
+
+struct CanonicalFixture {
+  std::array<CanonicalRecord, 2> record;
+  std::array<std::vector<float>, 2> values;
+  CanonicalRow expected{};
+};
+CanonicalFixture MakeCanonicalFixture(uint64_t key, uint16_t c0, uint16_t c1,
+                                      uint8_t type, int pattern = 0) {
+  CanonicalFixture f;
+  const size_t n = size_t(c0) + c1;
+  std::vector<CanonicalRow> rows(n);
+  const float cancellation[] = {16777216.f, 1.f, -16777216.f, 1.f, -1.f, 0.125f};
+  const float edges[] = {0.f, -0.f, std::numeric_limits<float>::denorm_min(),
+      -std::numeric_limits<float>::denorm_min(), std::numeric_limits<float>::min(),
+      -std::numeric_limits<float>::min()};
+  for (size_t i = 0; i < n; ++i)
+    for (size_t col = 0; col < 128; ++col)
+      rows[i][col] = pattern == 1 ? cancellation[(i+col)%6] :
+                     pattern == 2 ? edges[(i+col)%6] :
+                     float(int((i*37 + col*13) % 127) - 63) * 0.00390625f;
+  const auto emit = [&](size_t rank, const CanonicalRow& row) {
+    f.values[rank].insert(f.values[rank].end(), row.begin(), row.end());
+  };
+  const auto leaf = [&](size_t begin, size_t end) {
+    if (begin >= end) return;
+    if (end <= c0) emit(0, CanonicalReferenceSerial(rows, begin, end));
+    else if (begin >= c0) emit(1, CanonicalReferenceSerial(rows, begin, end));
+    else {
+      emit(0, CanonicalReferenceSerial(rows, begin, c0));
+      for (size_t i = c0; i < end; ++i) emit(1, rows[i]);
+    }
+  };
+  if (type == 1) {
+    std::array<CanonicalRow, 2> local{};
+    const size_t ends[] = {0, c0, n};
+    for (size_t rank = 0; rank < 2; ++rank) {
+      const auto begin = ends[rank], end = ends[rank+1];
+      local[rank] = end-begin < 32 ? CanonicalReferenceSerial(rows, begin, end) :
+                                    CanonicalReferenceTree(rows, begin, end);
+      for (auto& value : local[rank]) value *= .5f;
+      if (end > begin) emit(rank, local[rank]);
+    }
+    for (size_t col = 0; col < 128; ++col)
+      f.expected[col] = CanonicalReferenceAdd(local[0][col], local[1][col]);
+  } else {
+    // The caller's TW values already represent the per-occurrence world mean.
+    if (n < 32) {
+      leaf(0, n);
+      f.expected = CanonicalReferenceSerial(rows, 0, n);
+    } else {
+      std::vector<CanonicalRow> roots;
+      for (size_t base = 0; base < n; base += 1024) {
+        const size_t end = std::min(base + 1024, n);
+        auto root = CanonicalReferenceTree(rows, base, end);
+        roots.push_back(root);
+        if (end <= c0) emit(0, root);
+        else if (base >= c0) emit(1, root);
+        else {
+          const size_t q = (end-base+31)/32;
+          for (size_t j = 0; j < 32; ++j)
+            leaf(base+j*q, std::min(base+(j+1)*q, end));
+        }
+      }
+      if (roots.size() == 1) f.expected = roots[0];
+      else
+        for (const auto& root : roots)
+          for (size_t col = 0; col < 128; ++col)
+            f.expected[col] = CanonicalReferenceFtz(CanonicalReferenceAdd(
+                CanonicalReferenceFtz(f.expected[col]), CanonicalReferenceFtz(root[col])));
+    }
+  }
+  for (size_t rank = 0; rank < 2; ++rank) {
+    f.record[rank] = {key, c0, c1, static_cast<uint16_t>(f.values[rank].size()/128), type, 0};
+    EXPECT_EQ(f.record[rank].vector_count,
+              recstore::CanonicalExpectedVectors(c0, c1, type, rank));
+  }
+  return f;
+}
+SparseGradientCommitHeader CanonicalHeader(uint32_t rank = 0, uint32_t chunk = 0,
+                                           uint32_t chunks = 1) {
+  SparseGradientCommitHeader h;
+  h.session = 901; h.world = 2; h.dim = 128; h.version = 3;
+  h.divisor = 1; h.rank = rank; h.chunk = chunk; h.chunks = chunks;
+  return h;
+}
+std::string CanonicalPacket(uint32_t rank, uint32_t chunk, uint32_t chunks,
+                            const std::vector<CanonicalFixture>& records) {
+  auto h = CanonicalHeader(rank, chunk, chunks);
+  std::vector<CanonicalRecord> descriptors;
+  std::vector<float> values;
+  for (const auto& fixture : records) {
+    if (!fixture.record[rank].vector_count) continue;
+    descriptors.push_back(fixture.record[rank]);
+    values.insert(values.end(), fixture.values[rank].begin(), fixture.values[rank].end());
+  }
+  h.rows = descriptors.size();
+  return recstore::PackCanonicalSparseGradientCommit(h, descriptors.data(), values.data());
+}
+std::string CanonicalControl(uint32_t rank, uint32_t kind, int64_t step = 0) {
+  auto h = CanonicalHeader(rank);
+  h.kind = kind; h.step = step;
+  return PackSparseGradientCommit(h);
+}
+} // namespace
+
+TEST(SparseGradientCommit, CanonicalTreeMatchesIndependentWholeOccurrenceOracle) {
+  const std::vector<std::pair<int, int>> boundaries = {
+      {0,1},{1,0},{1,1},{1,30},{30,1},{1,31},{31,1},{16,16},{1,32},{31,2},
+      {32,1},{31,32},{32,32},{1,1024},{31,1024},{32,1024},{511,513},{513,511},
+      {1023,1},{1024,0},{0,1024},{1024,1},{1023,2},{1023,1024},{1024,1024}};
+  auto counts = boundaries;
+  std::mt19937 rng(20113);
+  for (size_t i = 0; i < 30; ++i) counts.emplace_back(rng()%1025, rng()%1025);
+  for (auto [c0,c1] : counts)
+    for (uint8_t type : {0,1})
+      for (int pattern = 0; pattern < 3; ++pattern) {
+        if (!(c0+c1)) continue;
+        auto fixture = MakeCanonicalFixture(12, c0, c1, type, pattern);
+        CanonicalRow actual;
+        recstore::ReconstructCanonicalSparseGradient(
+            c0 ? &fixture.record[0] : nullptr, c0 ? fixture.values[0].data() : nullptr,
+            c1 ? &fixture.record[1] : nullptr, c1 ? fixture.values[1].data() : nullptr,
+            actual.data());
+        EXPECT_EQ(std::memcmp(actual.data(), fixture.expected.data(), sizeof(actual)), 0)
+            << "counts=" << c0 << "," << c1 << " type=" << int(type) << " pattern=" << pattern;
+      }
+}
+
+TEST(SparseGradientCommit, CanonicalCodecRejectsMalformedSizeCountsTypeAndValues) {
+  const auto fixture = MakeCanonicalFixture(7, 17, 19, 0);
+  const auto good = CanonicalPacket(0, 0, 1, {fixture});
+  EXPECT_EQ(recstore::DecodeSparseGradientCommit(good).version, 3);
+  for (int mode = 0; mode < 16; ++mode) {
+    auto bad = good;
+    auto h = recstore::DecodeSparseGradientCommit(good);
+    auto r = fixture.record[0];
+    if (mode == 0) { bad.pop_back(); }
+    if (mode == 1) { bad.push_back('\0'); }
+    if (mode == 2) { h.rows = UINT32_MAX; }
+    if (mode == 3) { h.dim = 127; }
+    if (mode == 4) { h.world = 3; }
+    if (mode == 5) { h.divisor = 2; }
+    if (mode == 6) { h.chunks = 65; }
+    if (mode == 7) { h.kind = 1; }
+    if (mode == 8) { r.reserved = 1; }
+    if (mode == 9) { r.table_type = 2; }
+    if (mode == 10) { r.count_rank0 = 0; }
+    if (mode == 11) { r.count_rank1 = 1025; }
+    if (mode == 12) { ++r.vector_count; }
+    std::memcpy(bad.data(), &h, sizeof(h));
+    std::memcpy(bad.data()+sizeof(h), &r, sizeof(r));
+    if (mode >= 13) {
+      uint32_t bits = mode == 13 ? 0x7fc00001 : mode == 14 ? 0x7f800000 : 0xff800000;
+      std::memcpy(bad.data()+sizeof(h)+sizeof(r), &bits, sizeof(bits));
+    }
+    EXPECT_THROW(recstore::DecodeSparseGradientCommit(bad), std::invalid_argument) << mode;
+  }
+  EXPECT_THROW(CanonicalPacket(0, 0, 1, {fixture, fixture}), std::invalid_argument);
+  auto h = CanonicalHeader(); h.rows = 1;
+  EXPECT_THROW(PackSparseGradientCommit(h, &fixture.record[0].key, fixture.values[0].data()),
+               std::invalid_argument);
+}
+
+TEST(SparseGradientCommit, CanonicalPairValidationOverflowAndSignedZero) {
+  auto f = MakeCanonicalFixture(1, 1, 1, 1);
+  CanonicalRow output;
+  for (int mode = 0; mode < 3; ++mode) {
+    auto other = f.record[1];
+    if (mode == 0) other.key = 2;
+    if (mode == 1) other.count_rank0 = 2;
+    if (mode == 2) other.table_type = 0;
+    EXPECT_THROW(recstore::ReconstructCanonicalSparseGradient(&f.record[0], f.values[0].data(),
+                  &other, f.values[1].data(), output.data()), std::invalid_argument);
+  }
+  EXPECT_THROW(recstore::ReconstructCanonicalSparseGradient(&f.record[0], f.values[0].data(),
+                nullptr, nullptr, output.data()), std::invalid_argument);
+  std::fill(f.values[0].begin(), f.values[0].end(), -0.0f);
+  std::fill(f.values[1].begin(), f.values[1].end(), -0.0f);
+  recstore::ReconstructCanonicalSparseGradient(&f.record[0], f.values[0].data(),
+      &f.record[1], f.values[1].data(), output.data());
+  for (float value : output) EXPECT_TRUE(std::signbit(value));
+  f.record[0].count_rank1 = 0;
+  recstore::ReconstructCanonicalSparseGradient(&f.record[0], f.values[0].data(),
+      nullptr, nullptr, output.data());
+  for (float value : output) EXPECT_FALSE(std::signbit(value));
+  f.record[0].count_rank1 = 1;
+  for (auto& values : f.values) std::fill(values.begin(), values.end(), std::numeric_limits<float>::max());
+  EXPECT_THROW(recstore::ReconstructCanonicalSparseGradient(&f.record[0], f.values[0].data(),
+      &f.record[1], f.values[1].data(), output.data()), std::runtime_error);
+  CanonicalRow weights{}, grads{};
+  weights.fill(std::numeric_limits<float>::max()); grads.fill(-std::numeric_limits<float>::max());
+  EXPECT_THROW(recstore::ValidateCanonicalSgdRow(weights.data(), grads.data(), 1.f), std::runtime_error);
+  grads.fill(0); weights[0] = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_THROW(recstore::ValidateCanonicalSgdRow(weights.data(), grads.data(), .01f), std::runtime_error);
+}
+
+TEST(SparseGradientCommit, CanonicalWholeStepAndFrontierOutOfOrderAreBitexact) {
+  if (!recstore::SparseCommitFmaEnabled()) GTEST_SKIP() << "Run with RECSTORE_SPARSE_COMMIT_FMA=1";
+  std::vector<CanonicalFixture> fixtures;
+  for (size_t i = 0; i < 8; ++i)
+    fixtures.push_back(MakeCanonicalFixture(i == 7 ? UINT64_MAX : i*3,
+        i == 2 ? 0 : i == 4 ? 1023 : 17, i == 3 ? 0 : i == 4 ? 1024 : 19,
+        i%2, i%3));
+  std::vector<std::string> packets;
+  // Four chunks/rank, including empty rank-local records and UINT64_MAX.
+  for (size_t rank = 0; rank < 2; ++rank)
+    for (size_t chunk = 0; chunk < 4; ++chunk)
+      packets.push_back(CanonicalPacket(rank, chunk, 4, {fixtures[chunk*2],fixtures[chunk*2+1]}));
+  std::mt19937 rng(631);
+  for (int trial = 0; trial < 12; ++trial) {
+    std::vector<size_t> arrival(packets.size()); std::iota(arrival.begin(), arrival.end(), 0);
+    if (trial) std::shuffle(arrival.begin(), arrival.end(), rng);
+    for (bool streaming : {false,true}) {
+      SparseGradientCommitCoordinator coordinator(false, streaming);
+      std::map<uint64_t, CanonicalRow> observed;
+      auto apply = [&](const auto& keys, const auto& values) {
+        for (size_t i = 0; i < keys.size(); ++i) {
+          EXPECT_EQ(observed.count(keys[i]), 0);
+          std::memcpy(observed[keys[i]].data(), values.data()+i*128, sizeof(CanonicalRow));
+        }
+      };
+      for (size_t i = 0; i < arrival.size(); ++i) {
+        const auto expected = i+1 == arrival.size() ? 0 : -1;
+        EXPECT_EQ(coordinator.Exchange("c", packets[arrival[i]], apply), expected);
+        EXPECT_EQ(coordinator.Exchange("c", packets[arrival[i]], apply), expected);
+        EXPECT_EQ(coordinator.Exchange("c", CanonicalControl(0,1), apply), expected);
+        if (!streaming && expected == -1) EXPECT_TRUE(observed.empty());
+      }
+      ASSERT_EQ(observed.size(), fixtures.size());
+      for (const auto& fixture : fixtures)
+        EXPECT_EQ(std::memcmp(observed.at(fixture.record[0].key).data(),
+                              fixture.expected.data(), sizeof(CanonicalRow)), 0);
+    }
+  }
+}
+
+TEST(SparseGradientCommit, CanonicalPartialFailuresRemainStickyAndTableScoped) {
+  if (!recstore::SparseCommitFmaEnabled()) GTEST_SKIP() << "Run with RECSTORE_SPARSE_COMMIT_FMA=1";
+  auto first = MakeCanonicalFixture(1,1,1,0), last = MakeCanonicalFixture(9,1,1,0);
+  for (int mode = 0; mode < 10; ++mode) {
+    SparseGradientCommitCoordinator coordinator(false,true);
+    int applied = 0;
+    auto apply = [&](const auto& keys, const auto&) { applied += keys.size(); };
+    const auto p0 = CanonicalPacket(0,0,2,{first,last});
+    const auto p1 = CanonicalPacket(1,0,2,{first,last});
+    coordinator.Exchange("a", p0, apply);
+    coordinator.Exchange("a", p1, apply);
+    ASSERT_EQ(applied,1); // key 9 remains behind each unfinished rank's frontier.
+    coordinator.Exchange("b", p0, apply);
+    std::string bad;
+    if (mode == 0) { bad=p1; bad.back() ^= 1; } // Conflicting immutable retry.
+    if (mode == 1) bad=CanonicalPacket(0,1,2,{last}); // Duplicate across chunks.
+    if (mode == 2) bad=CanonicalPacket(0,1,2,{first}); // Decreasing across chunks.
+    if (mode == 3) { bad=p0; auto h=CanonicalHeader(); h.version=2; h.rows=0;
+                    bad=PackSparseGradientCommit(h); }
+    if (mode == 4) bad="truncated";
+    if (mode == 5) { bad=CanonicalPacket(0,1,2,{}); auto h=CanonicalHeader(0,1,65);
+                    std::memcpy(bad.data(),&h,sizeof(h)); }
+    if (mode == 6) bad=CanonicalControl(0,3);
+    if (mode == 7) { bad=CanonicalPacket(0,1,2,{}); auto h=CanonicalHeader(0,1,2); h.step=2;
+                    std::memcpy(bad.data(),&h,sizeof(h)); }
+    if (mode == 8) {
+      coordinator.FailSortedSession("a",p0);
+      bad=CanonicalPacket(0,1,2,{});
+    }
+    if (mode == 9) {
+      coordinator.Exchange("a", CanonicalPacket(0,1,2,{}), apply);
+      EXPECT_THROW(coordinator.Exchange("a", CanonicalPacket(1,1,2,{}),
+          [](const auto&,const auto&) { throw std::runtime_error("storage failure"); }), std::runtime_error);
+      bad=p0;
+    }
+    EXPECT_THROW(coordinator.Exchange("a",bad,apply),std::exception) << mode;
+    const int before=applied;
+    EXPECT_THROW(coordinator.Exchange("a",p0,apply),std::runtime_error);
+    EXPECT_THROW(coordinator.Exchange("a",CanonicalControl(0,1),apply),std::runtime_error);
+    EXPECT_THROW(coordinator.Exchange("a",CanonicalControl(0,2),apply),std::runtime_error);
+    EXPECT_EQ(applied,before);
+    EXPECT_EQ(coordinator.Exchange("b",CanonicalControl(0,1),apply),-1);
+  }
+}
+
+TEST(SparseGradientCommit, CanonicalEmptyRanksBoundsCloseAndNextStep) {
+  if (!recstore::SparseCommitFmaEnabled()) GTEST_SKIP() << "Run with RECSTORE_SPARSE_COMMIT_FMA=1";
+  SparseGradientCommitCoordinator coordinator(false,true);
+  int calls=0;
+  auto apply=[&](const auto&,const auto&) { ++calls; };
+  const auto fixture=MakeCanonicalFixture(UINT64_MAX,1,0,1);
+  for (uint32_t chunk=0;chunk<64;++chunk) {
+    EXPECT_EQ(coordinator.Exchange("c",CanonicalPacket(0,chunk,64,chunk==63 ?
+                  std::vector<CanonicalFixture>{fixture} : std::vector<CanonicalFixture>{}),apply),-1);
+  }
+  EXPECT_EQ(calls,0);
+  EXPECT_THROW(coordinator.Exchange("c",CanonicalControl(0,2),apply),std::runtime_error);
+  EXPECT_EQ(coordinator.Exchange("c",CanonicalPacket(1,0,1,{}),apply),0);
+  EXPECT_EQ(calls,1);
+  for (uint32_t rank=0;rank<2;++rank) {
+    auto next=CanonicalPacket(rank,0,1,{}); auto h=CanonicalHeader(rank); h.step=1;
+    std::memcpy(next.data(),&h,sizeof(h));
+    EXPECT_EQ(coordinator.Exchange("c",next,apply),rank==1?1:0);
+  }
+  EXPECT_EQ(calls,1);
+  EXPECT_EQ(coordinator.Exchange("c",CanonicalControl(0,2,1),apply),1);
+  auto next=CanonicalPacket(1,0,1,{}); auto h=CanonicalHeader(1); h.step=2;
+  std::memcpy(next.data(),&h,sizeof(h));
+  EXPECT_THROW(coordinator.Exchange("c",next,apply),std::runtime_error);
+}
+
+TEST(SparseGradientCommit, CanonicalFmaGuardAndMetadataMismatchFailClosed) {
+  SparseGradientCommitCoordinator coordinator(false,false);
+  auto fixture=MakeCanonicalFixture(3,1,1,1);
+  int calls=0;
+  auto apply=[&](const auto&,const auto&) { ++calls; };
+  if (!recstore::SparseCommitFmaEnabled()) {
+    EXPECT_THROW(coordinator.Exchange("c",CanonicalPacket(0,0,1,{fixture}),apply),std::runtime_error);
+    EXPECT_THROW(coordinator.Exchange("c",CanonicalControl(0,1),apply),std::runtime_error);
+  } else {
+    coordinator.Exchange("c",CanonicalPacket(0,0,1,{fixture}),apply);
+    fixture.record[1].count_rank0=2; // Individually valid DP descriptor, inconsistent peer.
+    EXPECT_THROW(coordinator.Exchange("c",CanonicalPacket(1,0,1,{fixture}),apply),std::invalid_argument);
+    EXPECT_THROW(coordinator.Exchange("c",CanonicalControl(0,1),apply),std::runtime_error);
+  }
+  EXPECT_EQ(calls,0);
+}
+
+TEST(SparseGradientCommit, CanonicalTwoCtaAtomicFtzAndArithmeticModeChecks) {
+  auto f=MakeCanonicalFixture(1,1024,1,0);
+  for (auto& values:f.values)
+    std::fill(values.begin(),values.end(),std::numeric_limits<float>::denorm_min());
+  CanonicalRow result;
+  recstore::ReconstructCanonicalSparseGradient(&f.record[0],f.values[0].data(),
+      &f.record[1],f.values[1].data(),result.data());
+  for (float value:result) EXPECT_EQ(value,0.f);
+  EXPECT_TRUE(std::signbit(recstore::CanonicalAtomicAdd(-0.f,-0.f)));
+  const int rounding=std::fegetround();
+  ASSERT_EQ(std::fesetround(FE_UPWARD),0);
+  EXPECT_THROW(recstore::ValidateCanonicalArithmeticEnvironment(),std::runtime_error);
+  EXPECT_EQ(std::fesetround(rounding),0);
+#if defined(__SSE__)
+  const auto csr=_mm_getcsr();
+  _mm_setcsr(csr | (1u<<15));
+  EXPECT_THROW(recstore::ValidateCanonicalArithmeticEnvironment(),std::runtime_error);
+  _mm_setcsr(csr);
+#endif
+}
+
+TEST(SparseGradientCommit, CanonicalMissingPeerRecordAndReopenContracts) {
+  if (!recstore::SparseCommitFmaEnabled()) GTEST_SKIP() << "Run with RECSTORE_SPARSE_COMMIT_FMA=1";
+  auto f=MakeCanonicalFixture(8,1,1,1);
+  SparseGradientCommitCoordinator bad(false,false);
+  int calls=0;
+  auto apply=[&](const auto&,const auto&) { ++calls; };
+  bad.Exchange("c",CanonicalPacket(0,0,1,{f}),apply);
+  EXPECT_THROW(bad.Exchange("c",CanonicalPacket(1,0,1,{}),apply),std::invalid_argument);
+  EXPECT_THROW(bad.Exchange("c",CanonicalControl(0,1),apply),std::runtime_error);
+  EXPECT_EQ(calls,0);
+  SparseGradientCommitCoordinator good(false,false);
+  good.Exchange("c",CanonicalPacket(0,0,1,{f}),apply);
+  EXPECT_EQ(good.Exchange("c",CanonicalPacket(1,0,1,{f}),apply),0);
+  for (uint32_t rank=0;rank<2;++rank)
+    EXPECT_EQ(good.Exchange("c",CanonicalControl(rank,2),apply),0);
+  EXPECT_EQ(good.Exchange("c",CanonicalPacket(0,0,1,{f}),apply),-1);
+  EXPECT_EQ(good.Exchange("c",CanonicalPacket(1,0,1,{f}),apply),0);
+  EXPECT_EQ(calls,2);
+}
+
+
+TEST(SparseGradientCommit, CanonicalSimdRowAddAndPrecheckPreserveBits) {
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+  if (!recstore::CanonicalSimdSupported()) GTEST_SKIP() << "AVX2/FMA unavailable";
+  recstore::ValidateCanonicalArithmeticEnvironment();
+  const float edges[] = {0.f, -0.f, std::numeric_limits<float>::denorm_min(),
+      -std::numeric_limits<float>::denorm_min(), std::numeric_limits<float>::min(),
+      -std::numeric_limits<float>::min(), 16777216.f, 1.f, -16777216.f, -1.f};
+  std::mt19937 rng(20523);
+  for (int pattern = 0; pattern < 32; ++pattern) {
+    // Offset by one float: valid FP32 alignment, unaligned AVX loads/stores.
+    std::array<float, 129> left, right, expected;
+    for (size_t col = 0; col < left.size(); ++col) {
+      left[col] = pattern < 10 ? edges[(col + pattern) % 10]
+          : float(int(rng() % 20001) - 10000) * .00390625f;
+      right[col] = pattern < 10 ? edges[(col + 3 * pattern) % 10]
+          : float(int(rng() % 20001) - 10000) * .00390625f;
+    }
+    expected = left;
+    for (size_t col = 1; col < left.size(); ++col)
+      expected[col] = recstore::CanonicalAdd(left[col], right[col]);
+    recstore::CanonicalRowAddAvx2(left.data() + 1, right.data() + 1);
+    EXPECT_EQ(std::memcmp(left.data(), expected.data(), sizeof(left)), 0);
+    const auto before = left;
+    EXPECT_NO_THROW(recstore::ValidateCanonicalSgdRowAvx2(
+        left.data() + 1, right.data() + 1, .01f));
+    EXPECT_EQ(std::memcmp(left.data(), before.data(), sizeof(left)), 0);
+  }
+#else
+  EXPECT_FALSE(recstore::CanonicalSimdSupported());
+#endif
+}
+
+TEST(SparseGradientCommit, CanonicalSimdChecksEveryLaneBeforeSgdWrites) {
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+  if (!recstore::CanonicalSimdSupported()) GTEST_SKIP() << "AVX2/FMA unavailable";
+  for (size_t col = 1; col <= 128; ++col) {
+    std::array<float, 129> weights, grads;
+    for (int mode = 0; mode < 5; ++mode) {
+      weights.fill(.25f); grads.fill(.5f);
+      float lr = .01f;
+      if (mode == 0) weights[col] = std::numeric_limits<float>::infinity();
+      if (mode == 1) weights[col] = -std::numeric_limits<float>::infinity();
+      if (mode == 2) grads[col] = std::numeric_limits<float>::quiet_NaN();
+      if (mode == 3) grads[col] = std::numeric_limits<float>::infinity();
+      if (mode == 4) {
+        weights[col] = std::numeric_limits<float>::max();
+        grads[col] = -weights[col]; lr = 1.f;
+      }
+      const auto before = weights;
+      EXPECT_THROW(recstore::ValidateCanonicalSgdRowAvx2(
+          weights.data() + 1, grads.data() + 1, lr), std::runtime_error);
+      EXPECT_EQ(std::memcmp(weights.data(), before.data(), sizeof(weights)), 0);
+    }
+    weights.fill(0.f); grads.fill(0.f);
+    weights[col] = grads[col] = std::numeric_limits<float>::max();
+    EXPECT_THROW(recstore::CanonicalRowAddAvx2(
+        weights.data() + 1, grads.data() + 1), std::runtime_error);
+  }
+#else
+  EXPECT_FALSE(recstore::CanonicalSimdSupported());
+#endif
+}
+
+TEST(CanonicalSparseGradient, FiniteScanUnalignedAndEveryBadPosition) {
+  EXPECT_TRUE(recstore::CanonicalAllFinite(nullptr, 0));
+  const uint32_t valid[] = {0, 0x80000000u, 1, 0x80000001u, 0x007fffffu,
+      0x807fffffu, 0x00800000u, 0x80800000u, 0x7f7fffffu, 0xff7fffffu};
+  const uint32_t invalid[] = {0x7f800000u, 0xff800000u, 0x7fc00001u,
+      0xffc00001u, 0x7f800001u};
+  for (size_t alignment = 0; alignment < 8; ++alignment) {
+    std::vector<char> bytes(129 * sizeof(float) + 8);
+    char* raw = bytes.data() + alignment;
+    for (size_t i = 0; i < 129; ++i)
+      std::memcpy(raw + i * 4, &valid[i % 10], 4);
+    for (size_t count = 0; count <= 129; ++count)
+      EXPECT_TRUE(recstore::CanonicalAllFinite(raw, count));
+    for (size_t at = 0; at < 129; ++at) {
+      uint32_t original;
+      std::memcpy(&original, raw + at * 4, 4);
+      for (uint32_t value : invalid) {
+        std::memcpy(raw + at * 4, &value, 4);
+        EXPECT_FALSE(recstore::CanonicalAllFinite(raw, 129));
+      }
+      std::memcpy(raw + at * 4, &original, 4);
+    }
+  }
+}
+
+namespace {
+SparseGradientCommitHeader ExactHeader(uint32_t rank, int64_t step = 0,
+                                     uint32_t chunk = 0, uint32_t chunks = 1) {
+  SparseGradientCommitHeader h;
+  h.version = 4; h.session = 4401; h.world = 2; h.dim = 128;
+  h.rank = rank; h.step = step; h.chunk = chunk; h.chunks = chunks;
+  return h;
+}
+std::vector<float> ExactValues(size_t rows) {
+  const uint32_t bits[] = {0, 0x80000000u, 1, 0x80000001u, 0x007fffffu,
+      0x807fffffu, 0x00800000u, 0x80800000u, 0x7f7fffffu, 0xff7fffffu,
+      0x3f800001u, 0xbf800001u};
+  std::vector<float> values(rows * 128);
+  for (size_t i = 0; i < values.size(); ++i)
+    std::memcpy(&values[i], &bits[i % (sizeof(bits) / sizeof(bits[0]))], 4);
+  return values;
+}
+std::string ExactPacket(SparseGradientCommitHeader h,
+                        const std::vector<uint64_t>& keys,
+                        const std::vector<float>& values = {}) {
+  h.rows = keys.size();
+  auto data = values.empty() ? ExactValues(keys.size()) : values;
+  if (data.size() != keys.size() * 128)
+    throw std::invalid_argument("Invalid test fixture shape");
+  return PackSparseGradientCommit(h, keys.data(), data.data());
+}
+std::string ExactControl(uint32_t rank, uint32_t kind, int64_t step = 0) {
+  auto h = ExactHeader(rank, step); h.kind = kind;
+  return PackSparseGradientCommit(h);
+}
+}
+
+TEST(SparseGradientCommit, ExactOwnerAllArrivalsWaitForWholeStepAndCopyBits) {
+  const std::vector<uint64_t> expected_keys = {0, 1, 32, UINT64_MAX};
+  const auto expected = ExactValues(expected_keys.size());
+  for (int owner : {0, 1}) {
+    std::vector<std::string> packets;
+    for (int chunk = 0; chunk < 3; ++chunk) {
+      const size_t begin = chunk == 0 ? 0 : size_t(chunk + 1);
+      const size_t end = chunk == 0 ? 2 : size_t(chunk + 2);
+      packets.push_back(ExactPacket(ExactHeader(owner, 0, chunk, 3),
+          {expected_keys.begin() + begin, expected_keys.begin() + end},
+          {expected.begin() + begin * 128, expected.begin() + end * 128}));
+    }
+    packets.push_back(ExactPacket(ExactHeader(1 - owner), {}));
+    std::vector<size_t> order = {0, 1, 2, 3};
+    do {
+      SparseGradientCommitCoordinator c(false, true); // V4 never uses frontier apply.
+      int calls = 0;
+      auto apply = [&](const auto& keys, const auto& values) {
+        ++calls; EXPECT_EQ(keys, expected_keys);
+        ASSERT_EQ(values.size(), expected.size());
+        EXPECT_EQ(std::memcmp(values.data(), expected.data(), values.size() * 4), 0);
+      };
+      for (size_t i = 0; i < order.size(); ++i) {
+        EXPECT_EQ(c.Exchange("e", packets[order[i]], apply, owner), i == 3 ? 0 : -1);
+        EXPECT_EQ(calls, i == 3 ? 1 : 0);
+        EXPECT_EQ(c.Exchange("e", packets[order[i]], apply, owner), i == 3 ? 0 : -1);
+      }
+      for (const auto& packet : packets) EXPECT_EQ(c.Exchange("e", packet, apply, owner), 0);
+      EXPECT_EQ(calls, 1);
+    } while (std::next_permutation(order.begin(), order.end()));
+  }
+}
+
+TEST(SparseGradientCommit, ExactOwnerCodecRejectsBoundsDisorderAndEveryNonfinite) {
+  auto h = ExactHeader(0);
+  EXPECT_EQ(recstore::DecodeSparseGradientCommit(ExactPacket(h, {0, UINT64_MAX})).version, 4);
+  EXPECT_THROW(ExactPacket(h, {1, 1}), std::invalid_argument);
+  EXPECT_THROW(ExactPacket(h, {2, 1}), std::invalid_argument);
+  for (int mode = 0; mode < 5; ++mode) {
+    auto bad = h;
+    if (mode == 0) bad.world = 1;
+    if (mode == 1) bad.dim = 64;
+    if (mode == 2) bad.divisor = 2;
+    if (mode == 3) bad.chunks = 65;
+    if (mode == 4) { bad.kind = 1; bad.rows = 1; }
+    if (mode == 4) {
+      auto values = ExactValues(1); uint64_t key = 1;
+      EXPECT_THROW(PackSparseGradientCommit(bad, &key, values.data()), std::invalid_argument);
+    } else EXPECT_THROW(PackSparseGradientCommit(bad), std::invalid_argument);
+  }
+  auto values = ExactValues(1);
+  const uint32_t nonfinite[] = {0x7f800000u, 0xff800000u, 0x7fc00001u, 0x7f800001u};
+  for (size_t col = 0; col < 128; ++col) {
+    const float previous = values[col];
+    for (uint32_t bits : nonfinite) {
+      std::memcpy(&values[col], &bits, 4);
+      EXPECT_THROW(ExactPacket(h, {1}, values), std::invalid_argument);
+    }
+    values[col] = previous;
+  }
+  std::vector<uint64_t> many(2048); std::iota(many.begin(), many.end(), 0);
+  EXPECT_THROW(ExactPacket(h, many), std::invalid_argument); // More than 1 MiB.
+}
+
+TEST(SparseGradientCommit, ExactOwnerExplicitBindingAndPeerRowsFailClosed) {
+  for (int mode = 0; mode < 4; ++mode) {
+    SparseGradientCommitCoordinator c;
+    int calls = 0; auto apply = [&](const auto&, const auto&) { ++calls; };
+    const auto first = ExactPacket(ExactHeader(0, 0, 0, 2), {1});
+    c.Exchange("e", first, apply, 0);
+    if (mode == 0) EXPECT_THROW(c.Exchange("e", first, apply), std::invalid_argument);
+    if (mode == 1) EXPECT_THROW(c.Exchange("e", ExactPacket(ExactHeader(1), {9}), apply, 0), std::invalid_argument);
+    if (mode == 2) EXPECT_THROW(c.Exchange("e", ExactPacket(ExactHeader(1), {}), apply, 1), std::runtime_error);
+    if (mode == 3) EXPECT_THROW(c.Exchange("e", ExactPacket(ExactHeader(1), {}), apply, 2), std::invalid_argument);
+    EXPECT_THROW(c.Exchange("e", ExactControl(0, 1), apply, 0), std::runtime_error);
+    EXPECT_EQ(calls, 0);
+  }
+}
+
+TEST(SparseGradientCommit, ExactOwnerLastRetryUsesPayloadBitsAndRejectsUnknownOldStep) {
+  for (int mode = 0; mode < 4; ++mode) {
+    SparseGradientCommitCoordinator c;
+    int calls = 0; auto apply = [&](const auto&, const auto&) { ++calls; };
+    const auto first = ExactPacket(ExactHeader(0), {1});
+    c.Exchange("e", first, apply, 0);
+    c.Exchange("e", ExactPacket(ExactHeader(1), {}), apply, 0);
+    EXPECT_EQ(c.Exchange("e", first, apply, 0), 0);
+    std::string bad = first;
+    if (mode == 0) {
+      uint32_t negative_zero = 0x80000000u;
+      std::memcpy(bad.data() + sizeof(SparseGradientCommitHeader) + 8, &negative_zero, 4);
+    }
+    if (mode == 1) bad = ExactPacket(ExactHeader(0), {2});
+    if (mode == 2) bad = ExactPacket(ExactHeader(0, 0, 0, 2), {1});
+    if (mode == 3) {
+      c.Exchange("e", ExactPacket(ExactHeader(0, 1), {}), apply, 0);
+      EXPECT_EQ(c.Exchange("e", ExactPacket(ExactHeader(1, 1), {}), apply, 0), 1);
+    }
+    EXPECT_THROW(c.Exchange("e", bad, apply, 0), std::runtime_error);
+    EXPECT_THROW(c.Exchange("e", ExactControl(0, 1), apply, 0), std::runtime_error);
+    EXPECT_EQ(calls, 1);
+  }
+}
+
+TEST(SparseGradientCommit, ExactOwnerLateValidationFailureNeverAppliesPrefix) {
+  for (int mode = 0; mode < 5; ++mode) {
+    SparseGradientCommitCoordinator c;
+    int calls = 0; auto apply = [&](const auto&, const auto&) { ++calls; };
+    c.Exchange("e", ExactPacket(ExactHeader(0, 0, 0, 2), {9}), apply, 0);
+    c.Exchange("e", ExactPacket(ExactHeader(1), {}), apply, 0);
+    auto bad = ExactPacket(ExactHeader(0, 0, 1, 2), {mode == 0 ? 9u : mode == 1 ? 1u : 12u});
+    if (mode == 2) {
+      uint32_t nan = 0x7fc00001u;
+      std::memcpy(bad.data() + bad.size() - 4, &nan, 4);
+    }
+    if (mode == 3) bad.resize(bad.size() - 1);
+    if (mode == 4) bad = ExactPacket(ExactHeader(0, 0, 1, 3), {12});
+    EXPECT_ANY_THROW(c.Exchange("e", bad, apply, 0));
+    EXPECT_THROW(c.Exchange("e", ExactControl(0, 1), apply, 0), std::runtime_error);
+    EXPECT_EQ(calls, 0);
+  }
+}
+
+TEST(SparseGradientCommit, ExactOwnerEmptyStepsPendingCloseAndReopen) {
+  SparseGradientCommitCoordinator c;
+  int calls = 0; auto apply = [&](const auto&, const auto&) { ++calls; };
+  c.Exchange("e", ExactPacket(ExactHeader(0), {}), apply, 0);
+  EXPECT_EQ(c.Exchange("e", ExactPacket(ExactHeader(1), {}), apply, 0), 0);
+  c.Exchange("e", ExactPacket(ExactHeader(0, 1), {}), apply, 0);
+  EXPECT_THROW(c.Exchange("e", ExactControl(0, 2, 0), apply, 0), std::runtime_error);
+  EXPECT_EQ(c.Exchange("e", ExactPacket(ExactHeader(1, 1), {}), apply, 0), 1);
+  for (int rank = 0; rank < 2; ++rank)
+    EXPECT_EQ(c.Exchange("e", ExactControl(rank, 2, 1), apply, 0), 1);
+  for (int rank = 0; rank < 2; ++rank) {
+    auto h = ExactHeader(rank); ++h.session;
+    EXPECT_EQ(c.Exchange("e", ExactPacket(h, {}), apply, 1), rank ? 0 : -1);
+  }
+  EXPECT_EQ(calls, 0);
+}
+
+TEST(SparseGradientCommit, ExactOwnerFailureAbortAndVersionMismatchAreSticky) {
+  for (int mode = 0; mode < 4; ++mode) {
+    SparseGradientCommitCoordinator c;
+    int calls = 0;
+    auto apply = [&](const auto&, const auto&) {
+      ++calls;
+      if (mode == 0) throw std::runtime_error("write failure");
+    };
+    c.Exchange("e", ExactPacket(ExactHeader(0), {1}), apply, 0);
+    if (mode == 0) EXPECT_THROW(c.Exchange("e", ExactPacket(ExactHeader(1), {}), apply, 0), std::runtime_error);
+    if (mode == 1) EXPECT_THROW(c.Exchange("e", ExactControl(1, 3), apply, 0), std::runtime_error);
+    if (mode == 2) {
+      auto h = ExactHeader(1); h.version = 2;
+      EXPECT_THROW(c.Exchange("e", PackSparseGradientCommit(h), apply, 0), std::runtime_error);
+    }
+    if (mode == 3) EXPECT_THROW(c.Exchange("e", ExactPacket(ExactHeader(1, 2), {}), apply, 0), std::runtime_error);
+    EXPECT_THROW(c.Exchange("e", ExactControl(0, 1), apply, 0), std::runtime_error);
+    EXPECT_EQ(calls, mode == 0 ? 1 : 0);
+    EXPECT_EQ(c.Exchange("other", ExactPacket(ExactHeader(0), {}), apply, 0), -1);
+  }
+}
+
+TEST(SparseGradientCommit, ExactOwnerWholeStepRowsAreBoundedBeforeApply) {
+  SparseGradientCommitCoordinator c;
+  int calls = 0; auto apply = [&](const auto&, const auto&) { ++calls; };
+  for (uint32_t chunk = 0; chunk < 52; ++chunk) {
+    std::vector<uint64_t> keys(1024);
+    std::iota(keys.begin(), keys.end(), uint64_t(chunk) * 1024);
+    EXPECT_EQ(c.Exchange("e", ExactPacket(ExactHeader(0, 0, chunk, 53), keys), apply, 0), -1);
+  }
+  EXPECT_THROW(c.Exchange("e", ExactPacket(ExactHeader(0, 0, 52, 53), {53248}), apply, 0), std::invalid_argument);
+  EXPECT_THROW(c.Exchange("e", ExactControl(0, 1), apply, 0), std::runtime_error);
   EXPECT_EQ(calls, 0);
 }

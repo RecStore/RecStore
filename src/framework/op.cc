@@ -528,6 +528,24 @@ int64_t KVClientOp::SparseGradientCommitAsync(
       std::move(ready));
 }
 
+int64_t KVClientOp::SparseCanonicalGradientCommitAsync(
+    const std::string& table, SparseGradientCommitHeader header,
+    std::vector<CanonicalSparseRecord> records, const base::RecTensor& grads,
+    std::function<void()> ready) {
+  if (!ps_client_)
+    throw std::runtime_error("PS client is not initialized");
+  auto* client = ps_client_;
+  base::RecTensor empty_keys({0}, base::DataType::UINT64);
+  return sparse_commits_.Submit(
+      [client, table, records = std::move(records)](
+          SparseGradientCommitHeader h, const base::RecTensor&,
+          const base::RecTensor& g) {
+        if (h.kind == 0)
+          return client->SparseCanonicalGradientCommit(table, h, records, g);
+        return client->SparseCanonicalGradientCommit(table, h, {}, g);
+      }, header, std::move(empty_keys), grads, std::move(ready));
+}
+
 void KVClientOp::WaitSparseGradientCommit(int64_t id) {
   sparse_commits_.Wait(id);
 }
@@ -536,7 +554,13 @@ void KVClientOp::CloseSparseGradientCommit(const std::string& table,
                                            SparseGradientCommitHeader header) {
   base::RecTensor keys({0}, base::DataType::UINT64);
   base::RecTensor grads({0, int64_t(header.dim)}, base::DataType::FLOAT32);
-  SparseGradientCommit(table, header, keys, grads);
+  if (header.version == 3) {
+    if (!ps_client_)
+      throw std::runtime_error("PS client is not initialized");
+    ps_client_->SparseCanonicalGradientCommit(table, header, {}, grads);
+  } else {
+    SparseGradientCommit(table, header, keys, grads);
+  }
 }
 
 uint64_t KVClientOp::EmbUpdateAsync(

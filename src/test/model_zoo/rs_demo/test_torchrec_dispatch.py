@@ -29,6 +29,16 @@ from model_zoo.rs_demo.runners.torchrec_runner import (
 class _FakeDist:
     def __init__(self) -> None:
         self.barrier_calls = 0
+        self.broadcast_calls = 0
+        self.broadcast_plan = None
+
+    def broadcast_object_list(self, payload, src):
+        assert src == 0
+        self.broadcast_calls += 1
+        if payload[0] is None:
+            payload[0] = self.broadcast_plan
+        else:
+            self.broadcast_plan = payload[0]
 
     def barrier(self, device_ids=None) -> None:
         self.barrier_calls += 1
@@ -196,15 +206,16 @@ class TestTorchRecDispatch(unittest.TestCase):
 
         self.assertEqual(plan["token"], "rank0-plan")
         self.assertEqual(planner.calls, 1)
-        self.assertEqual(fake_dist.barrier_calls, 1)
+        self.assertEqual(fake_dist.broadcast_calls, 1)
+        self.assertEqual(fake_dist.broadcast_plan, plan)
 
-    def test_nonzero_rank_loads_shared_sharding_plan(self) -> None:
+    def test_nonzero_rank_receives_plan_without_shared_filesystem(self) -> None:
         fake_dist = _FakeDist()
         planner = _FakePlanner()
         with tempfile.TemporaryDirectory() as tmpdir:
             plan_path = Path(tmpdir) / "plan.pkl"
-            with plan_path.open("wb") as f:
-                pickle.dump({"token": "rank0-plan"}, f)
+            fake_dist.broadcast_plan = {"token": "rank0-plan"}
+            self.assertFalse(plan_path.exists())
             plan = _compute_or_load_shared_sharding_plan(
                 dist=fake_dist,
                 rank=1,
@@ -216,7 +227,7 @@ class TestTorchRecDispatch(unittest.TestCase):
 
         self.assertEqual(plan["token"], "rank0-plan")
         self.assertEqual(planner.calls, 0)
-        self.assertEqual(fake_dist.barrier_calls, 1)
+        self.assertEqual(fake_dist.broadcast_calls, 1)
 
     def test_build_runner_torchrec_requires_dependency(self) -> None:
         cfg = RunConfig(backend="torchrec")

@@ -111,17 +111,32 @@ class RecStoreClient:
         is_gdata: bool = True,
         base_offset: int = 0,
         initialize_backend: bool = False,
+        backend_table_id: Optional[int] = None,
     ):
-        """Register tensor metadata and optionally initialize the backend table."""
+        """Register metadata; an explicit backend ID requires backend registration."""
+        if backend_table_id is not None:
+            if not isinstance(backend_table_id, int) or isinstance(backend_table_id, bool) or backend_table_id < 0:
+                raise ValueError("backend_table_id must be a non-negative integer")
+            if not initialize_backend:
+                raise ValueError("backend_table_id requires initialize_backend=True")
         if name in self._tensor_meta:
+            if backend_table_id is not None:
+                meta = self._tensor_meta[name]
+                if (not meta.get("backend_initialized", False)
+                        or meta["shape"] != tuple(shape) or meta["dtype"] != dtype
+                        or meta["base_offset"] != int(base_offset)
+                        or meta["table_id"] != backend_table_id):
+                    raise ValueError(f"Conflicting backend metadata for '{name}'")
             print(f"Tensor '{name}' already exists. Skipping initialization.")
             return
 
         normalized_shape = (int(shape[0]), int(shape[1]))
         backend_tag = 0
+        actual_table_id = 0
         if initialize_backend:
+            actual_table_id = self._next_table_id if backend_table_id is None else backend_table_id
             backend_tag = self.init_embedding_table(
-                name, normalized_shape[0], normalized_shape[1]
+                name, normalized_shape[0], normalized_shape[1], table_id=actual_table_id
             )
             self._clear_gpu_cache_if_available()
             if backend_tag < 0:
@@ -134,7 +149,8 @@ class RecStoreClient:
             "dtype": dtype,
             "base_offset": int(base_offset),
             "tag": int(backend_tag),
-            "table_id": 0,
+            "table_id": int(actual_table_id),
+            "backend_initialized": bool(initialize_backend),
             'part_policy': part_policy,
         }
         self._full_data_shape[name] = normalized_shape
@@ -149,11 +165,16 @@ class RecStoreClient:
         embedding_dim: int,
         table_id: Optional[int] = None,
     ) -> int:
+        meta = self._tensor_meta.get(table_name)
         if table_id is None:
-            table_id = self._next_table_id
+            table_id = (meta["table_id"] if meta and meta.get("backend_initialized")
+                        else self._next_table_id)
         table_id = int(table_id)
         if table_id < 0:
             raise ValueError("table_id must be non-negative")
+        if meta and (meta["shape"] != (int(num_embeddings), int(embedding_dim))
+                or (meta.get("backend_initialized") and meta["table_id"] != table_id)):
+            raise ValueError(f"Cannot change registered backend namespace for '{table_name}'")
         self._next_table_id = max(self._next_table_id, table_id + 1)
         tag = int(
             self.ops.init_embedding_table(
@@ -165,10 +186,20 @@ class RecStoreClient:
         )
         if tag < 0:
             return -1
+        if meta and meta.get("backend_initialized") and meta["tag"] != tag:
+            raise ValueError(f"Backend changed the registered parameter tag for '{table_name}'")
         if table_name in self._tensor_meta:
             self._tensor_meta[table_name]["tag"] = tag
             self._tensor_meta[table_name]["table_id"] = table_id
+            self._tensor_meta[table_name]["backend_initialized"] = True
         return tag
+
+    def get_embedding_table_namespace(self, name: str) -> Tuple[int, int]:
+        """Return the registered backend table ID and its parameter tag."""
+        meta = self._tensor_meta.get(name)
+        if meta is None or not meta.get("backend_initialized", False):
+            raise RuntimeError(f"Tensor '{name}' has no registered backend namespace")
+        return int(meta["table_id"]), int(meta["tag"])
 
     def init_data(
         self,
@@ -180,6 +211,7 @@ class RecStoreClient:
         is_gdata: bool = True,
         base_offset: int = 0,
         initialize_values: bool = True,
+        backend_table_id: Optional[int] = None,
     ):
         """Send message to kvserver to initialize new data tensor and mapping this
         data from server side to client side.
@@ -201,10 +233,10 @@ class RecStoreClient:
         """
         # print(f"Initializing tensor '{name}' with shape {shape} and dtype {dtype} (base_offset={base_offset}).")
 
-        if name in self._tensor_meta:
+        if name in self._tensor_meta and backend_table_id is None:
             print(f"Tensor '{name}' already exists. Skipping initialization.")
             return
-
+        already_registered = name in self._tensor_meta
         self.register_tensor_meta(
             name=name,
             shape=shape,
@@ -213,7 +245,10 @@ class RecStoreClient:
             is_gdata=is_gdata,
             base_offset=base_offset,
             initialize_backend=True,
+            backend_table_id=backend_table_id,
         )
+        if already_registered:
+            return
         if not is_gdata:
             self._gdata_name_list.discard(name)
 
@@ -310,6 +345,23 @@ class RecStoreClient:
         report_metric("embread_stages", f"KVClient::pull|{start_us}", "request_size", float(ids.numel()))
         
         return res
+
+    def pull_into(self, name: str, ids: torch.Tensor, values: torch.Tensor) -> torch.Tensor:
+        """Read into caller-owned CPU storage, with compatibility for older ops libraries."""
+        if name not in self._tensor_meta:
+            raise RuntimeError(f"Tensor '{name}' has not been initialized.")
+        ids = self._normalize_ids(ids, name=name)
+        dim = self._tensor_meta[name]["shape"][1]
+        if (values.device.type != "cpu" or values.dtype != torch.float32
+                or not values.is_contiguous() or values.requires_grad
+                or values.shape != (ids.numel(), dim)):
+            raise ValueError("pull_into requires contiguous CPU FP32 output matching IDs and embedding dimension")
+        read_into = getattr(self.ops, "emb_read_into", None)
+        if callable(read_into):
+            read_into(ids, values)
+        else:
+            values.copy_(self.ops.emb_read(ids, dim))
+        return values
 
     def pull_with_gpu_cache(self, name: str, ids: torch.Tensor) -> torch.Tensor:
         """Pull rows while preserving CUDA ids so the backend can use GPU cache."""
@@ -806,6 +858,33 @@ class RecStoreClient:
         return int(self.ops.sparse_gradient_commit_async(
             name, ids, grads, session, step, rank, world, lr, divisor))
 
+    def sparse_canonical_gradient_commit_async(self, name, records, grads, *,
+                                               session, step, rank, world, lr):
+        if (records.device.type != "cpu" or records.dtype != torch.int64
+                or records.ndim != 2 or records.shape[1] != 5):
+            raise ValueError("Canonical records require CPU int64[N,5]")
+        # Preserve the caller's layout while applying the registered namespace.
+        normalized = records.clone()
+        normalized[:, 0] = self._normalize_ids(records[:, 0], name=name)
+        return int(self.ops.sparse_canonical_gradient_commit_async(
+            name, normalized, grads, session, step, rank, world, lr))
+
+    def sparse_canonical_gradient_commit_close(self, name, *, session, step,
+                                               rank, world, lr, abort=False):
+        self.ops.sparse_canonical_gradient_commit_close(
+            name, session, step, rank, world, lr, abort)
+
+    def sparse_owner_replace_async(self, name, ids, candidates, status, *,
+                                   session, step, rank, world, lr):
+        """Submit exact GPU-owner candidates; the native wait includes every PS ACK."""
+        ids = self._normalize_ids(ids, name=name)
+        return int(self.ops.sparse_owner_replace_async(
+            name, ids, candidates, status, session, step, rank, world, lr))
+
+    def sparse_owner_replace_close(self, name, *, session, step,
+                                   rank, world, lr, abort=False):
+        self.ops.sparse_owner_replace_close(name, session, step, rank, world, lr, abort)
+
     def sparse_gradient_commit_wait(self, handle):
         self.ops.sparse_gradient_commit_wait(int(handle))
 
@@ -886,6 +965,8 @@ class RecStoreClient:
 
     def save_checkpoint(self, path: str, metadata: Any) -> None:
         """Save all RecStore shards after applying queued sparse updates."""
+        if getattr(self, "_shared_fused_namespace", False):
+            raise RuntimeError("Checkpoints are unsupported for shared_fused_namespace_v1; no layout migration is available")
         checkpoint_path = os.fspath(path)
         if not checkpoint_path:
             raise ValueError("checkpoint path must be non-empty")
@@ -901,6 +982,8 @@ class RecStoreClient:
 
     def load_checkpoint(self, path: str, metadata: Any) -> None:
         """Load all RecStore shards into a fresh, unmodified parameter server."""
+        if getattr(self, "_shared_fused_namespace", False):
+            raise RuntimeError("Checkpoints are unsupported for shared_fused_namespace_v1; no layout migration is available")
         checkpoint_path = os.fspath(path)
         if not checkpoint_path:
             raise ValueError("checkpoint path must be non-empty")
@@ -914,6 +997,7 @@ class RecStoreClient:
             )
         if not bool(load(checkpoint_path, payload)):
             raise RuntimeError("RecStore checkpoint load failed")
+        self._checkpoint_loaded = True
         self._clear_gpu_cache_if_available()
 
     def get_data_meta(self, name: str) -> Tuple[torch.dtype, Tuple[int, ...], None]:

@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <exception>
 #include <fstream>
 #include <limits>
 #include <memory>
@@ -230,7 +231,11 @@ void InitializeRdmaProcessRuntime() {
 }
 
 RDMAPSClientAdapter::RDMAPSClientAdapter(json config)
-    : BasePSClient(config), config_(std::move(config)) {}
+    : BasePSClient(config), config_(std::move(config)),
+      split_lanes_([] {
+        const char* value = std::getenv("RECSTORE_RDMA_SPLIT_LANES");
+        return value != nullptr && std::strcmp(value, "1") == 0;
+      }()) {}
 
 void RDMAPSClientAdapter::EnsureClientInitialized() {
   std::lock_guard<std::mutex> guard(init_mu_);
@@ -285,6 +290,9 @@ void RDMAPSClientAdapter::EnsureClientInitialized() {
   const int logical_client_id =
       config_.value("rdma_logical_client_id", FLAGS_rdma_rc_client_id_base);
 
+  if (split_lanes_ && FLAGS_rdma_rc_qps_per_client_per_shard < 2) {
+    throw std::invalid_argument("RECSTORE_RDMA_SPLIT_LANES requires at least two QPs");
+  }
   shard_clients_.clear();
   client_ = nullptr;
 
@@ -302,6 +310,17 @@ void RDMAPSClientAdapter::EnsureClientInitialized() {
     }
   }
 
+  if (split_lanes_) {
+    for (auto& shard_client : shard_clients_) {
+      shard_client->EnableSplitLanes();
+    }
+    LOG(WARNING) << "component=rdma_adapter event=split_lanes_enabled"
+                 << " get_qps=" << FLAGS_rdma_rc_qps_per_client_per_shard - 1
+                 << " commit_qps=1 contract=fully_initialized_ps_pipeline"
+                 << " all_ranks_same_pipeline=required missing_rows=forbidden"
+                 << " external_writers_or_checkpoints=forbidden"
+                 << " dirty_reads_require_global_commit=true";
+  }
   executor_ = std::make_unique<RdmaDistributedExecutor>(
       [&]() {
         std::vector<petps::PetPSClient*> clients;
@@ -416,7 +435,15 @@ std::size_t RDMAPSClientAdapter::MaxInFlightGetRpcs() const {
       std::max(FLAGS_rdma_rc_qps_per_client_per_shard, 1));
   const std::size_t slots =
       static_cast<std::size_t>(std::max(FLAGS_rdma_rc_slots_per_qp, 1));
-  return std::max<std::size_t>(qps * slots, 1);
+  return std::max<std::size_t>((qps - (split_lanes_ ? 1 : 0)) * slots, 1);
+}
+
+std::size_t RDMAPSClientAdapter::MaxInFlightCommitRpcs() const {
+  // Conservative global window: no shard can exceed its reserved QP slots,
+  // including uneven sharding and empty-rank markers.
+  return split_lanes_ ? static_cast<std::size_t>(
+                            std::max(FLAGS_rdma_rc_slots_per_qp, 1))
+                      : MaxInFlightGetRpcs();
 }
 
 bool RDMAPSClientAdapter::QueryRPCFinished(int rpc_id) {
@@ -499,7 +526,7 @@ int RDMAPSClientAdapter::PutParameter(const base::ConstArray<uint64_t>& keys,
     return 0;
   }
   EnsureThreadInitialized();
-  std::lock_guard<std::mutex> io_guard(io_mu_);
+  std::scoped_lock lifecycle_guard(io_mu_, commit_mu_);
   executor_->DrainBatchSlots();
   return executor_->PutParameter(
       BuildChunks(keys, MaxPutKeysPerRpc(values.shape(1))), values);
@@ -513,14 +540,48 @@ int64_t RDMAPSClientAdapter::SparseGradientCommit(
   EnsureClientInitialized();
   EnsureThreadInitialized();
   EnsureTableReady(table, h.dim);
-  std::lock_guard<std::mutex> io_guard(io_mu_);
-  executor_->DrainBatchSlots();
+  std::lock_guard<std::mutex> io_guard(split_lanes_ ? commit_mu_ : io_mu_);
+  if (!split_lanes_) {
+    executor_->DrainBatchSlots();
+  }
   if (h.kind == 0 && (grads.dim() != 2 || grads.shape(1) != h.dim ||
                       !IsFloatEmbeddingValues(grads, keys.Size()))) {
     throw std::invalid_argument("Invalid RDMA sparse gradients");
   }
-  const size_t limit =
-      shard_clients_.front()->SparseGradientCommitPayloadLimit();
+  if (h.version == 4) {
+    DecodeSparseGradientCommit(PackSparseGradientCommit(h));
+    if (deployment_.num_shards != 2 || deployment_.hash_method != "city_hash" ||
+        keys.Size() > 2 * 26 * 1024 ||
+        (h.kind != 0 && (keys.Size() || grads.shape(0))))
+      throw std::invalid_argument("Unsupported owner replacement deployment or bounds");
+    // Validate every candidate before the first RPC can publish any row.
+    for (size_t i = 0; i < keys.Size(); ++i) {
+      if ((i && keys[i - 1] >= keys[i]) ||
+          shard_routing::PartitionKey(keys[i], 2, deployment_.hash_method) != h.rank)
+        throw std::invalid_argument("Owner replacement requires sorted owned keys");
+    }
+    if (!CanonicalAllFinite(grads.data_as<float>(), keys.Size() * h.dim))
+      throw std::invalid_argument("Nonfinite owner candidate");
+  }
+  if (h.version == 4 && h.kind == 3) {
+    // Abort replies intentionally fail. An early shard error must not prevent
+    // the remaining owners from receiving the same sticky-failure notification.
+    std::exception_ptr first_error;
+    int64_t committed = std::numeric_limits<int64_t>::max();
+    const auto packet = PackSparseGradientCommit(h);
+    for (auto& client : shard_clients_) {
+      try {
+        const auto rpc = client->SubmitSparseGradientCommit(table, packet);
+        committed = std::min(committed, client->WaitSparseGradientCommit(rpc));
+      } catch (...) {
+        if (!first_error) first_error = std::current_exception();
+      }
+    }
+    if (first_error) std::rethrow_exception(first_error);
+    return committed;
+  }
+  const size_t raw_limit = shard_clients_.front()->SparseGradientCommitPayloadLimit();
+  const size_t limit = h.version == 4 ? std::min(size_t{1} << 20, raw_limit) : raw_limit;
   const size_t row_bytes = 8 + size_t(h.dim) * 4;
   if (limit < sizeof(h) + row_bytes)
     throw std::runtime_error("Gradient row exceeds RDMA slot");
@@ -535,6 +596,8 @@ int64_t RDMAPSClientAdapter::SparseGradientCommit(
     if (shard.empty())
       shard.emplace_back(); // Empty-rank marker for every PS.
     rounds = std::max(rounds, shard.size());
+    if (h.version == 4 && shard.size() > 64)
+      throw std::invalid_argument("Owner replacement exceeds 64 chunks");
   }
   std::vector<int64_t> committed(shards.size(), -1);
   std::deque<std::pair<size_t, int>> pending;
@@ -570,7 +633,7 @@ int64_t RDMAPSClientAdapter::SparseGradientCommit(
         pending.emplace_back(
             client,
             shard_clients_[client]->SubmitSparseGradientCommit(table, packet));
-        if (pending.size() >= MaxInFlightGetRpcs())
+        if (pending.size() >= MaxInFlightCommitRpcs())
           drain_one();
       }
     }
@@ -582,6 +645,124 @@ int64_t RDMAPSClientAdapter::SparseGradientCommit(
         drain_one();
       } catch (...) {
       }
+    }
+    throw;
+  }
+  return *std::min_element(committed.begin(), committed.end());
+}
+
+int64_t RDMAPSClientAdapter::SparseCanonicalGradientCommit(
+    const std::string& table, SparseGradientCommitHeader h,
+    const std::vector<CanonicalSparseRecord>& records,
+    const base::RecTensor& grads) {
+  EnsureClientInitialized();
+  EnsureThreadInitialized();
+  EnsureTableReady(table, h.dim);
+  std::lock_guard<std::mutex> io_guard(split_lanes_ ? commit_mu_ : io_mu_);
+  if (!split_lanes_)
+    executor_->DrainBatchSlots();
+  if (h.version != 3 || h.rows || h.chunk || h.chunks != 1 ||
+      grads.dim() != 2 || grads.dtype() != base::DataType::FLOAT32 ||
+      grads.shape(1) != 128 || (h.kind != 0 && (!records.empty() || grads.shape(0))))
+    throw std::invalid_argument("Invalid canonical RDMA submission");
+  // Validate all metadata and construct all packets before posting any update.
+  DecodeSparseGradientCommit(PackSparseGradientCommit(h));
+  std::vector<size_t> offsets(records.size() + 1, 0);
+  std::vector<std::vector<size_t>> positions(shard_clients_.size());
+  for (size_t i = 0; i < records.size(); ++i) {
+    const auto& record = records[i];
+    if (record.reserved || (i && records[i - 1].key >= record.key) ||
+        !record.vector_count || record.vector_count != CanonicalExpectedVectors(
+            record.count_rank0, record.count_rank1, record.table_type, h.rank))
+      throw std::invalid_argument("Invalid canonical RDMA record");
+    offsets[i + 1] = offsets[i] + record.vector_count;
+    const auto shard = shard_routing::PartitionKey(
+        record.key, deployment_.num_shards, deployment_.hash_method);
+    positions.at(deployment_.shard_to_endpoint_index.at(shard)).push_back(i);
+  }
+  if (offsets.back() != static_cast<size_t>(grads.shape(0)))
+    throw std::invalid_argument("Canonical RDMA vector count mismatch");
+  const auto* values = grads.data_as<float>();
+  if (!CanonicalAllFinite(values, offsets.back() * 128))
+    throw std::invalid_argument("Nonfinite canonical RDMA gradient");
+
+  std::vector<std::vector<std::string>> packets(shard_clients_.size());
+  size_t rounds = 1;
+  for (size_t client = 0; client < packets.size(); ++client) {
+    const size_t limit = std::min(size_t{1} << 20,
+        shard_clients_[client]->SparseGradientCommitPayloadLimit());
+    if (limit < sizeof(h))
+      throw std::runtime_error("Canonical header exceeds RDMA slot");
+    const auto& selected = positions[client];
+    std::vector<std::pair<size_t, size_t>> ranges;
+    size_t begin = 0, bytes = sizeof(h);
+    for (size_t i = 0; i < selected.size(); ++i) {
+      const size_t record_bytes = sizeof(CanonicalSparseRecord) +
+          size_t(records[selected[i]].vector_count) * 128 * sizeof(float);
+      if (record_bytes > limit - sizeof(h))
+        throw std::runtime_error("Canonical key record exceeds RDMA slot");
+      if (bytes + record_bytes > limit) {
+        ranges.emplace_back(begin, i);
+        begin = i;
+        bytes = sizeof(h);
+      }
+      bytes += record_bytes;
+    }
+    if (begin < selected.size() || ranges.empty())
+      ranges.emplace_back(begin, selected.size());
+    if (ranges.size() > 64)
+      throw std::runtime_error("Canonical RDMA submission exceeds 64 chunks");
+    h.chunks = ranges.size();
+    for (size_t chunk = 0; chunk < ranges.size(); ++chunk) {
+      const auto [first, end] = ranges[chunk];
+      size_t vectors = 0;
+      for (size_t i = first; i < end; ++i)
+        vectors += records[selected[i]].vector_count;
+      h.chunk = chunk;
+      h.rows = end - first;
+      std::string packet(sizeof(h) + h.rows * sizeof(CanonicalSparseRecord) +
+                         vectors * 128 * sizeof(float), '\0');
+      std::memcpy(packet.data(), &h, sizeof(h));
+      char* descriptor = packet.data() + sizeof(h);
+      char* output = descriptor + h.rows * sizeof(CanonicalSparseRecord);
+      for (size_t i = first; i < end; ++i) {
+        const size_t position = selected[i];
+        const auto& record = records[position];
+        std::memcpy(descriptor, &record, sizeof(record));
+        descriptor += sizeof(record);
+        const size_t value_bytes = size_t(record.vector_count) * 128 * sizeof(float);
+        std::memcpy(output, values + offsets[position] * 128, value_bytes);
+        output += value_bytes;
+      }
+      DecodeSparseGradientCommit(packet);
+      packets[client].push_back(std::move(packet));
+    }
+    rounds = std::max(rounds, packets[client].size());
+  }
+  std::vector<int64_t> committed(packets.size(), -1);
+  std::deque<std::pair<size_t, int>> pending;
+  auto drain_one = [&] {
+    const auto [client, rpc] = pending.front();
+    pending.pop_front();
+    committed[client] = std::max(committed[client],
+        shard_clients_[client]->WaitSparseGradientCommit(rpc));
+  };
+  try {
+    for (size_t round = 0; round < rounds; ++round) {
+      for (size_t client = 0; client < packets.size(); ++client) {
+        if (round >= packets[client].size())
+          continue;
+        pending.emplace_back(client, shard_clients_[client]->SubmitSparseGradientCommit(
+            table, packets[client][round]));
+        if (pending.size() >= MaxInFlightCommitRpcs())
+          drain_one();
+      }
+    }
+    while (!pending.empty())
+      drain_one();
+  } catch (...) {
+    while (!pending.empty()) {
+      try { drain_one(); } catch (...) {}
     }
     throw;
   }
@@ -602,6 +783,9 @@ uint64_t RDMAPSClientAdapter::SubmitUpdateParameterAsync(
     const std::string& table_name,
     const base::ConstArray<uint64_t>& keys,
     const base::RecTensor& grads) {
+  if (split_lanes_) {
+    throw std::logic_error("Legacy async update is unsupported with split RDMA lanes");
+  }
   if (keys.Size() == 0) {
     throw std::invalid_argument("RDMA update requires at least one key");
   }
@@ -629,7 +813,7 @@ int RDMAPSClientAdapter::WaitUpdateParameter(uint64_t update_id) {
 int RDMAPSClientAdapter::InitEmbeddingTable(
     const std::string& table_name, const EmbeddingTableConfig& config) {
   EnsureThreadInitialized();
-  std::lock_guard<std::mutex> io_guard(io_mu_);
+  std::scoped_lock lifecycle_guard(io_mu_, commit_mu_);
   executor_->DrainBatchSlots();
   int tag = -1;
   for (auto& shard_client : shard_clients_) {
@@ -661,6 +845,7 @@ int RDMAPSClientAdapter::InitEmbeddingTable(
 
 void RDMAPSClientAdapter::Command(PSCommand) {
   EnsureThreadInitialized();
+  std::scoped_lock lifecycle_guard(io_mu_, commit_mu_);
   if (deployment_.num_shards <= 1) {
     if (client_ == nullptr) {
       throw std::runtime_error("RDMA adapter has no initialized client");
@@ -676,6 +861,9 @@ void RDMAPSClientAdapter::Command(PSCommand) {
 
 uint64_t
 RDMAPSClientAdapter::PrefetchParameter(const base::ConstArray<uint64_t>& keys) {
+  if (split_lanes_) {
+    throw std::logic_error("Legacy prefetch is unsupported with split RDMA lanes");
+  }
   EnsureThreadInitialized();
   std::lock_guard<std::mutex> io_guard(io_mu_);
   if (keys.Size() == 0) {

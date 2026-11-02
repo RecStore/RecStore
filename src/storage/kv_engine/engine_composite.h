@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -16,6 +18,7 @@
 #include <vector>
 
 #include "base/factory.h"
+#include "base/sgd_update.h"
 #include "storage/index/dram/extendible_hash_index.h"
 #include "storage/index/dram/pet_hash_index.h"
 #include "storage/index/dram/unordered_map_index.h"
@@ -511,6 +514,13 @@ public:
         embedding_dim <= 0) {
       return false;
     }
+    static const bool profile = [] {
+      const char* value = std::getenv("RECSTORE_SPARSE_COMMIT_PROFILE");
+      return value != nullptr && std::strcmp(value, "1") == 0;
+    }();
+    using ProfileClock = std::chrono::steady_clock;
+    const auto profile_start = profile ? ProfileClock::now()
+                                       : ProfileClock::time_point{};
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     const int tag_bits      = static_cast<int>(sizeof(tag) * 8);
     const int shift         = static_cast<int>(sizeof(uint64_t) * 8) - tag_bits;
@@ -525,24 +535,29 @@ public:
           (keys[static_cast<size_t>(r)] & key_mask);
     }
 
+    const auto tagged = profile ? ProfileClock::now()
+                                : ProfileClock::time_point{};
+    BatchGetFlatStats profile_lookup;
     thread_local std::vector<DirectFixedRow> rows;
     if (!BatchGetDirectFixedRows(
             base::ConstArray<uint64_t>(tagged_keys),
             num_rows,
             embedding_dim,
             tid,
-            &rows)) {
+            &rows,
+            profile ? &profile_lookup : nullptr)) {
       return false;
     }
 
+    const auto looked_up = profile ? ProfileClock::now()
+                                   : ProfileClock::time_point{};
     std::vector<float> missing_row(static_cast<size_t>(embedding_dim));
     for (int64_t r = 0; r < num_rows; ++r) {
       const auto& row   = rows[static_cast<size_t>(r)];
       const float* grad = grads + r * embedding_dim;
       if (row.missing) {
-        for (int64_t c = 0; c < embedding_dim; ++c) {
-          missing_row[static_cast<size_t>(c)] = -learning_rate * grad[c];
-        }
+        recstore::ApplySgdRow(missing_row.data(), grad,
+                              static_cast<size_t>(embedding_dim), learning_rate, true);
         PutInternal(tagged_keys[static_cast<size_t>(r)],
                     missing_row.data(),
                     row_bytes,
@@ -552,10 +567,25 @@ public:
       }
 
       float* value = reinterpret_cast<float*>(const_cast<char*>(row.data));
-#pragma omp simd
-      for (int64_t c = 0; c < embedding_dim; ++c) {
-        value[c] -= learning_rate * grad[c];
-      }
+      recstore::ApplySgdRow(value, grad, static_cast<size_t>(embedding_dim), learning_rate);
+    }
+    if (profile) {
+      const auto updated = ProfileClock::now();
+      const auto elapsed_ms = [](auto start, auto end) {
+        return std::chrono::duration<double, std::milli>(end - start).count();
+      };
+      // This line precedes its coordinator_phase line on the owning shard.
+      // index_lookup_ms is included in direct_rows_lookup_ms, not additive.
+      std::fprintf(stderr,
+          "component=sparse_commit event=apply_phase tid=%u rows=%lld dim=%lld "
+          "missing_rows=%llu tag_keys_ms=%.6f direct_rows_lookup_ms=%.6f "
+          "index_lookup_ms=%.6f update_loop_ms=%.6f total_ms=%.6f\n",
+          tid, static_cast<long long>(num_rows),
+          static_cast<long long>(embedding_dim),
+          static_cast<unsigned long long>(profile_lookup.missing_rows),
+          elapsed_ms(profile_start, tagged), elapsed_ms(tagged, looked_up),
+          profile_lookup.index_lookup_ns / 1e6, elapsed_ms(looked_up, updated),
+          elapsed_ms(profile_start, updated));
     }
     return true;
   }

@@ -298,6 +298,63 @@ class RecStoreRunner(BenchmarkRunner):
         use_bagpipe = cfg.optimization.plugin == "bagpipe" or cfg.read_mode == "bagpipe"
         use_planned_bagpipe = use_bagpipe and cfg.optimization.prescan
 
+        if cfg.read_mode == "ps_pipeline":
+            from recstore.ps_pipeline import PSPipeline, PSPipelineSGD
+            canonical_types = None
+            if cfg.ps_pipeline_canonical_plan:
+                import importlib.metadata
+                import json
+                required = {"torch": "2.7.1", "torchrec": "1.2.0", "fbgemm-gpu": "1.2.0"}
+                if any(importlib.metadata.version(name).split("+")[0] != version
+                       for name, version in required.items()):
+                    raise RuntimeError("Canonical PS requires the validated Torch 2.7.1/FBGEMM 1.2.0 stack")
+                with open(cfg.ps_pipeline_canonical_plan) as plan_file:
+                    reference_plan = json.load(plan_file)
+                expected_tables = {"t_" + feature for feature in table_offsets}
+                if set(reference_plan) != expected_tables:
+                    raise ValueError("Canonical reference plan must cover exactly the model tables")
+                allowed = {("table_wise", "fused"): 0, ("data_parallel", "dense"): 1}
+                canonical_types = []
+                for feature in table_offsets:
+                    entry = reference_plan["t_" + feature]
+                    pair = (entry.get("sharding_type"), entry.get("compute_kernel"))
+                    if pair not in allowed:
+                        raise ValueError("Unsupported canonical reference table sharding/kernel")
+                    canonical_types.append(allowed[pair])
+            pipeline_class, owner_options = PSPipeline, {}
+            owner_forward = os.environ.get("RECSTORE_PS_OWNER_FORWARD") == "1"
+            owner_gpu_plan = os.environ.get("RECSTORE_PS_CANONICAL_GPU_PLAN") == "1"
+            owner_handoff = os.environ.get("RECSTORE_PS_OWNER_CANDIDATE_HANDOFF") == "1"
+            owner_verify = os.environ.get("RECSTORE_PS_OWNER_VERIFY_HANDOFF") == "1"
+            if owner_verify and not owner_handoff:
+                raise ValueError("Diagnostic handoff verification requires candidate handoff")
+            if owner_handoff and not owner_forward:
+                raise ValueError("Acknowledged candidate handoff requires unified owner forward")
+            if owner_gpu_plan and os.environ.get("RECSTORE_PS_OWNER_GPU") != "1":
+                raise ValueError("Canonical GPU plan staging requires GPU owner updates")
+            if owner_forward and os.environ.get("RECSTORE_PS_OWNER_GPU") != "1":
+                raise ValueError("Unified owner forward requires GPU owner updates")
+            if os.environ.get("RECSTORE_PS_OWNER_GPU") == "1":
+                if not cfg.dense_cuda_graph or cfg.ps_type != "RDMA":
+                    raise ValueError("GPU owner updates currently require RDMA and the dense CUDA graph")
+                from recstore.ps_owner_pipeline import GPUOwnerPipeline
+                pipeline_class = GPUOwnerPipeline
+                owner_options["unified_forward"] = owner_forward
+                owner_options["canonical_gpu_plan"] = owner_gpu_plan
+                owner_options["candidate_handoff"] = owner_handoff
+                owner_options["verify_handoff"] = owner_verify
+                owner_options["owner_table_end"] = (
+                    list(table_offsets.values())[-1] + int(eb_configs[-1]["num_embeddings"]))
+            read_path = pipeline_class(
+                embedding_module, client, table_offsets=table_offsets,
+                master_table_name=eb_configs[0]["name"],
+                embedding_dim=cfg.embedding_dim, device=device,
+                validation_state=cfg.validation_state,
+                dependency_split=cfg.ps_pipeline_dependency_split, total_steps=cfg.steps,
+                canonical_table_types=canonical_types,
+                **owner_options,
+            )
+            return None, read_path, PSPipelineSGD(embedding_module, read_path), False
         if use_bagpipe:
             fused_id_prefixes = torch.tensor(
                 [table_offsets[name] for name in default_cat_names],
@@ -401,10 +458,17 @@ class RecStoreRunner(BenchmarkRunner):
             embedding_dim=cfg.embedding_dim,
             device=device,
         )
-        dense_module = _maybe_wrap_dense_module_for_dist(
-            dense_module=dense_module, device=device,
-            local_rank=local_rank, use_dist=use_dist,
-        )
+        if cfg.dense_cuda_graph:
+            # DDP hooks remain after unwrapping; never install them for capture.
+            if use_dist:
+                with torch.no_grad():
+                    for value in list(dense_module.parameters()) + list(dense_module.buffers()):
+                        torch.distributed.broadcast(value, src=0)
+        else:
+            dense_module = _maybe_wrap_dense_module_for_dist(
+                dense_module=dense_module, device=device,
+                local_rank=local_rank, use_dist=use_dist,
+            )
         unwrapped_module = (
             dense_module.module
             if isinstance(dense_module, torch.nn.parallel.DistributedDataParallel)
@@ -426,6 +490,16 @@ class RecStoreRunner(BenchmarkRunner):
         inject_project_paths(repo_root)
         from torch import distributed as dist
 
+        overlap_dense = os.environ.get("RECSTORE_DENSE_REDUCE_OVERLAP") == "1"
+        if overlap_dense and (not cfg.dense_cuda_graph or cfg.read_mode != "ps_pipeline"
+                              or cfg.torchrec_dist_mode == "fair_remote"):
+            raise ValueError("Dense overlap requires PS pipeline CUDA graph and no fair_remote")
+        prepare_during_dense = os.environ.get("RECSTORE_PS_PREPARE_DURING_DENSE") == "1"
+        if prepare_during_dense and not (
+            cfg.read_mode == "ps_pipeline" and cfg.ps_pipeline_dependency_split
+            and cfg.dense_cuda_graph and overlap_dense
+        ):
+            raise ValueError("Prepare during dense requires dependency-split PS CUDA graph and dense overlap")
         default_cat_names = get_default_cat_names()
         print(f"[rs_demo] repo_root={repo_root}")
         print("[rs_demo] backend=recstore")
@@ -458,15 +532,19 @@ class RecStoreRunner(BenchmarkRunner):
             eb_configs, table_offsets, RecStoreEmbeddingBagCollection = (
                 self._build_embedding_module(cfg, client, default_cat_names)
             )
+            embedding_init_start = time.perf_counter()
             embedding_module = RecStoreEmbeddingBagCollection(
                 embedding_bag_configs=eb_configs,
                 enable_fusion=cfg.recstore_enable_fusion,
                 fusion_k=cfg.fuse_k,
                 kv_client=client,
                 initialize_tables=(rank == 0),
+                shared_fused_namespace=(cfg.read_mode == "ps_pipeline"),
             )
+            embedding_init_ms = (time.perf_counter() - embedding_init_start) * 1e3
             # -- optimization plugin + read path --------------------------------
             use_bagpipe = cfg.optimization.plugin == "bagpipe" or cfg.read_mode == "bagpipe"
+            use_ps_pipeline = cfg.read_mode == "ps_pipeline"
             plugin, read_path, sparse_optimizer, use_planned_bagpipe = (
                 self._build_read_path(
                     cfg=cfg,
@@ -500,7 +578,46 @@ class RecStoreRunner(BenchmarkRunner):
                     dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
                 )
 
-            lifecycle = {"rank": rank}
+            lifecycle = {"rank": rank, "embedding_init_ms": embedding_init_ms,
+                "dense_reduce_overlap_enabled": int(overlap_dense),
+                "ps_pipeline_prepare_during_dense_enabled": int(prepare_during_dense),
+                "dense_reduce_overlap_groups": {"dense": "WORLD" if use_dist else "local",
+                    "sparse": ("GPU owner NCCL/WORLD + PS exact writeback" if
+                               os.environ.get("RECSTORE_PS_OWNER_GPU") == "1" else "PS/RDMA, no NCCL"),
+                    "dense_buffer_group": "None/default"},
+                "gradient_communication_semantics": "remaining_join" if overlap_dense else "full_reduce"}
+            if use_ps_pipeline:
+                lifecycle["embedding_namespace"] = embedding_module.shared_fused_namespace_identity()
+                lifecycle["owned_read_native"] = callable(getattr(client.ops, "emb_read_into", None))
+                lifecycle["ps_pipeline_dependency_split"] = cfg.ps_pipeline_dependency_split
+                lifecycle["ps_pipeline_canonical_plan"] = cfg.ps_pipeline_canonical_plan
+                lifecycle["ps_pipeline_canonical_types"] = list(read_path._canonical_table_types)
+                if cfg.ps_pipeline_dependency_split:
+                    lifecycle["ps_pipeline_metadata_group_init_ms"] = read_path.metadata_group_init_ms
+                    lifecycle["ps_pipeline_metadata_byte_semantics"] = "padded tensor payload per peer; excludes transport framing"
+            dense_graph = dense_gradient_buffer = None
+            if cfg.dense_cuda_graph:
+                from ..runtime.dense_graph import CapturedDlrmDense, DenseGradientBuffer
+                local_samples = len(dataloader.batch_sampler.sampler)
+                batch_sizes = {min(cfg.batch_size, local_samples)}
+                tail = local_samples % cfg.batch_size
+                if tail and not dataloader.drop_last:
+                    batch_sizes.add(tail)
+                dense_gradient_buffer = DenseGradientBuffer(dense_module)
+                dense_graph = CapturedDlrmDense(
+                    dense_module, criterion, dense_gradient_buffer,
+                    batch_sizes=sorted(batch_sizes), num_features=len(default_cat_names),
+                    embedding_dim=cfg.embedding_dim,
+                )
+                lifecycle.update(
+                    dense_graph_capture_ms=dense_graph.capture_ms,
+                    dense_graph_batch_sizes=list(dense_graph.batch_sizes),
+                    dense_graph_memory=dense_graph.memory_stats,
+                    dense_graph_scope="dense forward/backward; individual stage times unavailable",
+                )
+                _barrier_for_step_alignment(
+                    dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
+                )
             # Keep the complete access schedule on CPU, including epoch transitions.
             if (
                 use_planned_bagpipe
@@ -539,6 +656,11 @@ class RecStoreRunner(BenchmarkRunner):
             rows: list[dict[str, Any]] = []
             data_iter_state = {"iter": iter(dataloader)}
             prepared_batches: deque = deque()
+            skip_kjt = os.environ.get("RECSTORE_PS_SKIP_KJT") == "1"
+            if skip_kjt and not use_ps_pipeline:
+                raise ValueError("Skipping KJT requires PS pipeline")
+            if os.environ.get("RECSTORE_PS_PREPARE_ASYNC") == "1":
+                raise ValueError("Async CPU preparation is not enabled in this composition")
 
             def prepare_next_batch(batch_step: int):
                 events.emit("prepare_start", step=batch_step)
@@ -547,6 +669,10 @@ class RecStoreRunner(BenchmarkRunner):
                     "batch_size": cfg.batch_size,
                     "step": batch_step,
                     "warmup_excluded": _bool_int(batch_step < cfg.warmup_steps),
+                    "ps_owner_forward_enabled": int(getattr(read_path, "unified_forward", False)),
+                    "ps_owner_canonical_gpu_plan_enabled": int(getattr(read_path, "canonical_gpu_plan", False)),
+                    "ps_owner_candidate_handoff_enabled": int(getattr(read_path, "candidate_handoff", False)),
+                    "ps_owner_verify_handoff_enabled": int(getattr(read_path, "verify_handoff", False)),
                 }
                 batch_prepare_start = time.perf_counter()
                 try:
@@ -558,9 +684,13 @@ class RecStoreRunner(BenchmarkRunner):
                 row["batch_size"] = int(dense_batch.shape[0])
 
                 input_pack_start = time.perf_counter()
-                _, sparse_features = build_kjt_batch_from_dense_sparse_labels(
-                    dense_batch, sparse_batch, labels_batch, device=device
-                )
+                if skip_kjt:
+                    sparse_features = None
+                else:
+                    _, sparse_features = build_kjt_batch_from_dense_sparse_labels(
+                        dense_batch, sparse_batch, labels_batch,
+                        device=None if use_ps_pipeline else device,
+                    )
                 row["input_pack_ms"] = (time.perf_counter() - input_pack_start) * 1e3
 
                 ticket = read_path.on_batch_prepared(
@@ -645,16 +775,30 @@ class RecStoreRunner(BenchmarkRunner):
                     ticket,
                 ) = prepared_batches.popleft()
 
+                row["ps_pipeline_prepare_during_dense_enabled"] = int(prepare_during_dense)
+                if cfg.ps_pipeline_dependency_split:
+                    row["ps_pipeline_lookahead_prepare_ms"] = 0.0
+                if (cfg.ps_pipeline_dependency_split and step + 1 < cfg.steps
+                        and not prepare_during_dense):
+                    prepare_start = time.perf_counter()
+                    prepared_batches.append(prepare_next_batch(step + 1))
+                    row["ps_pipeline_lookahead_prepare_ms"] = (time.perf_counter() - prepare_start) * 1e3
+
                 _reset_perf_stats(embedding_module)
                 sparse_optimizer.zero_grad()
                 timer = StepTimer(row, torch, device)
+                row["dense_reduce_overlap_enabled"] = int(overlap_dense)
+                row["gradient_communication_enqueue_ms"] = 0.0
+                row["gradient_communication_semantics"] = "remaining_join" if overlap_dense else "full_reduce"
                 # embed_lookup and sparse_update hit the PS over the network (host
                 # + network work) so they stay on the wall clock; the pure-GPU
                 # dense stages use CUDA events via timer.gpu().
                 events.emit("consume_start", step=step)
                 with timer.cpu("embed_lookup_ms"):
                     read_path.before_lookup(step, sparse_features, ticket, row)
-                    if use_bagpipe:
+                    if use_ps_pipeline:
+                        embeddings = read_path.lookup(sparse_features)
+                    elif use_bagpipe:
                         embeddings = plugin._controller.lookup(sparse_features)
                     elif callable(record_pooled_grad):
                         with torch.no_grad():
@@ -677,31 +821,73 @@ class RecStoreRunner(BenchmarkRunner):
                         embedded_sparse_source=embedded_sparse_source,
                         labels_batch=labels_batch,
                         torch=torch, device=device, detach_sparse=True,
+                        synchronize=not cfg.dense_cuda_graph,
                     )
+                if use_ps_pipeline and cfg.ps_pipeline_early_submit:
+                    embedded_sparse.register_hook(sparse_optimizer.submit_pooled_grad)
                 events.emit("pack_end", step=step)
-                events.emit("fwd_start", step=step)
-                with timer.gpu("dense_fwd_ms"):
-                    loss, _ = compute_dense_loss(
-                        cfg, dense_module, criterion, dense_features, embedded_sparse, labels
-                    )
-
-                events.emit("fwd_end", step=step)
-                events.emit("bwd_start", step=step)
-                with timer.gpu("backward_ms"):
-                    for param in dense_module.parameters():
-                        if param.requires_grad:
-                            param.grad = None
-                    if not embedded_sparse.is_leaf:
-                        embedded_sparse.retain_grad()
-                    embedded_sparse.grad = None
-                    loss.backward()
-                    if embedded_sparse.grad is None:
-                        raise RuntimeError(
-                            "missing embedded_sparse gradient after backward"
+                if dense_graph is not None:
+                    events.emit("dense_graph_start", step=step)
+                    with timer.gpu("dense_graph_ms"):
+                        loss, embedded_sparse_grad = dense_graph(
+                            dense_features, embedded_sparse, labels
                         )
-                    embedded_sparse_grad = embedded_sparse.grad.detach()
+                    events.emit("dense_graph_end", step=step)
+                    row["dense_fwd_ms"] = row["backward_ms"] = ""
+                    dense_work = None
+                    if overlap_dense:
+                        with timer.cpu("gradient_communication_enqueue_ms"):
+                            dense_work = dense_gradient_buffer.submit_reduce()
+                    # The flat dense buffer and owned sparse staging are disjoint.
+                    try:
+                        if prepare_during_dense and step + 1 < cfg.steps:
+                            # Current read was consumed; the pipeline uses its completed
+                            # _consumed_read. Prepare before submit advances _submitted.
+                            with timer.cpu("ps_pipeline_lookahead_prepare_ms"):
+                                prepared_batches.append(prepare_next_batch(step + 1))
+                        with timer.cpu("sparse_graph_submit_ms"):
+                            with timer.cpu("sparse_backward_replay_ms"):
+                                sparse_optimizer.record_pooled_grad(embedded_sparse_grad)
+                            with timer.cpu("sparse_optimizer_step_ms"):
+                                sparse_optimizer.step()
+                    except BaseException as sparse_error:
+                        if dense_work is not None:
+                            try:
+                                dense_work.wait()
+                            except BaseException as join_error:
+                                sparse_error.add_note("Dense reduction join also failed: " + repr(join_error))
+                        raise
+                    with timer.gpu("gradient_communication_ms"):
+                        # In overlap mode this event interval is only the remaining join.
+                        if overlap_dense:
+                            if dense_work is not None:
+                                dense_work.wait()
+                        else:
+                            dense_gradient_buffer.reduce()
+                else:
+                    events.emit("fwd_start", step=step)
+                    with timer.gpu("dense_fwd_ms"):
+                        loss, _ = compute_dense_loss(
+                            cfg, dense_module, criterion, dense_features, embedded_sparse, labels
+                        )
 
-                events.emit("bwd_end", step=step)
+                    events.emit("fwd_end", step=step)
+                    events.emit("bwd_start", step=step)
+                    with timer.gpu("backward_ms"):
+                        for param in dense_module.parameters():
+                            if param.requires_grad:
+                                param.grad = None
+                        if not embedded_sparse.is_leaf:
+                            embedded_sparse.retain_grad()
+                        embedded_sparse.grad = None
+                        loss.backward()
+                        if embedded_sparse.grad is None:
+                            raise RuntimeError(
+                                "missing embedded_sparse gradient after backward"
+                            )
+                        embedded_sparse_grad = embedded_sparse.grad.detach()
+
+                    events.emit("bwd_end", step=step)
                 events.emit("dense_opt_start", step=step)
                 with timer.gpu("dense_optimizer_ms"):
                     dense_optimizer.step()
@@ -710,26 +896,30 @@ class RecStoreRunner(BenchmarkRunner):
                 events.emit("dense_opt_end", step=step)
                 events.emit("sparse_start", step=step)
                 with timer.cpu("sparse_optimizer_ms"):
-                    replay_start = time.perf_counter()
-                    sparse_grad = embedded_sparse_grad.to(embedded_sparse_source.device)
-                    if callable(record_pooled_grad):
-                        prepared_ids = (
-                            ticket
-                            if isinstance(ticket, tuple) and len(ticket) == 3
-                            else None
-                        )
-                        record_pooled_grad(
-                            sparse_features, sparse_grad, prepared_ids=prepared_ids
-                        )
-                    else:
-                        embedded_sparse_source.backward(sparse_grad)
-                    row["sparse_backward_replay_ms"] = (time.perf_counter() - replay_start) * 1e3
+                    if dense_graph is None:
+                        replay_start = time.perf_counter()
+                        sparse_grad = embedded_sparse_grad.to(embedded_sparse_source.device)
+                        if use_ps_pipeline:
+                            if not cfg.ps_pipeline_early_submit:
+                                sparse_optimizer.record_pooled_grad(sparse_grad)
+                        elif callable(record_pooled_grad):
+                            prepared_ids = (
+                                ticket
+                                if isinstance(ticket, tuple) and len(ticket) == 3
+                                else None
+                            )
+                            record_pooled_grad(
+                                sparse_features, sparse_grad, prepared_ids=prepared_ids
+                            )
+                        else:
+                            embedded_sparse_source.backward(sparse_grad)
+                        row["sparse_backward_replay_ms"] = (time.perf_counter() - replay_start) * 1e3
 
-                    optimizer_step_start = time.perf_counter()
-                    sparse_optimizer.step()
-                    row["sparse_optimizer_step_ms"] = (
-                        time.perf_counter() - optimizer_step_start
-                    ) * 1e3
+                        optimizer_step_start = time.perf_counter()
+                        sparse_optimizer.step()
+                        row["sparse_optimizer_step_ms"] = (
+                            time.perf_counter() - optimizer_step_start
+                        ) * 1e3
 
                     # Overlap PS update latency by preparing future batches.
                     overlap_prepare_start = time.perf_counter()
@@ -755,8 +945,11 @@ class RecStoreRunner(BenchmarkRunner):
                     if use_bagpipe and step == cfg.steps - 1:
                         # Charge the final deferred SGD to training as well.
                         plugin._controller._wait_pending()
+                    if use_ps_pipeline and step == cfg.steps - 1:
+                        read_path._wait_pending()
                     sparse_optimizer.zero_grad()
 
+                row["sparse_optimizer_ms"] += row.get("sparse_graph_submit_ms", 0.0)
                 events.emit("sparse_end", step=step)
                 row["loss"] = float(loss.detach().float().cpu().item())
                 _merge_consumed_perf_stats(row, _consume_perf_stats(embedding_module))
@@ -764,10 +957,9 @@ class RecStoreRunner(BenchmarkRunner):
                 # After the device drain point: readbacks here (stats
                 # draining) add no hidden wait to the phase timers above.
                 read_path.after_step_sync(row)
-                row["dense_compute_ms"] = (
-                    row["dense_fwd_ms"]
-                    + row["backward_ms"]
-                    + row["dense_optimizer_ms"]
+                row["dense_compute_ms"] = row["dense_optimizer_ms"] + (
+                    row["dense_graph_ms"] if dense_graph is not None
+                    else row["dense_fwd_ms"] + row["backward_ms"]
                 )
                 _finalize_step_timing(row, wall_start=step_wall_start)
                 rows.append(finalize_recstore_row(row))
@@ -791,21 +983,31 @@ class RecStoreRunner(BenchmarkRunner):
 
             print("[rs_demo] workload finished")
 
+            if device.type == "cuda":
+                lifecycle["training_cuda_memory"] = {
+                    "allocated_bytes": torch.cuda.memory_allocated(device),
+                    "reserved_bytes": torch.cuda.memory_reserved(device),
+                    "peak_allocated_bytes": torch.cuda.max_memory_allocated(device),
+                    "peak_reserved_bytes": torch.cuda.max_memory_reserved(device),
+                }
             _write_rows(out_csv, rows)
             if cfg.validation_state:
-                if not use_bagpipe:
-                    raise RuntimeError("RecStore validation-state requires bagpipe")
+                if not (use_bagpipe or use_ps_pipeline):
+                    raise RuntimeError("RecStore validation-state requires bagpipe or ps_pipeline")
                 from ..runtime.validation import export_validation_state
                 export_validation_state(
                     Path(cfg.output_root) / "outputs" / cfg.run_id / f"validation_rank{rank}.pt",
-                    embedding_module, dense_module, planned_controller=plugin._controller,
+                    embedding_module, dense_module,
+                    planned_controller=read_path if use_ps_pipeline else plugin._controller,
                 )
+            if use_ps_pipeline:
+                read_path.shutdown()
             if plugin is not None:
                 shutdown_start = time.perf_counter()
                 plugin.shutdown()
                 lifecycle["bagpipe_shutdown_ms"] = (time.perf_counter() - shutdown_start) * 1e3
                 plugin = None
-            if use_bagpipe:
+            if use_bagpipe or use_ps_pipeline or dense_graph is not None:
                 lifecycle_path = Path(cfg.output_root) / "outputs" / cfg.run_id / f"lifecycle_rank{rank}.json"
                 lifecycle_path.parent.mkdir(parents=True, exist_ok=True)
                 lifecycle_path.write_text(json.dumps(lifecycle, indent=2) + "\n")
@@ -837,6 +1039,8 @@ class RecStoreRunner(BenchmarkRunner):
                     plugin._controller.shutdown(flush=False)
                 else:
                     plugin.shutdown()
+            if cfg.read_mode == "ps_pipeline" and "read_path" in locals():
+                read_path.shutdown(flush=False)
             os.chdir(str(orig_cwd))
 
     def run(self, repo_root: Path, cfg: RunConfig) -> dict:

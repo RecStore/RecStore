@@ -486,25 +486,100 @@ public:
 
   /// optimizer interface
 
+  void FailSparseGradientSession(const std::string& table,
+                                 const std::string& payload) {
+    sparse_gradient_commits_.FailSortedSession(table, payload);
+  }
+
   int64_t SparseGradientCommit(
-      const std::string& table, std::string payload, unsigned tid) {
-    const auto h    = recstore::DecodeSparseGradientCommit(payload);
-    const auto* sgd = dynamic_cast<SGD*>(optimizer_.get());
-    if (!sgd || sgd->LearningRate() != h.learning_rate) {
-      throw std::runtime_error("Sparse gradient commit requires matching "
-                               "client/PS SGD learning rates");
-    }
-    const auto config = table_configs_.find(table);
-    if (config == table_configs_.end() ||
-        config->second.embedding_dim != h.dim) {
-      throw std::runtime_error(
-          "Sparse gradient commit table or dimension mismatch");
+      const std::string& table, std::string payload, unsigned tid,
+      int exact_owner_rank = -1) {
+    recstore::SparseGradientCommitHeader h;
+    try {
+      h = recstore::DecodeSparseGradientCommit(payload);
+      if (h.version == 4 &&
+          (exact_owner_rank < 0 || exact_owner_rank >= 2 ||
+           (h.rows && h.rank != static_cast<uint32_t>(exact_owner_rank))))
+        throw std::invalid_argument("Exact replacement requires the server-bound owner rank");
+      const auto* sgd = dynamic_cast<SGD*>(optimizer_.get());
+      if (!sgd || sgd->LearningRate() != h.learning_rate) {
+        throw std::runtime_error("Sparse gradient commit requires matching "
+                                 "client/PS SGD learning rates");
+      }
+      if (h.version == 3) {
+        if (!recstore::SparseCommitFmaEnabled())
+          throw std::runtime_error("Canonical sparse commit requires FMA SGD");
+        recstore::ValidateCanonicalArithmeticEnvironment();
+      }
+      const auto config = table_configs_.find(table);
+      if (config == table_configs_.end() ||
+          config->second.embedding_dim != h.dim) {
+        throw std::runtime_error(
+            "Sparse gradient commit table or dimension mismatch");
+      }
+    } catch (...) {
+      sparse_gradient_commits_.FailSortedSession(table, payload);
+      throw;
     }
     return sparse_gradient_commits_.Exchange(
         table,
         std::move(payload),
         [&](const std::vector<uint64_t>& keys,
             const std::vector<float>& grads) {
+          if (h.version == 4) {
+            // Experimental initialized DRAM namespace, with no external writers.
+            // This lock excludes CachePS checkpoint/load/clear while direct rows
+            // are validated and copied. The client must read old weights only
+            // after the previous global commit; V4 does not prove their freshness.
+            std::lock_guard<std::mutex> checkpoint_lock(checkpoint_mu_);
+            const auto tag = MakeTensorTag(table_configs_.at(table).table_id, 0, 1);
+            for (uint64_t key : keys)
+              if (ExtractKeyTag(key) != tag)
+                throw std::runtime_error("Exact replacement key/table tag mismatch");
+            if (!recstore::CanonicalAllFinite(grads.data(), grads.size()))
+              throw std::invalid_argument("Non-finite exact replacement candidate");
+            const auto backing = base_kv_->GetRDMABackingRegion();
+            const size_t row_bytes = size_t(h.dim) * sizeof(float);
+            if (!backing.data || backing.size < row_bytes)
+              throw std::runtime_error("Exact replacement requires direct DRAM backing");
+            std::vector<base::ConstArray<float>> current;
+            base_kv_->BatchGet(base::ConstArray<uint64_t>(keys), &current, tid);
+            if (current.size() != keys.size())
+              throw std::runtime_error("Exact replacement row count mismatch");
+            const auto begin = reinterpret_cast<uintptr_t>(backing.data);
+            for (const auto& row : current) {
+              const auto address = reinterpret_cast<uintptr_t>(row.Data());
+              if (row.Size() != h.dim || address < begin ||
+                  address - begin > backing.size - row_bytes)
+                throw std::runtime_error("Exact replacement requires existing direct D128 rows");
+            }
+            // The whole owner step passes every check before any value is written.
+            for (size_t row = 0; row < keys.size(); ++row)
+              std::memcpy(const_cast<float*>(current[row].Data()),
+                          grads.data() + row * h.dim, row_bytes);
+            MarkCheckpointDirty();
+            return;
+          }
+          if (h.version == 3) {
+            // Experimental v3 requires a fully initialized immutable namespace
+            // and no external writers. Validate the entire prefix before any
+            // mutation, accepting one extra row lookup/FMA pass for correctness.
+            const auto tag = MakeTensorTag(table_configs_.at(table).table_id, 0, 1);
+            for (uint64_t key : keys)
+              if (ExtractKeyTag(key) != tag)
+                throw std::runtime_error("Canonical sparse key/table tag mismatch");
+            std::vector<base::ConstArray<float>> current;
+            base_kv_->BatchGet(base::ConstArray<uint64_t>(keys), &current, tid);
+            if (current.size() != keys.size())
+              throw std::runtime_error("Canonical sparse precheck row count mismatch");
+            for (size_t row = 0; row < keys.size(); ++row) {
+              if (current[row].Size() != h.dim)
+                throw std::runtime_error("Canonical sparse commit requires existing D128 rows");
+              recstore::ValidateCanonicalSgdRow(current[row].Data(),
+                                               grads.data() + row * h.dim,
+                                               h.learning_rate);
+            }
+          }
           if (!UpdateParameterFlat(
                   table,
                   base::ConstArray<uint64_t>(keys.data(), keys.size()),
@@ -514,7 +589,7 @@ public:
                   tid)) {
             throw std::runtime_error("Sparse gradient commit optimizer failed");
           }
-        });
+        }, exact_owner_rank);
   }
 
   int InitTable(const std::string& table_name,

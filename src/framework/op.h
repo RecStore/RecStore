@@ -141,6 +141,12 @@ public:
       const base::RecTensor& keys,
       const base::RecTensor& grads,
       std::function<void()> ready);
+  int64_t SparseCanonicalGradientCommitAsync(
+      const std::string& table,
+      SparseGradientCommitHeader header,
+      std::vector<CanonicalSparseRecord> records,
+      const base::RecTensor& grads,
+      std::function<void()> ready);
   void WaitSparseGradientCommit(int64_t id);
   void CloseSparseGradientCommit(const std::string& table,
                                  SparseGradientCommitHeader header);

@@ -1,0 +1,696 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CMakeDetermineSystem.cmake:205 (message)"
+      - "CMakeLists.txt:97 (project)"
+    message: |
+      The system is: Linux - 5.10.0-218.0.0.mt20250120.565.mt2203sp4.x86_64 - x86_64
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/usr/local/share/cmake-3.31/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/usr/local/share/cmake-3.31/Modules/CMakeDetermineCXXCompiler.cmake:126 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:97 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler: /usr/bin/c++ 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "a.out"
+      
+      The CXX compiler identification is GNU, found in:
+        /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/3.31.5/CompilerIdCXX/a.out
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CMakeDetermineCompilerABI.cmake:74 (try_compile)"
+      - "/usr/local/share/cmake-3.31/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:97 (project)"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4ahSRL"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4ahSRL"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4ahSRL'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_61fd9/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_61fd9.dir/build.make CMakeFiles/cmTC_61fd9.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4ahSRL'
+        Building CXX object CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o
+        /usr/bin/c++   -fPIE   -v -o CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o -c /usr/local/share/cmake-3.31/Modules/CMakeCXXCompilerABI.cpp
+        Using built-in specs.
+        COLLECT_GCC=/usr/bin/c++
+        Target: x86_64-pc-linux-gnu
+        Configured with: ../configure --prefix=/usr --disable-multilib --enable-checking=release
+        Thread model: posix
+        Supported LTO compression algorithms: zlib
+        gcc version 11.5.0 (GCC) 
+        COLLECT_GCC_OPTIONS='-fPIE' '-v' '-o' 'CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_61fd9.dir/'
+         /usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/cc1plus -quiet -v -D_GNU_SOURCE /usr/local/share/cmake-3.31/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_61fd9.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -version -fPIE -o /tmp/cco8hHfP.s
+        GNU C++17 (GCC) version 11.5.0 (x86_64-pc-linux-gnu)
+        	compiled by GNU C version 11.5.0, GMP version 6.3.0, MPFR version 4.2.1, MPC version 1.3.1, isl version none
+        warning: GMP header version 6.3.0 differs from library version 6.0.0.
+        warning: MPC header version 1.3.1 differs from library version 1.0.1.
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring nonexistent directory "/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../include/c++/11.5.0
+         /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../include/c++/11.5.0/x86_64-pc-linux-gnu
+         /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../include/c++/11.5.0/backward
+         /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/include
+         /usr/local/include
+         /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/include-fixed
+         /usr/include
+        End of search list.
+        GNU C++17 (GCC) version 11.5.0 (x86_64-pc-linux-gnu)
+        	compiled by GNU C version 11.5.0, GMP version 6.3.0, MPFR version 4.2.1, MPC version 1.3.1, isl version none
+        warning: GMP header version 6.3.0 differs from library version 6.0.0.
+        warning: MPC header version 1.3.1 differs from library version 1.0.1.
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        Compiler executable checksum: 4f6ea3b99cafdfba7741b22cba46e06f
+        COLLECT_GCC_OPTIONS='-fPIE' '-v' '-o' 'CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_61fd9.dir/'
+         /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/as -v --64 -o CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o /tmp/cco8hHfP.s
+        GNU assembler version 2.44 (x86_64-pc-linux-gnu) using BFD version (GNU Binutils) 2.44
+        COMPILER_PATH=/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/libexec/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/
+        LIBRARY_PATH=/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/usr/local/cuda/lib64/stubs/:./:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/lib/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../:/lib/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-fPIE' '-v' '-o' 'CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.'
+        Linking CXX executable cmTC_61fd9
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_61fd9.dir/link.txt --verbose=1
+        Using built-in specs.
+        COLLECT_GCC=/usr/bin/c++
+        COLLECT_LTO_WRAPPER=/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/lto-wrapper
+        Target: x86_64-pc-linux-gnu
+        Configured with: ../configure --prefix=/usr --disable-multilib --enable-checking=release
+        Thread model: posix
+        Supported LTO compression algorithms: zlib
+        gcc version 11.5.0 (GCC) 
+        COMPILER_PATH=/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/libexec/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/
+        LIBRARY_PATH=/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/usr/local/cuda/lib64/stubs/:./:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/lib/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../:/lib/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-v' '-rdynamic' '-o' 'cmTC_61fd9' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_61fd9.'
+         /usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/collect2 -plugin /usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/liblto_plugin.so -plugin-opt=/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/lto-wrapper -plugin-opt=-fresolution=/tmp/cc9pOz69.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -export-dynamic -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_61fd9 /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crt1.o /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crti.o /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtbegin.o -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0 -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/usr/local/cuda/lib64/stubs -L. -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/lib -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../.. -v CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtend.o /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crtn.o
+        collect2 version 11.5.0
+        /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/ld -plugin /usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/liblto_plugin.so -plugin-opt=/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/lto-wrapper -plugin-opt=-fresolution=/tmp/cc9pOz69.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -export-dynamic -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_61fd9 /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crt1.o /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crti.o /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtbegin.o -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0 -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/usr/local/cuda/lib64/stubs -L. -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/lib -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../.. -v CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtend.o /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crtn.o
+        GNU ld (GNU Binutils) 2.44
+        COLLECT_GCC_OPTIONS='-v' '-rdynamic' '-o' 'cmTC_61fd9' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_61fd9.'
+        /usr/bin/c++  -v -Wl,-v -rdynamic CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o -o cmTC_61fd9
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4ahSRL'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CMakeDetermineCompilerABI.cmake:182 (message)"
+      - "/usr/local/share/cmake-3.31/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:97 (project)"
+    message: |
+      Parsed CXX implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../include/c++/11.5.0]
+          add: [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../include/c++/11.5.0/x86_64-pc-linux-gnu]
+          add: [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../include/c++/11.5.0/backward]
+          add: [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/include]
+          add: [/usr/local/include]
+          add: [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/include-fixed]
+          add: [/usr/include]
+        end of search list found
+        collapse include dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../include/c++/11.5.0] ==> [/usr/include/c++/11.5.0]
+        collapse include dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../include/c++/11.5.0/x86_64-pc-linux-gnu] ==> [/usr/include/c++/11.5.0/x86_64-pc-linux-gnu]
+        collapse include dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../include/c++/11.5.0/backward] ==> [/usr/include/c++/11.5.0/backward]
+        collapse include dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/include] ==> [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/include]
+        collapse include dir [/usr/local/include] ==> [/usr/local/include]
+        collapse include dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/include-fixed] ==> [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/include-fixed]
+        collapse include dir [/usr/include] ==> [/usr/include]
+        implicit include dirs: [/usr/include/c++/11.5.0;/usr/include/c++/11.5.0/x86_64-pc-linux-gnu;/usr/include/c++/11.5.0/backward;/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/include;/usr/local/include;/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/include-fixed;/usr/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CMakeDetermineCompilerABI.cmake:218 (message)"
+      - "/usr/local/share/cmake-3.31/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:97 (project)"
+    message: |
+      Parsed CXX implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(\\.[a-z]+)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|")?[ 	]*(([^"]*[/\\])?(ld[0-9]*(\\.[a-z]+)?))("|,| |$)]
+        ignore line: [Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4ahSRL']
+        ignore line: []
+        ignore line: [Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_61fd9/fast]
+        ignore line: [/usr/bin/gmake  -f CMakeFiles/cmTC_61fd9.dir/build.make CMakeFiles/cmTC_61fd9.dir/build]
+        ignore line: [gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4ahSRL']
+        ignore line: [Building CXX object CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o]
+        ignore line: [/usr/bin/c++   -fPIE   -v -o CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o -c /usr/local/share/cmake-3.31/Modules/CMakeCXXCompilerABI.cpp]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/usr/bin/c++]
+        ignore line: [Target: x86_64-pc-linux-gnu]
+        ignore line: [Configured with: ../configure --prefix=/usr --disable-multilib --enable-checking=release]
+        ignore line: [Thread model: posix]
+        ignore line: [Supported LTO compression algorithms: zlib]
+        ignore line: [gcc version 11.5.0 (GCC) ]
+        ignore line: [COLLECT_GCC_OPTIONS='-fPIE' '-v' '-o' 'CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_61fd9.dir/']
+        ignore line: [ /usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/cc1plus -quiet -v -D_GNU_SOURCE /usr/local/share/cmake-3.31/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_61fd9.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -version -fPIE -o /tmp/cco8hHfP.s]
+        ignore line: [GNU C++17 (GCC) version 11.5.0 (x86_64-pc-linux-gnu)]
+        ignore line: [	compiled by GNU C version 11.5.0  GMP version 6.3.0  MPFR version 4.2.1  MPC version 1.3.1  isl version none]
+        ignore line: [warning: GMP header version 6.3.0 differs from library version 6.0.0.]
+        ignore line: [warning: MPC header version 1.3.1 differs from library version 1.0.1.]
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [ignoring nonexistent directory "/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../include/c++/11.5.0]
+        ignore line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../include/c++/11.5.0/x86_64-pc-linux-gnu]
+        ignore line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../include/c++/11.5.0/backward]
+        ignore line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/include]
+        ignore line: [ /usr/local/include]
+        ignore line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/include-fixed]
+        ignore line: [ /usr/include]
+        ignore line: [End of search list.]
+        ignore line: [GNU C++17 (GCC) version 11.5.0 (x86_64-pc-linux-gnu)]
+        ignore line: [	compiled by GNU C version 11.5.0  GMP version 6.3.0  MPFR version 4.2.1  MPC version 1.3.1  isl version none]
+        ignore line: [warning: GMP header version 6.3.0 differs from library version 6.0.0.]
+        ignore line: [warning: MPC header version 1.3.1 differs from library version 1.0.1.]
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [Compiler executable checksum: 4f6ea3b99cafdfba7741b22cba46e06f]
+        ignore line: [COLLECT_GCC_OPTIONS='-fPIE' '-v' '-o' 'CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_61fd9.dir/']
+        ignore line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/as -v --64 -o CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o /tmp/cco8hHfP.s]
+        ignore line: [GNU assembler version 2.44 (x86_64-pc-linux-gnu) using BFD version (GNU Binutils) 2.44]
+        ignore line: [COMPILER_PATH=/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/libexec/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/]
+        ignore line: [LIBRARY_PATH=/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/usr/local/cuda/lib64/stubs/:./:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/lib/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../:/lib/:/usr/lib/]
+        ignore line: [COLLECT_GCC_OPTIONS='-fPIE' '-v' '-o' 'CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.']
+        ignore line: [Linking CXX executable cmTC_61fd9]
+        ignore line: [/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_61fd9.dir/link.txt --verbose=1]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/usr/bin/c++]
+        ignore line: [COLLECT_LTO_WRAPPER=/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/lto-wrapper]
+        ignore line: [Target: x86_64-pc-linux-gnu]
+        ignore line: [Configured with: ../configure --prefix=/usr --disable-multilib --enable-checking=release]
+        ignore line: [Thread model: posix]
+        ignore line: [Supported LTO compression algorithms: zlib]
+        ignore line: [gcc version 11.5.0 (GCC) ]
+        ignore line: [COMPILER_PATH=/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/libexec/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/]
+        ignore line: [LIBRARY_PATH=/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/usr/local/cuda/lib64/stubs/:./:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/lib/:/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../:/lib/:/usr/lib/]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-rdynamic' '-o' 'cmTC_61fd9' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_61fd9.']
+        link line: [ /usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/collect2 -plugin /usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/liblto_plugin.so -plugin-opt=/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/lto-wrapper -plugin-opt=-fresolution=/tmp/cc9pOz69.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -export-dynamic -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_61fd9 /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crt1.o /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crti.o /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtbegin.o -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0 -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/usr/local/cuda/lib64/stubs -L. -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/lib -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../.. -v CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtend.o /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crtn.o]
+          arg [/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/collect2] ==> ignore
+          arg [-plugin] ==> ignore
+          arg [/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/liblto_plugin.so] ==> ignore
+          arg [-plugin-opt=/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/lto-wrapper] ==> ignore
+          arg [-plugin-opt=-fresolution=/tmp/cc9pOz69.res] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [--eh-frame-hdr] ==> ignore
+          arg [-m] ==> ignore
+          arg [elf_x86_64] ==> ignore
+          arg [-export-dynamic] ==> ignore
+          arg [-dynamic-linker] ==> ignore
+          arg [/lib64/ld-linux-x86-64.so.2] ==> ignore
+          arg [-o] ==> ignore
+          arg [cmTC_61fd9] ==> ignore
+          arg [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crt1.o] ==> obj [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crt1.o]
+          arg [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crti.o] ==> obj [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crti.o]
+          arg [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtbegin.o] ==> obj [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtbegin.o]
+          arg [-L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0] ==> dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0]
+          arg [-L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64] ==> dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64]
+          arg [-L/lib/../lib64] ==> dir [/lib/../lib64]
+          arg [-L/usr/lib/../lib64] ==> dir [/usr/lib/../lib64]
+          arg [-L/usr/local/cuda/lib64/stubs] ==> dir [/usr/local/cuda/lib64/stubs]
+          arg [-L.] ==> ignore
+          arg [-L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/lib] ==> dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/lib]
+          arg [-L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../..] ==> dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../..]
+          arg [-v] ==> ignore
+          arg [CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o] ==> ignore
+          arg [-lstdc++] ==> lib [stdc++]
+          arg [-lm] ==> lib [m]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-lc] ==> lib [c]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtend.o] ==> obj [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtend.o]
+          arg [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crtn.o] ==> obj [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crtn.o]
+        ignore line: [collect2 version 11.5.0]
+        ignore line: [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/ld -plugin /usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/liblto_plugin.so -plugin-opt=/usr/libexec/gcc/x86_64-pc-linux-gnu/11.5.0/lto-wrapper -plugin-opt=-fresolution=/tmp/cc9pOz69.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -export-dynamic -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_61fd9 /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crt1.o /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crti.o /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtbegin.o -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0 -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/usr/local/cuda/lib64/stubs -L. -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/lib -L/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../.. -v CMakeFiles/cmTC_61fd9.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtend.o /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crtn.o]
+        linker tool for 'CXX': /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/ld
+        collapse obj [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crt1.o] ==> [/usr/lib64/crt1.o]
+        collapse obj [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crti.o] ==> [/usr/lib64/crti.o]
+        collapse obj [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64/crtn.o] ==> [/usr/lib64/crtn.o]
+        collapse library dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0] ==> [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0]
+        collapse library dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../lib64] ==> [/usr/lib64]
+        collapse library dir [/lib/../lib64] ==> [/lib64]
+        collapse library dir [/usr/lib/../lib64] ==> [/usr/lib64]
+        collapse library dir [/usr/local/cuda/lib64/stubs] ==> [/usr/local/cuda/lib64/stubs]
+        collapse library dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/lib] ==> [/usr/x86_64-pc-linux-gnu/lib]
+        collapse library dir [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../..] ==> [/usr/lib]
+        implicit libs: [stdc++;m;gcc_s;gcc;c;gcc_s;gcc]
+        implicit objs: [/usr/lib64/crt1.o;/usr/lib64/crti.o;/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtbegin.o;/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/crtend.o;/usr/lib64/crtn.o]
+        implicit dirs: [/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0;/usr/lib64;/lib64;/usr/local/cuda/lib64/stubs;/usr/x86_64-pc-linux-gnu/lib;/usr/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/Internal/CMakeDetermineLinkerId.cmake:40 (message)"
+      - "/usr/local/share/cmake-3.31/Modules/CMakeDetermineCompilerABI.cmake:255 (cmake_determine_linker_id)"
+      - "/usr/local/share/cmake-3.31/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:97 (project)"
+    message: |
+      Running the CXX compiler's linker: "/usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/ld" "-v"
+      GNU ld (GNU Binutils) 2.44
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CheckIncludeFileCXX.cmake:98 (try_compile)"
+      - "CMakeLists.txt:252 (check_include_file_cxx)"
+    checks:
+      - "Looking for C++ include unistd.h"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-SaZr7H"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-SaZr7H"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_UNISTD_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-SaZr7H'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_78838/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_78838.dir/build.make CMakeFiles/cmTC_78838.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-SaZr7H'
+        Building CXX object CMakeFiles/cmTC_78838.dir/CheckIncludeFile.cxx.o
+        /usr/bin/c++   -fPIE -o CMakeFiles/cmTC_78838.dir/CheckIncludeFile.cxx.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-SaZr7H/CheckIncludeFile.cxx
+        Linking CXX executable cmTC_78838
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_78838.dir/link.txt --verbose=1
+        /usr/bin/c++ -rdynamic CMakeFiles/cmTC_78838.dir/CheckIncludeFile.cxx.o -o cmTC_78838
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-SaZr7H'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CheckIncludeFileCXX.cmake:98 (try_compile)"
+      - "CMakeLists.txt:252 (check_include_file_cxx)"
+    checks:
+      - "Looking for C++ include stdint.h"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-NTTKgL"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-NTTKgL"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_STDINT_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-NTTKgL'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_52586/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_52586.dir/build.make CMakeFiles/cmTC_52586.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-NTTKgL'
+        Building CXX object CMakeFiles/cmTC_52586.dir/CheckIncludeFile.cxx.o
+        /usr/bin/c++   -fPIE -o CMakeFiles/cmTC_52586.dir/CheckIncludeFile.cxx.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-NTTKgL/CheckIncludeFile.cxx
+        Linking CXX executable cmTC_52586
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_52586.dir/link.txt --verbose=1
+        /usr/bin/c++ -rdynamic CMakeFiles/cmTC_52586.dir/CheckIncludeFile.cxx.o -o cmTC_52586
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-NTTKgL'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CheckIncludeFileCXX.cmake:98 (try_compile)"
+      - "CMakeLists.txt:252 (check_include_file_cxx)"
+    checks:
+      - "Looking for C++ include inttypes.h"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4H9JIM"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4H9JIM"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_INTTYPES_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4H9JIM'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_5b3cc/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_5b3cc.dir/build.make CMakeFiles/cmTC_5b3cc.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4H9JIM'
+        Building CXX object CMakeFiles/cmTC_5b3cc.dir/CheckIncludeFile.cxx.o
+        /usr/bin/c++   -fPIE -o CMakeFiles/cmTC_5b3cc.dir/CheckIncludeFile.cxx.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4H9JIM/CheckIncludeFile.cxx
+        Linking CXX executable cmTC_5b3cc
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_5b3cc.dir/link.txt --verbose=1
+        /usr/bin/c++ -rdynamic CMakeFiles/cmTC_5b3cc.dir/CheckIncludeFile.cxx.o -o cmTC_5b3cc
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-4H9JIM'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CheckIncludeFileCXX.cmake:98 (try_compile)"
+      - "CMakeLists.txt:252 (check_include_file_cxx)"
+    checks:
+      - "Looking for C++ include sys/types.h"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-HCfTsJ"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-HCfTsJ"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_SYS_TYPES_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-HCfTsJ'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_55bf0/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_55bf0.dir/build.make CMakeFiles/cmTC_55bf0.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-HCfTsJ'
+        Building CXX object CMakeFiles/cmTC_55bf0.dir/CheckIncludeFile.cxx.o
+        /usr/bin/c++   -fPIE -o CMakeFiles/cmTC_55bf0.dir/CheckIncludeFile.cxx.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-HCfTsJ/CheckIncludeFile.cxx
+        Linking CXX executable cmTC_55bf0
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_55bf0.dir/link.txt --verbose=1
+        /usr/bin/c++ -rdynamic CMakeFiles/cmTC_55bf0.dir/CheckIncludeFile.cxx.o -o cmTC_55bf0
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-HCfTsJ'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CheckIncludeFileCXX.cmake:98 (try_compile)"
+      - "CMakeLists.txt:252 (check_include_file_cxx)"
+    checks:
+      - "Looking for C++ include sys/stat.h"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-T0u5uI"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-T0u5uI"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_SYS_STAT_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-T0u5uI'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_1d9ae/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_1d9ae.dir/build.make CMakeFiles/cmTC_1d9ae.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-T0u5uI'
+        Building CXX object CMakeFiles/cmTC_1d9ae.dir/CheckIncludeFile.cxx.o
+        /usr/bin/c++   -fPIE -o CMakeFiles/cmTC_1d9ae.dir/CheckIncludeFile.cxx.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-T0u5uI/CheckIncludeFile.cxx
+        Linking CXX executable cmTC_1d9ae
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_1d9ae.dir/link.txt --verbose=1
+        /usr/bin/c++ -rdynamic CMakeFiles/cmTC_1d9ae.dir/CheckIncludeFile.cxx.o -o cmTC_1d9ae
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-T0u5uI'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CheckIncludeFileCXX.cmake:98 (try_compile)"
+      - "CMakeLists.txt:252 (check_include_file_cxx)"
+    checks:
+      - "Looking for C++ include fnmatch.h"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-Ogee7K"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-Ogee7K"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_FNMATCH_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-Ogee7K'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_f8219/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_f8219.dir/build.make CMakeFiles/cmTC_f8219.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-Ogee7K'
+        Building CXX object CMakeFiles/cmTC_f8219.dir/CheckIncludeFile.cxx.o
+        /usr/bin/c++   -fPIE -o CMakeFiles/cmTC_f8219.dir/CheckIncludeFile.cxx.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-Ogee7K/CheckIncludeFile.cxx
+        Linking CXX executable cmTC_f8219
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f8219.dir/link.txt --verbose=1
+        /usr/bin/c++ -rdynamic CMakeFiles/cmTC_f8219.dir/CheckIncludeFile.cxx.o -o cmTC_f8219
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-Ogee7K'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CheckIncludeFileCXX.cmake:98 (try_compile)"
+      - "/usr/local/share/cmake-3.31/Modules/CheckTypeSize.cmake:272 (check_include_file_cxx)"
+      - "CMakeLists.txt:273 (check_type_size)"
+    checks:
+      - "Looking for C++ include stddef.h"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-6ohcXI"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-6ohcXI"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_STDDEF_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-6ohcXI'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_d2937/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_d2937.dir/build.make CMakeFiles/cmTC_d2937.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-6ohcXI'
+        Building CXX object CMakeFiles/cmTC_d2937.dir/CheckIncludeFile.cxx.o
+        /usr/bin/c++   -fPIE -o CMakeFiles/cmTC_d2937.dir/CheckIncludeFile.cxx.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-6ohcXI/CheckIncludeFile.cxx
+        Linking CXX executable cmTC_d2937
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_d2937.dir/link.txt --verbose=1
+        /usr/bin/c++ -rdynamic CMakeFiles/cmTC_d2937.dir/CheckIncludeFile.cxx.o -o cmTC_d2937
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-6ohcXI'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CheckTypeSize.cmake:156 (try_compile)"
+      - "/usr/local/share/cmake-3.31/Modules/CheckTypeSize.cmake:283 (__check_type_size_impl)"
+      - "CMakeLists.txt:273 (check_type_size)"
+    checks:
+      - "Check size of uint32_t"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-LjnnoJ"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-LjnnoJ"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_uint32_t"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-LjnnoJ'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_a3014/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_a3014.dir/build.make CMakeFiles/cmTC_a3014.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-LjnnoJ'
+        Building CXX object CMakeFiles/cmTC_a3014.dir/uint32_t.cpp.o
+        /usr/bin/c++   -fPIE -o CMakeFiles/cmTC_a3014.dir/uint32_t.cpp.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-LjnnoJ/uint32_t.cpp
+        Linking CXX executable cmTC_a3014
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_a3014.dir/link.txt --verbose=1
+        /usr/bin/c++ -rdynamic CMakeFiles/cmTC_a3014.dir/uint32_t.cpp.o -o cmTC_a3014
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-LjnnoJ'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CheckSymbolExists.cmake:163 (try_compile)"
+      - "/usr/local/share/cmake-3.31/Modules/CheckCXXSymbolExists.cmake:74 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "CMakeLists.txt:308 (check_cxx_symbol_exists)"
+    checks:
+      - "Looking for strtoll"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-bWgyhK"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-bWgyhK"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_STRTOLL"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-bWgyhK'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_ca2ff/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_ca2ff.dir/build.make CMakeFiles/cmTC_ca2ff.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-bWgyhK'
+        Building CXX object CMakeFiles/cmTC_ca2ff.dir/CheckSymbolExists.cxx.o
+        /usr/bin/c++   -fPIE -o CMakeFiles/cmTC_ca2ff.dir/CheckSymbolExists.cxx.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-bWgyhK/CheckSymbolExists.cxx
+        Linking CXX executable cmTC_ca2ff
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ca2ff.dir/link.txt --verbose=1
+        /usr/bin/c++ -rdynamic CMakeFiles/cmTC_ca2ff.dir/CheckSymbolExists.cxx.o -o cmTC_ca2ff
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-bWgyhK'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/Internal/CheckSourceCompiles.cmake:108 (try_compile)"
+      - "/usr/local/share/cmake-3.31/Modules/CheckCXXSourceCompiles.cmake:58 (cmake_check_source_compiles)"
+      - "/usr/local/share/cmake-3.31/Modules/FindThreads.cmake:99 (CHECK_CXX_SOURCE_COMPILES)"
+      - "/usr/local/share/cmake-3.31/Modules/FindThreads.cmake:163 (_threads_check_libc)"
+      - "CMakeLists.txt:316 (find_package)"
+    checks:
+      - "Performing Test CMAKE_HAVE_LIBC_PTHREAD"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-oKa1cI"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-oKa1cI"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_LIBC_PTHREAD"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-oKa1cI'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_90654/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_90654.dir/build.make CMakeFiles/cmTC_90654.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-oKa1cI'
+        Building CXX object CMakeFiles/cmTC_90654.dir/src.cxx.o
+        /usr/bin/c++ -DCMAKE_HAVE_LIBC_PTHREAD  -fPIE -o CMakeFiles/cmTC_90654.dir/src.cxx.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-oKa1cI/src.cxx
+        Linking CXX executable cmTC_90654
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_90654.dir/link.txt --verbose=1
+        /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/ld: CMakeFiles/cmTC_90654.dir/src.cxx.o: in function `main':
+        src.cxx:(.text+0x2f): undefined reference to `pthread_create'
+        /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/ld: src.cxx:(.text+0x3b): undefined reference to `pthread_detach'
+        /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/ld: src.cxx:(.text+0x47): undefined reference to `pthread_cancel'
+        /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/ld: src.cxx:(.text+0x58): undefined reference to `pthread_join'
+        collect2: error: ld returned 1 exit status
+        /usr/bin/c++ -rdynamic CMakeFiles/cmTC_90654.dir/src.cxx.o -o cmTC_90654
+        gmake[1]: *** [cmTC_90654] Error 1
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-oKa1cI'
+        gmake: *** [cmTC_90654/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CheckLibraryExists.cmake:78 (try_compile)"
+      - "/usr/local/share/cmake-3.31/Modules/FindThreads.cmake:112 (CHECK_LIBRARY_EXISTS)"
+      - "/usr/local/share/cmake-3.31/Modules/FindThreads.cmake:175 (_threads_check_lib)"
+      - "CMakeLists.txt:316 (find_package)"
+    checks:
+      - "Looking for pthread_create in pthreads"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-QALBHJ"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-QALBHJ"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_PTHREADS_CREATE"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-QALBHJ'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_bc982/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_bc982.dir/build.make CMakeFiles/cmTC_bc982.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-QALBHJ'
+        Building CXX object CMakeFiles/cmTC_bc982.dir/CheckFunctionExists.cxx.o
+        /usr/bin/c++   -DCHECK_FUNCTION_EXISTS=pthread_create -fPIE -o CMakeFiles/cmTC_bc982.dir/CheckFunctionExists.cxx.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-QALBHJ/CheckFunctionExists.cxx
+        Linking CXX executable cmTC_bc982
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_bc982.dir/link.txt --verbose=1
+        /usr/lib/gcc/x86_64-pc-linux-gnu/11.5.0/../../../../x86_64-pc-linux-gnu/bin/ld: cannot find -lpthreads: No such file or directory
+        collect2: error: ld returned 1 exit status
+        /usr/bin/c++  -DCHECK_FUNCTION_EXISTS=pthread_create -rdynamic CMakeFiles/cmTC_bc982.dir/CheckFunctionExists.cxx.o -o cmTC_bc982  -lpthreads
+        gmake[1]: *** [cmTC_bc982] Error 1
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-QALBHJ'
+        gmake: *** [cmTC_bc982/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CheckLibraryExists.cmake:78 (try_compile)"
+      - "/usr/local/share/cmake-3.31/Modules/FindThreads.cmake:112 (CHECK_LIBRARY_EXISTS)"
+      - "/usr/local/share/cmake-3.31/Modules/FindThreads.cmake:176 (_threads_check_lib)"
+      - "CMakeLists.txt:316 (find_package)"
+    checks:
+      - "Looking for pthread_create in pthread"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-rcCmWK"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-rcCmWK"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_PTHREAD_CREATE"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-rcCmWK'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_c8a3d/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_c8a3d.dir/build.make CMakeFiles/cmTC_c8a3d.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-rcCmWK'
+        Building CXX object CMakeFiles/cmTC_c8a3d.dir/CheckFunctionExists.cxx.o
+        /usr/bin/c++   -DCHECK_FUNCTION_EXISTS=pthread_create -fPIE -o CMakeFiles/cmTC_c8a3d.dir/CheckFunctionExists.cxx.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-rcCmWK/CheckFunctionExists.cxx
+        Linking CXX executable cmTC_c8a3d
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c8a3d.dir/link.txt --verbose=1
+        /usr/bin/c++  -DCHECK_FUNCTION_EXISTS=pthread_create -rdynamic CMakeFiles/cmTC_c8a3d.dir/CheckFunctionExists.cxx.o -o cmTC_c8a3d  -lpthread
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-rcCmWK'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/local/share/cmake-3.31/Modules/CheckTypeSize.cmake:156 (try_compile)"
+      - "/usr/local/share/cmake-3.31/Modules/CheckTypeSize.cmake:283 (__check_type_size_impl)"
+      - "CMakeLists.txt:319 (check_type_size)"
+    checks:
+      - "Check size of pthread_rwlock_t"
+    directories:
+      source: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-ddxRiI"
+      binary: "/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-ddxRiI"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_RWLOCK"
+      cached: true
+      stdout: |
+        Change Dir: '/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-ddxRiI'
+        
+        Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_13ac8/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_13ac8.dir/build.make CMakeFiles/cmTC_13ac8.dir/build
+        gmake[1]: Entering directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-ddxRiI'
+        Building CXX object CMakeFiles/cmTC_13ac8.dir/RWLOCK.cpp.o
+        /usr/bin/c++   -fPIE -o CMakeFiles/cmTC_13ac8.dir/RWLOCK.cpp.o -c /home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-ddxRiI/RWLOCK.cpp
+        Linking CXX executable cmTC_13ac8
+        /usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_13ac8.dir/link.txt --verbose=1
+        /usr/bin/c++ -rdynamic CMakeFiles/cmTC_13ac8.dir/RWLOCK.cpp.o -o cmTC_13ac8
+        gmake[1]: Leaving directory `/home/hadoop-quanta/VSCodeProjects/RecStore_shanhongqi/third_party/gflags-2.2.2/_build/CMakeFiles/CMakeScratch/TryCompile-ddxRiI'
+        
+      exitCode: 0
+...

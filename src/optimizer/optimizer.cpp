@@ -1,4 +1,5 @@
 #include "optimizer.h"
+#include "base/sgd_update.h"
 #include "ps/local_shm/local_shm_stage_report.h"
 #include <algorithm>
 #include <cstring>
@@ -214,9 +215,8 @@ void SGD::UpdateFlat(
     if (current.Size() == 0) {
       ++missing_rows;
       std::vector<float> zero_init(static_cast<size_t>(embedding_dim), 0.0f);
-      for (int64_t col = 0; col < embedding_dim; ++col) {
-        zero_init[static_cast<size_t>(col)] = -learning_rate_ * row_grad[col];
-      }
+      recstore::ApplySgdRow(zero_init.data(), row_grad,
+                            static_cast<size_t>(embedding_dim), learning_rate_, true);
       std::string val_str(reinterpret_cast<char*>(zero_init.data()),
                           zero_init.size() * sizeof(float));
       it->second->Put(keys[static_cast<size_t>(row)], val_str, tid);
@@ -228,10 +228,7 @@ void SGD::UpdateFlat(
     }
 
     float* data = const_cast<float*>(current.Data());
-#pragma omp simd
-    for (int64_t col = 0; col < embedding_dim; ++col) {
-      data[col] -= learning_rate_ * row_grad[col];
-    }
+    recstore::ApplySgdRow(data, row_grad, static_cast<size_t>(embedding_dim), learning_rate_);
   }
   recstore::ReportLocalShmStageMetric(
       "sgd_update_apply_us", recstore::LocalShmElapsedUs(apply_start));

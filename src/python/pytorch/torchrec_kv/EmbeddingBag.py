@@ -153,7 +153,9 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
                  ps_host: str = None, ps_port: int = None,
                  kv_client: RecStoreClient | None = None,
                  initialize_tables: bool = True,
-                 fast_path_mode: str = "auto"):
+                 fast_path_mode: str = "auto",
+                 shared_fused_namespace: bool = False,
+                 backend_table_id: int | None = None):
         super().__init__()
         if fast_path_mode not in {"auto", "off"}:
             raise ValueError("fast_path_mode must be 'auto' or 'off'")
@@ -167,6 +169,31 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
         self._lr = lr
         self._enable_fusion = enable_fusion
         self._fusion_k = fusion_k
+        self._shared_fused_namespace = bool(shared_fused_namespace)
+        if backend_table_id is not None and not self._shared_fused_namespace:
+            raise ValueError("backend_table_id requires shared_fused_namespace=True")
+        if self._shared_fused_namespace:
+            configs = self._embedding_bag_configs
+            if (not enable_fusion or not configs or type(fusion_k) is not int
+                    or not 0 <= fusion_k < 56):
+                raise ValueError("Shared namespace requires nonempty fused tables and 0 <= fusion_k < 56")
+            if (len({c.name for c in configs}) != len(configs)
+                    or len({c.embedding_dim for c in configs}) != 1
+                    or configs[0].embedding_dim <= 0
+                    or any(c.num_embeddings <= 0 or c.num_embeddings > (1 << fusion_k) for c in configs)
+                    or ((len(configs) - 1) << fusion_k) + configs[-1].num_embeddings > (1 << 56)):
+                raise ValueError("Shared fused tables require unique names, equal dimensions and disjoint 56-bit ID ranges")
+            if getattr(self.kv_client, "_checkpoint_loaded", False):
+                raise RuntimeError("Cannot enable shared_fused_namespace_v1 after loading a legacy checkpoint")
+            existing_names = self.kv_client.data_name_list()
+            if any(c.name in existing_names for c in configs):
+                raise ValueError("Shared fused namespace requires previously unregistered table names; existing metadata is not migrated")
+            existing_ids = {self.kv_client.get_embedding_table_namespace(name)[0]
+                            for name in existing_names}
+            if backend_table_id is not None and backend_table_id in existing_ids:
+                raise ValueError("Shared fused backend table ID is already used by another table")
+            # This opt-in layout has no checkpoint migration/restore contract yet.
+            self.kv_client._shared_fused_namespace = True
         self.is_recstore_sparse_module = True
         
         self.feature_keys: List[str] = []
@@ -208,8 +235,28 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
         self.fast_path_mode = fast_path_mode
         self.reset_perf_stats()
 
+        shared_table_id = backend_table_id
         for idx, config in enumerate(self._embedding_bag_configs):
             base_offset = (idx << self._fusion_k) if self._enable_fusion else 0
+            if self._shared_fused_namespace:
+                # Every rank registers the same namespace; only the initializer writes values.
+                self.kv_client.init_data(
+                    name=config.name,
+                    shape=(config.num_embeddings, config.embedding_dim),
+                    dtype=torch.float32,
+                    base_offset=base_offset,
+                    initialize_values=initialize_tables,
+                    backend_table_id=shared_table_id,
+                )
+                table_id, tag = self.kv_client.get_embedding_table_namespace(config.name)
+                if shared_table_id is None:
+                    shared_table_id = table_id
+                    shared_tag = tag
+                elif idx == 0:
+                    shared_tag = tag
+                if table_id != shared_table_id or tag != shared_tag:
+                    raise RuntimeError("Backend returned inconsistent shared fused namespace tags")
+                continue
             if initialize_tables:
                 self.kv_client.init_data(
                     name=config.name,
@@ -249,6 +296,19 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
                         int(config.num_embeddings),
                         int(config.embedding_dim),
                     )
+
+    def shared_fused_namespace_identity(self) -> Dict[str, Any]:
+        """Describe the experimental layout; checkpoint save/load remain unsupported."""
+        if not self._shared_fused_namespace:
+            raise RuntimeError("Shared fused namespace is not enabled")
+        table_id, tag = self.kv_client.get_embedding_table_namespace(self._master_config.name)
+        return {
+            "layout": "shared_fused_namespace_v1", "table_id": table_id,
+            "parameter_tag": tag, "fusion_k": self._fusion_k,
+            "tables": [{"name": c.name, "shape": [c.num_embeddings, c.embedding_dim],
+                        "base_offset": idx << self._fusion_k}
+                       for idx, c in enumerate(self._embedding_bag_configs)],
+        }
 
     def _remote_backend_requires_eager_connect(self) -> bool:
         """Whether non-initializer ranks must eagerly open the PS connection.
