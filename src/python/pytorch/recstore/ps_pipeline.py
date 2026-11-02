@@ -176,8 +176,13 @@ class PSPipeline:
             "ps_pipeline_global_dirty_rows": dirty.numel(),
         }
 
-    def _exchange_canonical_metadata(self, step, ticket):
+    def _build_exchange_plan(self, ticket, peer_keys, peer_counts):
+        """Canonical contribution plan from the exchanged counts; the merged
+        owner pipeline overrides this because merged rows carry no tree."""
         from .canonical_ps import build_plan
+        return build_plan(ticket, peer_keys, peer_counts, self._rank)
+
+    def _exchange_canonical_metadata(self, step, ticket):
         start = time.perf_counter()
         header = torch.tensor([step, len(ticket.keys), self._total_steps, self._canonical_layout,
                                ticket.batch_size, ticket.features], dtype=torch.int64)
@@ -205,7 +210,7 @@ class PSPipeline:
         remote_rank = 1 - self._rank
         remote = peers[remote_rank][:sizes[remote_rank]].numpy()
         exchanged = time.perf_counter()
-        plan = build_plan(ticket, remote[:, 0], remote[:, 1], self._rank)
+        plan = self._build_exchange_plan(ticket, remote[:, 0], remote[:, 1])
         self._augment_canonical_plan(plan, peers, sizes)
         dirty = torch.from_numpy(np.unique(np.concatenate(
             [peer[:count, 0].numpy() for peer, count in zip(peers, sizes)])))

@@ -315,6 +315,21 @@ class GPUOwnerPipeline(PSPipeline):
         if self.compute_ahead:
             self._record_compute_state(row)
 
+    def _build_exchange_plan(self, ticket, peer_keys, peer_counts):
+        if not self.owner_merged_grad:
+            return super()._build_exchange_plan(ticket, peer_keys, peer_counts)
+        # Merged rows carry no reduction tree, so nothing consumes the
+        # canonical records/tasks: the row-count check in
+        # _augment_canonical_plan reads records.shape only and the CPU pack
+        # reports their bytes. Building the real per-key plan costs ~20 ms
+        # per step at this batch size, so return the shape-only stub.
+        from .canonical_ps import ContributionPlan
+        records = np.zeros((len(ticket.keys), 5), dtype=np.int64)
+        return ContributionPlan(records, np.empty(0, dtype=np.int64),
+                                np.empty(0, dtype=np.int64),
+                                ticket.batch_size, ticket.features,
+                                self._rank, 0)
+
     def _augment_canonical_plan(self, plan, peers, sizes):
         columns = [peer[:size, column].contiguous()
                    for peer, size in zip(peers, sizes) for column in (0, 1)]
