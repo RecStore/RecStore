@@ -571,11 +571,12 @@ class RecStoreRunner(BenchmarkRunner):
                 )
             )
 
-            if continuous_mode and not all(getattr(read_path, name, False) for name in (
+            allow_base = os.environ.get("RECSTORE_CONTINUOUS_ALLOW_BASE") == "1"
+            if continuous_mode and not allow_base and not all(getattr(read_path, name, False) for name in (
                 "unified_forward", "canonical_gpu_plan", "candidate_handoff", "compute_ahead"
             )):
                 raise ValueError("Continuous PS only supports the selected owner forward/handoff/compute-ahead path")
-            if continuous_mode and getattr(read_path, "metadata_lookahead", 0) != 4:
+            if continuous_mode and not allow_base and getattr(read_path, "metadata_lookahead", 0) != 4:
                 raise ValueError("Continuous PS initially supports the selected H4 metadata queue only")
             _barrier_for_step_alignment(
                 dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
