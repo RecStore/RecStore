@@ -180,7 +180,7 @@ SSD 索引创建 `IOBackend` 前的配置映射：
 | `bandana` | 每个 key 一个固定页槽 |
 | `maxembed` | 每个 key 一个 primary 槽，外加预算内的副本页 |
 
-离线命令是 `recstore_ssd_layout partition|replicate|shrink|inspect`。`bandana` 只跑 partition；`maxembed` 在 partition 之后跑 replicate，需要更低副本率时再 shrink。运行时加载 artifact，并要求 `strategy` 和 `default_value_size_hint` 与文件一致。输入和 artifact 字节布局见 [ssd_layout.md](../../src/storage/ssd_layout/ssd_layout.md)。
+离线命令是 `recstore_ssd_layout partition|replicate|shrink|inspect`。`bandana` 只跑 partition；`maxembed` 在 partition 之后跑 replicate，需要更低副本率时再 shrink。运行时加载 artifact，并要求 `strategy` 和 `default_value_size_hint` 与文件一致。输入和 artifact 字节布局见 [ssd_layout.md](https://github.com/RecStore/RecStore/blob/main/src/storage/ssd_layout/ssd_layout.md)。
 
 固定槽位不会 `Alloc` 或 `Free`。更新覆盖该 key 的全部副本；mapping 中没有的 key、变长 value 会直接失败。换 strategy 或 artifact 不能热切换，必须用空 engine 重新 `BulkLoad` 或 `LoadCheckpoint`。
 
@@ -303,44 +303,4 @@ Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 c
 
 ## 扩展指南
 
-### 新增 Index
-
-```cpp
-void Get(Key_t key, Value_t& pointer, unsigned tid) override;
-Value_t Put(Key_t key, Value_t pointer, unsigned tid) override;
-void BatchGet(base::ConstArray<Key_t> keys, Value_t* pointers, unsigned tid) override;
-void BatchPut(base::ConstArray<Key_t> keys, Value_t* pointers, unsigned tid) override;
-bool Delete(Key_t& key) override;
-```
-
-未命中返回 `kValueHandleNone`。注册：
-
-```cpp
-FACTORY_REGISTER(Index, MY_INDEX, MyIndex, const BaseKVConfig&);
-```
-
-在 `test_kvengine` 参数化中增加 `index.type` 组合。
-
-### 新增 ValueStore
-
-实现 `Alloc` / `Write` / `Read` / `Free` / `SlotCapacity`；DRAM 可实现 `DirectPtr`。注册后补充 `test_kvengine` 与配置样例。
-
-### 新增 IOBackend
-
-以 **page** 为单位；实现同步/异步读写、`AllocateBuffer`、完成轮询；能批量提交时覆盖 `BatchReadPages` / `BatchWritePages`。
-
-```cpp
-FACTORY_REGISTER(IOBackend, MY_IO, MyIoBackend, const BaseKVConfig&);
-```
-
----
-
-## 修改检查清单
-
-| 改动 | 验证 |
-|------|------|
-| Index | `ctest -R test_kvengine` |
-| ValueStore / DRAM allocator | `test_kvengine` |
-| SSD allocator / IO | `test_io_backend` + SSD value 相关 `test_kvengine` |
-| 配置校验行为 | `KVEngineCompositeConfigTest` |
-| YCSB / 对比 | `.agents/skills/rs-benchmark-kvengine/SKILL.md` |
+[新增 Index、ValueStore 与 IOBackend](../dev/feature/storage.md)。

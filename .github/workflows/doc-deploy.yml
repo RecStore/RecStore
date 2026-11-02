@@ -30,11 +30,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install mkdocs-material
+          pip install -r docs/requirements.txt
 
       - name: Prepare Documentation
         run: |
-          cp README.md docs/index.md
           REPO_NAME="${{ github.event.repository.name }}"
           REPO_OWNER="${{ github.repository_owner }}"
           SITE_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/"
@@ -42,7 +41,7 @@ jobs:
           sed -i "s|^site_url:.*|site_url: ${SITE_URL}|" mkdocs.yml
 
       - name: Build with MkDocs
-        run: mkdocs build
+        run: mkdocs build --strict
 
       - name: Deploy documentation to gh-pages
         run: |

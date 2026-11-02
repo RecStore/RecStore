@@ -1,5 +1,9 @@
 # 分布式训练
 
+!!! note "待重写"
+
+    配置示例仍使用旧的 index_type、value_type 等字段，需按当前 Composite 配置重写。
+
 以两台机器为例，每台机器 1 个 trainer，1 个分片的存储后端。
 
 ## 环境

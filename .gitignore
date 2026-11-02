@@ -69,3 +69,6 @@ model_zoo/RankMixer/
 model_zoo/rs_demo/runtime/local_embedding_backend.py
 src/external_ps_adapter/
 run_3node_bench.sh
+
+# MkDocs build output
+/site/

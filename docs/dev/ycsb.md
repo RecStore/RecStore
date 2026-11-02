@@ -1,4 +1,4 @@
-# YCSB 存储对比
+# KVEngine 存储基准
 
 目前可以进行 RecStore 内部存储横向对比（`kvdb` 和 `cceh`）；以及 RecStore 与其他 KV 存储对比（`rocksdb`、`leveldb`、`lmdb`、`sqlite`、`wiredtiger`、...）。
 
