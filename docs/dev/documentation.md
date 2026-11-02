@@ -29,6 +29,18 @@
 | [性能报告](../performance/reports.md) | 补齐环境、版本和复现命令。 |
 | [性能埋点](instrumentation.md) | 整理已折叠的旧版 txt 埋点说明。 |
 
+## 接口文档核对
+
+`EmbWriteAsync`、`IsWriteDone`、`WaitForWrite`、`SaveToFile`、`LoadFromFile` 在现有文档中列为占位接口，后续按实现进度更新 API 说明。
+
+新增接口时，同步修改 `op.h`、`op.cc`、`op_torch.cc` 和 mock 路径；文件划分随前面的接口核对一并更新。
+
+## 性能文档维护
+
+RDMA 模块页维护架构与参数语义，单次运行的吞吐数据和矩阵结果放在性能报告中。benchmark 输出、日志和 `summary.md` 放在独立的 `results/` 目录。
+
+性能比较标注 storage-only、PS/network 或 PyTorch/model 层，指标解释见[性能比较背景](../agent/perf.md)。
+
 ## 本地预览
 
 ```bash

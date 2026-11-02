@@ -92,7 +92,7 @@ nav:
       - DLRM / TorchRec 集成: usage/integration.md
       - 分布式训练: dev/distributed.md
     - 配置指南: usage/configuration.md
-    - 常见问题与排障: faq.md
+    - 常见问题: faq.md
   - 开发:
     - dev/index.md
     - 系统架构:

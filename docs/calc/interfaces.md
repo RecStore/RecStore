@@ -1,6 +1,6 @@
 # 计算层接口
 
-这一页记录计算层的边界接口：Python client、PyTorch op、C++ facade。模型代码通常只用 `RecStoreClient` 或 embedding 模块，不直接碰 `KVClientOp`。
+计算层接口分为 Python client、PyTorch op 和 C++ facade。模型代码通常通过 `RecStoreClient` 或 embedding 模块访问后端。
 
 ## Python client
 

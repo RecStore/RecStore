@@ -109,10 +109,10 @@ SSD 索引创建 `IOBackend` 前的配置映射：
 | DRAM 三类 | 支持 | 支持 | 支持 |
 | `SSD` / `SSD_EXTENDIBLE_HASH` | 不推荐 | 支持（测试重点） | 需自行验证 |
 
-| `value.type` | 允许 / 禁止 |
+| `value.type` | 字段约束 |
 |--------------|-------------|
-| `DRAM_VALUE_STORE` | `dram_allocator` 必填；不要 `ssd_allocator` |
-| `SSD_VALUE_STORE` | `ssd_allocator` 必填；不要 `dram_allocator`；文件路径仅 `value.path` |
+| `DRAM_VALUE_STORE` | `dram_allocator` 必填；不接受 `ssd_allocator` |
+| `SSD_VALUE_STORE` | `ssd_allocator` 必填；不接受 `dram_allocator`；文件路径为 `value.path` |
 | `TIERED_VALUE_STORE` | 两者必填；SSD 路径在 `ssd_allocator.path`；DRAM 路径可选 `dram_allocator.path`（常为 `/dev/shm/...`） |
 
 **Tiering**：`HybridValueStore` 在 `dram_bytes_reserved + size <= capacity * high_watermark_ratio`（默认 `0.85`）时优先 DRAM，否则 SSD；handle 最高位标记介质。**无后台冷热迁移**。

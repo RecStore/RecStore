@@ -2,7 +2,7 @@
 
 本文档说明 RecStore Parameter Server 的 RDMA 主路径、入口边界和运行时约束。
 可执行的构建、正确性测试、benchmark 命令、默认值和报告规则统一维护在
-`rs-benchmark-ps` skill；不要在本页复制测试命令或临时性能数字。
+`rs-benchmark-ps` skill。
 面向真实跨机部署的配置、IB/RoCE v1/RoCE v2 选择和改造边界，以代码中的
 `ResolvedRdmaDeployment` 配置契约和本页的稳定架构说明为准。
 
@@ -14,12 +14,12 @@ cd /app/RecStore
 
 ## 1. 适用范围
 
-当前文档只覆盖 Parameter Server 的 RDMA 主路径，不讨论 gRPC / bRPC 的通用网络栈。
+本页介绍 Parameter Server 的 RDMA 主路径。
 
-当前实现的两个重要边界：
+当前实现：
 
-- RDMA 数据面使用仓内 verbs RC-write slot transport，不再依赖 Mayfly `RawMessage`。
-- RDMA 控制面由 shard 0 的 `petps_server` 内置 gRPC 控制面承担，不再依赖 memcached。
+- RDMA 数据面使用仓内 verbs RC-write slot transport。
+- RDMA 控制面由 shard 0 的 `petps_server` 内置 gRPC 控制面承担。
 
 RecStore 有两条 RDMA 入口：
 
@@ -32,11 +32,9 @@ RecStore 有两条 RDMA 入口：
 
 - PetPS integration / benchmark 主要使用 C++ gflags 和对应 runner。
 - Op-layer / Python client 使用环境变量和测试配置。
-- 不要将某个 runner 的参数复制到另一条入口。
 
-Op-layer RDMA 目前不是 gRPC/bRPC 的完整替代：`AsyncGetParameter` 已复用统一的
-`RdmaDistributedExecutor`，`Command` 当前只通过首个 shard 的 `Barrier` 提供同步语义；
-它主要用于 correctness / integration，而不是完整性能替代路径。
+Op-layer RDMA 主要用于 correctness / integration。`AsyncGetParameter` 已复用统一的
+`RdmaDistributedExecutor`，`Command` 当前只通过首个 shard 的 `Barrier` 提供同步语义。
 
 ## 2. 架构
 
@@ -53,7 +51,7 @@ Op-layer RDMA 目前不是 gRPC/bRPC 的完整替代：`AsyncGetParameter` 已�
 qps-per-client-per-shard * slots-per-qp
 ```
 
-因此 `qps-per-client-per-shard` 是 QP 池规模，不是单独的吞吐结论。
+`qps-per-client-per-shard` 表示 QP 池规模。
 
 ### 2.2 代码分工
 
@@ -64,7 +62,7 @@ qps-per-client-per-shard * slots-per-qp
 | `src/ps/rdma/petps_client.*` | PetPS 请求映射、QP 选择和 client 在途管理 |
 | `src/ps/rdma/petps_server.*` | slot 扫描、协议处理和 response 完成 |
 
-`raw_verbs_transport` 直接走真实 verbs RC 路径，不是 `shm_open + mmap` baseline。
+`raw_verbs_transport` 直接使用 verbs RC 传输。
 `GlobalAddress`、QP metadata exchange 和 ready 协调由 RecStore 自维护。
 
 ### 2.3 控制面
@@ -148,8 +146,8 @@ RDMA RC 只在**有 WR 在飞**时才通过 ACK 超时暴露链路问题。因�
 - **对端进程被杀死、但 WRITE 已被 ACK**：这次 WRITE 的 CQE 是成功；下一次 WRITE 才会撞
   `RETRY_EXC_ERR`。杀死瞬间在飞的请求没有设备层信号。
 - **对端重启但链路空闲**：QP 空闲不发包，本地看不到任何异常，旧 QPN 的 QP 看起来正常。
-- **控制面本身不可达**：`GetServerHealth` 返回 `known=false`，这**不是**"不健康"，
-  请求退回自己的等待预算，不会误判。
+- **控制面本身不可达**：`GetServerHealth` 返回 `known=false`，表示节点健康状态未知。
+  请求继续按自身的等待预算处理。
 
 前两种只能靠节点层心跳（`dead` 阈值默认 9 s）或等待超时兜住——这是"设备层 + 节点层"
 两条检测通道必须同时在的原因。
@@ -159,21 +157,20 @@ RDMA RC 只在**有 WR 在飞**时才通过 ACK 超时暴露链路问题。因�
 | 层 | 机制 | 重试对象 | 应用可见 | 默认 |
 | --- | --- | --- | --- | --- |
 | 硬件 | verbs RC 重试（`timeout=14`、`retry_cnt=7`、`rnr_retry=7`） | 单个 WQE | 不可见 | 恒开 |
-| 传输 | tracked-write 重等：复用 slot 前先等上一个 CQE | 完成事件（不是请求） | 不可见 | 恒开 |
+| 传输 | tracked-write 重等：复用 slot 前先等上一个 CQE | 完成事件 | 不可见 | 恒开 |
 | lane | QP 重建（reset → drain → 重配 → 双边 generation 握手） | 整条 lane | 可见 | `--rdma-lane-rebuild-enabled`，默认关 |
 | 请求 | **不存在** | — | 可见（异常） | — |
 
 lane 重建的几个稳定语义：
 
-- **触发点是取 slot，不是后台线程。** 没有流量就不会重建；一条 lane 能服务时，其余降级
-  lane 不会被主动修（无 sweep），容量会持续偏低直到流量落到那条 lane。
-- **预算是进程生命周期累计。** `rebuild_attempts` 只增不减，成功恢复也不清零：默认 3 次是
-  "这条 lane 一生能救几次"，不是"每次中断的配额"。
-- **握手成功的判据是对端 generation 变大**，不是"我 reset 完就算成功"。两侧独立计数，
-  所以一次失败的握手把 generation 推高，也不会让下一次误判成功。
-- **重建成功后，被打断的请求是失败，不是重放。** 重建时无法判断该请求是否已被服务端执行
-  （`UPDATE` 走 optimizer 应用梯度，重复执行会改变结果），所以在"可能重复执行"和"一定失败"
-  之间选择后者，由上层决定是否整批重来。
+- **重建在获取 slot 时触发。** 系统没有后台 sweep；没有流量时不触发重建。一条 lane 能服务时，
+  其余降级 lane 要等流量再次落到该 lane 才会尝试恢复，期间可用容量持续偏低。
+- **重建预算按进程生命周期累计。** 每条 lane 默认最多尝试 3 次；`rebuild_attempts` 只增不减，
+  成功恢复后也保留累计次数。
+- **握手以对端 generation 增大为成功条件。** 两侧独立计数，失败握手引起的 generation 增长
+  不会导致下一次握手误判成功。
+- **重建后，被中断的请求以失败结束，由上层决定是否整批重试。** 此时无法确定请求是否已被
+  服务端执行。`UPDATE` 会通过 optimizer 应用梯度，重复执行会改变结果，因此传输层不自动重放请求。
 - **`num_os_clients > 1` 拒绝重建。** 服务端一条 lane 的 CQ 上挂着多个 client 进程的 QP，
   reset 后无法安全 drain，两端都保持终态置脏并记一次 warning。
 
@@ -206,9 +203,8 @@ CQE；**等到接近等待超时**说明收割与慢路径都被关了（对应 
 - `read` 和 `push` 是不同的 PUT-v2 payload 路径，结果不能直接混合比较。
 - `rdma-get-response-mode=auto` 会按 index/value layout 选择 GET response path；
   当前 `DRAM_PET_HASH` 使用 `staging_copy`，其他 index 默认使用 `direct_sg`。
-- Debug/O0 适合调试，不应作为吞吐结果；benchmark 报告使用 Release 构建。
-- 源码修改后必须重编对应的 `petps_server`、benchmark、integration 或 op-layer target，
-  否则旧 binary 可能掩盖修改结果。
+- 调试使用 Debug/O0 构建，吞吐基准使用 Release 构建。
+- 修改源码后，重新编译对应的 `petps_server`、benchmark、integration 或 op-layer target，再验证结果。
 - 热点路径零开销：正常请求（µs 级完成）既不查控制面（1 s 后才查）也不收割 CQ
   （50 ms 后才收割）；lane 重建检查在开关关闭时直接返回。
 
@@ -246,7 +242,7 @@ CQE；**等到接近等待超时**说明收割与慢路径都被关了（对应 
 
 拓扑参数要按入口理解：generic PS runner 使用 `--server-shard-ips`、
 `--client-ips` 和 `--client-processes-per-ip`；专项 RC runner 使用
-`--server-count`、`--client-count` 和 `--thread-num`。不要混用两组参数。
+`--server-count`、`--client-count` 和 `--thread-num`。两组参数分别对应各自的 runner。
 
 ## 5. Profile 解读
 
@@ -258,7 +254,7 @@ Profile 主要分为三层，先确认 benchmark 所属层级，再解释数字�
 `revoke_resource_ns`、`pending_rpc_peak`、`acquire_qp_failures`。
 
 提交、等待或 response copy 分别偏高时，对应 client 固定开销、completion/服务端处理、
-或数据搬运可能是瓶颈；`acquire_qp_failures` 表示资源不足，不是性能变慢。
+或数据搬运可能是瓶颈；`acquire_qp_failures` 表示 QP 资源不足。
 
 ### Server：`component=rdma_rc_server_profile`
 
@@ -297,17 +293,16 @@ row copy 和 response completion 可分别定位查找、清零、搬运和回�
 | `event=lane_rebuild_timeout` | 恢复 | 握手 2 s 内未收到对端新 generation；先确认对端是否也开了重建 |
 | `event=lane_rebuild_failed` | 恢复 | 握手抛异常；`error=` 区分控制面还是 verbs |
 | `event=lane_rebuild_exhausted` | 恢复 | 预算耗尽，该 lane 进入终态 `dead` |
-| `event=lane_rebuild_skipped` | 恢复 | `reason=shared_server_cq`，即 `num_os_clients>1`，属部署形态而非缺陷 |
+| `event=lane_rebuild_skipped` | 恢复 | `reason=shared_server_cq`，即 `num_os_clients>1`；共享 CQ 的多 client 部署会跳过重建 |
 | `event=handler_exception` | 服务端业务 | handler 抛异常，客户端会收到 `-6`（`kInternalError`），进程不退出 |
-| `event=get_payload_dropped_stale` | 服务端 fence | payload 因重建作废、不再写 status；这是"防住了"，不是故障 |
+| `event=get_payload_dropped_stale` | 服务端 fence | 服务端 fence 丢弃因重建失效的 payload，并停止回写 status |
 
 
 构建、RDMA verbs 检查、PetPS integration、op-layer 测试、脚本单测和最小真实 RDMA
 闭环命令见 `rs-benchmark-ps` skill。
 
-## 7. 维护边界
+## 7. 相关文档
 
-- 本页维护稳定的架构事实和参数语义，不维护某次运行的吞吐数字、矩阵结果或路线图。
-- benchmark 输出、日志和 `summary.md` 放在独立的 `results/` 目录。
-- 性能比较必须标注 storage-only、PS/network 或 PyTorch/model 层；解释规则见
-  [`docs/agent/perf.md`](../agent/perf.md)。
+- [参数服务器与传输基准](../performance/ps.md)
+- [性能比较的层级与指标](../agent/perf.md)
+- [文档维护](../dev/documentation.md)

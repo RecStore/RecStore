@@ -48,8 +48,8 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
 
 作用位置：字段最终进入 `BaseKVConfig.json_config_`，在 `src/storage/kv_engine/engine_selector.h` 中推导引擎类型，并在 `src/storage/kv_engine/base_kv.h` 及对应引擎实现中用于容量预分配与值大小约束。
 
-???+ note "注意"
-    Composite 配置请使用嵌套 `index` / `value`，不要混用已废弃的顶层 `index_type`、`value_type`、`value_memory_management` 等字段。组件类型与 allocator 明细见 [composite_kvengine.md](./storage/composite_kvengine.md)。
+???+ note "Composite 配置结构"
+    Composite 使用嵌套的 `index` / `value` 配置。顶层 `index_type`、`value_type`、`value_memory_management` 字段已废弃。组件类型与 allocator 明细见 [composite_kvengine.md](./storage/composite_kvengine.md)。
 
 #### value 配置结构
 
@@ -144,10 +144,7 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
 | `device_id` | integer | 否 | 可选 CUDA 设备号 |
 | `reserved_key_start_bit` | integer | 否 | 可选保留 key 起始 bit，范围 0-62 |
 
-注意：
-
-- 这组配置当前只进入 HugeCTR 侧适配层，不会回流到 `CommonOp`
-- 如果选择 `hierkv` 但缺少上述必填字段，HugeCTR 入口会直接抛出配置错误
+这组配置由 HugeCTR 侧适配层读取，`CommonOp` 不使用这些字段。选择 `hierkv` 时，缺少必填字段会在 HugeCTR 入口抛出配置错误。
 
 ## 配置示例
 

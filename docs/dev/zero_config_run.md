@@ -4,19 +4,14 @@
 
     统一镜像来源、标签和构建步骤，消除与源码构建指南的重复。
 
-为了方便开发者快速体验 RecStore 而无需在本地搭建完整编译环境，我们现在提供基于 Docker 镜像的免配置运行方式。
+Docker 开发镜像提供 RecStore 的编译和运行环境。
 
-推荐直接使用已经构建好的开发镜像：
+开发镜像：
 
 - 包页面：<https://github.com/Choimoe/RecStore/pkgs/container/recstore%2Frecstore-devel>
 - 镜像地址：`ghcr.io/choimoe/recstore/recstore-devel`
 
-???+ Warning "注意"
-    该方式主要面向 Linux 环境。
-
-    当前公开镜像默认是 CPU 开发环境，主要用于本地调试、单机测试和快速验证，不等同于生产部署方案。
-
-通过直接拉取云端构建好的 Docker 镜像，你可以在标准 Linux 环境（如 Ubuntu 20.04/22.04）中快速进入可运行的 RecStore 环境。
+镜像主要面向 Linux 环境（如 Ubuntu 20.04/22.04），默认提供 CPU 开发环境，用于本地调试、单机测试和快速验证。
 
 ## 1. 获取镜像
 
@@ -36,11 +31,11 @@
 docker pull ghcr.io/choimoe/recstore/recstore-devel:latest
 ```
 
-如果你需要固定某个版本，也可以把 `latest` 替换为具体 tag。
+固定环境版本时，将 `latest` 替换为具体 tag。
 
 ## 2. 环境准备
 
-宿主机只需要准备 Docker 即可，不再要求本地提前安装编译依赖。
+宿主机安装 Docker，编译依赖由镜像提供。
 
 ### 2.1 准备代码仓库
 
@@ -147,9 +142,3 @@ ctest --output-on-failure
 cd /workspace/build
 ctest -R pytorch_client_test -VV
 ```
-
-## 5. 常见说明
-
-- 这个页面讲的是“直接使用已构建 Docker 环境”，不是下载二进制 tar 包后在宿主机手动拼运行时依赖。
-- 如果你只是想快速进入一个可工作的 RecStore 开发环境，优先使用 `ghcr.io/choimoe/recstore/recstore-devel`。
-- 如果你需要固定环境，请显式指定镜像 tag，而不是依赖 `latest`。

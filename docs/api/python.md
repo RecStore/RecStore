@@ -19,7 +19,4 @@ client = RecStoreClient(library_path="/path/to/lib_recstore_ops.so")
 | `update(name, ids, grads)` | 发送 sparse gradients。 |
 | `set_ps_config(host, port)` | 重建底层 PS client。 |
 | `set_ps_backend(backend)` | 切换 RPC、本地共享内存或 HierKV 路径。 |
-
-??? warning "delete_data 的边界"
-
-    `delete_data` 只清理 Python 本地元数据，不删除后端数据。不要把它当成存储清理接口。
+| `delete_data` | 清理 Python 本地元数据，后端数据保留。 |

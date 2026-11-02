@@ -4,13 +4,10 @@
 
     现有数据需补齐测试版本、硬件、拓扑和复现命令。
 
-不要把某一层的结果直接扩展成整体架构结论。当前 RDMA GET 的阶段性结论对齐了
-storage-only 的 `BatchGetFlat(500 random keys)` 和 PS/network 的
-RDMA GET `batch_keys=500`，结论是：
+以下结果分别对应 storage-only 和 PS/network 两层：存储端使用
+`BatchGetFlat(500 random keys)`，RDMA GET 使用 `batch_keys=500`。
 
-
-目前的性能数据（由于机器配置不同），仅供参考，PS启动了16核，RDMA网卡为200 Gbps：
-
+测试时 PS 使用 16 核，RDMA 网卡为 200 Gbps。各次测试的机器配置不同。
 
 | 层级           | 场景                                       | 吞吐                                                |
 | ------------ | ---------------------------------------- | ------------------------------------------------- |

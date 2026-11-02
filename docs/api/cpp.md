@@ -20,11 +20,3 @@ class CommonOp {
 ```
 
 `KVClientOp` 是默认实现。它根据配置选择远程 PS client 或本地 HierKV runtime。
-
-??? note "新增接口时要改哪些文件"
-
-    至少同步修改 `op.h`、`op.cc`、`op_torch.cc`。mock 路径也要补齐，否则 Python 单测可能只覆盖假实现。
-
-??? warning "占位接口"
-
-    `EmbWriteAsync`、`IsWriteDone`、`WaitForWrite`、`SaveToFile`、`LoadFromFile` 仍是占位接口。不要写成可用能力。
