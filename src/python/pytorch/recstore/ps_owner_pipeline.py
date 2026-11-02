@@ -115,6 +115,12 @@ class GPUOwnerPipeline(PSPipeline):
         self._owner_failed = False
         if kwargs.get("canonical_table_types") is None and not owner_merged_grad:
             raise ValueError("GPU owner updates require the exact canonical table plan")
+        if owner_merged_grad and kwargs.get("canonical_table_types") is None:
+            # Merged owners still ride the shared count-exchange ticket
+            # machinery, which needs a table plan; without a canonical
+            # reference plan every feature defaults to table-wise. The merged
+            # plan records the per-row type but never branches on it.
+            kwargs = dict(kwargs, canonical_table_types=[0] * len(kwargs["table_offsets"]))
         if not kwargs.get("dependency_split"):
             raise ValueError("GPU owner updates currently require dependency splitting")
         plan_op = ("owner_merged_forward_plan" if self.owner_merged_grad else
@@ -126,13 +132,7 @@ class GPUOwnerPipeline(PSPipeline):
                 raise RuntimeError("GPU owner path requires native op " + name)
         offsets = list(kwargs["table_offsets"].values())
         self._owner_boundaries = torch.tensor(offsets + [owner_table_end], dtype=torch.int64)
-        # The merged plan records the table type in each meta row but never
-        # branches on it (no reduction tree); without a canonical reference
-        # plan it defaults to table-wise for every feature.
-        table_types = (kwargs.get("canonical_table_types")
-                       if kwargs.get("canonical_table_types") is not None
-                       else [0] * len(offsets))
-        self._owner_types = torch.tensor(table_types, dtype=torch.int64)
+        self._owner_types = torch.tensor(kwargs["canonical_table_types"], dtype=torch.int64)
         _, self._owner_tag = kv_client.get_embedding_table_namespace(kwargs["master_table_name"])
         self._owner_plan = self._owner_read = self._owner_exchange = None
         if self.owner_merged_grad:
@@ -141,7 +141,10 @@ class GPUOwnerPipeline(PSPipeline):
         else:
             from .owner_gpu import initialize_owner_math
             initialize_owner_math(torch.device(kwargs["device"]))
-        super().__init__(embedding_module, kv_client, **kwargs)
+        # owner_merged_grad must reach the parent: the optimizer and the
+        # packing branch read it from this shared pipeline object, and the
+        # parent constructor no longer resets it to False.
+        super().__init__(embedding_module, kv_client, owner_merged_grad=owner_merged_grad, **kwargs)
         # Peer vector splits must agree on the real encoded-key ownership too.
         identity = (self._canonical_layout.to_bytes(8, "little")
                     + self._owner_tag.to_bytes(8, "little")

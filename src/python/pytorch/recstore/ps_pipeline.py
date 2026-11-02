@@ -36,7 +36,7 @@ class PSPipeline:
     def __init__(self, embedding_module, kv_client, *, table_offsets,
                  master_table_name, embedding_dim, device, lr=0.01,
                  validation_state=False, dependency_split=False, total_steps=None,
-                 canonical_table_types=None):
+                 canonical_table_types=None, owner_merged_grad=False):
         self.embedding_module = embedding_module
         self.kv_client = kv_client
         self.master_table_name = master_table_name
@@ -54,8 +54,10 @@ class PSPipeline:
         self._total_steps = total_steps
         self.canonical = canonical_table_types is not None
         # Merged-gradient owners reuse the canonical count exchange and ticket
-        # machinery but pack one merged row per unique key (index_add_).
-        self.owner_merged_grad = False
+        # machinery but pack one merged row per unique key (index_add_). The
+        # flag must survive the parent constructor: the owner subclass sets it
+        # before super() and the optimizer reads it from this shared object.
+        self.owner_merged_grad = bool(owner_merged_grad)
         self._canonical_table_types = tuple(canonical_table_types or ())
         self._canonical_metadata = {}
         self._canonical_records = None
@@ -73,8 +75,11 @@ class PSPipeline:
             layout = (self._offsets.numpy().tobytes() + bytes(self._canonical_table_types)
                       + "\0".join(self._keys).encode("utf-8"))
             self._canonical_layout = int.from_bytes(hashlib.sha256(layout).digest()[:8], "little") & (2**63 - 1)
-            from .canonical_ps import initialize_gpu_reducer
-            initialize_gpu_reducer()
+            if not self.owner_merged_grad:
+                # The reduction-tree kernel belongs to the canonical protocol;
+                # merged owners exchange one row per key and never reduce.
+                from .canonical_ps import initialize_gpu_reducer
+                initialize_gpu_reducer()
         if self.dependency_split and (self._world != 2 or not isinstance(total_steps, int)
                                       or isinstance(total_steps, bool) or total_steps < 1):
             raise ValueError("Dependency-split pull requires world=2 and positive total_steps")
