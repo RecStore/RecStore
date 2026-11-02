@@ -76,6 +76,7 @@ not_in_nav: |
   /agent/perf.md
   /calc/interfaces.md
   /dev/performance.md
+  /dev/zero_config_run.md
 
 watch:
   - README.md
@@ -85,9 +86,8 @@ nav:
   - 使用:
     - usage/index.md
     - 快速开始:
-      - 快速运行: quickrun.md
-      - Docker 开发镜像: dev/zero_config_run.md
-      - 从源码构建: quickstart.md
+      - 1. 从源码构建: quickstart.md
+      - 2. 快速运行: quickrun.md
     - 运行与集成:
       - DLRM / TorchRec 集成: usage/integration.md
       - 分布式训练: dev/distributed.md
