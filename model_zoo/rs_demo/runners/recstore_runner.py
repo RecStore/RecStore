@@ -109,7 +109,10 @@ def _finalize_step_timing(row: dict[str, Any], *, wall_start: float) -> None:
 
 
 def _consume_perf_stats(obj: Any) -> dict[str, float]:
-    stats = obj.consume_perf_stats(reset=True)
+    consume = getattr(obj, "consume_perf_stats", None)
+    if not callable(consume):
+        return {}
+    stats = consume(reset=True)
     return stats if isinstance(stats, dict) else {}
 
 
@@ -760,6 +763,10 @@ class RecStoreRunner(BenchmarkRunner):
                 events.emit("sparse_end", step=step)
                 row["loss"] = float(loss.detach().float().cpu().item())
                 _merge_consumed_perf_stats(row, _consume_perf_stats(embedding_module))
+                _merge_consumed_perf_stats(row, _consume_perf_stats(sparse_optimizer))
+                _merge_consumed_perf_stats(
+                    row, _consume_perf_stats(getattr(embedding_module, "kv_client", None))
+                )
                 row["step_sync_wait_ms"] = timer.finish()
                 # After the device drain point: readbacks here (stats
                 # draining) add no hidden wait to the phase timers above.

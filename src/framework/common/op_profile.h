@@ -24,6 +24,11 @@ enum UpdateProfileIndex : std::size_t {
   kUpdateGradsStageMs,
   kUpdateShmCallMs,
   kUpdateStageWaitMs,
+  kUpdateSlotAcquireMs,
+  kUpdateCopyEnqueueMs,
+  kUpdateWaitMs,
+  kUpdateServerQueueWaitMs,
+  kUpdateServerBackendMs,
   kUpdateProfileSize,
 };
 
