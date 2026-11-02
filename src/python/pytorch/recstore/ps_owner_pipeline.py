@@ -113,7 +113,7 @@ class GPUOwnerPipeline(PSPipeline):
         self.unified_forward = unified_forward
         self._pending_owner_step = None
         self._owner_failed = False
-        if kwargs.get("canonical_table_types") is None:
+        if kwargs.get("canonical_table_types") is None and not owner_merged_grad:
             raise ValueError("GPU owner updates require the exact canonical table plan")
         if not kwargs.get("dependency_split"):
             raise ValueError("GPU owner updates currently require dependency splitting")
@@ -126,7 +126,13 @@ class GPUOwnerPipeline(PSPipeline):
                 raise RuntimeError("GPU owner path requires native op " + name)
         offsets = list(kwargs["table_offsets"].values())
         self._owner_boundaries = torch.tensor(offsets + [owner_table_end], dtype=torch.int64)
-        self._owner_types = torch.tensor(kwargs["canonical_table_types"], dtype=torch.int64)
+        # The merged plan records the table type in each meta row but never
+        # branches on it (no reduction tree); without a canonical reference
+        # plan it defaults to table-wise for every feature.
+        table_types = (kwargs.get("canonical_table_types")
+                       if kwargs.get("canonical_table_types") is not None
+                       else [0] * len(offsets))
+        self._owner_types = torch.tensor(table_types, dtype=torch.int64)
         _, self._owner_tag = kv_client.get_embedding_table_namespace(kwargs["master_table_name"])
         self._owner_plan = self._owner_read = self._owner_exchange = None
         if self.owner_merged_grad:
