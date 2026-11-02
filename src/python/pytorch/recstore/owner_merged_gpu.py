@@ -2,7 +2,9 @@
 
 The exchange, validation, staging and cleanup contracts are inherited from
 GPUOwnerExchange/ForwardGPUOwnerExchange unchanged. Only the arithmetic hooks
-are replaced: per row g = (rank0 row?) + (rank1 row?) in fixed order, then
+are replaced: per row g = ((rank0 row?) + (rank1 row?)) * 0.5 in fixed order
+(the v1/v2 TW/DP world mean; v1 received pre-divided inputs, the v4 wire
+carries raw pooled rows so the kernel halves the sum), then
 updated = fmaf(-lr, g, old) on the v2 kernel (recstore_owner_math_v2, its own
 JIT cache name, same strict FP flags as v1).
 """

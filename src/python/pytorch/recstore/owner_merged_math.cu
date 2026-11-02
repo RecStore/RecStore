@@ -7,6 +7,8 @@
 // Merged-gradient owner arithmetic. Native code validates merged records
 // before upload. Metadata columns: key,c0,c1,type,offset0,nvec0,offset1,nvec1.
 // Each row carries at most one merged vector per source rank (nvec in {0,1}).
+// The merged row is the world-2 mean of the source rows (v1/v2 divisor
+// semantics); see the kernel comment for the exact FP ordering.
 // The kernel contract mirrors owner_math.cu v1: defensive device bounds, the
 // same atomicOr error codes (1 malformed metadata, 2 arithmetic), optional
 // gradient output, and the status[1] tensor checked by the v4 commit callback.
@@ -32,7 +34,12 @@ __global__ void owner_merged_kernel(const int64_t* meta, const float* v0,
   // contributes positive zero, matching the v1 type-1 absent-rank behavior.
   const float a = m[5] ? v0[int64_t(m[4]) * 128 + col] : 0.0f;
   const float b = m[7] ? v1[int64_t(m[6]) * 128 + col] : 0.0f;
-  const float result = __fadd_rn(a, b);
+  // TW/DP semantics: the merged row is the world mean, reproducing the v1/v2
+  // server arithmetic (sum the per-rank pooled rows, then divide by world).
+  // v1 inputs arrived pre-divided from canonical_reduce; the v4 wire replaces
+  // server arithmetic entirely, so the halving belongs here. 0.5f is an exact
+  // power-of-two multiply, identical to the server's divisor=world divide.
+  const float result = __fmul_rn(__fadd_rn(a, b), 0.5f);
   const int64_t at = row * 128 + col;
   const float weight = old_weights[at];
   const float updated = __fmaf_rn(-lr, result, weight);

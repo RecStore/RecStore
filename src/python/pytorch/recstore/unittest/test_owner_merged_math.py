@@ -1,8 +1,9 @@
 """Merged owner CUDA kernel vs CPU scalar FMA, bitwise.
 
 Runs on a real CUDA device (SM80 A100). The oracle reproduces the kernel's
-fixed order: g = (rank0 row if present else +0.0) + (rank1 row if present
-else +0.0), updated = fmaf(-lr, g, old). Positive zero is added for absent
+fixed order: s = (rank0 row if present else +0.0) + (rank1 row if present
+else +0.0), g = s * 0.5 (the v1/v2 TW/DP world mean; halving is an exact FP
+operation), updated = fmaf(-lr, g, old). Positive zero is added for absent
 ranks exactly as the kernel does.
 """
 import struct
@@ -40,8 +41,9 @@ class TestOwnerMergedMath(unittest.TestCase):
             for col in range(128):
                 a = cpu_f32(v0[m[4], col]) if m[5] else 0.0
                 b = cpu_f32(v1[m[6], col]) if m[7] else 0.0
-                # IEEE single-precision round-to-nearest addition.
-                g = cpu_f32(a + b)
+                # IEEE single-precision round-to-nearest addition, then the
+                # exact world-2 halving (matches __fmul_rn(sum, 0.5f)).
+                g = cpu_f32(cpu_f32(a + b) * 0.5)
                 old = cpu_f32(weights[row, col])
                 updated = cpu_f32(-cpu_f32(lr) * g + old)
                 gradient.append(g)
