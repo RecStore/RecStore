@@ -981,6 +981,10 @@ LocalShmRequestProfile LocalShmPSClient::GetLastRequestProfile() const {
   return g_last_request_profile;
 }
 
+LocalShmRequestProfile GetLastLocalShmRequestProfile() {
+  return g_last_request_profile;
+}
+
 void LocalShmPSClient::ResetActiveRequestProfile() const {
   g_last_request_profile   = LocalShmRequestProfile{};
   g_active_request_profile = LocalShmActiveRequestProfile{};

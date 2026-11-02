@@ -506,17 +506,20 @@ public:
       int64_t embedding_dim,
       float learning_rate,
       uint8_t tag,
-      unsigned tid) override {
+      unsigned tid,
+      UpdateFlatStats* stats = nullptr) override {
     if (grads == nullptr || keys.Size() != static_cast<size_t>(num_rows) ||
         embedding_dim <= 0) {
       return false;
     }
+    using clock = std::chrono::steady_clock;
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     const int tag_bits      = static_cast<int>(sizeof(tag) * 8);
     const int shift         = static_cast<int>(sizeof(uint64_t) * 8) - tag_bits;
     const uint64_t key_mask = ~0ULL >> tag_bits;
     const size_t row_bytes = static_cast<size_t>(embedding_dim) * sizeof(float);
 
+    const auto tag_start = clock::now();
     thread_local std::vector<uint64_t> tagged_keys;
     tagged_keys.resize(static_cast<size_t>(num_rows));
     for (int64_t r = 0; r < num_rows; ++r) {
@@ -524,17 +527,40 @@ public:
           (static_cast<uint64_t>(tag) << shift) |
           (keys[static_cast<size_t>(r)] & key_mask);
     }
+    if (stats != nullptr) {
+      stats->tag_ns = static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              clock::now() - tag_start)
+              .count());
+    }
 
     thread_local std::vector<DirectFixedRow> rows;
+    base::ConstArray<uint64_t> tagged(tagged_keys);
+    BatchGetFlatStats get_stats;
+    const auto batch_get_start = clock::now();
     if (!BatchGetDirectFixedRows(
-            base::ConstArray<uint64_t>(tagged_keys),
+            tagged,
             num_rows,
             embedding_dim,
             tid,
-            &rows)) {
+            &rows,
+            stats != nullptr ? &get_stats : nullptr)) {
       return false;
     }
+    if (stats != nullptr) {
+      stats->batch_get_ns = static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              clock::now() - batch_get_start)
+              .count());
+      stats->index_lookup_ns = get_stats.index_lookup_ns;
+      stats->store_read_ns =
+          stats->batch_get_ns > get_stats.index_lookup_ns
+              ? stats->batch_get_ns - get_stats.index_lookup_ns
+              : 0;
+      stats->missing_rows = get_stats.missing_rows;
+    }
 
+    const auto loop_start = clock::now();
     std::vector<float> missing_row(static_cast<size_t>(embedding_dim));
     for (int64_t r = 0; r < num_rows; ++r) {
       const auto& row   = rows[static_cast<size_t>(r)];
@@ -543,11 +569,24 @@ public:
         for (int64_t c = 0; c < embedding_dim; ++c) {
           missing_row[static_cast<size_t>(c)] = -learning_rate * grad[c];
         }
+        const auto miss_start =
+            stats != nullptr ? clock::now() : clock::time_point{};
+        PutInternalStats miss_stats;
         PutInternal(tagged_keys[static_cast<size_t>(r)],
                     missing_row.data(),
                     row_bytes,
                     tid,
-                    false);
+                    false,
+                    stats != nullptr ? &miss_stats : nullptr);
+        if (stats != nullptr) {
+          stats->missing_write_ns += static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::nanoseconds>(
+                  clock::now() - miss_start)
+                  .count());
+          stats->missing_alloc_ns += miss_stats.alloc_ns;
+          stats->missing_index_ns += miss_stats.index_ns;
+          stats->missing_track_ns += miss_stats.track_ns;
+        }
         continue;
       }
 
@@ -556,6 +595,18 @@ public:
       for (int64_t c = 0; c < embedding_dim; ++c) {
         value[c] -= learning_rate * grad[c];
       }
+    }
+    if (stats != nullptr) {
+      const auto loop_ns = static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              clock::now() - loop_start)
+              .count());
+      // The miss path is timed separately; subtract it so the hit write-back
+      // bucket does not double count the inserts.
+      stats->writeback_ns =
+          loop_ns > stats->missing_write_ns
+              ? loop_ns - stats->missing_write_ns
+              : 0;
     }
     return true;
   }
@@ -1107,27 +1158,56 @@ private:
     return static_cast<uint64_t>(deleted_keys.size());
   }
 
+  struct PutInternalStats {
+    std::uint64_t alloc_ns = 0;
+    std::uint64_t index_ns = 0;
+    std::uint64_t track_ns = 0;
+  };
+
   void PutInternal(uint64_t key,
                    const void* data,
                    size_t size,
                    unsigned tid,
-                   bool emit_fence) {
+                   bool emit_fence,
+                   PutInternalStats* stats = nullptr) {
     (void)tid;
     (void)emit_fence;
+    using clock = std::chrono::steady_clock;
+    const auto alloc_start =
+        stats != nullptr ? clock::now() : clock::time_point{};
     Value_t new_handle = value_store_->AllocAndWrite(key, data, size);
     if (new_handle == kValueHandleNone) {
       LOG(FATAL) << "KVEngine value allocation failed, key=" << key
                  << " size=" << size;
       return;
     }
+    const auto index_start =
+        stats != nullptr ? clock::now() : clock::time_point{};
     Value_t old_handle = index_->Put(key, new_handle, tid);
     if (old_handle != kValueHandleNone && old_handle != new_handle) {
       value_store_->Retire(old_handle);
     }
+    const auto track_start =
+        stats != nullptr ? clock::now() : clock::time_point{};
     // Checkpoint tracking already contains overwritten keys. Delete removes
     // them under the exclusive checkpoint lock, so reinsertion tracks again.
     if (old_handle == kValueHandleNone) {
       TrackKey(key, tid);
+    }
+    if (stats != nullptr) {
+      const auto end = clock::now();
+      stats->alloc_ns += static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              index_start - alloc_start)
+              .count());
+      stats->index_ns += static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              track_start - index_start)
+              .count());
+      stats->track_ns += static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              end - track_start)
+              .count());
     }
   }
 

@@ -60,5 +60,6 @@ public:
       int64_t num_rows,
       int64_t embedding_dim,
       float learning_rate,
-      unsigned tid);
+      unsigned tid,
+      BaseKV::UpdateFlatStats* stats = nullptr);
 };

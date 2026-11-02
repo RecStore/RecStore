@@ -7,7 +7,7 @@ target_link_libraries(sparse_tensor PRIVATE
     kv_engine
 )
 
-if(CMAKE_BUILD_TYPE MATCHES "Debug" AND USE_PERF_REPORT)
+if(USE_PERF_REPORT)
     target_compile_definitions(sparse_tensor PRIVATE ENABLE_PERF_REPORT)
     target_link_libraries(sparse_tensor PRIVATE report_client)
 endif()
