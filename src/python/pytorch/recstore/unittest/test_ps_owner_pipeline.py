@@ -49,6 +49,21 @@ def make_owner(ps):
     pipeline._pending_owner_step = None
     pipeline._owner_failed = False
     pipeline._owner_plan = pipeline._owner_read = pipeline._owner_exchange = None
+    # Attributes normally set by GPUOwnerPipeline.__init__ (bypassed by the
+    # class swap): the non-unified, no-handoff, no-lookahead configuration.
+    pipeline.owner_merged_grad = False
+    pipeline.metadata_lookahead = 0
+    pipeline._metadata_enqueued = pipeline._metadata_queue_hwm = 0
+    pipeline._metadata_stopping = False
+    pipeline._metadata_prepare_error = None
+    pipeline.compute_ahead = False
+    pipeline._retired_step = pipeline._native_submitted_step = pipeline._candidate_step = -1
+    pipeline._commit_step = -1
+    pipeline._compute_read_step = None
+    pipeline._retiring_owner = pipeline._untracked_owner_commit = pipeline._compute_error = None
+    pipeline._owner_boundaries = torch.tensor([0, 100, 200], dtype=torch.int64)
+    pipeline._owner_types = torch.tensor([0, 1], dtype=torch.int64)
+    pipeline._owner_tag = 0
 
     def routing(plan, peers, sizes):
         # This fake gives rank0 the entire union; it tests read/version ordering,

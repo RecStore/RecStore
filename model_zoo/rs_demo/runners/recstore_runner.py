@@ -328,6 +328,7 @@ class RecStoreRunner(BenchmarkRunner):
             owner_handoff = os.environ.get("RECSTORE_PS_OWNER_CANDIDATE_HANDOFF") == "1"
             owner_verify = os.environ.get("RECSTORE_PS_OWNER_VERIFY_HANDOFF") == "1"
             owner_compute_ahead = os.environ.get("RECSTORE_PS_OWNER_COMPUTE_AHEAD") == "1"
+            owner_merged_grad = os.environ.get("RECSTORE_PS_OWNER_MERGED_GRAD") == "1"
             metadata_depth = int(os.environ.get("RECSTORE_PS_METADATA_LOOKAHEAD", "0"))
             if metadata_depth not in (0, 4, 8) or (metadata_depth and not owner_forward):
                 raise ValueError("Metadata lookahead requires unified owner and depth 0/4/8")
@@ -341,6 +342,8 @@ class RecStoreRunner(BenchmarkRunner):
                 raise ValueError("Acknowledged candidate handoff requires unified owner forward")
             if owner_gpu_plan and os.environ.get("RECSTORE_PS_OWNER_GPU") != "1":
                 raise ValueError("Canonical GPU plan staging requires GPU owner updates")
+            if owner_merged_grad and os.environ.get("RECSTORE_PS_OWNER_GPU") != "1":
+                raise ValueError("Merged-gradient owner updates require GPU owner updates")
             if owner_forward and os.environ.get("RECSTORE_PS_OWNER_GPU") != "1":
                 raise ValueError("Unified owner forward requires GPU owner updates")
             if os.environ.get("RECSTORE_PS_OWNER_GPU") == "1":
@@ -350,6 +353,7 @@ class RecStoreRunner(BenchmarkRunner):
                 pipeline_class = GPUOwnerPipeline
                 owner_options["unified_forward"] = owner_forward
                 owner_options["canonical_gpu_plan"] = owner_gpu_plan
+                owner_options["owner_merged_grad"] = owner_merged_grad
                 owner_options["candidate_handoff"] = owner_handoff
                 owner_options["verify_handoff"] = owner_verify
                 owner_options["compute_ahead"] = owner_compute_ahead
@@ -572,10 +576,14 @@ class RecStoreRunner(BenchmarkRunner):
             )
 
             allow_base = os.environ.get("RECSTORE_CONTINUOUS_ALLOW_BASE") == "1"
-            if continuous_mode and not allow_base and not all(getattr(read_path, name, False) for name in (
-                "unified_forward", "canonical_gpu_plan", "candidate_handoff", "compute_ahead"
-            )):
-                raise ValueError("Continuous PS only supports the selected owner forward/handoff/compute-ahead path")
+            if continuous_mode and not allow_base:
+                # Merged-gradient owners replace canonical GPU plan staging; the
+                # forward/handoff/compute-ahead pipeline itself is unchanged.
+                if not all(getattr(read_path, name, False) for name in (
+                    "unified_forward", "candidate_handoff", "compute_ahead"
+                )) or not (getattr(read_path, "canonical_gpu_plan", False)
+                           or getattr(read_path, "owner_merged_grad", False)):
+                    raise ValueError("Continuous PS only supports the selected owner forward/handoff/compute-ahead path")
             if continuous_mode and not allow_base and getattr(read_path, "metadata_lookahead", 0) != 4:
                 raise ValueError("Continuous PS initially supports the selected H4 metadata queue only")
             _barrier_for_step_alignment(
@@ -712,6 +720,7 @@ class RecStoreRunner(BenchmarkRunner):
                     "warmup_excluded": _bool_int(batch_step < cfg.warmup_steps),
                     "ps_owner_forward_enabled": int(getattr(read_path, "unified_forward", False)),
                     "ps_owner_canonical_gpu_plan_enabled": int(getattr(read_path, "canonical_gpu_plan", False)),
+                    "ps_owner_merged_grad_enabled": int(getattr(read_path, "owner_merged_grad", False)),
                     "ps_owner_candidate_handoff_enabled": int(getattr(read_path, "candidate_handoff", False)),
                     "ps_owner_verify_handoff_enabled": int(getattr(read_path, "verify_handoff", False)),
                     "ps_owner_compute_ahead_enabled": int(getattr(read_path, "compute_ahead", False)),

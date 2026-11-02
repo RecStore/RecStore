@@ -78,7 +78,7 @@ class GPUOwnerPipeline(PSPipeline):
 
     def __init__(self, embedding_module, kv_client, *, owner_table_end, unified_forward=False,
                  canonical_gpu_plan=False, candidate_handoff=False, verify_handoff=False,
-                 compute_ahead=False, metadata_lookahead=0, **kwargs):
+                 compute_ahead=False, metadata_lookahead=0, owner_merged_grad=False, **kwargs):
         if (type(metadata_lookahead) is not int or metadata_lookahead not in (0, 4, 8)
                 or (metadata_lookahead and not unified_forward)):
             raise ValueError("Metadata lookahead requires unified owner and depth 0/4/8")
@@ -105,6 +105,9 @@ class GPUOwnerPipeline(PSPipeline):
             raise ValueError("canonical_gpu_plan must be a bool")
         self.canonical_gpu_plan = canonical_gpu_plan
         self._canonical_gpu_staging = None
+        if not isinstance(owner_merged_grad, bool):
+            raise ValueError("owner_merged_grad must be a bool")
+        self.owner_merged_grad = owner_merged_grad
         if not isinstance(unified_forward, bool):
             raise ValueError("unified_forward must be a bool")
         self.unified_forward = unified_forward
@@ -114,7 +117,9 @@ class GPUOwnerPipeline(PSPipeline):
             raise ValueError("GPU owner updates require the exact canonical table plan")
         if not kwargs.get("dependency_split"):
             raise ValueError("GPU owner updates currently require dependency splitting")
-        plan_op = "canonical_owner_forward_plan" if unified_forward else "canonical_owner_plan"
+        plan_op = ("owner_merged_forward_plan" if self.owner_merged_grad else
+                   "canonical_owner_forward_plan") if unified_forward else (
+                   "owner_merged_plan" if self.owner_merged_grad else "canonical_owner_plan")
         for name in (plan_op, "sparse_owner_replace_async",
                      "sparse_owner_replace_close"):
             if not callable(getattr(kv_client.ops, name, None)):
@@ -124,8 +129,12 @@ class GPUOwnerPipeline(PSPipeline):
         self._owner_types = torch.tensor(kwargs["canonical_table_types"], dtype=torch.int64)
         _, self._owner_tag = kv_client.get_embedding_table_namespace(kwargs["master_table_name"])
         self._owner_plan = self._owner_read = self._owner_exchange = None
-        from .owner_gpu import initialize_owner_math
-        initialize_owner_math(torch.device(kwargs["device"]))
+        if self.owner_merged_grad:
+            from .owner_merged_gpu import initialize_owner_merged_math
+            initialize_owner_merged_math(torch.device(kwargs["device"]))
+        else:
+            from .owner_gpu import initialize_owner_math
+            initialize_owner_math(torch.device(kwargs["device"]))
         super().__init__(embedding_module, kv_client, **kwargs)
         # Peer vector splits must agree on the real encoded-key ownership too.
         identity = (self._canonical_layout.to_bytes(8, "little")
@@ -137,7 +146,8 @@ class GPUOwnerPipeline(PSPipeline):
                     + (b"/acknowledged-handoff-v1" if candidate_handoff else b"")
                     + (b"/verify-handoff-v1" if verify_handoff else b"")
                     + (b"/compute-ahead-v1" if compute_ahead else b"")
-                    + (b"/cpu-metadata-v1/" + bytes([metadata_lookahead]) if metadata_lookahead else b""))
+                    + (b"/cpu-metadata-v1/" + bytes([metadata_lookahead]) if metadata_lookahead else b"")
+                    + (b"/merged-grad-v1" if owner_merged_grad else b""))
         self._canonical_layout = int.from_bytes(hashlib.sha256(identity).digest()[:8], "little") & (2**63 - 1)
         if dist.get_backend() != "nccl":
             self.shutdown(flush=False)
@@ -299,14 +309,20 @@ class GPUOwnerPipeline(PSPipeline):
     def _augment_canonical_plan(self, plan, peers, sizes):
         columns = [peer[:size, column].contiguous()
                    for peer, size in zip(peers, sizes) for column in (0, 1)]
-        operation = (self.kv_client.ops.canonical_owner_forward_plan if self.unified_forward
-                     else self.kv_client.ops.canonical_owner_plan)
+        if self.owner_merged_grad:
+            plan_name = ("owner_merged_forward_plan" if self.unified_forward
+                         else "owner_merged_plan")
+        else:
+            plan_name = ("canonical_owner_forward_plan" if self.unified_forward
+                         else "canonical_owner_plan")
+        operation = getattr(self.kv_client.ops, plan_name)
         owner = operation(
             *columns, self._owner_boundaries, self._owner_types, self._owner_tag, self._rank)
         if len(owner) != (9 if self.unified_forward else 5):
             raise RuntimeError("Unexpected owner plan schema")
-        if owner[0].numel() != plan.vector_count:
-            raise RuntimeError("Owner routing disagrees with canonical packed vector count")
+        unique_count = plan.records.shape[0] if self.owner_merged_grad else plan.vector_count
+        if owner[0].numel() != unique_count:
+            raise RuntimeError("Owner routing disagrees with the packed row count")
         plan.owner = owner
 
     def on_batch_prepared(self, step, sparse_features, sparse_batch, row):
@@ -514,7 +530,10 @@ class GPUOwnerPipeline(PSPipeline):
     def _stage_rows(self, step, ticket, values, row_count, row):
         if not self.unified_forward:
             return super()._stage_rows(step, ticket, values, row_count, row)
-        from .owner_forward_gpu import ForwardGPUOwnerExchange
+        if self.owner_merged_grad:
+            from .owner_merged_gpu import ForwardMergedGPUOwnerExchange as ForwardExchange
+        else:
+            from .owner_forward_gpu import ForwardGPUOwnerExchange as ForwardExchange
         plan = self._canonical_metadata[step].result()[2].owner
         permutation, keys, metadata, send, recv, index, fsend, frecv, reorder = plan
         if reorder.numel() != ticket[0].numel():
@@ -538,7 +557,7 @@ class GPUOwnerPipeline(PSPipeline):
                     x.numel() * x.element_size() for x in source_refs if x.device.type == "cpu")
                 row["ps_owner_handoff_source_cuda_bytes"] = sum(
                     x.numel() * x.element_size() for x in source_refs if x.device.type == "cuda")
-            self._owner_exchange = ForwardGPUOwnerExchange(
+            self._owner_exchange = ForwardExchange(
                 permutation, keys, metadata, send, recv, values,
                 forward_send_index=index, forward_reorder=reorder,
                 forward_send_splits=fsend, forward_recv_splits=frecv,
@@ -689,11 +708,14 @@ class GPUOwnerPipeline(PSPipeline):
         else:
             if self._owner_read is None or self._owner_plan is None:
                 raise RuntimeError("GPU owner submission lacks a committed old-weight read")
-            from .owner_gpu import GPUOwnerExchange
+            if self.owner_merged_grad:
+                from .owner_merged_gpu import MergedGPUOwnerExchange as Exchange
+            else:
+                from .owner_gpu import GPUOwnerExchange as Exchange
             weights, _, pull_ms = self._owner_read.result()
             read_done = time.perf_counter()
             permutation, keys, metadata, send, recv = self._owner_plan
-            self._owner_exchange = GPUOwnerExchange(
+            self._owner_exchange = Exchange(
                 permutation, keys, metadata, send.tolist(), recv.tolist(), weights,
                 process_group=dist.group.WORLD, device=self.device)
         if self.verify_handoff:

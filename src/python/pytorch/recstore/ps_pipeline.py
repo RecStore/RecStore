@@ -53,6 +53,9 @@ class PSPipeline:
             raise ValueError("Device row merge requires dependency-split CUDA PS")
         self._total_steps = total_steps
         self.canonical = canonical_table_types is not None
+        # Merged-gradient owners reuse the canonical count exchange and ticket
+        # machinery but pack one merged row per unique key (index_add_).
+        self.owner_merged_grad = False
         self._canonical_table_types = tuple(canonical_table_types or ())
         self._canonical_metadata = {}
         self._canonical_records = None
@@ -484,11 +487,16 @@ class PSPipeline:
             raise ValueError("PS pipeline gradients must be FP32 with the prepared shape")
         self._require_next_read()
         if self.canonical:
-            records = self._canonical_records
-            if records is None or not torch.equal(records[:, 0], expected):
-                raise RuntimeError("Canonical gradients lack the prepared key descriptors")
-            handle = self._submit_canonical(records, grads)
-            self._canonical_records = None
+            if self.owner_merged_grad:
+                # Merged owners submit the exchange result; no packed partial
+                # descriptors exist for one-row-per-key gradients.
+                handle = self._submit_canonical(None, grads)
+            else:
+                records = self._canonical_records
+                if records is None or not torch.equal(records[:, 0], expected):
+                    raise RuntimeError("Canonical gradients lack the prepared key descriptors")
+                handle = self._submit_canonical(records, grads)
+                self._canonical_records = None
         else:
             handle = self.kv_client.sparse_gradient_commit_async(
                 self.master_table_name, expected, grads, session=self._session,
@@ -609,6 +617,21 @@ class PSPipelineSGD:
                 or grad.device != self.pipeline._current_inverse.device):
             raise ValueError("PS pipeline pooled gradient does not match the prepared batch")
         if self.pipeline.canonical:
+            if self.pipeline.owner_merged_grad:
+                # Merged rows: keep the metadata lifecycle symmetric with the
+                # canonical branch (the plan is already consumed by lookup).
+                self.pipeline._canonical_metadata.pop(self.pipeline._current_step, None)
+                rows = self.pipeline._current_inverse
+                self._grads = torch.zeros((ids.numel(), grad.size(2)),
+                                          dtype=grad.dtype, device=grad.device)
+                # Same deterministic repeated-key summation as the base path.
+                previous_mode = torch.get_deterministic_debug_mode()
+                try:
+                    torch.set_deterministic_debug_mode(2)
+                    self._grads.index_add_(0, rows, grad.reshape(-1, grad.size(2)))
+                finally:
+                    torch.set_deterministic_debug_mode(previous_mode)
+                return
             start = time.perf_counter()
             result = self.pipeline._canonical_metadata.pop(self.pipeline._current_step).result()
             metadata_done = time.perf_counter()
