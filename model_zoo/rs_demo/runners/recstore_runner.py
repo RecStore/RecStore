@@ -43,6 +43,7 @@ from python.pytorch.recstore.analysis.profiler import (
     build_torchrec_profiler,
 )
 from ..runtime.timing import StepTimer
+from ..runtime.continuous_loop import ContinuousLoop, continuous_enabled, verify_continuous_protocol
 from ..runtime.worker_common import (
     barrier_for_step_alignment as _barrier_for_step_alignment,
     bool_int as _bool_int,
@@ -326,6 +327,14 @@ class RecStoreRunner(BenchmarkRunner):
             owner_gpu_plan = os.environ.get("RECSTORE_PS_CANONICAL_GPU_PLAN") == "1"
             owner_handoff = os.environ.get("RECSTORE_PS_OWNER_CANDIDATE_HANDOFF") == "1"
             owner_verify = os.environ.get("RECSTORE_PS_OWNER_VERIFY_HANDOFF") == "1"
+            owner_compute_ahead = os.environ.get("RECSTORE_PS_OWNER_COMPUTE_AHEAD") == "1"
+            metadata_depth = int(os.environ.get("RECSTORE_PS_METADATA_LOOKAHEAD", "0"))
+            if metadata_depth not in (0, 4, 8) or (metadata_depth and not owner_forward):
+                raise ValueError("Metadata lookahead requires unified owner and depth 0/4/8")
+            if metadata_depth and os.environ.get("RECSTORE_PS_PREPARE_DURING_DENSE") == "1":
+                raise ValueError("Metadata lookahead keeps the original one-next adoption point")
+            if owner_compute_ahead and not (owner_forward and owner_handoff):
+                raise ValueError("Owner compute-ahead requires unified candidate handoff")
             if owner_verify and not owner_handoff:
                 raise ValueError("Diagnostic handoff verification requires candidate handoff")
             if owner_handoff and not owner_forward:
@@ -343,6 +352,8 @@ class RecStoreRunner(BenchmarkRunner):
                 owner_options["canonical_gpu_plan"] = owner_gpu_plan
                 owner_options["candidate_handoff"] = owner_handoff
                 owner_options["verify_handoff"] = owner_verify
+                owner_options["compute_ahead"] = owner_compute_ahead
+                owner_options["metadata_lookahead"] = metadata_depth
                 owner_options["owner_table_end"] = (
                     list(table_offsets.values())[-1] + int(eb_configs[-1]["num_embeddings"]))
             read_path = pipeline_class(
@@ -513,6 +524,7 @@ class RecStoreRunner(BenchmarkRunner):
         plugin = None
         events: _EventLog | None = None
         step_iter = None
+        continuous = continuous_error = None
         try:
             os.chdir(str(self.runtime_dir))
             torch.manual_seed(cfg.seed)
@@ -520,6 +532,8 @@ class RecStoreRunner(BenchmarkRunner):
                 world_size, local_rank, dist
             )
 
+            verify_continuous_protocol(torch, dist, device, world_size, cfg.steps)
+            continuous_mode = continuous_enabled(cfg, device, world_size, lane="recstore")
             recstore.load_ops_library()
             client = recstore.RecStoreClient()
             if cfg.ps_type.upper() in {"LOCAL_SHM", "HIERKV"}:
@@ -557,6 +571,12 @@ class RecStoreRunner(BenchmarkRunner):
                 )
             )
 
+            if continuous_mode and not all(getattr(read_path, name, False) for name in (
+                "unified_forward", "canonical_gpu_plan", "candidate_handoff", "compute_ahead"
+            )):
+                raise ValueError("Continuous PS only supports the selected owner forward/handoff/compute-ahead path")
+            if continuous_mode and getattr(read_path, "metadata_lookahead", 0) != 4:
+                raise ValueError("Continuous PS initially supports the selected H4 metadata queue only")
             _barrier_for_step_alignment(
                 dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
             )
@@ -578,6 +598,17 @@ class RecStoreRunner(BenchmarkRunner):
                     dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
                 )
 
+            timing_metadata = {
+                "timing_protocol": "aligned_step",
+                "timing_mode": cfg.torchrec_timing_sync_mode,
+                "gpu_stage_timing_semantics": (
+                    "cuda_event_elapsed" if device.type == "cuda" and cfg.torchrec_timing_sync_mode == "stage"
+                    else "host_enqueue_wall" if device.type == "cuda" else "cpu_wall"),
+            }
+
+            if continuous_mode:
+                timing_metadata.update(timing_protocol="continuous_loop_all_steps", timing_mode="none",
+                                       gpu_stage_timing_semantics="host_enqueue_wall")
             lifecycle = {"rank": rank, "embedding_init_ms": embedding_init_ms,
                 "dense_reduce_overlap_enabled": int(overlap_dense),
                 "ps_pipeline_prepare_during_dense_enabled": int(prepare_during_dense),
@@ -586,6 +617,7 @@ class RecStoreRunner(BenchmarkRunner):
                                os.environ.get("RECSTORE_PS_OWNER_GPU") == "1" else "PS/RDMA, no NCCL"),
                     "dense_buffer_group": "None/default"},
                 "gradient_communication_semantics": "remaining_join" if overlap_dense else "full_reduce"}
+            lifecycle.update(timing_metadata)
             if use_ps_pipeline:
                 lifecycle["embedding_namespace"] = embedding_module.shared_fused_namespace_identity()
                 lifecycle["owned_read_native"] = callable(getattr(client.ops, "emb_read_into", None))
@@ -656,6 +688,14 @@ class RecStoreRunner(BenchmarkRunner):
             rows: list[dict[str, Any]] = []
             data_iter_state = {"iter": iter(dataloader)}
             prepared_batches: deque = deque()
+            metadata_depth = getattr(read_path, "metadata_lookahead", 0)
+            cpu_metadata_handles = {}  # Bounded CPU inputs only, never parameter values.
+            metadata_loop_start = None
+            if metadata_depth:
+                lifecycle["metadata_lookahead_depth"] = metadata_depth
+                lifecycle["metadata_lookahead_capacity"] = metadata_depth + 1
+                lifecycle["lookup_ids_build_scope"] = "background CPU ticket service; not main wait"
+                lifecycle["metadata_cpu_byte_scope"] = "buffered logical payload; aliases may count twice; excludes worker scratch"
             skip_kjt = os.environ.get("RECSTORE_PS_SKIP_KJT") == "1"
             if skip_kjt and not use_ps_pipeline:
                 raise ValueError("Skipping KJT requires PS pipeline")
@@ -673,6 +713,8 @@ class RecStoreRunner(BenchmarkRunner):
                     "ps_owner_canonical_gpu_plan_enabled": int(getattr(read_path, "canonical_gpu_plan", False)),
                     "ps_owner_candidate_handoff_enabled": int(getattr(read_path, "candidate_handoff", False)),
                     "ps_owner_verify_handoff_enabled": int(getattr(read_path, "verify_handoff", False)),
+                    "ps_owner_compute_ahead_enabled": int(getattr(read_path, "compute_ahead", False)),
+                    "ps_metadata_lookahead_depth": metadata_depth,
                 }
                 batch_prepare_start = time.perf_counter()
                 try:
@@ -693,10 +735,15 @@ class RecStoreRunner(BenchmarkRunner):
                     )
                 row["input_pack_ms"] = (time.perf_counter() - input_pack_start) * 1e3
 
-                ticket = read_path.on_batch_prepared(
-                    batch_step, sparse_features, sparse_batch, row
-                )
-                if isinstance(ticket, PreparedTicket):
+                if metadata_depth:
+                    ticket = read_path.queue_cpu_metadata(batch_step, sparse_batch)
+                    cpu_metadata_handles[batch_step] = ticket
+                else:
+                    ticket = read_path.on_batch_prepared(
+                        batch_step, sparse_features, sparse_batch, row)
+                if metadata_depth:
+                    pass  # ID statistics are attached after main-thread adoption.
+                elif isinstance(ticket, PreparedTicket):
                     _add_sparse_id_stats(
                         row,
                         sparse_features,
@@ -723,6 +770,8 @@ class RecStoreRunner(BenchmarkRunner):
                 events.emit(
                     "prepare_end",
                     step=batch_step,
+                    scope="cpu_inputs_and_metadata_enqueue" if metadata_depth else "batch_prepare",
+                    metadata_pending=bool(metadata_depth and not ticket.future.done()),
                     enqueue_ms=row.get("bagpipe_enqueue_ms"),
                     prepare_ms=row.get("batch_prepare_ms", 0.0)
                     + row.get("input_pack_ms", 0.0),
@@ -731,6 +780,28 @@ class RecStoreRunner(BenchmarkRunner):
                     batch_step, row,
                     dense_batch, sparse_features, labels_batch, ticket,
                 )
+
+            def adopt_metadata_batch(batch):
+                batch_step, row, dense, features, labels, ticket = batch
+                if batch_step >= read_path._prepared:
+                    ticket = read_path.adopt_cpu_metadata(batch_step, cpu_metadata_handles[batch_step], row)
+                    _add_sparse_id_stats(row, features, table_offsets,
+                                         precomputed=(int(ticket[0].numel()), int(ticket[2])))
+                return batch_step, row, dense, features, labels, ticket
+
+            def metadata_buffer_stats(row):
+                inputs = plans = completed = 0
+                for entry in prepared_batches:
+                    handle = cpu_metadata_handles[entry[0]]
+                    inputs += sum(x.numel()*x.element_size() for x in (entry[2], entry[4], handle.source))
+                    if handle.future.done():
+                        plans += handle.future.result()[7]
+                        completed += 1
+                row.update(ps_metadata_cpu_queued=len(cpu_metadata_handles),
+                           ps_metadata_cpu_completed=completed,
+                           ps_metadata_cpu_queue_hwm=read_path._metadata_queue_hwm,
+                           ps_metadata_cpu_input_bytes=inputs,
+                           ps_metadata_cpu_plan_payload_bytes=plans)
 
             profiler = build_torchrec_profiler(
                 ProfilerConfig(
@@ -758,11 +829,17 @@ class RecStoreRunner(BenchmarkRunner):
             step_iter = _iter_profiled_steps(
                 range(cfg.steps), profiler or nullcontext()
             )
+            if continuous_mode:
+                continuous = ContinuousLoop(torch, device, cfg.steps)
+                continuous.start()
             for step in step_iter:
                 step_wall_start = time.perf_counter()
+                backpressure_ms = continuous.admit(step) if continuous is not None else 0.0
+                if metadata_depth and metadata_loop_start is None:
+                    metadata_loop_start = step_wall_start  # Includes step-0 initial fill.
                 events.emit("step_start", step=step)
                 observed_depth = read_path.desired_buffer_size
-                target_buffer = observed_depth
+                target_buffer = metadata_depth if metadata_depth else observed_depth
                 _fill_prefetch_buffer(
                     prepared_batches, prepare_next_batch,
                     from_step=step, target_buffer=target_buffer, max_steps=cfg.steps,
@@ -770,10 +847,14 @@ class RecStoreRunner(BenchmarkRunner):
                 if step + len(prepared_batches) >= cfg.steps:
                     read_path.advance_all()
 
+                batch = prepared_batches.popleft()
+                if metadata_depth:
+                    batch = adopt_metadata_batch(batch)
+                    cpu_metadata_handles.pop(step)  # Producer is complete before its source is released.
                 (
                     _, row, dense_batch, sparse_features, labels_batch,
                     ticket,
-                ) = prepared_batches.popleft()
+                ) = batch
 
                 row["ps_pipeline_prepare_during_dense_enabled"] = int(prepare_during_dense)
                 if cfg.ps_pipeline_dependency_split:
@@ -781,12 +862,18 @@ class RecStoreRunner(BenchmarkRunner):
                 if (cfg.ps_pipeline_dependency_split and step + 1 < cfg.steps
                         and not prepare_during_dense):
                     prepare_start = time.perf_counter()
-                    prepared_batches.append(prepare_next_batch(step + 1))
+                    if metadata_depth:
+                        prepared_batches[0] = adopt_metadata_batch(prepared_batches[0])
+                    else:
+                        prepared_batches.append(prepare_next_batch(step + 1))
                     row["ps_pipeline_lookahead_prepare_ms"] = (time.perf_counter() - prepare_start) * 1e3
 
+                if metadata_depth:
+                    metadata_buffer_stats(row)
                 _reset_perf_stats(embedding_module)
                 sparse_optimizer.zero_grad()
-                timer = StepTimer(row, torch, device)
+                row.update(timing_metadata)
+                timer = StepTimer(row, torch, device, mode="none" if continuous_mode else cfg.torchrec_timing_sync_mode)
                 row["dense_reduce_overlap_enabled"] = int(overlap_dense)
                 row["gradient_communication_enqueue_ms"] = 0.0
                 row["gradient_communication_semantics"] = "remaining_join" if overlap_dense else "full_reduce"
@@ -924,7 +1011,7 @@ class RecStoreRunner(BenchmarkRunner):
                     # Overlap PS update latency by preparing future batches.
                     overlap_prepare_start = time.perf_counter()
                     while (
-                        len(prepared_batches) <= observed_depth
+                        not metadata_depth and len(prepared_batches) <= observed_depth
                         and step + 1 + len(prepared_batches) < cfg.steps
                     ):
                         prepared_batches.append(
@@ -947,40 +1034,72 @@ class RecStoreRunner(BenchmarkRunner):
                         plugin._controller._wait_pending()
                     if use_ps_pipeline and step == cfg.steps - 1:
                         read_path._wait_pending()
+                        if metadata_depth:
+                            if cpu_metadata_handles or prepared_batches or read_path._prepared != cfg.steps:
+                                raise RuntimeError("Metadata lookahead did not consume the exact tail")
+                            # All producer results were adopted; include executor drain in final timing.
+                            read_path._metadata_worker.shutdown(wait=True, cancel_futures=False)
+                            lifecycle["metadata_final_drain_complete"] = True
                     sparse_optimizer.zero_grad()
 
                 row["sparse_optimizer_ms"] += row.get("sparse_graph_submit_ms", 0.0)
                 events.emit("sparse_end", step=step)
-                row["loss"] = float(loss.detach().float().cpu().item())
+                if continuous is not None:
+                    continuous.record_loss_and_terminal(step, loss)
+                    row["loss"] = ""
+                else:
+                    row["loss"] = float(loss.detach().float().cpu().item())
                 _merge_consumed_perf_stats(row, _consume_perf_stats(embedding_module))
                 row["step_sync_wait_ms"] = timer.finish()
-                # After the device drain point: readbacks here (stats
-                # draining) add no hidden wait to the phase timers above.
+                # These stats are CPU-only. In continuous mode they describe
+                # enqueue/protocol state, not completed GPU work.
                 read_path.after_step_sync(row)
                 row["dense_compute_ms"] = row["dense_optimizer_ms"] + (
                     row["dense_graph_ms"] if dense_graph is not None
                     else row["dense_fwd_ms"] + row["backward_ms"]
                 )
-                _finalize_step_timing(row, wall_start=step_wall_start)
+                if continuous is None:
+                    _finalize_step_timing(row, wall_start=step_wall_start)
+                else:
+                    continuous.finish_row(row, step_wall_start, backpressure_ms)
                 rows.append(finalize_recstore_row(row))
                 events.emit("barrier_start", step=step)
-                _barrier_for_step_alignment(
-                    dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
-                )
+                if continuous is None:
+                    _barrier_for_step_alignment(
+                        dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
+                    )
                 events.emit("barrier_end", step=step)
 
                 if (step + 1) % 10 == 0:
+                    timing_label = "host_enqueue" if continuous is not None else "step"
+                    timing_value = rows[-1]["host_step_enqueue_wall_ms" if continuous is not None else "step_total_ms"]
                     print(
-                        f"[rs_demo] step {step + 1}/{cfg.steps} "
-                        f"emb={rows[-1]['emb_stage_ms']:.2f}ms step={rows[-1]['step_total_ms']:.2f}ms"
+                        f"[rs_demo] {'computed step' if getattr(read_path, 'compute_ahead', False) else 'step'} {step + 1}/{cfg.steps} "
+                        f"emb={rows[-1]['emb_stage_ms']:.2f}ms {timing_label}={timing_value:.2f}ms"
                     )
                 events.emit(
-                    "step_end", step=step, step_total_ms=row["step_total_ms"]
+                    "step_end", step=step, step_total_ms=row["step_total_ms"],
+                    provisional=bool(getattr(read_path, "compute_ahead", False) and
+                                     getattr(read_path, "_retired_step", -1) < step)
                 )
                 if profiler is not None:
                     profiler.step()
-                rows[-1]["step_wall_ms"] = (time.perf_counter() - step_wall_start) * 1e3
+                if continuous is None:
+                    rows[-1]["step_wall_ms"] = (time.perf_counter() - step_wall_start) * 1e3
+                else:
+                    rows[-1]["host_step_enqueue_wall_ms"] = (time.perf_counter() - step_wall_start) * 1e3
 
+            if continuous is not None:
+                loop_summary = continuous.finish(rows, lambda: _barrier_for_step_alignment(
+                    dist=dist, device=device, local_rank=local_rank, use_dist=use_dist))
+                loop_summary.update(rank=rank, backend="recstore", world_size=world_size,
+                                    configured_warmup_steps=cfg.warmup_steps, run_id=cfg.run_id)
+                lifecycle["continuous_loop"] = loop_summary
+                loop_path = Path(cfg.output_root) / "outputs" / cfg.run_id / f"continuous_rank{rank}.json"
+                loop_path.parent.mkdir(parents=True, exist_ok=True)
+                loop_path.write_text(json.dumps(loop_summary, indent=2) + "\n")
+            if metadata_depth:
+                lifecycle["metadata_training_loop_ms"] = (time.perf_counter()-metadata_loop_start)*1e3
             print("[rs_demo] workload finished")
 
             if device.type == "cuda":
@@ -1029,19 +1148,48 @@ class RecStoreRunner(BenchmarkRunner):
                 "backend": "recstore",
                 "rows": rows,
             }
+        except BaseException as error:
+            continuous_error = error if continuous is not None else None
+            if "read_path" in locals() and getattr(read_path, "metadata_lookahead", 0):
+                try:
+                    read_path._metadata_failed(error)
+                except BaseException as cleanup_error:
+                    if continuous is None:
+                        raise
+                    error.add_note("Metadata failure propagation also failed: " + repr(cleanup_error))
+            raise
         finally:
-            if step_iter is not None:
-                step_iter.close()
-            if events is not None:
-                events.close()
-            if plugin is not None:
-                if use_bagpipe:
-                    plugin._controller.shutdown(flush=False)
-                else:
-                    plugin.shutdown()
-            if cfg.read_mode == "ps_pipeline" and "read_path" in locals():
-                read_path.shutdown(flush=False)
-            os.chdir(str(orig_cwd))
+            if continuous_error is not None:
+                # Keep the first training error and attempt every owned cleanup.
+                cleanups = []
+                if step_iter is not None:
+                    cleanups.append(step_iter.close)
+                if events is not None:
+                    cleanups.append(events.close)
+                if plugin is not None:
+                    cleanups.append(plugin.shutdown)
+                if "read_path" in locals():
+                    cleanups.append(lambda: read_path.shutdown(flush=False))
+                cleanups.append(lambda: continuous.drain_after_error(continuous_error))
+                cleanups.append(lambda: os.chdir(str(orig_cwd)))
+                for cleanup in cleanups:
+                    try:
+                        cleanup()
+                    except BaseException as cleanup_error:
+                        continuous_error.add_note("Continuous worker cleanup also failed: " + repr(cleanup_error))
+            else:
+                if step_iter is not None:
+                    step_iter.close()
+                if events is not None:
+                    events.close()
+                if plugin is not None:
+                    if use_bagpipe:
+                        plugin._controller.shutdown(flush=False)
+                    else:
+                        plugin.shutdown()
+                if cfg.read_mode == "ps_pipeline" and "read_path" in locals():
+                    read_path.shutdown(flush=False)
+                os.chdir(str(orig_cwd))
 
     def run(self, repo_root: Path, cfg: RunConfig) -> dict:
         if cfg.backend != "recstore":

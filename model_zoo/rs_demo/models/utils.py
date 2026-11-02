@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Sequence
 
 import torch
@@ -30,6 +31,22 @@ def reshape_recstore_embeddings_for_dlrm(
 
 
 def reshape_torchrec_embeddings_for_dlrm(embeddings, feature_names: Sequence[str], torch):
+    if os.environ.get("RECSTORE_ORDERED_KT_VIEW") == "1" and all(
+        callable(getattr(embeddings, name, None))
+        for name in ("keys", "values", "key_dim", "length_per_key")
+    ):
+        names = list(feature_names)
+        values = embeddings.values()
+        widths = embeddings.length_per_key()
+        if (names and len(set(names)) == len(names)
+                and list(embeddings.keys()) == names and embeddings.key_dim() == 1
+                and len(widths) == len(names) and widths[0] >= 0
+                and all(width == widths[0] for width in widths)
+                and isinstance(values, torch.Tensor) and not values.requires_grad
+                and values.device.type in ("cpu", "cuda") and values.ndim == 2
+                and values.is_contiguous() and values.shape[1] == len(names) * widths[0]):
+            # No-grad ordered slices are already laid out as [B, F, D].
+            return values.view(values.shape[0], len(names), widths[0])
     return torch.stack([embeddings[name] for name in feature_names], dim=1)
 
 

@@ -282,7 +282,7 @@ class PSPipeline:
         stats["ps_pipeline_split_merge_ms"] = (time.perf_counter() - start) * 1e3
         return values, waited, stats["ps_pipeline_clean_pull_ms"] + elapsed, stats
 
-    def on_batch_prepared(self, step, sparse_features, sparse_batch, row):
+    def _check_prepared_step(self, step):
         if (self._closed or step != self._prepared or
                 (not self.dependency_split and (self._read is not None
                  or self._pending_read_ids is not None))):
@@ -294,6 +294,9 @@ class PSPipeline:
         elif step != self._submitted and not (
                 step == self._submitted + 1 and self._current_step == self._submitted):
             raise RuntimeError("PS pipeline prepares at most the next batch")
+
+    def _build_cpu_ticket(self, step, sparse_features, sparse_batch):
+        """Pure ticket construction; no read, collective, or preparation counters."""
         if sparse_features is not None:
             if list(sparse_features.keys()) != self._keys:
                 raise ValueError("PS pipeline feature order differs from the table layout")
@@ -335,17 +338,32 @@ class PSPipeline:
             raw = (raw + self._offsets[:, None]).reshape(-1)
             ids, inverse = torch.unique(raw, return_inverse=True)
         ticket = ids, inverse, raw.numel()
+        return ticket, local_ticket, (time.perf_counter() - start) * 1e3
+
+    def _adopt_cpu_ticket(self, step, ticket, future, row, build_ms):
+        self._check_prepared_step(step)
         if self.canonical:
-            # Counts are needed even on the final step, without an extra value read.
-            future = self._metadata_worker.submit(self._exchange_canonical_metadata,
-                                                   step, local_ticket)
+            if future is None:
+                raise RuntimeError("Canonical ticket lacks its metadata Future")
             self._canonical_metadata[step] = future
             if self.dependency_split and step + 1 < self._total_steps:
                 self._metadata[step] = future
-        self._queue_prepared_read(step, ids)
+        self._queue_prepared_read(step, ticket[0])
         self._prepared += 1
-        row["lookup_ids_build_ms"] = (time.perf_counter() - start) * 1e3
+        row["lookup_ids_build_ms"] = build_ms
         return ticket
+
+    def on_batch_prepared(self, step, sparse_features, sparse_batch, row):
+        self._check_prepared_step(step)
+        start = time.perf_counter()
+        ticket, local_ticket, build_ms = self._build_cpu_ticket(step, sparse_features, sparse_batch)
+        future = None
+        if self.canonical:
+            # Counts remain required for the final step, without another value read.
+            future = self._metadata_worker.submit(self._exchange_canonical_metadata, step, local_ticket)
+        result = self._adopt_cpu_ticket(step, ticket, future, row, build_ms)
+        row["lookup_ids_build_ms"] = (time.perf_counter() - start) * 1e3
+        return result
 
     def _queue_prepared_read(self, step, ids):
         if self.dependency_split:
