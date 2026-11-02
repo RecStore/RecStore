@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import pickle
 import tempfile
 from pathlib import Path
 from unittest import mock
@@ -27,11 +26,21 @@ from model_zoo.rs_demo.runners.torchrec_runner import (
 
 
 class _FakeDist:
-    def __init__(self) -> None:
+    def __init__(self, broadcast_payload=None) -> None:
         self.barrier_calls = 0
+        self.broadcast_calls = 0
+        self._broadcast_payload = broadcast_payload
 
     def barrier(self, device_ids=None) -> None:
         self.barrier_calls += 1
+
+    def broadcast_object_list(self, payload, src=0) -> None:
+        # Single-process stand-in for torch.distributed: copy what the source
+        # rank would have broadcast into the destination list.
+        self.broadcast_calls += 1
+        if src != 0 or self._broadcast_payload is None:
+            return
+        payload[0] = self._broadcast_payload
 
 
 class _FakePlanner:
@@ -196,15 +205,13 @@ class TestTorchRecDispatch(unittest.TestCase):
 
         self.assertEqual(plan["token"], "rank0-plan")
         self.assertEqual(planner.calls, 1)
-        self.assertEqual(fake_dist.barrier_calls, 1)
+        self.assertEqual(fake_dist.broadcast_calls, 1)
 
     def test_nonzero_rank_loads_shared_sharding_plan(self) -> None:
-        fake_dist = _FakeDist()
+        fake_dist = _FakeDist({"token": "rank0-plan"})
         planner = _FakePlanner()
         with tempfile.TemporaryDirectory() as tmpdir:
             plan_path = Path(tmpdir) / "plan.pkl"
-            with plan_path.open("wb") as f:
-                pickle.dump({"token": "rank0-plan"}, f)
             plan = _compute_or_load_shared_sharding_plan(
                 dist=fake_dist,
                 rank=1,
@@ -216,7 +223,7 @@ class TestTorchRecDispatch(unittest.TestCase):
 
         self.assertEqual(plan["token"], "rank0-plan")
         self.assertEqual(planner.calls, 0)
-        self.assertEqual(fake_dist.barrier_calls, 1)
+        self.assertEqual(fake_dist.broadcast_calls, 1)
 
     def test_build_runner_torchrec_requires_dependency(self) -> None:
         cfg = RunConfig(backend="torchrec")

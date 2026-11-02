@@ -1,0 +1,109 @@
+name: Issue Labeler
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: issue-labeler-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  label:
+    if: github.repository == 'RecStore/RecStore'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply issue labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title || '';
+            const body = issue.body || '';
+
+            const key = value => value.toLowerCase();
+            const firstBracket = title.match(/^\s*\[([^\]\r\n]+)\]/);
+            const bracketLabels = [...title.matchAll(/\[([^\]\r\n]+)\]/g)]
+              .map(match => match[1]);
+
+            const formValue = (markdown, heading) => {
+              const cleanMarkdown = markdown.replace(/<!--[\s\S]*?-->/g, '');
+              const lines = cleanMarkdown.split(/\r?\n/);
+              const headingPattern = new RegExp(`^###\\s+${heading}\\s*$`, 'i');
+              const start = lines.findIndex(line => headingPattern.test(line));
+              if (start < 0) return '';
+              for (const line of lines.slice(start + 1)) {
+                if (/^###\s+/.test(line)) break;
+                const value = line.trim();
+                if (value) return value;
+              }
+              return '';
+            };
+
+            const labels = await github.paginate(
+              github.rest.issues.listLabelsForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+              },
+            );
+            const labelByKey = new Map(
+              labels.map(label => [key(label.name), label.name]),
+            );
+            const desired = new Set();
+            const addIfPresent = labelName => {
+              if (!labelName) return;
+              const actualName = labelByKey.get(key(labelName));
+              if (actualName) {
+                desired.add(actualName);
+              } else {
+                core.warning(`Label does not exist: ${labelName}`);
+              }
+            };
+
+            // Any exact title token such as [bug/Correctness] may add its label.
+            for (const labelName of bracketLabels) addIfPresent(labelName);
+
+            const template = key(firstBracket ? firstBracket[1] : '');
+            const bugLabels = new Map([
+              ['usage issues', 'bug/Usage'],
+              ['installation error', 'Build'],
+              ['correctness', 'bug/Correctness'],
+            ]);
+            // Existing labels use Compute/Network/Storage for these layers.
+            const performanceLabels = new Map([
+              ['calculation', 'Compute'],
+              ['parameter server', 'Network'],
+              ['storage', 'Storage'],
+            ]);
+            if (template === 'bug') {
+              addIfPresent(bugLabels.get(key(formValue(body, 'Type'))));
+            } else if (template === 'performance') {
+              addIfPresent(
+                performanceLabels.get(key(formValue(body, 'Layer'))),
+              );
+            }
+
+            const current = new Set(
+              (issue.labels || []).map(label =>
+                typeof label === 'string' ? label : label.name,
+              ),
+            );
+            const missing = [...desired].filter(label => !current.has(label));
+            if (missing.length === 0) {
+              core.info('No new matching labels.');
+              return;
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: missing,
+            });
+            core.info(`Added labels: ${missing.join(', ')}`);
