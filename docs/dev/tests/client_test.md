@@ -1,5 +1,9 @@
 # Python 客户端基础测试
 
+!!! note "待重写"
+
+    更新建表参数，并将表格内的代码示例改为独立代码块。
+
 **代码位置**: `src/test/framework/pytorch/test_client.py`
 
 ## 简介

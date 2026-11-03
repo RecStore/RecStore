@@ -4,7 +4,7 @@ site_author: RecStore Team
 site_url: https://RecStore.github.io/RecStore/
 repo_url: https://github.com/RecStore/RecStore
 repo_name: RecStore
-edit_uri: 'https://github.com/RecStore/RecStore/edit/main/docs'
+edit_uri: edit/main/docs/
 
 theme:
   name: material
@@ -26,6 +26,9 @@ theme:
         name: Switch to light mode
   features:
     - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.indexes
+    - navigation.footer
     - navigation.sections
     - navigation.top
     - navigation.tracking
@@ -34,9 +37,7 @@ theme:
     - content.code.copy
     - content.code.annotate
     - content.action.edit
-  font:
-    text: 'Fira Sans'
-    code: 'Fira Mono'
+  font: false
 
 plugins:
   - search:
@@ -53,7 +54,9 @@ markdown_extensions:
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      base_path: [!relative $config_dir]
+      check_paths: true
   - pymdownx.details
   - pymdownx.tabbed:
       alternate_style: true
@@ -64,47 +67,83 @@ markdown_extensions:
   - toc:
       permalink: true
 
+validation:
+  links:
+    anchors: warn
+    unrecognized_links: warn
+
+not_in_nav: |
+  /agent/perf.md
+  /calc/interfaces.md
+  /dev/performance.md
+  /dev/zero_config_run.md
+
+watch:
+  - README.md
+
 nav:
-  - 首页:
-    - 介绍: index.md
+  - 首页: index.md
+  - 使用:
+    - usage/index.md
     - 快速开始:
-      - 搭建指南: quickstart.md
-      - 快速运行: quickrun.md
-      - 常见问题: faq.md
-  - 配置:
-      - 项目配置: config.md
-  - 架构:
-    - 总览: architecture/overview.md
-    - 计算层:
-      - 架构总览: calc/index.md
-      - 接口边界: calc/interfaces.md
-      - Embedding 与 Optimizer: calc/embedding_optimizer.md
-    - 参数服务器:
-      - 总览: parameter_server/index.md
-      - 基础抽象: parameter_server/base.md
-      - gRPC 实现: parameter_server/grpc.md
-      - bRPC 实现: parameter_server/brpc.md
-      - 协议定义: parameter_server/proto.md
-      - RDMA 模块: parameter_server/rdma.md
-    - 存储层:
-      - 存储层总览: storage/index.md
-      - BaseKV 与 Engine: storage/basekv.md
-      - KVEngineComposite: storage/composite_kvengine.md
-  - 开发:
-    - 性能分析:
-      - 端到端性能: dev/performance.md
-      - 存储端性能: dev/ycsb.md
-    - 免配置运行: dev/zero_config_run.md
-    - 功能实现:
-      - 添加算子: dev/feature/add_operator.md
+      - 1. 从源码构建: quickstart.md
+      - 2. 快速运行: quickrun.md
+    - 运行与集成:
+      - DLRM / TorchRec 集成: usage/integration.md
       - 分布式训练: dev/distributed.md
-    - 测试文档:
+    - 配置指南: usage/configuration.md
+    - 常见问题: faq.md
+  - 开发:
+    - dev/index.md
+    - 系统架构:
+      - 总体架构: architecture/overview.md
+      - 计算层: calc/index.md
+      - Embedding 与 Optimizer: calc/embedding_optimizer.md
+      - BagPipe 缓存: architecture/bagpipe_cache.md
+      - 参数服务器:
+        - 总览: parameter_server/index.md
+        - gRPC 实现: parameter_server/grpc.md
+        - bRPC 实现: parameter_server/brpc.md
+        - RDMA 实现: parameter_server/rdma.md
+      - 存储层:
+        - 总览: storage/index.md
+        - KVEngineComposite: storage/composite_kvengine.md
+    - 扩展指南:
+      - 添加算子: dev/feature/add_operator.md
+      - 扩展存储组件: dev/feature/storage.md
+      - 性能埋点: dev/instrumentation.md
+    - 测试与正确性:
       - 概览: dev/testing.md
       - 辅助工具: dev/tests/tools.md
-      - Python客户端: dev/tests/client_test.md
-      - EBC精度对齐: dev/tests/ebc_precision.md
+      - Python 客户端: dev/tests/client_test.md
+      - EBC 精度对齐: dev/tests/ebc_precision.md
       - DistEmbedding: dev/tests/dist_emb_test.md
       - 覆盖率: dev/tests/coverage.md
+    - 文档维护: dev/documentation.md
+  - 性能:
+    - performance/index.md
+    - 测试范围与指标: performance/methodology.md
+    - 运行基准:
+      - 端到端训练: performance/e2e.md
+      - 参数服务器与传输: performance/ps.md
+      - KVEngine 存储: dev/ycsb.md
+    - 性能分析:
+      - Profiling 与瓶颈分析: performance/profiling.md
+      - 监控与 Grafana: performance/monitoring.md
+    - 性能报告: performance/reports.md
+  - API:
+    - api/index.md
+    - Python:
+      - RecStoreClient: api/python.md
+      - Embedding 模块: api/embedding.md
+    - PyTorch Operators: api/operators.md
+    - C++:
+      - CommonOp / KVClientOp: api/cpp.md
+      - PS Client / Server: parameter_server/base.md
+      - BaseKV / KVEngine: storage/basekv.md
+    - 通信协议: parameter_server/proto.md
+    - 配置字段: config.md
+    - 命令行与环境变量: api/cli.md
 
 extra:
   social:
