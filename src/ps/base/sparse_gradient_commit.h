@@ -31,12 +31,14 @@ inline bool CanonicalAllFinite(const void* values, size_t count) {
   for (size_t at = 0; at < count; ++at) {
     float value;
     std::memcpy(&value, bytes + at * sizeof(float), sizeof(value));
-    if (!std::isfinite(value)) return false;
+    if (!std::isfinite(value))
+      return false;
   }
   return true;
 }
 
-// Diagnostic-only, enabled before process startup. Disabled runs take no clocks.
+// Diagnostic-only, enabled before process startup. Disabled runs take no
+// clocks.
 inline bool SparseCommitProfileEnabled() {
   static const bool enabled = [] {
     const char* value = std::getenv("RECSTORE_SPARSE_COMMIT_PROFILE");
@@ -55,8 +57,10 @@ inline bool SparseCommitReserveEnabled() {
 }
 
 inline uint64_t SparseCommitProfileNowNs() {
-  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::steady_clock::now().time_since_epoch()).count());
+  return static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count());
 }
 
 // Homogeneous-host wire format, shared by RPC, SHM and RDMA transports.
@@ -84,9 +88,10 @@ DecodeSparseGradientCommit(const std::string& payload) {
     throw std::invalid_argument("Truncated sparse gradient commit header");
   }
   std::memcpy(&h, payload.data(), sizeof(h));
-  if ((h.version != 1 && h.version != 2 && h.version != 4) || !h.session || !h.world || h.world > 65536 ||
-      h.rank >= h.world || !h.dim || h.dim > 65536 || h.step < 0 ||
-      h.kind > 3 || !h.chunks || h.chunks > 1048576 || h.chunk >= h.chunks ||
+  if ((h.version != 1 && h.version != 2 && h.version != 4) || !h.session ||
+      !h.world || h.world > 65536 || h.rank >= h.world || !h.dim ||
+      h.dim > 65536 || h.step < 0 || h.kind > 3 || !h.chunks ||
+      h.chunks > 1048576 || h.chunk >= h.chunks ||
       (h.divisor != 1 && h.divisor != h.world) ||
       !std::isfinite(h.learning_rate) || h.learning_rate < 0) {
     throw std::invalid_argument("Invalid sparse gradient commit metadata");
@@ -105,7 +110,8 @@ DecodeSparseGradientCommit(const std::string& payload) {
       uint64_t key;
       std::memcpy(&key, payload.data() + sizeof(h) + row * 8, 8);
       if (row && key <= previous)
-        throw std::invalid_argument("Exact replacement keys must be strictly increasing");
+        throw std::invalid_argument(
+            "Exact replacement keys must be strictly increasing");
       previous = key;
     }
     if (!CanonicalAllFinite(payload.data() + sizeof(h) + size_t(h.rows) * 8,
@@ -113,8 +119,8 @@ DecodeSparseGradientCommit(const std::string& payload) {
       throw std::invalid_argument("Non-finite exact replacement values");
   }
   // V2 promises sorted rows per rank and bounds retained retry payloads.
-  if (h.version == 2 && (h.world != 2 || h.chunks > 64 ||
-                         payload.size() > (size_t{1} << 20))) {
+  if (h.version == 2 &&
+      (h.world != 2 || h.chunks > 64 || payload.size() > (size_t{1} << 20))) {
     throw std::invalid_argument("Unsupported sorted sparse commit bounds");
   }
   return h;
@@ -197,7 +203,8 @@ public:
   // A recognizable different session must not poison the active one.
   void FailSortedSession(const std::string& table, const std::string& payload) {
     uint64_t session = 0;
-    const bool has_session = payload.size() >= sizeof(SparseGradientCommitHeader);
+    const bool has_session =
+        payload.size() >= sizeof(SparseGradientCommitHeader);
     if (has_session)
       std::memcpy(&session, payload.data(), sizeof(session));
     std::lock_guard<std::mutex> guard(mu_);
@@ -207,10 +214,11 @@ public:
       it->second.failed = true;
   }
 
-  int64_t
-  Exchange(const std::string& table, std::string payload, const Apply& apply,
-           int exact_owner_rank = -1) {
-    const bool profile = SparseCommitProfileEnabled();
+  int64_t Exchange(const std::string& table,
+                   std::string payload,
+                   const Apply& apply,
+                   int exact_owner_rank = -1) {
+    const bool profile       = SparseCommitProfileEnabled();
     const auto request_start = profile ? SparseCommitProfileNowNs() : 0;
     SparseGradientCommitHeader h;
     try {
@@ -218,7 +226,8 @@ public:
       if (h.version == 4 &&
           (exact_owner_rank < 0 || exact_owner_rank >= 2 ||
            (h.rows && h.rank != static_cast<uint32_t>(exact_owner_rank))))
-        throw std::invalid_argument("Exact replacement requires the server-bound owner rank");
+        throw std::invalid_argument(
+            "Exact replacement requires the server-bound owner rank");
     } catch (...) {
       FailSortedSession(table, payload);
       throw;
@@ -227,13 +236,13 @@ public:
     // concurrent commits. The fused BagPipe table already requires ordering.
     std::lock_guard<std::mutex> guard(mu_);
     const auto locked = profile ? SparseCommitProfileNowNs() : 0;
-    auto it = states_.find(table);
+    auto it           = states_.find(table);
     if (it == states_.end()) {
       if (h.kind != 0 || h.step != 0) {
         throw std::runtime_error("Unknown sparse gradient session");
       }
       State state;
-      state.header = h;
+      state.header           = h;
       state.exact_owner_rank = exact_owner_rank;
       state.ranks.resize(h.world);
       state.closed.resize(h.world, false);
@@ -245,7 +254,8 @@ public:
         initial.dim != h.dim || initial.learning_rate != h.learning_rate ||
         initial.divisor != h.divisor || initial.version != h.version ||
         (h.version == 4 && state.exact_owner_rank != exact_owner_rank)) {
-      if (initial.session == h.session && (initial.version >= 2 || h.version >= 2))
+      if (initial.session == h.session &&
+          (initial.version >= 2 || h.version >= 2))
         state.failed = true;
       throw std::runtime_error(
           "Sparse gradient session configuration mismatch");
@@ -259,8 +269,10 @@ public:
       return state.committed;
     if (h.kind == 2) {
       if (state.committed < h.step ||
-          (h.version >= 2 && std::any_of(state.ranks.begin(), state.ranks.end(),
-                                        [](const auto& rank) { return !rank.empty(); })))
+          (h.version >= 2 &&
+           std::any_of(state.ranks.begin(),
+                       state.ranks.end(),
+                       [](const auto& rank) { return !rank.empty(); })))
         throw std::runtime_error("Closing an uncommitted step");
       state.closed[h.rank] = true;
       const auto committed = state.committed;
@@ -279,13 +291,16 @@ public:
            h.chunk >= state.last_exact_packets[h.rank].size() ||
            state.last_exact_packets[h.rank][h.chunk] != payload)) {
         state.failed = true;
-        throw std::runtime_error("Conflicting or unknown completed exact replacement retry");
+        throw std::runtime_error(
+            "Conflicting or unknown completed exact replacement retry");
       }
       return state.committed;
     }
     if (h.step != state.committed + 1 || state.closed[h.rank] ||
-        (h.version >= 2 && std::any_of(state.closed.begin(), state.closed.end(),
-                                      [](bool closed) { return closed; }))) {
+        (h.version >= 2 &&
+         std::any_of(state.closed.begin(), state.closed.end(), [](bool closed) {
+           return closed;
+         }))) {
       if (h.version >= 2)
         state.failed = true;
       throw std::runtime_error(
@@ -294,10 +309,22 @@ public:
     if (h.version >= 2) {
       try {
         if (h.version == 4)
-          return ExchangeExact(state, h, std::move(payload), apply, profile,
-                               request_start, locked);
-        return ExchangeSorted(state, h, std::move(payload), apply, profile,
-                              request_start, locked);
+          return ExchangeExact(
+              state,
+              h,
+              std::move(payload),
+              apply,
+              profile,
+              request_start,
+              locked);
+        return ExchangeSorted(
+            state,
+            h,
+            std::move(payload),
+            apply,
+            profile,
+            request_start,
+            locked);
       } catch (...) {
         // A prefix may already be applied; never retry or fall back to V1.
         state.failed = true;
@@ -315,8 +342,8 @@ public:
       return state.committed;
     }
     const auto payload_bytes = payload.size();
-    chunks[h.chunk] = std::move(payload);
-    bool complete = true;
+    chunks[h.chunk]          = std::move(payload);
+    bool complete            = true;
     for (const auto& rank : state.ranks) {
       if (rank.empty()) {
         complete = false;
@@ -413,16 +440,16 @@ private:
     // V4 retains only the last completed step for bit-identical ACK retries.
     std::vector<std::vector<std::string>> last_exact_packets;
     int exact_owner_rank = -1;
-    size_t exact_rows = 0;
+    size_t exact_rows    = 0;
     std::vector<bool> closed;
     std::array<SortedCursor, 2> sorted;
     size_t sorted_rows = 0, sorted_consumed = 0;
-    uint64_t profile_first_ns = 0;
-    uint64_t profile_lock_ns = 0;
-    uint64_t profile_collect_ns = 0;
+    uint64_t profile_first_ns      = 0;
+    uint64_t profile_lock_ns       = 0;
+    uint64_t profile_collect_ns    = 0;
     uint64_t profile_payload_bytes = 0;
-    uint64_t profile_rows = 0;
-    uint64_t profile_chunks = 0;
+    uint64_t profile_rows          = 0;
+    uint64_t profile_chunks        = 0;
     uint64_t profile_aggregate_ns = 0, profile_apply_ns = 0;
     size_t profile_unique_rows = 0, profile_early_rows = 0;
   };
@@ -435,11 +462,12 @@ private:
   }
   static uint64_t StoredKey(const std::string& packet, size_t row) {
     uint64_t key;
-    std::memcpy(&key, packet.data() + sizeof(SparseGradientCommitHeader) + row * 8, 8);
+    std::memcpy(
+        &key, packet.data() + sizeof(SparseGradientCommitHeader) + row * 8, 8);
     return key;
   }
   static bool HasSortedRow(State& state, size_t rank) {
-    auto& cursor = state.sorted[rank];
+    auto& cursor        = state.sorted[rank];
     const auto& packets = state.ranks[rank];
     while (cursor.chunk < cursor.contiguous &&
            cursor.row == StoredHeader(packets[cursor.chunk]).rows) {
@@ -448,11 +476,17 @@ private:
     }
     return cursor.chunk < cursor.contiguous;
   }
-  int64_t ExchangeExact(State& state, const SparseGradientCommitHeader& h,
-                       std::string payload, const Apply& apply, bool profile,
-                       uint64_t request_start, uint64_t locked) {
+  int64_t ExchangeExact(
+      State& state,
+      const SparseGradientCommitHeader& h,
+      std::string payload,
+      const Apply& apply,
+      bool profile,
+      uint64_t request_start,
+      uint64_t locked) {
     auto& packets = state.ranks[h.rank];
-    if (packets.empty()) packets.resize(h.chunks);
+    if (packets.empty())
+      packets.resize(h.chunks);
     if (packets.size() != h.chunks)
       throw std::runtime_error("Exact replacement chunk count changed");
     if (!packets[h.chunk].empty()) {
@@ -465,52 +499,59 @@ private:
       throw std::invalid_argument("Exact replacement step exceeds row bound");
     state.exact_rows += h.rows;
     const size_t payload_bytes = payload.size();
-    packets[h.chunk] = std::move(payload);
-    bool complete = true;
+    packets[h.chunk]           = std::move(payload);
+    bool complete              = true;
     for (const auto& rank : state.ranks) {
-      if (rank.empty() || std::any_of(rank.begin(), rank.end(),
-                                     [](const auto& packet) { return packet.empty(); })) {
+      if (rank.empty() ||
+          std::any_of(rank.begin(), rank.end(), [](const auto& packet) {
+            return packet.empty();
+          })) {
         complete = false;
         break;
       }
     }
     const auto collected = profile ? SparseCommitProfileNowNs() : 0;
     if (profile) {
-      if (!state.profile_first_ns) state.profile_first_ns = request_start;
+      if (!state.profile_first_ns)
+        state.profile_first_ns = request_start;
       state.profile_lock_ns += locked - request_start;
       state.profile_collect_ns += collected - locked;
       state.profile_payload_bytes += payload_bytes;
       state.profile_rows += h.rows;
       ++state.profile_chunks;
     }
-    if (!complete) return state.committed;
+    if (!complete)
+      return state.committed;
 
     std::vector<uint64_t> keys;
     std::vector<float> values;
     keys.reserve(state.exact_rows);
     values.resize(state.exact_rows * h.dim);
-    // Only the server-bound owner can have rows. Retain its exact row/bit order;
-    // no reduction, scaling, or optimizer arithmetic is performed in V4.
+    // Only the server-bound owner can have rows. Retain its exact row/bit
+    // order; no reduction, scaling, or optimizer arithmetic is performed in V4.
     for (const auto& packet : state.ranks[state.exact_owner_rank]) {
-      const auto ch = StoredHeader(packet);
-      const char* key_data = packet.data() + sizeof(ch);
+      const auto ch          = StoredHeader(packet);
+      const char* key_data   = packet.data() + sizeof(ch);
       const char* value_data = key_data + size_t(ch.rows) * 8;
-      const size_t begin = keys.size();
+      const size_t begin     = keys.size();
       for (size_t row = 0; row < ch.rows; ++row) {
         uint64_t key;
         std::memcpy(&key, key_data + row * 8, 8);
         if (!keys.empty() && key <= keys.back())
-          throw std::invalid_argument("Exact replacement chunks are not strictly sorted");
+          throw std::invalid_argument(
+              "Exact replacement chunks are not strictly sorted");
         keys.push_back(key);
       }
       if (ch.rows)
-        std::memcpy(values.data() + begin * h.dim, value_data,
+        std::memcpy(values.data() + begin * h.dim,
+                    value_data,
                     size_t(ch.rows) * h.dim * sizeof(float));
     }
     if (keys.size() != state.exact_rows)
       throw std::runtime_error("Exact replacement owner row count mismatch");
     const auto assembled = profile ? SparseCommitProfileNowNs() : 0;
-    if (!keys.empty()) apply(keys, values);
+    if (!keys.empty())
+      apply(keys, values);
     const auto applied = profile ? SparseCommitProfileNowNs() : 0;
     if (profile) {
       state.profile_aggregate_ns += assembled - collected;
@@ -520,9 +561,14 @@ private:
     FinishStep(state, h, profile, request_start, collected, applied);
     return state.committed;
   }
-  int64_t ExchangeSorted(State& state, const SparseGradientCommitHeader& h,
-                        std::string payload, const Apply& apply, bool profile,
-                        uint64_t request_start, uint64_t locked) {
+  int64_t ExchangeSorted(
+      State& state,
+      const SparseGradientCommitHeader& h,
+      std::string payload,
+      const Apply& apply,
+      bool profile,
+      uint64_t request_start,
+      uint64_t locked) {
     auto& packets = state.ranks[h.rank];
     if (packets.empty())
       packets.resize(h.chunks);
@@ -537,17 +583,17 @@ private:
       if (StoredKey(payload, row) < StoredKey(payload, row - 1))
         throw std::runtime_error("Unsorted gradient chunk");
     const auto payload_bytes = payload.size();
-    packets[h.chunk] = std::move(payload);
+    packets[h.chunk]         = std::move(payload);
     state.sorted_rows += h.rows;
     auto& received = state.sorted[h.rank];
     while (received.contiguous < packets.size() &&
            !packets[received.contiguous].empty()) {
       const auto& packet = packets[received.contiguous];
-      const auto ch = StoredHeader(packet);
+      const auto ch      = StoredHeader(packet);
       if (ch.rows) {
         if (received.has_bound && StoredKey(packet, 0) < received.bound)
           throw std::runtime_error("Unsorted gradient chunk boundary");
-        received.bound = StoredKey(packet, ch.rows - 1);
+        received.bound     = StoredKey(packet, ch.rows - 1);
         received.has_bound = true;
       }
       ++received.contiguous;
@@ -556,7 +602,8 @@ private:
     uint64_t frontier = 0;
     for (size_t rank = 0; rank < 2; ++rank) {
       const auto& cursor = state.sorted[rank];
-      if (!state.ranks[rank].empty() && cursor.contiguous == state.ranks[rank].size())
+      if (!state.ranks[rank].empty() &&
+          cursor.contiguous == state.ranks[rank].size())
         continue;
       complete = false;
       if (!cursor.has_bound) {
@@ -585,12 +632,13 @@ private:
     keys.reserve(remaining);
     grads.reserve(remaining * h.dim);
     while (true) {
-      bool found = false;
+      bool found   = false;
       uint64_t key = 0;
       for (size_t rank = 0; rank < 2; ++rank) {
         if (HasSortedRow(state, rank)) {
           const auto& cursor = state.sorted[rank];
-          const auto candidate = StoredKey(state.ranks[rank][cursor.chunk], cursor.row);
+          const auto candidate =
+              StoredKey(state.ranks[rank][cursor.chunk], cursor.row);
           if (!found || candidate < key)
             key = candidate;
           found = true;
@@ -608,7 +656,7 @@ private:
         while (HasSortedRow(state, rank) &&
                StoredKey(state.ranks[rank][cursor.chunk], cursor.row) == key) {
           const auto& packet = state.ranks[rank][cursor.chunk];
-          const auto ch = StoredHeader(packet);
+          const auto ch      = StoredHeader(packet);
           const char* src = packet.data() + sizeof(ch) + size_t(ch.rows) * 8 +
                             cursor.row * h.dim * 4;
           for (size_t col = 0; col < h.dim; ++col) {
@@ -639,8 +687,12 @@ private:
       FinishStep(state, h, profile, request_start, collected, applied);
     return state.committed;
   }
-  void FinishStep(State& state, const SparseGradientCommitHeader& h, bool profile,
-                  uint64_t request_start, uint64_t collected, uint64_t applied) {
+  void FinishStep(State& state,
+                  const SparseGradientCommitHeader& h,
+                  bool profile,
+                  uint64_t request_start,
+                  uint64_t collected,
+                  uint64_t applied) {
     state.committed = h.step;
     if (h.version == 4) {
       state.last_exact_packets = std::move(state.ranks);
@@ -650,34 +702,45 @@ private:
       for (auto& rank : state.ranks)
         rank.clear();
     }
-    state.sorted = {};
+    state.sorted      = {};
     state.sorted_rows = state.sorted_consumed = 0;
     if (profile) {
       const auto released = SparseCommitProfileNowNs();
       // One stdio call keeps each diagnostic line intact across server threads.
       // Request timing excludes logging and destruction of local merge buffers.
-      std::fprintf(stderr,
-          "component=sparse_commit event=coordinator_phase session=%llu step=%lld "
+      std::fprintf(
+          stderr,
+          "component=sparse_commit event=coordinator_phase session=%llu "
+          "step=%lld "
           "world=%u dim=%u chunks=%llu input_rows=%llu unique_rows=%zu "
           "payload_bytes=%llu arrival_span_ms=%.6f lock_wait_ms=%.6f "
           "collect_cpu_ms=%.6f aggregate_ms=%.6f apply_ms=%.6f "
-          "release_chunks_ms=%.6f last_request_ms=%.6f reserve=%d version=%u early_rows=%zu\n",
+          "release_chunks_ms=%.6f last_request_ms=%.6f reserve=%d version=%u "
+          "early_rows=%zu\n",
           static_cast<unsigned long long>(h.session),
-          static_cast<long long>(h.step), h.world, h.dim,
+          static_cast<long long>(h.step),
+          h.world,
+          h.dim,
           static_cast<unsigned long long>(state.profile_chunks),
-          static_cast<unsigned long long>(state.profile_rows), state.profile_unique_rows,
+          static_cast<unsigned long long>(state.profile_rows),
+          state.profile_unique_rows,
           static_cast<unsigned long long>(state.profile_payload_bytes),
           (collected - state.profile_first_ns) / 1e6,
-          state.profile_lock_ns / 1e6, state.profile_collect_ns / 1e6,
-          state.profile_aggregate_ns / 1e6, state.profile_apply_ns / 1e6,
-          (released - applied) / 1e6, (released - request_start) / 1e6,
-          static_cast<int>(reserve_), h.version, state.profile_early_rows);
-      state.profile_first_ns = 0;
-      state.profile_lock_ns = 0;
-      state.profile_collect_ns = 0;
+          state.profile_lock_ns / 1e6,
+          state.profile_collect_ns / 1e6,
+          state.profile_aggregate_ns / 1e6,
+          state.profile_apply_ns / 1e6,
+          (released - applied) / 1e6,
+          (released - request_start) / 1e6,
+          static_cast<int>(reserve_),
+          h.version,
+          state.profile_early_rows);
+      state.profile_first_ns      = 0;
+      state.profile_lock_ns       = 0;
+      state.profile_collect_ns    = 0;
       state.profile_payload_bytes = 0;
-      state.profile_rows = 0;
-      state.profile_chunks = 0;
+      state.profile_rows          = 0;
+      state.profile_chunks        = 0;
       state.profile_aggregate_ns = state.profile_apply_ns = 0;
       state.profile_unique_rows = state.profile_early_rows = 0;
     }

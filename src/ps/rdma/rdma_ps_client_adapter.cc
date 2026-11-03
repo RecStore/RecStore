@@ -231,8 +231,7 @@ void InitializeRdmaProcessRuntime() {
 }
 
 RDMAPSClientAdapter::RDMAPSClientAdapter(json config)
-    : BasePSClient(config), config_(std::move(config)),
-      split_lanes_([] {
+    : BasePSClient(config), config_(std::move(config)), split_lanes_([] {
         const char* value = std::getenv("RECSTORE_RDMA_SPLIT_LANES");
         return value != nullptr && std::strcmp(value, "1") == 0;
       }()) {}
@@ -291,7 +290,8 @@ void RDMAPSClientAdapter::EnsureClientInitialized() {
       config_.value("rdma_logical_client_id", FLAGS_rdma_rc_client_id_base);
 
   if (split_lanes_ && FLAGS_rdma_rc_qps_per_client_per_shard < 2) {
-    throw std::invalid_argument("RECSTORE_RDMA_SPLIT_LANES requires at least two QPs");
+    throw std::invalid_argument(
+        "RECSTORE_RDMA_SPLIT_LANES requires at least two QPs");
   }
   shard_clients_.clear();
   client_ = nullptr;
@@ -441,9 +441,9 @@ std::size_t RDMAPSClientAdapter::MaxInFlightGetRpcs() const {
 std::size_t RDMAPSClientAdapter::MaxInFlightCommitRpcs() const {
   // Conservative global window: no shard can exceed its reserved QP slots,
   // including uneven sharding and empty-rank markers.
-  return split_lanes_ ? static_cast<std::size_t>(
-                            std::max(FLAGS_rdma_rc_slots_per_qp, 1))
-                      : MaxInFlightGetRpcs();
+  return split_lanes_
+           ? static_cast<std::size_t>(std::max(FLAGS_rdma_rc_slots_per_qp, 1))
+           : MaxInFlightGetRpcs();
 }
 
 bool RDMAPSClientAdapter::QueryRPCFinished(int rpc_id) {
@@ -553,12 +553,15 @@ int64_t RDMAPSClientAdapter::SparseGradientCommit(
     if (deployment_.num_shards != 2 || deployment_.hash_method != "city_hash" ||
         keys.Size() > 2 * 26 * 1024 ||
         (h.kind != 0 && (keys.Size() || grads.shape(0))))
-      throw std::invalid_argument("Unsupported owner replacement deployment or bounds");
+      throw std::invalid_argument(
+          "Unsupported owner replacement deployment or bounds");
     // Validate every candidate before the first RPC can publish any row.
     for (size_t i = 0; i < keys.Size(); ++i) {
       if ((i && keys[i - 1] >= keys[i]) ||
-          shard_routing::PartitionKey(keys[i], 2, deployment_.hash_method) != h.rank)
-        throw std::invalid_argument("Owner replacement requires sorted owned keys");
+          shard_routing::PartitionKey(keys[i], 2, deployment_.hash_method) !=
+              h.rank)
+        throw std::invalid_argument(
+            "Owner replacement requires sorted owned keys");
     }
     if (!CanonicalAllFinite(grads.data_as<float>(), keys.Size() * h.dim))
       throw std::invalid_argument("Nonfinite owner candidate");
@@ -574,14 +577,18 @@ int64_t RDMAPSClientAdapter::SparseGradientCommit(
         const auto rpc = client->SubmitSparseGradientCommit(table, packet);
         committed = std::min(committed, client->WaitSparseGradientCommit(rpc));
       } catch (...) {
-        if (!first_error) first_error = std::current_exception();
+        if (!first_error)
+          first_error = std::current_exception();
       }
     }
-    if (first_error) std::rethrow_exception(first_error);
+    if (first_error)
+      std::rethrow_exception(first_error);
     return committed;
   }
-  const size_t raw_limit = shard_clients_.front()->SparseGradientCommitPayloadLimit();
-  const size_t limit = h.version == 4 ? std::min(size_t{1} << 20, raw_limit) : raw_limit;
+  const size_t raw_limit =
+      shard_clients_.front()->SparseGradientCommitPayloadLimit();
+  const size_t limit =
+      h.version == 4 ? std::min(size_t{1} << 20, raw_limit) : raw_limit;
   const size_t row_bytes = 8 + size_t(h.dim) * 4;
   if (limit < sizeof(h) + row_bytes)
     throw std::runtime_error("Gradient row exceeds RDMA slot");
@@ -666,7 +673,8 @@ uint64_t RDMAPSClientAdapter::SubmitUpdateParameterAsync(
     const base::ConstArray<uint64_t>& keys,
     const base::RecTensor& grads) {
   if (split_lanes_) {
-    throw std::logic_error("Legacy async update is unsupported with split RDMA lanes");
+    throw std::logic_error(
+        "Legacy async update is unsupported with split RDMA lanes");
   }
   if (keys.Size() == 0) {
     throw std::invalid_argument("RDMA update requires at least one key");
@@ -744,7 +752,8 @@ void RDMAPSClientAdapter::Command(PSCommand) {
 uint64_t
 RDMAPSClientAdapter::PrefetchParameter(const base::ConstArray<uint64_t>& keys) {
   if (split_lanes_) {
-    throw std::logic_error("Legacy prefetch is unsupported with split RDMA lanes");
+    throw std::logic_error(
+        "Legacy prefetch is unsupported with split RDMA lanes");
   }
   EnsureThreadInitialized();
   std::lock_guard<std::mutex> io_guard(io_mu_);

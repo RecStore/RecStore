@@ -130,7 +130,8 @@ public:
                          int async_req_id,
                          int64_t embedding_dim) {
     if (adapter_->split_lanes_) {
-      throw std::logic_error("Raw async GET is unsupported with split RDMA lanes");
+      throw std::logic_error(
+          "Raw async GET is unsupported with split RDMA lanes");
     }
     std::lock_guard<std::mutex> io_guard(adapter_->io_mu_);
     return adapter_->SubmitGetParameter(

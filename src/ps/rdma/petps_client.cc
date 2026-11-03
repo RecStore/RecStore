@@ -122,7 +122,7 @@ void PetPSClient::InitializeTransport() {
   if (split_lanes_ && config_.qps_per_client_per_shard < 2) {
     throw std::invalid_argument("Split RDMA lanes require at least two QPs");
   }
-  config_.slots_per_qp             = FLAGS_rdma_rc_slots_per_qp;
+  config_.slots_per_qp = FLAGS_rdma_rc_slots_per_qp;
   config_.request_slot_bytes =
       static_cast<std::size_t>(FLAGS_rdma_rc_request_slot_bytes);
   config_.response_slot_bytes =
@@ -316,11 +316,11 @@ PetPSClient::SlotHandle PetPSClient::AcquireIdleSlot(bool sparse_commit) {
   if (FLAGS_rdma_rc_profile_interval_ms > 0) {
     profile_.acquire_qp_count.fetch_add(1, std::memory_order_relaxed);
   }
-  int usable_lanes   = 0;
-  int dead_lanes     = 0;
-  int degraded_lanes = 0;
+  int usable_lanes        = 0;
+  int dead_lanes          = 0;
+  int degraded_lanes      = 0;
   const std::size_t begin = split_lanes_ && !sparse_commit ? 1 : 0;
-  const std::size_t end = split_lanes_ && sparse_commit ? 1 : qps_.size();
+  const std::size_t end   = split_lanes_ && sparse_commit ? 1 : qps_.size();
   for (std::size_t qp_index = begin; qp_index < end; ++qp_index) {
     auto& qp = qps_[qp_index];
     if (qp.dead.load(std::memory_order_relaxed)) {

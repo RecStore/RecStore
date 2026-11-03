@@ -491,16 +491,18 @@ public:
     sparse_gradient_commits_.FailSortedSession(table, payload);
   }
 
-  int64_t SparseGradientCommit(
-      const std::string& table, std::string payload, unsigned tid,
-      int exact_owner_rank = -1) {
+  int64_t SparseGradientCommit(const std::string& table,
+                               std::string payload,
+                               unsigned tid,
+                               int exact_owner_rank = -1) {
     recstore::SparseGradientCommitHeader h;
     try {
       h = recstore::DecodeSparseGradientCommit(payload);
       if (h.version == 4 &&
           (exact_owner_rank < 0 || exact_owner_rank >= 2 ||
            (h.rows && h.rank != static_cast<uint32_t>(exact_owner_rank))))
-        throw std::invalid_argument("Exact replacement requires the server-bound owner rank");
+        throw std::invalid_argument(
+            "Exact replacement requires the server-bound owner rank");
       const auto* sgd = dynamic_cast<SGD*>(optimizer_.get());
       if (!sgd || sgd->LearningRate() != h.learning_rate) {
         throw std::runtime_error("Sparse gradient commit requires matching "
@@ -522,21 +524,26 @@ public:
         [&](const std::vector<uint64_t>& keys,
             const std::vector<float>& grads) {
           if (h.version == 4) {
-            // Experimental initialized DRAM namespace, with no external writers.
-            // This lock excludes CachePS checkpoint/load/clear while direct rows
-            // are validated and copied. The client must read old weights only
-            // after the previous global commit; V4 does not prove their freshness.
+            // Experimental initialized DRAM namespace, with no external
+            // writers. This lock excludes CachePS checkpoint/load/clear while
+            // direct rows are validated and copied. The client must read old
+            // weights only after the previous global commit; V4 does not prove
+            // their freshness.
             std::lock_guard<std::mutex> checkpoint_lock(checkpoint_mu_);
-            const auto tag = MakeTensorTag(table_configs_.at(table).table_id, 0, 1);
+            const auto tag =
+                MakeTensorTag(table_configs_.at(table).table_id, 0, 1);
             for (uint64_t key : keys)
               if (ExtractKeyTag(key) != tag)
-                throw std::runtime_error("Exact replacement key/table tag mismatch");
+                throw std::runtime_error(
+                    "Exact replacement key/table tag mismatch");
             if (!recstore::CanonicalAllFinite(grads.data(), grads.size()))
-              throw std::invalid_argument("Non-finite exact replacement candidate");
-            const auto backing = base_kv_->GetRDMABackingRegion();
+              throw std::invalid_argument(
+                  "Non-finite exact replacement candidate");
+            const auto backing     = base_kv_->GetRDMABackingRegion();
             const size_t row_bytes = size_t(h.dim) * sizeof(float);
             if (!backing.data || backing.size < row_bytes)
-              throw std::runtime_error("Exact replacement requires direct DRAM backing");
+              throw std::runtime_error(
+                  "Exact replacement requires direct DRAM backing");
             std::vector<base::ConstArray<float>> current;
             base_kv_->BatchGet(base::ConstArray<uint64_t>(keys), &current, tid);
             if (current.size() != keys.size())
@@ -546,12 +553,15 @@ public:
               const auto address = reinterpret_cast<uintptr_t>(row.Data());
               if (row.Size() != h.dim || address < begin ||
                   address - begin > backing.size - row_bytes)
-                throw std::runtime_error("Exact replacement requires existing direct D128 rows");
+                throw std::runtime_error(
+                    "Exact replacement requires existing direct D128 rows");
             }
-            // The whole owner step passes every check before any value is written.
+            // The whole owner step passes every check before any value is
+            // written.
             for (size_t row = 0; row < keys.size(); ++row)
               std::memcpy(const_cast<float*>(current[row].Data()),
-                          grads.data() + row * h.dim, row_bytes);
+                          grads.data() + row * h.dim,
+                          row_bytes);
             MarkCheckpointDirty();
             return;
           }
@@ -564,7 +574,8 @@ public:
                   tid)) {
             throw std::runtime_error("Sparse gradient commit optimizer failed");
           }
-        }, exact_owner_rank);
+        },
+        exact_owner_rank);
   }
 
   int InitTable(const std::string& table_name,

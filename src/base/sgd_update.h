@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
-#include <immintrin.h>
+#  include <immintrin.h>
 #endif
 
 namespace recstore {
@@ -17,10 +17,15 @@ inline bool SparseCommitFmaEnabled() {
   return enabled;
 }
 
-inline void SgdFmaScalar(float* values, const float* grads, size_t count,
-                         float learning_rate, bool initialize) {
+inline void SgdFmaScalar(
+    float* values,
+    const float* grads,
+    size_t count,
+    float learning_rate,
+    bool initialize) {
   for (size_t i = 0; i < count; ++i)
-    values[i] = std::fma(-learning_rate, grads[i], initialize ? 0.0f : values[i]);
+    values[i] =
+        std::fma(-learning_rate, grads[i], initialize ? 0.0f : values[i]);
 }
 
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
@@ -32,14 +37,19 @@ inline bool SgdFmaAvx2Supported() {
   return supported;
 }
 
-__attribute__((target("avx2,fma"), noinline))
-inline void SgdFmaAvx2(float* values, const float* grads, size_t count,
-                       float learning_rate, bool initialize) {
+__attribute__((target("avx2,fma"), noinline)) inline void
+SgdFmaAvx2(float* values,
+           const float* grads,
+           size_t count,
+           float learning_rate,
+           bool initialize) {
   const auto scale = _mm256_set1_ps(-learning_rate);
-  size_t i = 0;
+  size_t i         = 0;
   for (; count - i >= 8; i += 8) {
-    const auto old = initialize ? _mm256_setzero_ps() : _mm256_loadu_ps(values + i);
-    _mm256_storeu_ps(values + i, _mm256_fmadd_ps(scale, _mm256_loadu_ps(grads + i), old));
+    const auto old =
+        initialize ? _mm256_setzero_ps() : _mm256_loadu_ps(values + i);
+    _mm256_storeu_ps(
+        values + i, _mm256_fmadd_ps(scale, _mm256_loadu_ps(grads + i), old));
   }
   if (i < count)
     SgdFmaScalar(values + i, grads + i, count - i, learning_rate, initialize);
@@ -47,8 +57,12 @@ inline void SgdFmaAvx2(float* values, const float* grads, size_t count,
 #endif
 
 // Only the final independent-row SGD update changes; accumulation is external.
-inline void ApplySgdRow(float* values, const float* grads, size_t count,
-                        float learning_rate, bool initialize = false) {
+inline void
+ApplySgdRow(float* values,
+            const float* grads,
+            size_t count,
+            float learning_rate,
+            bool initialize = false) {
   if (SparseCommitFmaEnabled()) {
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
     if (SgdFmaAvx2Supported()) {

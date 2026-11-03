@@ -284,7 +284,7 @@ private:
   // health probes.
   std::unique_ptr<RdmaControlPlaneClient> control_plane_;
   std::vector<QpContext> qps_; // One context per client-side QP lane.
-  bool split_lanes_ = false; // Immutable after transport initialization.
+  bool split_lanes_ = false;   // Immutable after transport initialization.
   std::vector<std::vector<char>>
       receive_buffers_; // All heap-backed response buffers ever allocated.
                         // Element data() pointers stay stable for the buffer

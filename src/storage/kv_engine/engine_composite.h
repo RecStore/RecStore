@@ -524,7 +524,7 @@ public:
       const char* value = std::getenv("RECSTORE_SPARSE_COMMIT_PROFILE");
       return value != nullptr && std::strcmp(value, "1") == 0;
     }();
-    using clock = std::chrono::steady_clock;
+    using clock              = std::chrono::steady_clock;
     const auto profile_start = profile ? clock::now() : clock::time_point{};
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     const int tag_bits      = static_cast<int>(sizeof(tag) * 8);
@@ -579,8 +579,12 @@ public:
       const auto& row   = rows[static_cast<size_t>(r)];
       const float* grad = grads + r * embedding_dim;
       if (row.missing) {
-        recstore::ApplySgdRow(missing_row.data(), grad,
-                              static_cast<size_t>(embedding_dim), learning_rate, true);
+        recstore::ApplySgdRow(
+            missing_row.data(),
+            grad,
+            static_cast<size_t>(embedding_dim),
+            learning_rate,
+            true);
         const auto miss_start =
             stats != nullptr ? clock::now() : clock::time_point{};
         PutInternalStats miss_stats;
@@ -603,7 +607,8 @@ public:
       }
 
       float* value = reinterpret_cast<float*>(const_cast<char*>(row.data));
-      recstore::ApplySgdRow(value, grad, static_cast<size_t>(embedding_dim), learning_rate);
+      recstore::ApplySgdRow(
+          value, grad, static_cast<size_t>(embedding_dim), learning_rate);
     }
     if (stats != nullptr) {
       const auto loop_ns = static_cast<std::uint64_t>(
@@ -618,21 +623,25 @@ public:
               : 0;
     }
     if (profile) {
-      const auto updated = clock::now();
+      const auto updated    = clock::now();
       const auto elapsed_ms = [](auto start, auto end) {
         return std::chrono::duration<double, std::milli>(end - start).count();
       };
       // This line precedes its coordinator_phase line on the owning shard.
       // index_lookup_ms is included in direct_rows_lookup_ms, not additive.
-      std::fprintf(stderr,
+      std::fprintf(
+          stderr,
           "component=sparse_commit event=apply_phase tid=%u rows=%lld dim=%lld "
           "missing_rows=%llu tag_keys_ms=%.6f direct_rows_lookup_ms=%.6f "
           "index_lookup_ms=%.6f update_loop_ms=%.6f total_ms=%.6f\n",
-          tid, static_cast<long long>(num_rows),
+          tid,
+          static_cast<long long>(num_rows),
           static_cast<long long>(embedding_dim),
           static_cast<unsigned long long>(get_stats.missing_rows),
-          elapsed_ms(profile_start, batch_get_start), elapsed_ms(batch_get_start, loop_start),
-          get_stats.index_lookup_ns / 1e6, elapsed_ms(loop_start, updated),
+          elapsed_ms(profile_start, batch_get_start),
+          elapsed_ms(batch_get_start, loop_start),
+          get_stats.index_lookup_ns / 1e6,
+          elapsed_ms(loop_start, updated),
           elapsed_ms(profile_start, updated));
     }
     return true;

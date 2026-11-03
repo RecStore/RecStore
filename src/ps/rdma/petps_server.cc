@@ -1430,14 +1430,18 @@ private:
             std::memcpy(&header, packet.data(), sizeof(header));
           if (header.version == 4) {
             header = recstore::DecodeSparseGradientCommit(packet);
-            if (deployment_.num_shards != 2 || deployment_.hash_method != "city_hash")
-              throw std::invalid_argument("Owner replacement requires two city_hash shards");
+            if (deployment_.num_shards != 2 ||
+                deployment_.hash_method != "city_hash")
+              throw std::invalid_argument(
+                  "Owner replacement requires two city_hash shards");
             exact_owner = shard_id_;
             for (size_t row = 0; row < header.rows; ++row) {
               uint64_t key;
               std::memcpy(&key, packet.data() + sizeof(header) + row * 8, 8);
-              if (recstore::shard_routing::PartitionKey(key, 2, deployment_.hash_method) != shard_id_)
-                throw std::invalid_argument("Owner replacement key routed to wrong shard");
+              if (recstore::shard_routing::PartitionKey(
+                      key, 2, deployment_.hash_method) != shard_id_)
+                throw std::invalid_argument(
+                    "Owner replacement key routed to wrong shard");
             }
           }
         } catch (...) {

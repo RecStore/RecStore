@@ -13,7 +13,7 @@ torch::Tensor emb_read_torch(const torch::Tensor& keys, int64_t embedding_dim) {
 }
 
 void emb_read_into_torch(const torch::Tensor& keys,
-                          const torch::Tensor& values) {
+                         const torch::Tensor& values) {
   CheckRows(keys, values);
   TORCH_CHECK(keys.device().is_cpu() && values.device().is_cpu(),
               "emb_read_into requires CPU keys and destination");
@@ -145,7 +145,8 @@ std::string current_ps_backend_torch() {
 
 void RegisterBaseOps(torch::Library& m) {
   m.def("emb_read", emb_read_torch);
-  m.def("emb_read_into(Tensor keys, Tensor(a!) values) -> ()", emb_read_into_torch);
+  m.def("emb_read_into(Tensor keys, Tensor(a!) values) -> ()",
+        emb_read_into_torch);
   m.def("emb_update", emb_update_torch);
   m.def("emb_update_table", emb_update_table_torch);
   m.def("emb_update_async", emb_update_async_torch);

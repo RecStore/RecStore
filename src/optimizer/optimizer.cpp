@@ -273,8 +273,12 @@ void SGD::UpdateFlat(
     if (current.Size() == 0) {
       ++missing_rows;
       std::vector<float> zero_init(static_cast<size_t>(embedding_dim), 0.0f);
-      recstore::ApplySgdRow(zero_init.data(), row_grad,
-                            static_cast<size_t>(embedding_dim), learning_rate_, true);
+      recstore::ApplySgdRow(
+          zero_init.data(),
+          row_grad,
+          static_cast<size_t>(embedding_dim),
+          learning_rate_,
+          true);
       std::string val_str(reinterpret_cast<char*>(zero_init.data()),
                           zero_init.size() * sizeof(float));
       it->second->Put(keys[static_cast<size_t>(row)], val_str, tid);
@@ -286,7 +290,8 @@ void SGD::UpdateFlat(
     }
 
     float* data = const_cast<float*>(current.Data());
-    recstore::ApplySgdRow(data, row_grad, static_cast<size_t>(embedding_dim), learning_rate_);
+    recstore::ApplySgdRow(
+        data, row_grad, static_cast<size_t>(embedding_dim), learning_rate_);
   }
   recstore::ReportLocalShmStageMetric(
       "sgd_update_apply_us", recstore::LocalShmElapsedUs(apply_start));

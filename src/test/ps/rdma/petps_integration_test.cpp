@@ -160,7 +160,7 @@ namespace petps {
 struct PetPSClientTestAccess {
   // CPU-only allocation tests: no transport, MR or server is constructed.
   static void FakeSlots(PetPSClient& client, int qps, int slots, bool split) {
-    client.qps_ = std::vector<PetPSClient::QpContext>(qps);
+    client.qps_         = std::vector<PetPSClient::QpContext>(qps);
     client.split_lanes_ = split;
     for (int qp = 0; qp < qps; ++qp) {
       client.qps_[qp].qp_index = qp;
@@ -272,9 +272,10 @@ TEST(PetPSSplitLaneCpuTest, RejectsOneQpAndLateConfiguration) {
   FLAGS_rdma_rc_qps_per_client_per_shard = original;
 }
 
-TEST(PetPSSplitLaneCpuTest, AdapterRejectsUnsupportedAsyncApisWithoutTransport) {
-  const char* old = std::getenv("RECSTORE_RDMA_SPLIT_LANES");
-  const bool had_old = old != nullptr;
+TEST(PetPSSplitLaneCpuTest,
+     AdapterRejectsUnsupportedAsyncApisWithoutTransport) {
+  const char* old         = std::getenv("RECSTORE_RDMA_SPLIT_LANES");
+  const bool had_old      = old != nullptr;
   const std::string saved = had_old ? old : "";
   ::setenv("RECSTORE_RDMA_SPLIT_LANES", "1", 1);
   {
@@ -289,8 +290,10 @@ TEST(PetPSSplitLaneCpuTest, AdapterRejectsUnsupportedAsyncApisWithoutTransport) 
     EXPECT_THROW(raw.SubmitGetParameter(keys, nullptr, true, 0, 1),
                  std::logic_error);
   }
-  if (had_old) ::setenv("RECSTORE_RDMA_SPLIT_LANES", saved.c_str(), 1);
-  else ::unsetenv("RECSTORE_RDMA_SPLIT_LANES");
+  if (had_old)
+    ::setenv("RECSTORE_RDMA_SPLIT_LANES", saved.c_str(), 1);
+  else
+    ::unsetenv("RECSTORE_RDMA_SPLIT_LANES");
 }
 
 TEST(PetPSIntegrationTest, PutGetRoundTripSingleShard) {
@@ -383,7 +386,7 @@ TEST(PetPSIntegrationTest, SparseGradientCommitCommitSingleShard) {
 
 namespace {
 
-constexpr int kOwnerTestDim = 128;
+constexpr int kOwnerTestDim      = 128;
 constexpr uint64_t kOwnerTestTag = 5;
 
 petps::PetPSClient& OwnerShardClient(int shard) {
@@ -399,8 +402,11 @@ petps::PetPSClient& OwnerShardClient(int shard) {
   return *clients.at(shard);
 }
 
-std::vector<uint64_t> OwnerKeys(int shard, size_t count,
-                                uint64_t first = 100, uint64_t tag = kOwnerTestTag) {
+std::vector<uint64_t>
+OwnerKeys(int shard,
+          size_t count,
+          uint64_t first = 100,
+          uint64_t tag   = kOwnerTestTag) {
   std::vector<uint64_t> keys;
   for (uint64_t row = first; keys.size() < count; ++row) {
     const uint64_t encoded = (tag << 56) | row;
@@ -410,23 +416,23 @@ std::vector<uint64_t> OwnerKeys(int shard, size_t count,
   return keys;
 }
 
-recstore::SparseGradientCommitHeader OwnerHeader(
-    uint64_t session, int rank, int step = 0, int kind = 0) {
+recstore::SparseGradientCommitHeader
+OwnerHeader(uint64_t session, int rank, int step = 0, int kind = 0) {
   recstore::SparseGradientCommitHeader h;
   h.version = 4;
   h.session = session;
-  h.rank = rank;
-  h.world = 2;
-  h.dim = kOwnerTestDim;
+  h.rank    = rank;
+  h.world   = 2;
+  h.dim     = kOwnerTestDim;
   h.divisor = 1;
-  h.step = step;
-  h.kind = kind;
+  h.step    = step;
+  h.kind    = kind;
   return h;
 }
 
 std::string OwnerPacket(recstore::SparseGradientCommitHeader h,
                         const std::vector<uint64_t>& keys = {},
-                        const std::vector<float>& values = {}) {
+                        const std::vector<float>& values  = {}) {
   if (values.size() != keys.size() * kOwnerTestDim)
     throw std::invalid_argument("Owner test packet shape mismatch");
   h.rows = keys.size();
@@ -434,9 +440,17 @@ std::string OwnerPacket(recstore::SparseGradientCommitHeader h,
 }
 
 std::vector<float> OwnerBitValues(size_t rows) {
-  const uint32_t patterns[] = {0x00000000u, 0x80000000u, 0x00000001u, 0x80000001u,
-                              0x00800000u, 0x80800000u, 0x7f7fffffu, 0xff7fffffu,
-                              0x3f800001u, 0xbf800001u};
+  const uint32_t patterns[] = {
+      0x00000000u,
+      0x80000000u,
+      0x00000001u,
+      0x80000001u,
+      0x00800000u,
+      0x80800000u,
+      0x7f7fffffu,
+      0xff7fffffu,
+      0x3f800001u,
+      0xbf800001u};
   std::vector<float> values(rows * kOwnerTestDim);
   for (size_t i = 0; i < values.size(); ++i) {
     const auto bits = patterns[i % (sizeof(patterns) / sizeof(patterns[0]))];
@@ -449,16 +463,19 @@ void OwnerInit(const std::string& table,
                const std::array<std::vector<uint64_t>, 2>& keys) {
   for (int shard = 0; shard < 2; ++shard) {
     auto& client = OwnerShardClient(shard);
-    ASSERT_EQ(client.InitEmbeddingTable(table, 1024, kOwnerTestDim, kOwnerTestTag),
-              static_cast<int>(kOwnerTestTag));
+    ASSERT_EQ(
+        client.InitEmbeddingTable(table, 1024, kOwnerTestDim, kOwnerTestTag),
+        static_cast<int>(kOwnerTestTag));
     std::vector<float> initial(keys[shard].size() * kOwnerTestDim, 1.25f);
-    base::RecTensor values(initial.data(),
-                           {static_cast<int64_t>(keys[shard].size()), kOwnerTestDim});
+    base::RecTensor values(
+        initial.data(),
+        {static_cast<int64_t>(keys[shard].size()), kOwnerTestDim});
     ASSERT_EQ(client.PutParameter(keys[shard], values), 0);
   }
 }
 
-void ExpectOwnerBits(int shard, const std::vector<uint64_t>& keys,
+void ExpectOwnerBits(int shard,
+                     const std::vector<uint64_t>& keys,
                      const std::vector<float>& expected) {
   ASSERT_EQ(expected.size(), keys.size() * kOwnerTestDim);
   base::RecTensor actual({static_cast<int64_t>(keys.size()), kOwnerTestDim},
@@ -466,7 +483,8 @@ void ExpectOwnerBits(int shard, const std::vector<uint64_t>& keys,
   ASSERT_EQ(OwnerShardClient(shard).GetParameter(keys, actual), 0);
   for (size_t i = 0; i < expected.size(); ++i)
     ASSERT_EQ(recstore::benchmark::FloatBits(actual.data_as<float>()[i]),
-              recstore::benchmark::FloatBits(expected[i])) << "element=" << i;
+              recstore::benchmark::FloatBits(expected[i]))
+        << "element=" << i;
 }
 
 void RequireOwnerDeployment() {
@@ -483,16 +501,19 @@ void RequireOwnerDeployment() {
 TEST(PetPSIntegrationTest, OwnerExactBitsAndEmptyOwnerMultiShard) {
   ASSERT_NO_FATAL_FAILURE(RequireOwnerDeployment());
   const std::string table = "owner_exact_bits";
-  const std::array<std::vector<uint64_t>, 2> keys{OwnerKeys(0, 2), OwnerKeys(1, 2)};
+  const std::array<std::vector<uint64_t>, 2> keys{
+      OwnerKeys(0, 2), OwnerKeys(1, 2)};
   ASSERT_NO_FATAL_FAILURE(OwnerInit(table, keys));
   const auto candidates = OwnerBitValues(2);
   // Every physical shard waits for both ranks, including the empty non-owner.
   for (int shard = 0; shard < 2; ++shard) {
-    auto& client = OwnerShardClient(shard);
+    auto& client     = OwnerShardClient(shard);
     const auto empty = OwnerPacket(OwnerHeader(21001, 1 - shard));
     EXPECT_EQ(client.ExchangeSparseGradientCommit(table, empty), -1);
-    ExpectOwnerBits(shard, keys[shard], std::vector<float>(2 * kOwnerTestDim, 1.25f));
-    const auto packet = OwnerPacket(OwnerHeader(21001, shard), keys[shard], candidates);
+    ExpectOwnerBits(
+        shard, keys[shard], std::vector<float>(2 * kOwnerTestDim, 1.25f));
+    const auto packet =
+        OwnerPacket(OwnerHeader(21001, shard), keys[shard], candidates);
     ASSERT_EQ(client.ExchangeSparseGradientCommit(table, packet), 0);
     ASSERT_EQ(client.ExchangeSparseGradientCommit(table, packet), 0);
     ASSERT_EQ(client.ExchangeSparseGradientCommit(table, empty), 0);
@@ -502,70 +523,92 @@ TEST(PetPSIntegrationTest, OwnerExactBitsAndEmptyOwnerMultiShard) {
   for (int shard = 0; shard < 2; ++shard) {
     auto& client = OwnerShardClient(shard);
     EXPECT_EQ(client.ExchangeSparseGradientCommit(
-                  table, OwnerPacket(OwnerHeader(21001, 1 - shard, 1))), 0);
-    const std::vector<uint64_t> selected = shard ? keys[shard] : std::vector<uint64_t>{};
+                  table, OwnerPacket(OwnerHeader(21001, 1 - shard, 1))),
+              0);
+    const std::vector<uint64_t> selected =
+        shard ? keys[shard] : std::vector<uint64_t>{};
     const std::vector<float> next(selected.size() * kOwnerTestDim, -2.5f);
-    ASSERT_EQ(client.ExchangeSparseGradientCommit(
-                  table, OwnerPacket(OwnerHeader(21001, shard, 1), selected, next)), 1);
+    ASSERT_EQ(
+        client.ExchangeSparseGradientCommit(
+            table, OwnerPacket(OwnerHeader(21001, shard, 1), selected, next)),
+        1);
     ExpectOwnerBits(shard, keys[shard], shard ? next : candidates);
     for (int rank = 0; rank < 2; ++rank)
       EXPECT_EQ(client.ExchangeSparseGradientCommit(
-                    table, OwnerPacket(OwnerHeader(21001, rank, 1, 2))), 1);
+                    table, OwnerPacket(OwnerHeader(21001, rank, 1, 2))),
+                1);
   }
 }
 
 TEST(PetPSIntegrationTest, OwnerWrongRankOrShardMultiShard) {
   ASSERT_NO_FATAL_FAILURE(RequireOwnerDeployment());
-  const std::array<std::vector<uint64_t>, 2> keys{OwnerKeys(0, 1), OwnerKeys(1, 1)};
+  const std::array<std::vector<uint64_t>, 2> keys{
+      OwnerKeys(0, 1), OwnerKeys(1, 1)};
   for (int wrong_shard = 0; wrong_shard < 2; ++wrong_shard) {
     const std::string table = "owner_wrong_" + std::to_string(wrong_shard);
     ASSERT_NO_FATAL_FAILURE(OwnerInit(table, keys));
-    auto& client = OwnerShardClient(0);
+    auto& client           = OwnerShardClient(0);
     const uint64_t session = 21100 + wrong_shard;
     ASSERT_EQ(client.ExchangeSparseGradientCommit(
-                  table, OwnerPacket(OwnerHeader(session, 1))), -1);
-    // Send raw packets so the server, not the client's adapter validator, rejects them.
-    const auto h = OwnerHeader(session, wrong_shard ? 0 : 1);
+                  table, OwnerPacket(OwnerHeader(session, 1))),
+              -1);
+    // Send raw packets so the server, not the client's adapter validator,
+    // rejects them.
+    const auto h   = OwnerHeader(session, wrong_shard ? 0 : 1);
     const auto bad = OwnerPacket(h, keys[wrong_shard], OwnerBitValues(1));
-    EXPECT_THROW(client.ExchangeSparseGradientCommit(table, bad), std::runtime_error);
+    EXPECT_THROW(client.ExchangeSparseGradientCommit(table, bad),
+                 std::runtime_error);
     EXPECT_THROW(client.ExchangeSparseGradientCommit(
-                     table, OwnerPacket(OwnerHeader(session, 0, 0, 1))), std::runtime_error);
+                     table, OwnerPacket(OwnerHeader(session, 0, 0, 1))),
+                 std::runtime_error);
     for (int shard = 0; shard < 2; ++shard)
-      ExpectOwnerBits(shard, keys[shard], std::vector<float>(kOwnerTestDim, 1.25f));
+      ExpectOwnerBits(
+          shard, keys[shard], std::vector<float>(kOwnerTestDim, 1.25f));
   }
 }
 
 TEST(PetPSIntegrationTest, OwnerLateInvalidStickyMultiShard) {
   ASSERT_NO_FATAL_FAILURE(RequireOwnerDeployment());
-  const std::array<std::vector<uint64_t>, 2> keys{OwnerKeys(0, 2), OwnerKeys(1, 1)};
+  const std::array<std::vector<uint64_t>, 2> keys{
+      OwnerKeys(0, 2), OwnerKeys(1, 1)};
   for (int nonfinite = 0; nonfinite < 2; ++nonfinite) {
     const std::string table = "owner_late_bad_" + std::to_string(nonfinite);
     ASSERT_NO_FATAL_FAILURE(OwnerInit(table, keys));
-    auto& client = OwnerShardClient(0);
+    auto& client           = OwnerShardClient(0);
     const uint64_t session = 21200 + nonfinite;
     ASSERT_EQ(client.ExchangeSparseGradientCommit(
-                  table, OwnerPacket(OwnerHeader(session, 1))), -1);
-    auto h = OwnerHeader(session, 0);
-    h.chunks = 2;
+                  table, OwnerPacket(OwnerHeader(session, 1))),
+              -1);
+    auto h           = OwnerHeader(session, 0);
+    h.chunks         = 2;
     const auto first = OwnerPacket(h, {keys[0][0]}, OwnerBitValues(1));
     ASSERT_EQ(client.ExchangeSparseGradientCommit(table, first), -1);
     ASSERT_EQ(client.ExchangeSparseGradientCommit(table, first), -1);
     ExpectOwnerBits(0, keys[0], std::vector<float>(2 * kOwnerTestDim, 1.25f));
-    h.chunk = 1;
+    h.chunk             = 1;
     const auto last_key = nonfinite ? keys[0][1] : OwnerKeys(0, 1, 1000000)[0];
-    auto last = OwnerPacket(h, {last_key}, OwnerBitValues(1));
+    auto last           = OwnerPacket(h, {last_key}, OwnerBitValues(1));
     if (nonfinite) {
       const uint32_t nan = 0x7fc00001u;
-      std::memcpy(last.data() + sizeof(h) + sizeof(uint64_t) + (kOwnerTestDim - 1) * sizeof(float),
-                  &nan, sizeof(nan));
+      std::memcpy(last.data() + sizeof(h) + sizeof(uint64_t) +
+                      (kOwnerTestDim - 1) * sizeof(float),
+                  &nan,
+                  sizeof(nan));
     }
-    EXPECT_THROW(client.ExchangeSparseGradientCommit(table, last), std::runtime_error);
-    // Failed metadata/payload or apply precheck is sticky; no earlier row was changed.
-    EXPECT_THROW(client.ExchangeSparseGradientCommit(table, first), std::runtime_error);
+    EXPECT_THROW(client.ExchangeSparseGradientCommit(table, last),
+                 std::runtime_error);
+    // Failed metadata/payload or apply precheck is sticky; no earlier row was
+    // changed.
+    EXPECT_THROW(client.ExchangeSparseGradientCommit(table, first),
+                 std::runtime_error);
     EXPECT_THROW(client.ExchangeSparseGradientCommit(
-                     table, OwnerPacket(OwnerHeader(session, 0, 0, 1))), std::runtime_error);
+                     table, OwnerPacket(OwnerHeader(session, 0, 0, 1))),
+                 std::runtime_error);
     for (int shard = 0; shard < 2; ++shard)
-      ExpectOwnerBits(shard, keys[shard], std::vector<float>(keys[shard].size() * kOwnerTestDim, 1.25f));
+      ExpectOwnerBits(
+          shard,
+          keys[shard],
+          std::vector<float>(keys[shard].size() * kOwnerTestDim, 1.25f));
     if (!nonfinite)
       ExpectOwnerBits(0, {last_key}, std::vector<float>(kOwnerTestDim, 0.0f));
   }
@@ -573,10 +616,11 @@ TEST(PetPSIntegrationTest, OwnerLateInvalidStickyMultiShard) {
 
 TEST(PetPSIntegrationTest, OwnerRetryAndVersionMultiShard) {
   ASSERT_NO_FATAL_FAILURE(RequireOwnerDeployment());
-  const std::array<std::vector<uint64_t>, 2> keys{OwnerKeys(0, 1), OwnerKeys(1, 1)};
+  const std::array<std::vector<uint64_t>, 2> keys{
+      OwnerKeys(0, 1), OwnerKeys(1, 1)};
   const std::string table = "owner_retry";
   ASSERT_NO_FATAL_FAILURE(OwnerInit(table, keys));
-  auto& client = OwnerShardClient(0);
+  auto& client      = OwnerShardClient(0);
   const auto values = OwnerBitValues(1);
   const auto packet = OwnerPacket(OwnerHeader(21300, 0), keys[0], values);
   ASSERT_EQ(client.ExchangeSparseGradientCommit(table, packet), -1);
@@ -586,10 +630,14 @@ TEST(PetPSIntegrationTest, OwnerRetryAndVersionMultiShard) {
   ASSERT_EQ(client.ExchangeSparseGradientCommit(table, packet), 0);
   ExpectOwnerBits(0, keys[0], values);
   auto conflicting = values;
-  conflicting[0] = -0.0f; // Numeric equality cannot hide a changed retry payload.
-  EXPECT_THROW(client.ExchangeSparseGradientCommit(
-                   table, OwnerPacket(OwnerHeader(21300, 0), keys[0], conflicting)), std::runtime_error);
-  EXPECT_THROW(client.ExchangeSparseGradientCommit(table, empty), std::runtime_error);
+  conflicting[0] =
+      -0.0f; // Numeric equality cannot hide a changed retry payload.
+  EXPECT_THROW(
+      client.ExchangeSparseGradientCommit(
+          table, OwnerPacket(OwnerHeader(21300, 0), keys[0], conflicting)),
+      std::runtime_error);
+  EXPECT_THROW(client.ExchangeSparseGradientCommit(table, empty),
+               std::runtime_error);
   ExpectOwnerBits(0, keys[0], values);
   // No v1/v3 fallback or unknown wire version may enter an active v4 session.
   for (uint32_t version : {1u, 3u, 5u}) {
@@ -597,14 +645,17 @@ TEST(PetPSIntegrationTest, OwnerRetryAndVersionMultiShard) {
     ASSERT_NO_FATAL_FAILURE(OwnerInit(name, keys));
     const uint64_t session = 21400 + version;
     ASSERT_EQ(client.ExchangeSparseGradientCommit(
-                  name, OwnerPacket(OwnerHeader(session, 1))), -1);
-    auto h = OwnerHeader(session, 0);
+                  name, OwnerPacket(OwnerHeader(session, 1))),
+              -1);
+    auto h       = OwnerHeader(session, 0);
     auto invalid = OwnerPacket(h);
-    h.version = version;
+    h.version    = version;
     std::memcpy(invalid.data(), &h, sizeof(h));
-    EXPECT_THROW(client.ExchangeSparseGradientCommit(name, invalid), std::runtime_error);
+    EXPECT_THROW(client.ExchangeSparseGradientCommit(name, invalid),
+                 std::runtime_error);
     EXPECT_THROW(client.ExchangeSparseGradientCommit(
-                     name, OwnerPacket(OwnerHeader(session, 0, 0, 1))), std::runtime_error);
+                     name, OwnerPacket(OwnerHeader(session, 0, 0, 1))),
+                 std::runtime_error);
     ExpectOwnerBits(0, keys[0], std::vector<float>(kOwnerTestDim, 1.25f));
   }
 }
@@ -621,22 +672,25 @@ TEST(PetPSIntegrationTest, OwnerAdapterAbortReachesAllShardsWindowOne) {
   ASSERT_GE(observer_id, 0);
   ASSERT_LT(observer_id, 2);
   const std::string table = "owner_abort_all_shards";
-  const std::array<std::vector<uint64_t>, 2> keys{OwnerKeys(0, 1), OwnerKeys(1, 1)};
+  const std::array<std::vector<uint64_t>, 2> keys{
+      OwnerKeys(0, 1), OwnerKeys(1, 1)};
   json config = ParseFile2Json(std::getenv("RECSTORE_CONFIG"));
   ASSERT_EQ(recstore::ParseResolvedRdmaDeploymentConfig(config).num_clients, 1);
   // The raw per-shard observers and adapter must not replace each other's QPs.
   config["rdma_logical_client_id"] = 1 - observer_id;
   recstore::RDMAPSClientAdapter adapter(config);
   // One OS client exposes two logical lanes. Each server becomes ready only
-  // after both lanes connect, so initialize both IDs concurrently in shard order.
+  // after both lanes connect, so initialize both IDs concurrently in shard
+  // order.
   auto observer_ready = std::async(std::launch::async, [] {
-    for (int shard = 0; shard < 2; ++shard) (void)OwnerShardClient(shard);
+    for (int shard = 0; shard < 2; ++shard)
+      (void)OwnerShardClient(shard);
   });
   std::exception_ptr initialization_error;
   int adapter_tag = -1;
   try {
-    adapter_tag = adapter.InitEmbeddingTable(
-        table, {1024, kOwnerTestDim, kOwnerTestTag});
+    adapter_tag =
+        adapter.InitEmbeddingTable(table, {1024, kOwnerTestDim, kOwnerTestTag});
   } catch (...) {
     initialization_error = std::current_exception();
   }
@@ -644,9 +698,11 @@ TEST(PetPSIntegrationTest, OwnerAdapterAbortReachesAllShardsWindowOne) {
   try {
     observer_ready.get();
   } catch (...) {
-    if (!initialization_error) initialization_error = std::current_exception();
+    if (!initialization_error)
+      initialization_error = std::current_exception();
   }
-  if (initialization_error) std::rethrow_exception(initialization_error);
+  if (initialization_error)
+    std::rethrow_exception(initialization_error);
   ASSERT_EQ(adapter_tag, static_cast<int>(kOwnerTestTag));
   ASSERT_NO_FATAL_FAILURE(OwnerInit(table, keys));
   // Check again after adapter initialization, which also reads runtime options.
@@ -657,7 +713,8 @@ TEST(PetPSIntegrationTest, OwnerAdapterAbortReachesAllShardsWindowOne) {
   ASSERT_EQ(adapter.SparseGradientCommit(table, header, {}, empty), -1);
   for (int shard = 0; shard < 2; ++shard)
     ASSERT_EQ(OwnerShardClient(shard).ExchangeSparseGradientCommit(
-                  table, OwnerPacket(OwnerHeader(21500, 0, 0, 1))), -1);
+                  table, OwnerPacket(OwnerHeader(21500, 0, 0, 1))),
+              -1);
 
   header.kind = 3;
   // Abort deliberately returns an error even on a healthy server. With a
@@ -667,8 +724,10 @@ TEST(PetPSIntegrationTest, OwnerAdapterAbortReachesAllShardsWindowOne) {
   for (int shard = 0; shard < 2; ++shard) {
     EXPECT_THROW(OwnerShardClient(shard).ExchangeSparseGradientCommit(
                      table, OwnerPacket(OwnerHeader(21500, 0, 0, 1))),
-                 std::runtime_error) << "shard=" << shard;
-    ExpectOwnerBits(shard, keys[shard], std::vector<float>(kOwnerTestDim, 1.25f));
+                 std::runtime_error)
+        << "shard=" << shard;
+    ExpectOwnerBits(
+        shard, keys[shard], std::vector<float>(kOwnerTestDim, 1.25f));
   }
 }
 

@@ -817,8 +817,9 @@ RcShardServerTransport::RcShardServerTransport(const RcTransportConfig& config)
     int client_id, qp_index, slot_in_qp;
     DecodeSlotIndex(slot, &client_id, &qp_index, &slot_in_qp);
     const Lane& lane = LaneAt(client_id, qp_index);
-    request_slots_.push_back(static_cast<char*>(lane.request_slots) +
-                             ServerRequestOffset(config_, client_id, slot_in_qp));
+    request_slots_.push_back(
+        static_cast<char*>(lane.request_slots) +
+        ServerRequestOffset(config_, client_id, slot_in_qp));
   }
 }
 
