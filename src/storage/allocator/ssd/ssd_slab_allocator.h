@@ -79,6 +79,16 @@ public:
 
       slab_lock.unlock();
 
+      // Serialize block claims. The winner publishes the claimed block into
+      // partial_blocks before releasing this lock, so a waiter re-checks the
+      // list instead of mistaking an in-flight claim for exhaustion.
+      std::lock_guard<std::mutex> claim_lock(block_claim_mu_);
+      slab_lock.lock();
+      if (!slab.partial_blocks.empty()) {
+        continue;
+      }
+      slab_lock.unlock();
+
       std::unique_lock<std::mutex> g_lock(global_mu_);
       if (global_free_blocks_.empty()) {
         return kInvalidHandle;
@@ -534,6 +544,7 @@ private:
 
   std::vector<uint64_t> global_free_blocks_;
   std::mutex global_mu_;
+  std::mutex block_claim_mu_;
 
   std::array<PageStripe, kPageLockStripes> page_stripes_;
 };
