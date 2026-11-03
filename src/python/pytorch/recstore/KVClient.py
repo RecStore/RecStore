@@ -858,22 +858,6 @@ class RecStoreClient:
         return int(self.ops.sparse_gradient_commit_async(
             name, ids, grads, session, step, rank, world, lr, divisor))
 
-    def sparse_canonical_gradient_commit_async(self, name, records, grads, *,
-                                               session, step, rank, world, lr):
-        if (records.device.type != "cpu" or records.dtype != torch.int64
-                or records.ndim != 2 or records.shape[1] != 5):
-            raise ValueError("Canonical records require CPU int64[N,5]")
-        # Preserve the caller's layout while applying the registered namespace.
-        normalized = records.clone()
-        normalized[:, 0] = self._normalize_ids(records[:, 0], name=name)
-        return int(self.ops.sparse_canonical_gradient_commit_async(
-            name, normalized, grads, session, step, rank, world, lr))
-
-    def sparse_canonical_gradient_commit_close(self, name, *, session, step,
-                                               rank, world, lr, abort=False):
-        self.ops.sparse_canonical_gradient_commit_close(
-            name, session, step, rank, world, lr, abort)
-
     def sparse_owner_replace_async(self, name, ids, candidates, status, *,
                                    session, step, rank, world, lr):
         """Submit exact GPU-owner candidates; the native wait includes every PS ACK."""

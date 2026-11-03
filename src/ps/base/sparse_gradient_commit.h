@@ -9,7 +9,6 @@
 #include "base/array.h"
 #include "base/tensor.h"
 #include "base/sgd_update.h"
-#include "ps/base/canonical_sparse_gradient.h"
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -22,6 +21,20 @@
 #include <vector>
 
 namespace recstore {
+
+// Fixed embedding width shared by the v4 exact-owner replacement wire format.
+inline constexpr size_t kCanonicalSparseDim = 128;
+
+// Byte-unaligned finite scan over wire payloads (v4 rejects nonfinite rows).
+inline bool CanonicalAllFinite(const void* values, size_t count) {
+  const auto* bytes = static_cast<const char*>(values);
+  for (size_t at = 0; at < count; ++at) {
+    float value;
+    std::memcpy(&value, bytes + at * sizeof(float), sizeof(value));
+    if (!std::isfinite(value)) return false;
+  }
+  return true;
+}
 
 // Diagnostic-only, enabled before process startup. Disabled runs take no clocks.
 inline bool SparseCommitProfileEnabled() {
@@ -39,12 +52,6 @@ inline bool SparseCommitReserveEnabled() {
     return value != nullptr && std::strcmp(value, "1") == 0;
   }();
   return enabled;
-}
-
-// Whole-step v3 is the default until its exact frontier variant is validated.
-inline bool SparseCommitCanonicalStreamEnabled() {
-  const char* value = std::getenv("RECSTORE_SPARSE_COMMIT_CANONICAL_STREAM");
-  return value && std::strcmp(value, "1") == 0;
 }
 
 inline uint64_t SparseCommitProfileNowNs() {
@@ -77,36 +84,12 @@ DecodeSparseGradientCommit(const std::string& payload) {
     throw std::invalid_argument("Truncated sparse gradient commit header");
   }
   std::memcpy(&h, payload.data(), sizeof(h));
-  if ((h.version != 1 && h.version != 2 && h.version != 3 && h.version != 4) || !h.session || !h.world || h.world > 65536 ||
+  if ((h.version != 1 && h.version != 2 && h.version != 4) || !h.session || !h.world || h.world > 65536 ||
       h.rank >= h.world || !h.dim || h.dim > 65536 || h.step < 0 ||
       h.kind > 3 || !h.chunks || h.chunks > 1048576 || h.chunk >= h.chunks ||
       (h.divisor != 1 && h.divisor != h.world) ||
       !std::isfinite(h.learning_rate) || h.learning_rate < 0) {
     throw std::invalid_argument("Invalid sparse gradient commit metadata");
-  }
-  if (h.version == 3) {
-    if (h.world != 2 || h.dim != kCanonicalSparseDim || h.divisor != 1 ||
-        h.chunks > 64 || payload.size() > (size_t{1} << 20) ||
-        (h.kind != 0 && h.rows != 0))
-      throw std::invalid_argument("Unsupported canonical sparse commit bounds");
-    const uint64_t prefix = sizeof(h) + uint64_t(h.rows) * sizeof(CanonicalSparseRecord);
-    if (prefix > payload.size())
-      throw std::invalid_argument("Truncated canonical sparse descriptors");
-    uint64_t vectors = 0, previous = 0;
-    for (size_t row = 0; row < h.rows; ++row) {
-      CanonicalSparseRecord record;
-      std::memcpy(&record, payload.data() + sizeof(h) + row * sizeof(record), sizeof(record));
-      ValidateCanonicalSparseRecord(record, h.rank);
-      if (row && record.key <= previous)
-        throw std::invalid_argument("Canonical keys must be strictly increasing");
-      previous = record.key;
-      vectors += record.vector_count;
-    }
-    if (prefix + vectors * kCanonicalSparseDim * sizeof(float) != payload.size())
-      throw std::invalid_argument("Invalid canonical sparse vector payload size");
-    if (!CanonicalAllFinite(payload.data() + prefix, vectors * kCanonicalSparseDim))
-      throw std::invalid_argument("Non-finite canonical sparse vector payload");
-    return h;
   }
   const uint64_t bytes =
       sizeof(h) + uint64_t(h.rows) * (8 + uint64_t(h.dim) * 4);
@@ -140,8 +123,6 @@ DecodeSparseGradientCommit(const std::string& payload) {
 inline std::string PackSparseGradientCommit(SparseGradientCommitHeader h,
                                             const uint64_t* keys = nullptr,
                                             const float* grads   = nullptr) {
-  if (h.version == 3 && h.rows)
-    throw std::invalid_argument("Canonical rows require the canonical packer");
   std::string result(
       sizeof(h) + size_t(h.rows) * (8 + size_t(h.dim) * 4), '\0');
   std::memcpy(result.data(), &h, sizeof(h));
@@ -157,30 +138,6 @@ inline std::string PackSparseGradientCommit(SparseGradientCommitHeader h,
   return result;
 }
 
-inline std::string PackCanonicalSparseGradientCommit(
-    SparseGradientCommitHeader h, const CanonicalSparseRecord* records = nullptr,
-    const float* values = nullptr) {
-  if (h.version != 3 || (h.rows && (!records || !values)))
-    throw std::invalid_argument("Missing canonical sparse records/values or version");
-  size_t vectors = 0;
-  for (size_t row = 0; row < h.rows; ++row) {
-    ValidateCanonicalSparseRecord(records[row], h.rank);
-    vectors += records[row].vector_count;
-  }
-  const size_t prefix = sizeof(h) + size_t(h.rows) * sizeof(CanonicalSparseRecord);
-  const size_t bytes = prefix + vectors * kCanonicalSparseDim * sizeof(float);
-  if (bytes > (size_t{1} << 20))
-    throw std::invalid_argument("Canonical sparse packet exceeds bounded payload");
-  std::string payload(bytes, '\0');
-  std::memcpy(payload.data(), &h, sizeof(h));
-  if (h.rows) {
-    std::memcpy(payload.data() + sizeof(h), records, h.rows * sizeof(CanonicalSparseRecord));
-    std::memcpy(payload.data() + prefix, values, vectors * kCanonicalSparseDim * sizeof(float));
-  }
-  DecodeSparseGradientCommit(payload);
-  return payload;
-}
-
 class SparseGradientCommitClient {
 public:
   virtual ~SparseGradientCommitClient() = default;
@@ -191,13 +148,6 @@ public:
   }
 
   virtual size_t SparseGradientCommitPayloadLimit() const { return 256 * 1024; }
-
-  virtual int64_t SparseCanonicalGradientCommit(
-      const std::string& table, SparseGradientCommitHeader h,
-      const std::vector<CanonicalSparseRecord>& records,
-      const base::RecTensor& values) {
-    throw std::runtime_error("Canonical sparse commit unsupported by this PS backend");
-  }
 
   virtual int64_t SparseGradientCommit(
       const std::string& table,
@@ -240,9 +190,8 @@ public:
       const std::vector<uint64_t>&, const std::vector<float>&)>;
 
   explicit SparseGradientCommitCoordinator(
-      bool reserve = SparseCommitReserveEnabled(),
-      bool canonical_frontier = SparseCommitCanonicalStreamEnabled())
-      : reserve_(reserve), canonical_frontier_(canonical_frontier) {}
+      bool reserve = SparseCommitReserveEnabled())
+      : reserve_(reserve) {}
 
   // Wrapper validation can fail before Exchange sees a malformed request.
   // A recognizable different session must not poison the active one.
@@ -300,10 +249,6 @@ public:
         state.failed = true;
       throw std::runtime_error(
           "Sparse gradient session configuration mismatch");
-    }
-    if (h.version == 3 && !SparseCommitFmaEnabled()) {
-      state.failed = true;
-      throw std::runtime_error("Canonical sparse commit requires RECSTORE_SPARSE_COMMIT_FMA=1");
     }
     if (h.kind == 3)
       state.failed = true;
@@ -471,8 +416,6 @@ private:
     size_t exact_rows = 0;
     std::vector<bool> closed;
     std::array<SortedCursor, 2> sorted;
-    // Per-packet prefix offsets into packed v3 vectors, retained with retry bytes.
-    std::array<std::vector<std::vector<size_t>>, 2> canonical_offsets;
     size_t sorted_rows = 0, sorted_consumed = 0;
     uint64_t profile_first_ns = 0;
     uint64_t profile_lock_ns = 0;
@@ -492,9 +435,7 @@ private:
   }
   static uint64_t StoredKey(const std::string& packet, size_t row) {
     uint64_t key;
-    const auto h = StoredHeader(packet);
-    const size_t stride = h.version == 3 ? sizeof(CanonicalSparseRecord) : 8;
-    std::memcpy(&key, packet.data() + sizeof(h) + row * stride, 8);
+    std::memcpy(&key, packet.data() + sizeof(SparseGradientCommitHeader) + row * 8, 8);
     return key;
   }
   static bool HasSortedRow(State& state, size_t rank) {
@@ -583,10 +524,8 @@ private:
                         std::string payload, const Apply& apply, bool profile,
                         uint64_t request_start, uint64_t locked) {
     auto& packets = state.ranks[h.rank];
-    if (packets.empty()) {
+    if (packets.empty())
       packets.resize(h.chunks);
-      if (h.version == 3) state.canonical_offsets[h.rank].resize(h.chunks);
-    }
     if (packets.size() != h.chunks)
       throw std::runtime_error("Sorted gradient chunk count changed");
     if (!packets[h.chunk].empty()) {
@@ -595,19 +534,9 @@ private:
       return state.committed;
     }
     for (size_t row = 1; row < h.rows; ++row)
-      if (StoredKey(payload, row) < StoredKey(payload, row - 1) ||
-          (h.version == 3 && StoredKey(payload, row) == StoredKey(payload, row - 1)))
+      if (StoredKey(payload, row) < StoredKey(payload, row - 1))
         throw std::runtime_error("Unsorted gradient chunk");
     const auto payload_bytes = payload.size();
-    if (h.version == 3) {
-      auto& offsets = state.canonical_offsets[h.rank][h.chunk];
-      offsets.push_back(0);
-      for (size_t row = 0; row < h.rows; ++row) {
-        CanonicalSparseRecord record;
-        std::memcpy(&record, payload.data() + sizeof(h) + row * sizeof(record), sizeof(record));
-        offsets.push_back(offsets.back() + size_t(record.vector_count) * h.dim * sizeof(float));
-      }
-    }
     packets[h.chunk] = std::move(payload);
     state.sorted_rows += h.rows;
     auto& received = state.sorted[h.rank];
@@ -616,8 +545,7 @@ private:
       const auto& packet = packets[received.contiguous];
       const auto ch = StoredHeader(packet);
       if (ch.rows) {
-        if (received.has_bound && (StoredKey(packet, 0) < received.bound ||
-            (h.version == 3 && StoredKey(packet, 0) == received.bound)))
+        if (received.has_bound && StoredKey(packet, 0) < received.bound)
           throw std::runtime_error("Unsorted gradient chunk boundary");
         received.bound = StoredKey(packet, ch.rows - 1);
         received.has_bound = true;
@@ -649,7 +577,7 @@ private:
       state.profile_rows += h.rows;
       ++state.profile_chunks;
     }
-    if (blocked || (h.version == 3 && !canonical_frontier_ && !complete))
+    if (blocked)
       return state.committed;
     std::vector<uint64_t> keys;
     std::vector<float> grads;
@@ -675,27 +603,6 @@ private:
       keys.push_back(key);
       grads.resize(keys.size() * h.dim, 0.0f);
       float* dst = grads.data() + (keys.size() - 1) * h.dim;
-      if (h.version == 3) {
-        CanonicalSparseRecord records[2];
-        const CanonicalSparseRecord* present[2] = {nullptr, nullptr};
-        const void* values[2] = {nullptr, nullptr};
-        for (size_t rank = 0; rank < 2; ++rank) {
-          auto& cursor = state.sorted[rank];
-          if (!HasSortedRow(state, rank) ||
-              StoredKey(state.ranks[rank][cursor.chunk], cursor.row) != key) continue;
-          const auto& packet = state.ranks[rank][cursor.chunk];
-          const auto ch = StoredHeader(packet);
-          std::memcpy(&records[rank], packet.data() + sizeof(ch) +
-                      cursor.row * sizeof(CanonicalSparseRecord), sizeof(CanonicalSparseRecord));
-          present[rank] = &records[rank];
-          values[rank] = packet.data() + sizeof(ch) + size_t(ch.rows) * sizeof(CanonicalSparseRecord) +
-                        state.canonical_offsets[rank][cursor.chunk][cursor.row];
-          ++cursor.row;
-          ++state.sorted_consumed;
-        }
-        ReconstructCanonicalSparseGradient(present[0], values[0], present[1], values[1], dst);
-        continue;
-      }
       for (size_t rank = 0; rank < 2; ++rank) {
         auto& cursor = state.sorted[rank];
         while (HasSortedRow(state, rank) &&
@@ -744,7 +651,6 @@ private:
         rank.clear();
     }
     state.sorted = {};
-    state.canonical_offsets = {};
     state.sorted_rows = state.sorted_consumed = 0;
     if (profile) {
       const auto released = SparseCommitProfileNowNs();
@@ -777,7 +683,6 @@ private:
     }
   }
   const bool reserve_;
-  const bool canonical_frontier_;
   std::mutex mu_;
   std::unordered_map<std::string, State> states_;
 };

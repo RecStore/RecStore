@@ -37,15 +37,6 @@ inline SparseGradientCommitHeader MakeSparseGradientCommitHeader(
   return h;
 }
 
-inline SparseGradientCommitHeader MakeCanonicalSparseGradientCommitHeader(
-    int64_t session, int64_t step, int64_t rank, int64_t world,
-    int64_t dim, double lr, int64_t kind) {
-  auto h = MakeSparseGradientCommitHeader(session, step, rank, world, dim, lr, 1, kind);
-  h.version = 3;
-  DecodeSparseGradientCommit(PackSparseGradientCommit(h));
-  return h;
-}
-
 inline SparseGradientCommitHeader MakeOwnerExactReplaceHeader(
     int64_t session, int64_t step, int64_t rank, int64_t world,
     int64_t dim, double lr, int64_t kind) {

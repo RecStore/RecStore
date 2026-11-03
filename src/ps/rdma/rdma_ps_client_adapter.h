@@ -45,11 +45,6 @@ public:
                                const base::ConstArray<uint64_t>& keys,
                                const base::RecTensor& grads) override;
 
-  int64_t SparseCanonicalGradientCommit(
-      const std::string& table, SparseGradientCommitHeader h,
-      const std::vector<CanonicalSparseRecord>& records,
-      const base::RecTensor& grads) override;
-
   int GetParameter(const base::ConstArray<uint64_t>& keys,
                    base::RecTensor& values) override;
   int PutParameter(const base::ConstArray<uint64_t>& keys,

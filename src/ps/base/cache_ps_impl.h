@@ -506,11 +506,6 @@ public:
         throw std::runtime_error("Sparse gradient commit requires matching "
                                  "client/PS SGD learning rates");
       }
-      if (h.version == 3) {
-        if (!recstore::SparseCommitFmaEnabled())
-          throw std::runtime_error("Canonical sparse commit requires FMA SGD");
-        recstore::ValidateCanonicalArithmeticEnvironment();
-      }
       const auto config = table_configs_.find(table);
       if (config == table_configs_.end() ||
           config->second.embedding_dim != h.dim) {
@@ -559,26 +554,6 @@ public:
                           grads.data() + row * h.dim, row_bytes);
             MarkCheckpointDirty();
             return;
-          }
-          if (h.version == 3) {
-            // Experimental v3 requires a fully initialized immutable namespace
-            // and no external writers. Validate the entire prefix before any
-            // mutation, accepting one extra row lookup/FMA pass for correctness.
-            const auto tag = MakeTensorTag(table_configs_.at(table).table_id, 0, 1);
-            for (uint64_t key : keys)
-              if (ExtractKeyTag(key) != tag)
-                throw std::runtime_error("Canonical sparse key/table tag mismatch");
-            std::vector<base::ConstArray<float>> current;
-            base_kv_->BatchGet(base::ConstArray<uint64_t>(keys), &current, tid);
-            if (current.size() != keys.size())
-              throw std::runtime_error("Canonical sparse precheck row count mismatch");
-            for (size_t row = 0; row < keys.size(); ++row) {
-              if (current[row].Size() != h.dim)
-                throw std::runtime_error("Canonical sparse commit requires existing D128 rows");
-              recstore::ValidateCanonicalSgdRow(current[row].Data(),
-                                               grads.data() + row * h.dim,
-                                               h.learning_rate);
-            }
           }
           if (!UpdateParameterFlat(
                   table,
