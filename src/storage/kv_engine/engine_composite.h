@@ -143,8 +143,7 @@ public:
       batch_keys.push_back(item.key);
       specs.push_back(item.spec);
     }
-    const auto new_handles =
-        value_store_->BatchAllocAndWrite(batch_keys, specs);
+    auto new_handles = value_store_->BatchAllocAndWrite(batch_keys, specs);
     if (new_handles.size() != items.size()) {
       LOG(FATAL) << "KVEngine::BatchPut allocation result size mismatch";
     }
@@ -155,8 +154,14 @@ public:
       }
     }
 
+    std::vector<Value_t> old_handles(items.size(), kValueHandleNone);
+    index_->BatchPutWithOld(
+        base::ConstArray<uint64_t>(batch_keys),
+        new_handles.data(),
+        old_handles.data(),
+        tid);
     for (size_t i = 0; i < items.size(); ++i) {
-      Value_t old_handle = index_->Put(items[i].key, new_handles[i], tid);
+      const Value_t old_handle = old_handles[i];
       if (old_handle == kValueHandleNone) {
         TrackKey(items[i].key, tid);
       }

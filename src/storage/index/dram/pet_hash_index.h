@@ -59,9 +59,16 @@ public:
   void BatchPut(base::ConstArray<Key_t> keys,
                 Value_t* pointers,
                 unsigned tid) override {
-    for (int i = 0; i < keys.Size(); ++i) {
-      Put(keys[i], pointers[i], tid);
-    }
+    (void)tid;
+    impl_->BatchSet(keys, pointers);
+  }
+
+  void BatchPutWithOld(base::ConstArray<Key_t> keys,
+                       Value_t* pointers,
+                       Value_t* old_pointers,
+                       unsigned tid) override {
+    (void)tid;
+    impl_->BatchSet(keys, pointers, old_pointers);
   }
 
   bool Delete(Key_t& key) override { return impl_->Delete(key); }
