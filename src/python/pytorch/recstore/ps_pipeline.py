@@ -30,13 +30,14 @@ class PSPipeline:
     commit. GPU embedding values belong only to the consumed batch.
     """
 
+    owner_merged_grad = False
     depth = 1
     desired_buffer_size = 0
 
     def __init__(self, embedding_module, kv_client, *, table_offsets,
                  master_table_name, embedding_dim, device, lr=0.01,
                  validation_state=False, dependency_split=False, total_steps=None,
-                 canonical_table_types=None, owner_merged_grad=False):
+                 owner_table_types=None):
         self.embedding_module = embedding_module
         self.kv_client = kv_client
         self.master_table_name = master_table_name
@@ -52,28 +53,23 @@ class PSPipeline:
         if self._device_merge and not (self.dependency_split and self.device.type == "cuda"):
             raise ValueError("Device row merge requires dependency-split CUDA PS")
         self._total_steps = total_steps
-        self.canonical = canonical_table_types is not None
-        # Merged-gradient owners reuse the count exchange and ticket
-        # machinery but pack one merged row per unique key (index_add_). The
-        # flag must survive the parent constructor: the owner subclass sets it
-        # before super() and the optimizer reads it from this shared object.
-        self.owner_merged_grad = bool(owner_merged_grad)
-        self._canonical_table_types = tuple(canonical_table_types or ())
-        self._canonical_metadata = {}
+        self.owner_updates = owner_table_types is not None
+        self._owner_table_types = tuple(owner_table_types or ())
+        self._owner_metadata = {}
         self._current_metrics = None
         self._gradient_bytes = 0
-        if self.canonical:
-            if type(self) is PSPipeline:
+        if self.owner_updates:
+            if not self.owner_merged_grad:
                 raise ValueError("The count-exchange ticket mode requires the merged GPU owner pipeline")
             if (self._world != 2 or self.embedding_dim != 128 or self.device.type != "cuda"
-                    or len(self._canonical_table_types) != len(self._keys)
-                    or any(kind not in (0, 1) for kind in self._canonical_table_types)
+                    or len(self._owner_table_types) != len(self._keys)
+                    or any(kind not in (0, 1) for kind in self._owner_table_types)
                     or not isinstance(total_steps, int) or isinstance(total_steps, bool)
                     or total_steps < 1):
-                raise ValueError("Canonical PS requires world2, CUDA D128 and an explicit table layout")
-            layout = (self._offsets.numpy().tobytes() + bytes(self._canonical_table_types)
+                raise ValueError("Owner PS requires world2, CUDA D128 and an explicit table layout")
+            layout = (self._offsets.numpy().tobytes() + bytes(self._owner_table_types)
                       + "\0".join(self._keys).encode("utf-8"))
-            self._canonical_layout = int.from_bytes(hashlib.sha256(layout).digest()[:8], "little") & (2**63 - 1)
+            self._layout_digest = int.from_bytes(hashlib.sha256(layout).digest()[:8], "little") & (2**63 - 1)
         if self.dependency_split and (self._world != 2 or not isinstance(total_steps, int)
                                       or isinstance(total_steps, bool) or total_steps < 1):
             raise ValueError("Dependency-split pull requires world=2 and positive total_steps")
@@ -90,6 +86,10 @@ class PSPipeline:
         self._read = None
         self._pending_read_ids = None
         self._commit = None
+        self._pending_commits = {}
+        self._accepted_step = -1
+        self._commit_session_closed = False
+        self._submission_error = None
         self._prepared = 0
         self._submitted = 0
         self._current_step = -1
@@ -100,7 +100,7 @@ class PSPipeline:
         self._closed = False
         self._updated_ids = set() if validation_state else None
         try:
-            if self.dependency_split or self.canonical:
+            if self.dependency_split or self.owner_updates:
                 start = time.perf_counter()
                 self._metadata_group = dist.new_group(backend="gloo", timeout=timedelta(seconds=60))
                 self.metadata_group_init_ms = (time.perf_counter() - start) * 1e3
@@ -170,33 +170,18 @@ class PSPipeline:
             "ps_pipeline_global_dirty_rows": dirty.numel(),
         }
 
-    def _build_exchange_plan(self, ticket, peer_keys, peer_counts):
-        """Shape-only exchange plan: merged rows carry no reduction tree.
-
-        Only ``records.shape[0]`` (the local unique key count) feeds the
-        row-count check in ``_augment_canonical_plan``; the CPU metadata pack
-        reports the record bytes. Building a real per-key tree cost ~20 ms per
-        step at this batch size while nothing else consumed it.
-        """
-        from .canonical_ps import ContributionPlan
-        records = np.zeros((len(ticket.keys), 5), dtype=np.int64)
-        return ContributionPlan(records, np.empty(0, dtype=np.int64),
-                                np.empty(0, dtype=np.int64),
-                                ticket.batch_size, ticket.features,
-                                self._rank, 0)
-
     def _exchange_key_counts(self, step, ticket):
         start = time.perf_counter()
-        header = torch.tensor([step, len(ticket.keys), self._total_steps, self._canonical_layout,
+        header = torch.tensor([step, len(ticket.keys), self._total_steps, self._layout_digest,
                                ticket.batch_size, ticket.features], dtype=torch.int64)
         headers = [torch.empty_like(header) for _ in range(self._world)]
         dist.all_gather(headers, header, group=self._metadata_group)
         for peer in headers:
             if (int(peer[0]) != step or int(peer[2]) != self._total_steps
-                    or int(peer[3]) != self._canonical_layout or int(peer[5]) != ticket.features
+                    or int(peer[3]) != self._layout_digest or int(peer[5]) != ticket.features
                     or not 0 <= int(peer[4]) <= 1024
                     or not 0 <= int(peer[1]) <= int(peer[4]) * ticket.features):
-                raise RuntimeError("Canonical metadata layout/step/count mismatch")
+                raise RuntimeError("Owner metadata layout/step/count mismatch")
         sizes = [int(peer[1]) for peer in headers]
         width = max(sizes)
         payload = torch.zeros((width, 2), dtype=torch.int64)
@@ -209,12 +194,11 @@ class PSPipeline:
             counts = peer[:sizes[rank], 1]
             if (bool((counts < 1).any()) or bool((counts > int(headers[rank][4])).any())
                     or int(counts.sum()) != int(headers[rank][4]) * ticket.features):
-                raise RuntimeError("Canonical metadata occurrence counts disagree with batch shape")
-        remote_rank = 1 - self._rank
-        remote = peers[remote_rank][:sizes[remote_rank]].numpy()
+                raise RuntimeError("Owner metadata occurrence counts disagree with batch shape")
         exchanged = time.perf_counter()
-        plan = self._build_exchange_plan(ticket, remote[:, 0], remote[:, 1])
-        self._augment_canonical_plan(plan, peers, sizes)
+        from .canonical_ps import OwnerExchangePlan
+        plan = OwnerExchangePlan(len(ticket.keys))
+        self._build_owner_plan(plan, peers, sizes)
         dirty = torch.from_numpy(np.unique(np.concatenate(
             [peer[:count, 0].numpy() for peer, count in zip(peers, sizes)])))
         peer_bytes = (header.numel() + 2 * width) * 8
@@ -227,8 +211,8 @@ class PSPipeline:
             "ps_pipeline_global_dirty_rows": dirty.numel(),
         }, plan, (time.perf_counter() - exchanged) * 1e3
 
-    def _augment_canonical_plan(self, plan, peers, sizes):
-        """Merged owner routing after the shared count exchange."""
+    def _build_owner_plan(self, plan, peers, sizes):
+        raise NotImplementedError("Owner routing requires the GPU owner pipeline")
 
     @staticmethod
     def _partition_clean_rows(ids, dirty_ids):
@@ -319,19 +303,13 @@ class PSPipeline:
                 raise ValueError("PS pipeline requires one ID per feature per sample")
             raw = raw.reshape(len(self._keys), -1)
         local_ticket = None
-        if self.canonical:
+        if self.owner_updates:
             if step >= self._total_steps:
-                raise RuntimeError("Canonical PS prepared beyond the declared step count")
-            from .canonical_ps import make_ticket
-            local_ticket = make_ticket(raw.numpy(), self._offsets.numpy(),
-                                       self._canonical_table_types)
+                raise RuntimeError("Owner PS prepared beyond the declared step count")
+            from .canonical_ps import make_ticket_with_inverse
+            local_ticket, inverse_numpy = make_ticket_with_inverse(
+                raw.numpy(), self._offsets.numpy(), self._owner_table_types)
             ids = torch.from_numpy(local_ticket.keys)
-            inverse_numpy = np.empty(raw.numel(), dtype=np.int64)
-            if raw.numel():
-                feature_major = ((local_ticket.positions % len(self._keys)) * raw.shape[1]
-                                 + local_ticket.positions // len(self._keys))
-                inverse_numpy[feature_major] = np.repeat(
-                    np.arange(ids.numel(), dtype=np.int64), local_ticket.counts)
             inverse = torch.from_numpy(inverse_numpy)
         else:
             raw = (raw + self._offsets[:, None]).reshape(-1)
@@ -341,10 +319,10 @@ class PSPipeline:
 
     def _adopt_cpu_ticket(self, step, ticket, future, row, build_ms):
         self._check_prepared_step(step)
-        if self.canonical:
+        if self.owner_updates:
             if future is None:
-                raise RuntimeError("Canonical ticket lacks its metadata Future")
-            self._canonical_metadata[step] = future
+                raise RuntimeError("Owner ticket lacks its metadata Future")
+            self._owner_metadata[step] = future
             if self.dependency_split and step + 1 < self._total_steps:
                 self._metadata[step] = future
         self._queue_prepared_read(step, ticket[0])
@@ -357,7 +335,7 @@ class PSPipeline:
         start = time.perf_counter()
         ticket, local_ticket, build_ms = self._build_cpu_ticket(step, sparse_features, sparse_batch)
         future = None
-        if self.canonical:
+        if self.owner_updates:
             # Counts remain required for the final step, without another value read.
             future = self._metadata_worker.submit(self._exchange_key_counts, step, local_ticket)
         result = self._adopt_cpu_ticket(step, ticket, future, row, build_ms)
@@ -366,7 +344,7 @@ class PSPipeline:
 
     def _queue_prepared_read(self, step, ids):
         if self.dependency_split:
-            if not self.canonical and step + 1 < self._total_steps:
+            if not self.owner_updates and step + 1 < self._total_steps:
                 self._metadata[step] = self._metadata_worker.submit(self._exchange_dirty_ids, step, ids)
             if step == 0:
                 self._read = self._worker.submit(self._pull, ids, None)
@@ -454,11 +432,6 @@ class PSPipeline:
         self._current_step = step
         self._current_ticket = ticket
         self._current_metrics = row
-        if self.canonical:
-            for name in ("metadata_wait_ms", "metadata_ms", "plan_ms", "reduce_enqueue_ms",
-                         "vectors", "descriptor_bytes", "metadata_sent_bytes"):
-                row["ps_canonical_" + name] = 0
-
 
     def lookup(self, sparse_features):
         del sparse_features
@@ -472,6 +445,8 @@ class PSPipeline:
 
     def submit_sparse_grad(self, ids, grads):
         """Submit exactly once after the current batch's row gradients are ready."""
+        if self._closed or self._submission_error is not None:
+            raise self._submission_error or RuntimeError("PS pipeline is closed")
         if self._current_step != self._submitted or self._current_ticket is None:
             raise RuntimeError("PS pipeline requires exactly one SGD submission per batch")
         expected = self._current_ticket[0]
@@ -479,25 +454,86 @@ class PSPipeline:
             raise ValueError("PS pipeline gradients do not match the prepared IDs")
         if (grads.ndim != 2 or grads.shape[1] != self.embedding_dim
                 or grads.dtype != torch.float32
-                or (not self.canonical and grads.shape[0] != ids.numel())):
+                or (not self.owner_updates and grads.shape[0] != ids.numel())):
             raise ValueError("PS pipeline gradients must be FP32 with the prepared shape")
         self._require_next_read()
-        if self.canonical:
-            # Merged owners submit the exchange result; no packed partial
-            # descriptors exist for one-row-per-key gradients.
-            handle = self._submit_owner_grads(grads)
-        else:
-            handle = self.kv_client.sparse_gradient_commit_async(
-                self.master_table_name, expected, grads, session=self._session,
-                step=self._submitted, rank=self._rank, world=self._world,
-                lr=self.lr, divisor=self._world)
-        self._gradient_bytes = grads.numel() * grads.element_size()
-        self._commit = self._worker.submit(self._wait_commit, handle)
-        self._submitted += 1
-        self._queue_next_read(self._commit)
+        # Reap completed waits without blocking compute-ahead on its predecessor.
+        for handle, future in list(self._pending_commits.items()):
+            if future is not None and future.done() and not future.cancelled():
+                del self._pending_commits[handle]
+                future.result()
+        try:
+            handle = self._submit_gradients(expected, grads)
+            self._gradient_bytes = grads.numel() * grads.element_size()
+            self._commit = self._worker.submit(self._wait_commit, handle)
+            self._pending_commits[handle] = self._commit
+            self._submitted += 1
+            self._queue_next_read(self._commit)
+        except BaseException as error:
+            self._submission_error = error
+            raise
         if self._updated_ids is not None:
             self._updated_ids.update(expected.tolist())
         self._current_rows = None
+        self._owner_metadata.pop(self._current_step, None)
+
+    def _track_commit(self, handle):
+        # Native acceptance precedes Python scheduling, which can still fail.
+        self._pending_commits[handle] = None
+        self._accepted_step = self._submitted
+        return handle
+
+    def _submit_gradients(self, ids, grads):
+        return self._track_commit(self.kv_client.sparse_gradient_commit_async(
+            self.master_table_name, ids, grads, session=self._session,
+            step=self._submitted, rank=self._rank, world=self._world,
+            lr=self.lr, divisor=self._world))
+
+    def _close_commit_session(self, abort):
+        self.kv_client.sparse_gradient_commit_close(
+            self.master_table_name, session=self._session,
+            step=self._accepted_step, rank=self._rank, world=self._world,
+            dim=self.embedding_dim, lr=self.lr, divisor=self._world, abort=abort)
+
+    def _finish_commits(self, *, abort):
+        """Close the session and consume every accepted native handle once."""
+        error = None
+        if self._accepted_step >= 0 and not self._commit_session_closed:
+            try:
+                self._close_commit_session(abort)
+            except BaseException as exc:
+                # Native abort can acknowledge failure by throwing.
+                if not abort:
+                    error = exc
+            finally:
+                self._commit_session_closed = True
+        for handle, future in list(self._pending_commits.items()):
+            try:
+                if future is None or future.cancelled():
+                    self._wait_commit(handle)
+                else:
+                    future.result()
+            except BaseException as exc:
+                if error is None:
+                    error = exc
+                else:
+                    error.add_note("Commit drain also failed: " + repr(exc))
+            finally:
+                del self._pending_commits[handle]
+        if error is not None:
+            raise error
+
+    @property
+    def prepared_steps(self):
+        return self._prepared
+
+    @property
+    def table_types(self):
+        return self._owner_table_types
+
+    def finish_training(self):
+        """Include the final commit in the measured training interval."""
+        self._wait_pending()
 
     def _wait_commit(self, handle):
         start = time.perf_counter()
@@ -532,29 +568,21 @@ class PSPipeline:
     def shutdown(self, *, flush=True):
         if self._closed:
             return
-        error = None
+        error = self._submission_error if flush else None
         try:
-            if flush:
+            if flush and error is None:
                 self._wait_pending()
                 if self._read is not None:
                     self._read.result()
         except BaseException as exc:
             error = exc
         try:
-            if self._submitted:
-                if self.canonical:
-                    self._close_owner_grads(abort=not flush or error is not None)
-                else:
-                    self.kv_client.sparse_gradient_commit_close(
-                        self.master_table_name, session=self._session,
-                        step=self._submitted - 1, rank=self._rank, world=self._world,
-                        dim=self.embedding_dim, lr=self.lr, divisor=self._world,
-                        abort=not flush or error is not None)
+            self._finish_commits(abort=not flush or error is not None)
         except BaseException as exc:
-            # The native abort marks the session failed and may reply with an
-            # error. Preserve the training exception during explicit cleanup.
             if error is None and flush:
                 error = exc
+            elif error is not None:
+                error.add_note("Commit cleanup also failed: " + repr(exc))
         finally:
             self._worker.shutdown(wait=True, cancel_futures=True)
             if self._metadata_worker is not None:
@@ -567,7 +595,7 @@ class PSPipeline:
                         error = exc
                 self._metadata_group = None
             self._metadata.clear()
-            self._canonical_metadata.clear()
+            self._owner_metadata.clear()
             self._current_metrics = None
             self._split_clean = self._consumed_read = None
             self._closed = True
@@ -601,10 +629,6 @@ class PSPipelineSGD:
                 or grad.size(0) * features != raw_count or grad.dtype != torch.float32
                 or grad.device != self.pipeline._current_inverse.device):
             raise ValueError("PS pipeline pooled gradient does not match the prepared batch")
-        if self.pipeline.canonical:
-            # Merged rows: keep the count-exchange metadata lifecycle symmetric
-            # (the plan is already consumed by lookup).
-            self.pipeline._canonical_metadata.pop(self.pipeline._current_step, None)
         rows = self.pipeline._current_inverse
         self._grads = torch.zeros((ids.numel(), grad.size(2)),
                                   dtype=grad.dtype, device=grad.device)

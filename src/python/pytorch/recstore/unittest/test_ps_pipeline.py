@@ -77,6 +77,78 @@ def _consume(pipeline, step, ids):
 
 
 class TestPSPipeline(unittest.TestCase):
+    def test_native_acceptance_survives_wait_scheduling_failure(self):
+        ps = _PS()
+        pipeline = _pipeline(ps)
+        ticket, _, _ = _consume(pipeline, 0, [3])
+        original = RuntimeError("wait scheduling failed")
+        try:
+            with mock.patch.object(pipeline._worker, "submit", side_effect=original):
+                with self.assertRaises(RuntimeError) as caught:
+                    pipeline.submit_sparse_grad(ticket[0], torch.ones((1, 2)))
+            self.assertIs(caught.exception, original)
+            self.assertEqual(pipeline._submitted, 0)
+            self.assertEqual(pipeline._accepted_step, 0)
+            self.assertEqual(len(ps.pending), 1)
+            pipeline.shutdown(flush=False)
+            self.assertFalse(ps.pending)
+            self.assertFalse(pipeline._pending_commits)
+            self.assertEqual(ps.closed[-1]["step"], 0)
+            self.assertTrue(ps.closed[-1]["abort"])
+            pipeline.shutdown(flush=False)
+            self.assertEqual(len(ps.closed), 1)
+        finally:
+            pipeline.shutdown(flush=False)
+
+    def test_flush_after_scheduling_failure_aborts_and_preserves_error(self):
+        ps = _PS()
+        pipeline = _pipeline(ps)
+        ticket, _, _ = _consume(pipeline, 0, [3])
+        original = RuntimeError("wait scheduling failed")
+        try:
+            with mock.patch.object(pipeline._worker, "submit", side_effect=original):
+                with self.assertRaises(RuntimeError):
+                    pipeline.submit_sparse_grad(ticket[0], torch.ones((1, 2)))
+            with self.assertRaises(RuntimeError) as caught:
+                pipeline.shutdown()
+            self.assertIs(caught.exception, original)
+            self.assertTrue(ps.closed[-1]["abort"])
+            self.assertFalse(ps.pending)
+        finally:
+            pipeline.shutdown(flush=False)
+
+    def test_cancelled_wait_still_consumes_native_handle(self):
+        from concurrent.futures import Future
+        ps = _PS()
+        pipeline = _pipeline(ps)
+        ticket, _, _ = _consume(pipeline, 0, [3])
+        cancelled = Future()
+        cancelled.cancel()
+        try:
+            with mock.patch.object(pipeline._worker, "submit", return_value=cancelled):
+                pipeline.submit_sparse_grad(ticket[0], torch.ones((1, 2)))
+            pipeline.shutdown(flush=False)
+            self.assertFalse(ps.pending)
+            self.assertFalse(pipeline._pending_commits)
+        finally:
+            pipeline.shutdown(flush=False)
+
+    def test_next_read_failure_does_not_wait_native_handle_twice(self):
+        ps = _PS()
+        pipeline = _pipeline(ps)
+        ticket, _, _ = _consume(pipeline, 0, [3])
+        try:
+            with mock.patch.object(ps, "sparse_gradient_commit_wait",
+                                   wraps=ps.sparse_gradient_commit_wait) as wait:
+                with mock.patch.object(pipeline, "_queue_next_read", side_effect=RuntimeError("read enqueue")):
+                    with self.assertRaisesRegex(RuntimeError, "read enqueue"):
+                        pipeline.submit_sparse_grad(ticket[0], torch.ones((1, 2)))
+                pipeline.shutdown(flush=False)
+                wait.assert_called_once_with(0)
+            self.assertFalse(ps.pending)
+        finally:
+            pipeline.shutdown(flush=False)
+
     def test_owned_destination_read_waits_for_commit(self):
         class IntoPS(_PS):
             def pull(self, *args):

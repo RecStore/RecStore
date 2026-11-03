@@ -81,20 +81,8 @@ def make_ticket_with_inverse(feature_major_ids, table_offsets, table_types, nati
 
 
 @dataclass
-class ContributionPlan:
-    """Shape-only exchange stub; the owner routing attaches ``owner``.
+class OwnerExchangePlan:
+    """Local row count and the native owner routing tensors."""
 
-    Merged rows carry no reduction tree. Only ``records.shape[0]`` (the local
-    unique key count) is consumed, by the row-count check in
-    ``_augment_canonical_plan``; the CPU metadata pack reports the record
-    bytes. Building a real per-key plan cost ~20 ms per step at this batch
-    size while nothing else read it.
-    """
-
-    records: np.ndarray  # CPU int64 [N,5]; N is the only consumed field.
-    positions: np.ndarray
-    tasks: np.ndarray
-    batch_size: int
-    features: int
-    rank: int
-    vector_count: int
+    local_unique_count: int
+    owner: tuple = ()

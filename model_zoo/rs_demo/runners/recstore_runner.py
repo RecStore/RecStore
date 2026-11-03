@@ -301,42 +301,12 @@ class RecStoreRunner(BenchmarkRunner):
 
         if cfg.read_mode == "ps_pipeline":
             from recstore.ps_pipeline import PSPipeline, PSPipelineSGD
-            canonical_types = None
-            pipeline_class, owner_options = PSPipeline, {}
-            owner_forward = os.environ.get("RECSTORE_PS_OWNER_FORWARD") == "1"
-            owner_handoff = os.environ.get("RECSTORE_PS_OWNER_CANDIDATE_HANDOFF") == "1"
-            owner_verify = os.environ.get("RECSTORE_PS_OWNER_VERIFY_HANDOFF") == "1"
-            owner_compute_ahead = os.environ.get("RECSTORE_PS_OWNER_COMPUTE_AHEAD") == "1"
-            owner_merged_grad = os.environ.get("RECSTORE_PS_OWNER_MERGED_GRAD") == "1"
-            metadata_depth = int(os.environ.get("RECSTORE_PS_METADATA_LOOKAHEAD", "0"))
-            if metadata_depth not in (0, 4, 8) or (metadata_depth and not owner_forward):
-                raise ValueError("Metadata lookahead requires unified owner and depth 0/4/8")
-            if metadata_depth and os.environ.get("RECSTORE_PS_PREPARE_DURING_DENSE") == "1":
-                raise ValueError("Metadata lookahead keeps the original one-next adoption point")
-            if owner_compute_ahead and not (owner_forward and owner_handoff):
-                raise ValueError("Owner compute-ahead requires unified candidate handoff")
-            if owner_verify and not owner_handoff:
-                raise ValueError("Diagnostic handoff verification requires candidate handoff")
-            if owner_handoff and not owner_forward:
-                raise ValueError("Acknowledged candidate handoff requires unified owner forward")
-            if owner_merged_grad and os.environ.get("RECSTORE_PS_OWNER_GPU") != "1":
-                raise ValueError("Merged-gradient owner updates require GPU owner updates")
-            if owner_forward and os.environ.get("RECSTORE_PS_OWNER_GPU") != "1":
-                raise ValueError("Unified owner forward requires GPU owner updates")
-            if os.environ.get("RECSTORE_PS_OWNER_GPU") == "1":
+            from recstore.ps_owner_pipeline import GPUOwnerPipeline, owner_options_from_env
+            owner_options = owner_options_from_env(os.environ)
+            pipeline_class = PSPipeline if owner_options is None else GPUOwnerPipeline
+            if owner_options is not None:
                 if not cfg.dense_cuda_graph or cfg.ps_type != "RDMA":
                     raise ValueError("GPU owner updates currently require RDMA and the dense CUDA graph")
-                if not owner_merged_grad:
-                    raise ValueError("GPU owner updates require RECSTORE_PS_OWNER_MERGED_GRAD=1 "
-                                     "(the canonical reduction protocol was removed)")
-                from recstore.ps_owner_pipeline import GPUOwnerPipeline
-                pipeline_class = GPUOwnerPipeline
-                owner_options["unified_forward"] = owner_forward
-                owner_options["owner_merged_grad"] = owner_merged_grad
-                owner_options["candidate_handoff"] = owner_handoff
-                owner_options["verify_handoff"] = owner_verify
-                owner_options["compute_ahead"] = owner_compute_ahead
-                owner_options["metadata_lookahead"] = metadata_depth
                 owner_options["owner_table_end"] = (
                     list(table_offsets.values())[-1] + int(eb_configs[-1]["num_embeddings"]))
             read_path = pipeline_class(
@@ -345,8 +315,7 @@ class RecStoreRunner(BenchmarkRunner):
                 embedding_dim=cfg.embedding_dim, device=device,
                 validation_state=cfg.validation_state,
                 dependency_split=cfg.ps_pipeline_dependency_split, total_steps=cfg.steps,
-                canonical_table_types=canonical_types,
-                **owner_options,
+                **(owner_options or {}),
             )
             return None, read_path, PSPipelineSGD(embedding_module, read_path), False
         if use_bagpipe:
@@ -609,7 +578,7 @@ class RecStoreRunner(BenchmarkRunner):
                 lifecycle["embedding_namespace"] = embedding_module.shared_fused_namespace_identity()
                 lifecycle["owned_read_native"] = callable(getattr(client.ops, "emb_read_into", None))
                 lifecycle["ps_pipeline_dependency_split"] = cfg.ps_pipeline_dependency_split
-                lifecycle["ps_pipeline_canonical_types"] = list(read_path._canonical_table_types)
+                lifecycle["ps_pipeline_canonical_types"] = list(read_path.table_types)
                 if cfg.ps_pipeline_dependency_split:
                     lifecycle["ps_pipeline_metadata_group_init_ms"] = read_path.metadata_group_init_ms
                     lifecycle["ps_pipeline_metadata_byte_semantics"] = "padded tensor payload per peer; excludes transport framing"
@@ -769,7 +738,7 @@ class RecStoreRunner(BenchmarkRunner):
 
             def adopt_metadata_batch(batch):
                 batch_step, row, dense, features, labels, ticket = batch
-                if batch_step >= read_path._prepared:
+                if batch_step >= read_path.prepared_steps:
                     ticket = read_path.adopt_cpu_metadata(batch_step, cpu_metadata_handles[batch_step], row)
                     _add_sparse_id_stats(row, features, table_offsets,
                                          precomputed=(int(ticket[0].numel()), int(ticket[2])))
@@ -785,7 +754,7 @@ class RecStoreRunner(BenchmarkRunner):
                         completed += 1
                 row.update(ps_metadata_cpu_queued=len(cpu_metadata_handles),
                            ps_metadata_cpu_completed=completed,
-                           ps_metadata_cpu_queue_hwm=read_path._metadata_queue_hwm,
+                           ps_metadata_cpu_queue_hwm=read_path.metadata_queue_high_watermark,
                            ps_metadata_cpu_input_bytes=inputs,
                            ps_metadata_cpu_plan_payload_bytes=plans)
 
@@ -1019,12 +988,11 @@ class RecStoreRunner(BenchmarkRunner):
                         # Charge the final deferred SGD to training as well.
                         plugin._controller._wait_pending()
                     if use_ps_pipeline and step == cfg.steps - 1:
-                        read_path._wait_pending()
+                        read_path.finish_training()
                         if metadata_depth:
-                            if cpu_metadata_handles or prepared_batches or read_path._prepared != cfg.steps:
+                            if cpu_metadata_handles or prepared_batches or read_path.prepared_steps != cfg.steps:
                                 raise RuntimeError("Metadata lookahead did not consume the exact tail")
                             # All producer results were adopted; include executor drain in final timing.
-                            read_path._metadata_worker.shutdown(wait=True, cancel_futures=False)
                             lifecycle["metadata_final_drain_complete"] = True
                     sparse_optimizer.zero_grad()
 
@@ -1138,7 +1106,7 @@ class RecStoreRunner(BenchmarkRunner):
             continuous_error = error if continuous is not None else None
             if "read_path" in locals() and getattr(read_path, "metadata_lookahead", 0):
                 try:
-                    read_path._metadata_failed(error)
+                    read_path.fail(error)
                 except BaseException as cleanup_error:
                     if continuous is None:
                         raise

@@ -14,7 +14,7 @@ from unittest import mock
 import torch
 
 from .. import owner_merged_gpu
-from ..ps_owner_pipeline import GPUOwnerPipeline
+from ..ps_owner_pipeline import GPUOwnerPipeline, owner_options_from_env
 from . import _owner_test_fixtures as fixtures
 
 PLAN_OP = getattr(torch.ops.recstore_ops, 'owner_merged_plan', None)
@@ -37,43 +37,69 @@ class FakeMergedExchange:
         self.drained = True
 
 
-def merged_routing(pipeline, plan, peers, sizes):
-    columns = [peer[:size, column].contiguous()
-               for peer, size in zip(peers, sizes) for column in (0, 1)]
-    owner = PLAN_OP(*columns, pipeline._owner_boundaries, pipeline._owner_types,
-                    pipeline._owner_tag, pipeline._rank)
-    plan.owner = owner
+def make_merged_owner(ps, *, table_types=fixtures.types, **options):
+    # Run both real constructors. Only the CUDA allocation/JIT boundary is
+    # replaced for CPU scheduling tests; no private state is reconstructed.
+    ps.ops = SimpleNamespace(owner_merged_plan=PLAN_OP or mock.Mock(),
+                             owner_merged_forward_plan=getattr(torch.ops.recstore_ops, 'owner_merged_forward_plan', None) or mock.Mock(),
+                             sparse_owner_replace_async=ps.sparse_owner_replace_async,
+                             sparse_owner_replace_close=ps.sparse_owner_replace_close)
+    ps.get_embedding_table_namespace = lambda table: (0, 0)
+    tensor = torch.tensor
 
+    def cpu_tensor(*args, **kwargs):
+        kwargs.pop('device', None)
+        return tensor(*args, **kwargs)
 
-def make_merged_owner(ps):
-    pipeline = fixtures.make_pipeline(ps, True)
-    pipeline.__class__ = GPUOwnerPipeline
-    pipeline.unified_forward = False
-    pipeline.candidate_handoff = False
-    pipeline.verify_handoff = False
-    pipeline._verified_owner_weights = None
-    pipeline._owner_candidate = None
-    pipeline._pending_owner_step = None
-    pipeline._owner_failed = False
-    pipeline._owner_plan = pipeline._owner_read = pipeline._owner_exchange = None
-    # Attributes normally set by GPUOwnerPipeline.__init__ (bypassed by the
-    # class swap): non-unified, no-handoff, no-lookahead, merged gradients.
-    pipeline.owner_merged_grad = True
-    pipeline.metadata_lookahead = 0
-    pipeline._metadata_enqueued = pipeline._metadata_queue_hwm = 0
-    pipeline._metadata_stopping = False
-    pipeline._metadata_prepare_error = None
-    pipeline.compute_ahead = False
-    pipeline._retired_step = pipeline._native_submitted_step = pipeline._candidate_step = -1
-    pipeline._commit_step = -1
-    pipeline._compute_read_step = None
-    pipeline._retiring_owner = pipeline._untracked_owner_commit = pipeline._compute_error = None
-    pipeline._owner_boundaries = torch.tensor([0, 100, 200], dtype=torch.int64)
-    pipeline._owner_types = torch.tensor([0, 1], dtype=torch.int64)
-    pipeline._owner_tag = 0
-    routing = lambda plan, peers, sizes: merged_routing(pipeline, plan, peers, sizes)
-    pipeline._augment_canonical_plan = routing
+    with mock.patch.object(torch, 'tensor', side_effect=cpu_tensor), mock.patch.object(
+            owner_merged_gpu, 'initialize_owner_merged_math'), mock.patch.object(
+            fixtures.dist, 'get_backend', return_value='nccl'):
+        pipeline = GPUOwnerPipeline(
+            None, ps, table_offsets={'f0': 0, 'f1': 100}, master_table_name='master',
+            embedding_dim=128, device='cuda', dependency_split=True, total_steps=3,
+            owner_table_end=200, owner_table_types=table_types, **options)
+    pipeline.device = torch.device('cpu')  # Fake exchanges below operate on CPU.
     return pipeline
+
+
+class TestOwnerConstruction(unittest.TestCase):
+    def test_real_constructor_preserves_owner_mode_and_full_options(self):
+        with fixtures.context(fixtures.Collective()):
+            pipeline = make_merged_owner(fixtures.OwnerPS(), table_types=None, unified_forward=True,
+                candidate_handoff=True, compute_ahead=True, metadata_lookahead=4)
+            try:
+                self.assertTrue(pipeline.owner_updates)
+                self.assertTrue(pipeline.owner_merged_grad)
+                self.assertTrue(pipeline.compute_ahead)
+                self.assertEqual(pipeline.metadata_lookahead, 4)
+                self.assertEqual(pipeline.table_types, (0, 0))
+                self.assertIsInstance(pipeline._layout_digest, int)
+                self.assertEqual(pipeline._pending_commits, {})
+            finally:
+                with mock.patch.object(torch.cuda, 'synchronize'):
+                    pipeline.shutdown(flush=False)
+
+    def test_invalid_combinations_fail_before_gpu_initialization(self):
+        cases = [dict(compute_ahead=True), dict(candidate_handoff=True),
+                 dict(verify_handoff=True), dict(metadata_lookahead=4),
+                 dict(unified_forward=True, metadata_lookahead=3)]
+        for options in cases:
+            with self.subTest(options=options), mock.patch.object(
+                    owner_merged_gpu, 'initialize_owner_merged_math') as initialize:
+                with self.assertRaises(ValueError):
+                    GPUOwnerPipeline(None, None, owner_table_end=200, **options)
+                initialize.assert_not_called()
+
+    def test_owner_mode_does_not_require_redundant_merged_flag(self):
+        self.assertIsNone(owner_options_from_env({}))
+        options = owner_options_from_env({'RECSTORE_PS_OWNER_GPU': '1'})
+        self.assertNotIn('owner_merged_grad', options)
+        self.assertEqual(options, owner_options_from_env({
+            'RECSTORE_PS_OWNER_GPU': '1', 'RECSTORE_PS_OWNER_MERGED_GRAD': '1'}))
+        for env in ({'RECSTORE_PS_OWNER_FORWARD': '1'},
+                    {'RECSTORE_PS_OWNER_GPU': '1', 'RECSTORE_PS_OWNER_MERGED_GRAD': '0'}):
+            with self.subTest(env=env), self.assertRaises(ValueError):
+                owner_options_from_env(env)
 
 
 def pooled_gradient(step):
@@ -138,10 +164,10 @@ class TestGPUOwnerMergedPipelineScheduling(unittest.TestCase):
                     self.assertEqual(sorted(permutation.tolist()), list(range(own.numel())))
                     pooled = pooled_gradient(step)
                     optimizer.record_pooled_grad(pooled)
-                    self.assertNotIn(step, pipeline._canonical_metadata)
                     expected = expected_merged_rows(pipeline, pooled)
                     self.assertTrue(torch.equal(optimizer._grads, expected))
                     optimizer.step()
+                    self.assertNotIn(step, pipeline._owner_metadata)
                     self.assertTrue(torch.equal(ps.commits[-1][0], keys))
                     self.assertEqual(ps.commits[-1][2]['step'], step)
                     self.assertTrue(torch.equal(pipeline._owner_exchange.packed, expected))
@@ -200,6 +226,86 @@ class TestGPUOwnerMergedPipelineScheduling(unittest.TestCase):
                     pipeline.shutdown(flush=False)
 
 
+class FakeForwardExchange(FakeMergedExchange):
+    """Fake peer transport with real CUDA buffers/events for lifecycle tests."""
+    def __init__(self, permutation, keys, meta, send, recv, weights, **kwargs):
+        weights = weights.to(kwargs['device'])
+        super().__init__(permutation, keys, meta, send, recv, weights, **kwargs)
+        self._gpu = (meta, permutation, weights)
+        self.row_count = kwargs['forward_reorder'].numel()
+
+    def forward_rows(self):
+        return torch.zeros((self.row_count, 128), device=self.weights.device)
+
+    def run(self, packed, lr):
+        self.packed = packed.clone()
+        return self.weights + 1, torch.zeros(1, dtype=torch.int32, device=self.weights.device)
+
+
+@unittest.skipUnless(callable(PLAN_OP) and torch.cuda.is_available(),
+                     'requires native owner plan and CUDA')
+class TestOwnerOptimizedLifecycle(unittest.TestCase):
+    def test_full_options_finish_and_failed_wait_scheduling(self):
+        for failed_step in (None, 0, 1):
+            with self.subTest(failed_step=failed_step), fixtures.context(fixtures.Collective()), mock.patch.object(
+                    owner_merged_gpu, 'ForwardMergedGPUOwnerExchange', FakeForwardExchange):
+                ps = fixtures.OwnerPS()
+                pipeline = make_merged_owner(ps, unified_forward=True,
+                    candidate_handoff=True, compute_ahead=True, metadata_lookahead=4)
+                pipeline.device = torch.device('cuda', torch.cuda.current_device())
+                optimizer = fixtures.pipeline_module.PSPipelineSGD(
+                    SimpleNamespace(reset_trace=lambda: None), pipeline)
+                original_submit = pipeline._worker.submit
+                original_error = RuntimeError('owner wait scheduling failed')
+
+                def submit(fn, *args):
+                    if failed_step == pipeline._accepted_step and fn.__name__ == '_wait_commit':
+                        raise original_error
+                    return original_submit(fn, *args)
+
+                try:
+                    handles = [pipeline.queue_cpu_metadata(i, batch)
+                               for i, batch in enumerate(fixtures.local_batches)]
+                    rows = [{}, {}, {}]
+                    tickets = {0: pipeline.adopt_cpu_metadata(0, handles[0], rows[0])}
+                    with mock.patch.object(pipeline._worker, 'submit', side_effect=submit), mock.patch.object(
+                            ps, 'sparse_gradient_commit_wait', wraps=ps.sparse_gradient_commit_wait) as wait:
+                        for step in range(3):
+                            if step + 1 < 3:
+                                tickets[step + 1] = pipeline.adopt_cpu_metadata(
+                                    step + 1, handles[step + 1], rows[step + 1])
+                            pipeline.before_lookup(step, None, tickets[step], rows[step])
+                            optimizer.record_pooled_grad(pooled_gradient(step).to(pipeline.device))
+                            if step == failed_step:
+                                with self.assertRaises(RuntimeError) as caught:
+                                    optimizer.step()
+                                self.assertIs(caught.exception, original_error)
+                                # Cleanup retains the original failure while consuming the native handle.
+                                with self.assertRaises(RuntimeError) as caught:
+                                    pipeline.shutdown(flush=False)
+                                self.assertIs(caught.exception, original_error)
+                                self.assertTrue(ps.closed[-1]['abort'])
+                                self.assertEqual(wait.call_count, step + 1)
+                                self.assertEqual(ps.closed[-1]['step'], step)
+                                break
+                            optimizer.step()
+                            optimizer.zero_grad()
+                        if failed_step is None:
+                            pipeline.finish_training()
+                            self.assertEqual(pipeline._retired_step, 2)
+                            self.assertEqual(pipeline.prepared_steps, 3)
+                            self.assertTrue(pipeline._metadata_stopping)
+                            pipeline.shutdown()
+                            self.assertFalse(ps.closed[-1]['abort'])
+                            self.assertEqual(wait.call_count, 3)
+                            self.assertGreater(rows[1]['ps_owner_handoff_rows'], 0)
+                        self.assertFalse(pipeline._pending_commits)
+                        self.assertTrue(pipeline._closed)
+                finally:
+                    ps.release.set()
+                    pipeline.shutdown(flush=False)
+
+
 class TestBasePipelineTicketModeGuards(unittest.TestCase):
     def test_base_pipeline_rejects_the_ticket_mode(self):
         with self.assertRaises(ValueError) as caught:
@@ -207,7 +313,7 @@ class TestBasePipelineTicketModeGuards(unittest.TestCase):
                 None, fixtures.OwnerPS(), table_offsets={'f0': 0, 'f1': 100},
                 master_table_name='master', embedding_dim=128, device='cpu',
                 dependency_split=True, total_steps=3,
-                canonical_table_types=[0, 1])
+                owner_table_types=[0, 1])
         self.assertIn('merged GPU owner pipeline', str(caught.exception))
 
 

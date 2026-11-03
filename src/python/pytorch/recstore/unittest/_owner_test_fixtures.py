@@ -1,10 +1,7 @@
 """Shared CPU fixtures for the merged-gradient owner pipeline tests.
 
-Collectives are explicit fakes around the real count-exchange ticket path.
-The make_pipeline bypass flips the canonical ticket mode on after the CPU
-fixture construction: no claim about CUDA owner initialization.
+Collectives and PS transport are explicit fakes around the real owner pipeline.
 """
-from concurrent.futures import ThreadPoolExecutor
 import threading
 
 import numpy as np
@@ -88,22 +85,6 @@ class Collective:
             if self.corrupt == 'keys': peer[:len(remote.keys),0] = peer[:len(remote.keys),0].flip(0)
             outputs[0].copy_(value); outputs[1].copy_(peer)
             self.calls.append(('payload', self.step, value.numel()))
-
-
-def make_pipeline(ps, split):
-    # Deliberately bypass only constructor GPU-capability checks by enabling
-    # the ticket mode after constructing the CPU fixture. No claim about CUDA init.
-    pipeline = pipeline_module.PSPipeline(None, ps, table_offsets={'f0':0,'f1':100},
-        master_table_name='master', embedding_dim=128, device='cpu',
-        dependency_split=split, total_steps=3)
-    pipeline.canonical = True
-    pipeline.owner_merged_grad = True
-    pipeline._canonical_table_types = tuple(types)
-    pipeline._canonical_layout = 17
-    if pipeline._metadata_worker is None:
-        pipeline._metadata_group = object()
-        pipeline._metadata_worker = ThreadPoolExecutor(max_workers=1)
-    return pipeline
 
 
 def context(collective):

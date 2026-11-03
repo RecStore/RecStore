@@ -45,6 +45,18 @@ gate. Existing asynchronous update/prefetch APIs reject this experimental mode.
 
 ## Merged-gradient owner updates
 
+Enable GPU owners with `RECSTORE_PS_OWNER_GPU=1`. Merged gradients are the
+only owner update mode; the legacy `RECSTORE_PS_OWNER_MERGED_GRAD=1` setting is
+accepted but no longer required. Forward, handoff, compute-ahead and metadata
+lookahead options are parsed once at startup and validated by the owner
+constructor.
+
+The pipeline owns native commit handles from acceptance through their single
+wait, including failures before a Python wait task can be scheduled. Abort
+cleanup closes the session before draining accepted handles. The runner calls
+`finish_training()` to include the final commit and metadata worker drain in
+training time; it does not close the pipeline's executor directly.
+
 The canonical bit-exact reduction protocol (v3) was removed. Deterministic
 rank-local coalescing cannot reproduce every TorchRec rounding operation, and
 reproducing it required a per-step reduction-tree reconstruction on both the

@@ -651,6 +651,8 @@ class TestRecStoreRunner(unittest.TestCase):
                 stack.enter_context(mock.patch("torch.distributed.is_initialized", fake_dist.is_initialized))
                 stack.enter_context(mock.patch("torch.distributed.init_process_group", fake_dist.init_process_group))
                 stack.enter_context(mock.patch("torch.distributed.barrier", fake_dist.barrier))
+                stack.enter_context(mock.patch("torch.distributed.all_gather",
+                    lambda outputs, value, **kwargs: [out.copy_(value) for out in outputs]))
                 stack.enter_context(mock.patch("torch.distributed.destroy_process_group", fake_dist.destroy_process_group))
 
             runner = RecStoreRunner(runner_runtime)
@@ -953,7 +955,9 @@ class TestRecStoreRunner(unittest.TestCase):
         for steps in (1, 3):
             with self.subTest(steps=steps), tempfile.TemporaryDirectory() as output:
                 calls = []
-                read_path = mock.MagicMock(desired_buffer_size=0, metadata_group_init_ms=0.1)
+                read_path = mock.MagicMock(desired_buffer_size=0, metadata_group_init_ms=0.1,
+                                           metadata_lookahead=0, table_types=(),
+                                           owner_merged_grad=False, compute_ahead=False)
                 optimizer = mock.MagicMock()
 
                 def prepare(step, features, sparse_batch, row):
@@ -982,9 +986,9 @@ class TestRecStoreRunner(unittest.TestCase):
                         expected.append(("prepare", step + 1))
                     expected.extend([("consume", step), ("submit", None)])
                 self.assertEqual(calls, expected)
+                read_path.finish_training.assert_called_once_with()
                 self.assertEqual(len(captured), steps)
                 self.assertEqual(captured[-1]["ps_pipeline_lookahead_prepare_ms"], 0)
-                read_path._wait_pending.assert_called_once()
 
     def test_embedding_module_auto_detects_fast_path_without_runner_injection(self) -> None:
         # Neither the default path nor the explicit single-node config should make
