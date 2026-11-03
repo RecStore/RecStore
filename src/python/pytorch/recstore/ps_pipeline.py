@@ -435,7 +435,7 @@ class PSPipeline:
 
     def lookup(self, sparse_features):
         del sparse_features
-        from torchrec.sparse.jagged_tensor import KeyedTensor
+        from torchrec_kv.EmbeddingBag import KeyedTensor
         if self._current_rows is None:
             raise RuntimeError("PS pipeline lookup requires before_lookup")
         values = self._current_rows.index_select(0, self._current_inverse)

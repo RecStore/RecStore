@@ -1,3 +1,6 @@
+import os
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -77,6 +80,32 @@ def _consume(pipeline, step, ids):
 
 
 class TestPSPipeline(unittest.TestCase):
+    def test_lookup_without_torchrec(self):
+        code = """
+import sys
+sys.modules["torchrec"] = None
+import torch
+from recstore.unittest.test_ps_pipeline import _PS, _pipeline, _consume
+ps = _PS()
+pipeline = _pipeline(ps)
+try:
+    ticket, values, _ = _consume(pipeline, 0, [3, 3, 7])
+    output = pipeline.lookup(None)
+    assert output.keys() == ["f0"]
+    assert output.length_per_key() == [2]
+    torch.testing.assert_close(output["f0"], torch.ones((3, 2)))
+    pipeline.submit_sparse_grad(ticket[0], torch.ones((2, 2)))
+    pipeline.shutdown()
+    torch.testing.assert_close(ps.rows[ticket[0]], torch.full((2, 2), .9))
+finally:
+    pipeline.shutdown(flush=False)
+"""
+        env = dict(os.environ, RECSTORE_DEFER_OPS_LOAD="1",
+                   PYTHONPATH=str(Path(__file__).resolve().parents[2]))
+        result = subprocess.run([sys.executable, "-c", code], env=env,
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_native_acceptance_survives_wait_scheduling_failure(self):
         ps = _PS()
         pipeline = _pipeline(ps)
