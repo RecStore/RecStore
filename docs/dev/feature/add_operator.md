@@ -134,7 +134,7 @@ void KVClientOp::EmbUpdate(const std::string& table_name,
 
 ```cpp title="src/ps/grpc/dist_grpc_ps_client.cpp"
 
-void DistGRPCPSClient::UpdateParameter(const std::string& table_name,
+void DistributedGRPCParameterClient::UpdateParameter(const std::string& table_name,
                                        const std::vector<uint64_t>& keys,
                                        const std::vector<float>& grads) {
     // 1. 序列化数据 (例如使用 ParameterCompressor)

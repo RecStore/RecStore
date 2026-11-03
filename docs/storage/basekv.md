@@ -55,6 +55,7 @@ base_kv_.reset(base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
 | `KVEngineFasterKV` | `external/fasterkv/` | 顶层 `capacity`、`value_size`；可选 `fasterkv` 块 | 下文 |
 | `KVEngineHPSHashMap` | `external/hps/` | 顶层 `capacity`、`value_size`；无 `path` | 下文 |
 | `KVEngineHPSRocksDB` | `external/hps/` | 同上 + 必填 `path` | 下文 |
+| `KVEngineDETable` | `external/detable/` | 顶层 `capacity`、`value_size`；可选 `detable` 块（`library_path`、`block_size`） | — |
 
 ---
 
@@ -186,5 +187,3 @@ HugeCTR `DatabaseBackend` 适配，固定 float 对齐的 `value_size`。
   "value_size": 512
 }
 ```
-
----

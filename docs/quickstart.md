@@ -59,7 +59,7 @@ git config core.hooksPath .githooks  # 启用仓库自带的提交前格式化�
 
 ```bash
 cd dockerfiles
-sudo docker build -f Dockerfile.recstore --build-arg uid=$UID  -t recstore .
+sudo docker build -f Dockerfile.recstore -t recstore:env .
 cd -
 ```
 
@@ -89,7 +89,7 @@ cd -
         -v /dev/hugepages:/dev/hugepages \
         -v /dev:/dev \
         -w ${RECSTORE_PATH} \
-        --rm -it --gpus all -d recstore
+        --rm -it --gpus all -d recstore:env
     ```
 
 进入容器：
@@ -129,7 +129,7 @@ mkdir -p build && cd build
 
 ```bash title="编译 RecStore"
 # in RecStore/build directory
-cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.10 ..
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
 make -j
 ```
 

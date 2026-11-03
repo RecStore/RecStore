@@ -7,7 +7,7 @@
 | `RecStoreEmbeddingBagCollection` | `src/python/pytorch/torchrec_kv/EmbeddingBag.py` | TorchRec 风格多表、多特征模型。当前模型接入优先看它。 |
 | `DistEmbedding` | `src/python/pytorch/recstore/DistEmb.py` | 单个 embedding table。通过 `DistTensor` 读写，optimizer 在 Python 侧做 SGD 写回。 |
 
-### RecStoreEmbeddingBagCollection
+## RecStoreEmbeddingBagCollection
 
 ```python
 module = RecStoreEmbeddingBagCollection(

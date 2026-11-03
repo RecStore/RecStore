@@ -9,7 +9,7 @@
 默认工作目录为仓库根目录：
 
 ```bash
-cd /app/RecStore
+cd <repo root>
 ```
 
 ## 1. 适用范围
@@ -279,7 +279,7 @@ row copy 和 response completion 可分别定位查找、清零、搬运和回�
 2. 检查 `/dev/infiniband`、`ibv_devices` 和 shard 0 控制面日志。
 3. 若卡在 `control-plane-wait` 或 `startup-wait`，先查看 shard 0 日志和控制面端口。
 4. 若出现 `librdkafka.so.1` 缺失，确认 `build/lib` 在运行时库路径中：
-   `LD_LIBRARY_PATH=/app/RecStore/build/lib:${LD_LIBRARY_PATH}`。
+   `LD_LIBRARY_PATH=$PWD/build/lib:${LD_LIBRARY_PATH}`。
 5. 若出现 `unknown command line flag 'rdma_transport_mode'` 或旧的
    `--use-local-memcached`，优先检查是否运行了旧 binary 或旧 runner。
 6. 若请求卡住，检查 MR 注册、QP metadata 的 shard/lane 匹配、CQ 消费线程以及

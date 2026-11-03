@@ -1,9 +1,5 @@
 # Profiling 与瓶颈分析
 
-!!! note "待重写"
-
-    核对模型运行入口、Profiler 二进制名称与输出路径。
-
 性能上报的编译选项见[监控与 Grafana](monitoring.md)。
 
 ## 本地分析
@@ -71,21 +67,23 @@ python3 model_zoo/rs_demo/run_mock_stress.py \
 
 ## 运行性能统计
 
-**服务端 (PS Server)**
+### 服务端 (PS Server)
 
-可以通过环境变量 `CPUPROFILE` 开启 CPU Profiler，并通过 `--perf_report_path` 指定性能报告输出路径：
+服务端的结构化统计通过 `RECSTORE_REPORT_*` 上报（见[监控与 Grafana](monitoring.md)），
+编译时打开 `-DUSE_PERF_REPORT=ON`。
+
+CPU Profiler 通过 `CPUPROFILE` 开启，需要带 `-DCMAKE_BUILD_TYPE=Debug
+-DUSE_GPERF_PROFILING=ON` 构建：
 
 ```bash
-CPUPROFILE=/tmp/ps_cpu.prof ./build/bin/ps_server --perf_report_path=/tmp/ps_perf.log
+CPUPROFILE=/tmp/ps_cpu.prof ./build/bin/ps_server
 ```
 
-**训练端 (DLRM Trainer)**
+### 训练端 (DLRM Trainer)
 
-使用 `run_single_day.sh` 脚本一键运行性能测试：
+使用 `run_single_day.sh` 脚本一键运行模型层测试：
 
 ```bash
-export RECSTORE_PERF_REPORT_PATH=/tmp/trainer_perf.log
-export RECSTORE_PERF_INTERVAL_MS=5000
 bash run_single_day.sh --custom --dataset-size 4096 --epochs 10
 ```
 
@@ -93,31 +91,17 @@ bash run_single_day.sh --custom --dataset-size 4096 --epochs 10
     这是对于模型层 DLRM 的小型测试脚本，可以使用单天数据进行测试，同时限制了数据量和嵌入表的大小。
     运行 `bash run_single_day.sh --help` 可查看更多参数说明。
 
-**查看结果**
-
-**日志分析**
-
-`perf_report_path` 指定的文件会实时记录每个时间窗口（如 5000ms）内的耗时统计（P50/P99）：
-
-```bash
-# 查看服务端性能概览
-tail -n 50 /tmp/ps_perf.log
-
-# 查看训练端性能概览
-tail -n 50 /tmp/trainer_perf.log
-```
-
-**CPU Profiling 分析**
+### CPU Profiling 分析
 
 使用 `google-pprof` 分析 CPU 热点（需要安装 `gperftools`）：
 
 ```bash
-google-pprof --text build/bin/grpc_ps_server /tmp/ps_cpu.prof
+google-pprof --text build/bin/ps_server /tmp/ps_cpu.prof
 # 或者导出 pdf/svg
-google-pprof --pdf build/bin/grpc_ps_server /tmp/ps_cpu.prof > ps_cpu.pdf
+google-pprof --pdf build/bin/ps_server /tmp/ps_cpu.prof > ps_cpu.pdf
 ```
 
-**模型层统计**
+### 模型层统计
 
 ```bash
 tensorboard --logdir=./logs --port=6006

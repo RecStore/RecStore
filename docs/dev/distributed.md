@@ -1,9 +1,5 @@
 # 分布式训练
 
-!!! note "待重写"
-
-    配置示例仍使用旧的 index_type、value_type 等字段，需按当前 Composite 配置重写。
-
 以两台机器为例，每台机器 1 个 trainer，1 个分片的存储后端。
 
 ## 环境
@@ -21,7 +17,7 @@
 
 ??? example "配置文件示例"
 
-    ```json title="recstore_config.distributed.json" linenums="1" hl_lines="6 28-44"
+    ```json title="recstore_config.distributed.json" linenums="1"
     {
       "cache_ps": {
         "ps_type": "BRPC",
@@ -41,12 +37,20 @@
           }
         ],
         "base_kv_config": {
-          "path": "/tmp/recstore_dist_data",
+          "engine_type": "KVEngineComposite",
           "capacity": 1000000,
-          "value_size": 512,
-          "value_type": "DRAM",
-          "index_type": "DRAM",
-          "value_memory_management": "PersistLoopShmMalloc"
+          "index": {
+            "type": "DRAM_PET_HASH"
+          },
+          "value": {
+            "type": "DRAM_VALUE_STORE",
+            "path": "/tmp/recstore_dist_data",
+            "default_value_size_hint": 512,
+            "dram_allocator": {
+              "type": "CONCURRENT_SLAB_MEMORY_POOL",
+              "capacity_bytes": 512000000
+            }
+          }
         }
       },
       "distributed_client": {

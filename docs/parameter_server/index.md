@@ -94,9 +94,13 @@ struct EmbeddingTableConfig {
 
 ```json
 {
-  "backend": "grpc",  // 或 "brpc"
-  "server_addresses": ["192.168.1.1:50051"],
-  "num_embeddings": 1000000,
-  "embedding_dim": 128
+  "cache_ps": {
+    "ps_type": "GRPC",
+    "servers": [
+      { "host": "192.168.1.1", "port": 50051, "shard": 0 }
+    ]
+  }
 }
 ```
+
+`ps_type` 取 `GRPC` 或 `BRPC`；多分片时在 `servers` 里按 `shard` 递增列出。
