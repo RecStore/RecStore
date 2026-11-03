@@ -1,4 +1,4 @@
-# YCSB 存储对比
+# KVEngine 存储基准
 
 目前可以进行 RecStore 内部存储横向对比（`kvdb` 和 `cceh`）；以及 RecStore 与其他 KV 存储对比（`rocksdb`、`leveldb`、`lmdb`、`sqlite`、`wiredtiger`、...）。
 
@@ -78,10 +78,9 @@ python3 tools/benchmarks/run_kvengine_compare.py \
 
 ## KVEngine 随机 batch lookup 对齐
 
-当目标是对齐 PS RDMA GET 的 `batch_keys=N` 形态时，优先使用
-`benchmark_kv_engine` 的 `batch_get_flat` 模式，而不是普通 YCSB 单 key read。
-这个模式每次生成一组随机 key，并直接调用 `BaseKV::BatchGetFlat`，吞吐单位按
-keys/s 统计。
+对齐 PS RDMA GET 的 `batch_keys=N` 时，使用 `benchmark_kv_engine` 的
+`batch_get_flat` 模式。普通 YCSB read 每次读取单个 key；`batch_get_flat` 每次生成
+一组随机 key，直接调用 `BaseKV::BatchGetFlat`，吞吐单位为 keys/s。
 
 通过对比 storage-only 与 PS/network，可以判断 PS RDMA 是否已经被 KVEngine 本地
 lookup 上限卡住。2026-05-31 的 RDMA GET 报告使用了 `batch_keys=500`：

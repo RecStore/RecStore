@@ -8,6 +8,8 @@ from typing import List, Dict, Any, Tuple
 from time import perf_counter
 from dataclasses import dataclass
 
+from .fused_preload import preload_fused_rows
+
 try:
     from torchrec.sparse.jagged_tensor import KeyedJaggedTensor, KeyedTensor
     from torchrec.modules.embedding_configs import EmbeddingBagConfig
@@ -258,6 +260,9 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
                     raise RuntimeError("Backend returned inconsistent shared fused namespace tags")
                 continue
             if initialize_tables:
+                if self._enable_fusion and idx > 0:
+                    self._preload_fused_rows(config, base_offset)
+                    continue
                 self.kv_client.init_data(
                     name=config.name,
                     shape=(config.num_embeddings, config.embedding_dim),
@@ -309,6 +314,23 @@ class RecStoreEmbeddingBagCollection(torch.nn.Module):
                         "base_offset": idx << self._fusion_k}
                        for idx, c in enumerate(self._embedding_bag_configs)],
         }
+
+    def _preload_fused_rows(self, config, base_offset: int) -> None:
+        """Create one feature's rows inside the fused key space."""
+        rows = int(config.num_embeddings)
+        if rows > (1 << int(self._fusion_k)):
+            raise ValueError(
+                f"table '{config.name}' has {rows} rows, which overflows the "
+                f"fusion offset (fusion_k={self._fusion_k})"
+            )
+        preload_fused_rows(
+            self.kv_client,
+            master_name=self._master_config.name,
+            name=config.name,
+            num_embeddings=rows,
+            embedding_dim=int(config.embedding_dim),
+            base_offset=base_offset,
+        )
 
     def _remote_backend_requires_eager_connect(self) -> bool:
         """Whether non-initializer ranks must eagerly open the PS connection.

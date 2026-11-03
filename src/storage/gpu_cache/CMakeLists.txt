@@ -24,6 +24,9 @@ file(GLOB gpu_cache_src
 
 
 add_library(gpu_cache SHARED ${gpu_cache_src})
+# uvm_table.cu uses OpenMP; CUDA compilation does not inherit CMAKE_CXX_FLAGS,
+# so the runtime has to be linked at the target.
+target_link_libraries(gpu_cache PUBLIC OpenMP::OpenMP_CXX)
 target_compile_options(gpu_cache PUBLIC  $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>) 
 # target_compile_options(gpu_cache PUBLIC  $<$<COMPILE_LANGUAGE:CUDA>:--std=c++11>) 
 

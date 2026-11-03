@@ -23,7 +23,96 @@
 
 #include "storage/kv_engine/engine_factory.h"
 #include "storage/kv_engine/engine_selector.h"
+#include "storage/nvm/pet_kv/pet_hash.h"
 #include "test_io_uring_helper.h"
+
+TEST(PetHashTest, ShardedSizeTracksConcurrentMutations) {
+  using Hash                        = base::PetHash<uint64_t, uint64_t>;
+  using PersistentHash              = base::PetHash<uint64_t, uint64_t, true>;
+  constexpr uint64_t kCapacity      = 4096;
+  constexpr uint64_t kThreadCount   = 4;
+  constexpr uint64_t kKeysPerThread = 512;
+
+  EXPECT_EQ(sizeof(PersistentHash), 64);
+
+  const uint64_t memory_size = Hash::MemorySize(kCapacity);
+  void* memory               = nullptr;
+  ASSERT_EQ(posix_memalign(&memory, alignof(Hash), memory_size), 0);
+  auto* hash = new (memory) Hash();
+  hash->Initialize(kCapacity);
+
+  std::vector<std::thread> threads;
+  for (uint64_t thread_id = 0; thread_id < kThreadCount; ++thread_id) {
+    threads.emplace_back([hash, thread_id] {
+      for (uint64_t i = 0; i < kKeysPerThread; ++i) {
+        const uint64_t key = thread_id * kKeysPerThread + i + 1;
+        hash->Set(key, key);
+      }
+    });
+  }
+  for (auto& thread : threads)
+    thread.join();
+  EXPECT_EQ(hash->Size(), kThreadCount * kKeysPerThread);
+
+  threads.clear();
+  for (uint64_t thread_id = 0; thread_id < kThreadCount; ++thread_id) {
+    threads.emplace_back([hash, thread_id] {
+      for (uint64_t i = 0; i < kKeysPerThread; i += 2)
+        hash->Delete(thread_id * kKeysPerThread + i + 1);
+    });
+  }
+  for (auto& thread : threads)
+    thread.join();
+  EXPECT_EQ(hash->Size(), kThreadCount * kKeysPerThread / 2);
+  EXPECT_TRUE(hash->Valid(memory_size));
+
+  hash->~Hash();
+  free(memory);
+}
+
+TEST(PetHashTest, BatchSetPreservesInsertAndOverwriteSemantics) {
+  using Hash                   = base::PetHash<uint64_t, uint64_t>;
+  constexpr uint64_t kCapacity = 128;
+
+  const uint64_t memory_size = Hash::MemorySize(kCapacity);
+  void* memory               = nullptr;
+  ASSERT_EQ(posix_memalign(&memory, alignof(Hash), memory_size), 0);
+  auto* hash = new (memory) Hash();
+  hash->Initialize(kCapacity);
+
+  std::vector<uint64_t> keys   = {1, 2, 3};
+  std::vector<uint64_t> values = {10, 20, 30};
+  std::vector<uint64_t> old_values(keys.size(), 99);
+  hash->BatchSet(
+      base::ConstArray<uint64_t>(keys), values.data(), old_values.data());
+  EXPECT_EQ(old_values, std::vector<uint64_t>({0, 0, 0}));
+  EXPECT_EQ(hash->Size(), 3);
+
+  keys   = {2, 4, 1};
+  values = {200, 40, 100};
+  old_values.assign(keys.size(), 99);
+  hash->BatchSet(
+      base::ConstArray<uint64_t>(keys), values.data(), old_values.data());
+  EXPECT_EQ(old_values, std::vector<uint64_t>({20, 0, 10}));
+  EXPECT_EQ(hash->Size(), 4);
+
+  const auto [value1, exists1] = hash->Get(1);
+  const auto [value2, exists2] = hash->Get(2);
+  const auto [value3, exists3] = hash->Get(3);
+  const auto [value4, exists4] = hash->Get(4);
+  EXPECT_TRUE(exists1);
+  EXPECT_TRUE(exists2);
+  EXPECT_TRUE(exists3);
+  EXPECT_TRUE(exists4);
+  EXPECT_EQ(value1, 100);
+  EXPECT_EQ(value2, 200);
+  EXPECT_EQ(value3, 30);
+  EXPECT_EQ(value4, 40);
+  EXPECT_TRUE(hash->Valid(memory_size));
+
+  hash->~Hash();
+  free(memory);
+}
 
 class KVEngineCartesianTest
     : public ::testing::TestWithParam<
@@ -578,6 +667,7 @@ TEST_P(KVEngineCartesianTest, ApplySgdUpdateFlatUpdatesAndInitializesRows) {
       0);
 
   std::vector<float> grads(keys.size() * kDim, 2.0f);
+  BaseKV::UpdateFlatStats stats;
   ASSERT_TRUE(kv_engine_->ApplySgdUpdateFlat(
       base::ConstArray<uint64_t>(keys),
       grads.data(),
@@ -585,7 +675,10 @@ TEST_P(KVEngineCartesianTest, ApplySgdUpdateFlatUpdatesAndInitializesRows) {
       kDim,
       0.1f,
       0,
-      0));
+      0,
+      &stats));
+  EXPECT_EQ(stats.missing_rows, 1u);
+  EXPECT_GE(stats.batch_get_ns, stats.index_lookup_ns);
 
   for (size_t row = 0; row < keys.size(); ++row) {
     std::string value;

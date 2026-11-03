@@ -1,9 +1,11 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <stdexcept>
 #include <vector>
 
@@ -75,6 +77,16 @@ public:
         return Encode(slab_idx, local_id);
       }
 
+      slab_lock.unlock();
+
+      // Serialize block claims. The winner publishes the claimed block into
+      // partial_blocks before releasing this lock, so a waiter re-checks the
+      // list instead of mistaking an in-flight claim for exhaustion.
+      std::lock_guard<std::mutex> claim_lock(block_claim_mu_);
+      slab_lock.lock();
+      if (!slab.partial_blocks.empty()) {
+        continue;
+      }
       slab_lock.unlock();
 
       std::unique_lock<std::mutex> g_lock(global_mu_);
@@ -154,7 +166,7 @@ public:
       throw std::invalid_argument("SsdSlabAllocator write exceeds slot size");
     }
     const uint64_t byte_off = ResolveSlotByteOffset(slab_idx, local_slot_id);
-    WriteBytes(byte_off, slab.slot_size, data, data_size);
+    WriteBytes(byte_off, data, data_size);
   }
 
   size_t Read(uint64_t handle, void* out_buf, size_t buf_size) override {
@@ -184,8 +196,10 @@ public:
     };
     std::vector<IOBackend::IOEntry> io_entries;
     std::vector<PendingRead> pending;
+    std::vector<uint64_t> pages;
     io_entries.reserve(entries.size());
     pending.reserve(entries.size());
+    pages.reserve(entries.size() * 2);
     for (size_t i = 0; i < entries.size(); ++i) {
       uint16_t slab_idx;
       uint64_t local_slot_id;
@@ -195,14 +209,21 @@ public:
       const PageID_t start    = byte_off / PAGE_SIZE;
       const uint64_t page_off = byte_off % PAGE_SIZE;
       const uint64_t total    = page_off + slab.slot_size;
-      const uint64_t pages    = (total + PAGE_SIZE - 1) / PAGE_SIZE;
-      char* buf               = backend_->AllocateBuffer(pages);
-      io_entries.push_back({start, buf, pages});
+      const uint64_t spans    = (total + PAGE_SIZE - 1) / PAGE_SIZE;
+      char* buf               = backend_->AllocateBuffer(spans);
+      io_entries.push_back({start, buf, spans});
       pending.push_back(PendingRead{
           i,
           page_off,
           entries[i].out_buf == nullptr ? 0 : slab.slot_size - kHeaderSize});
+      for (uint64_t page = 0; page < spans; ++page) {
+        pages.push_back(start + page);
+      }
     }
+    // Readers share the page stripes with writers so a read cannot observe a
+    // half written slot while its page is being read-modify-written.
+    std::vector<std::shared_lock<std::shared_mutex>> locks;
+    LockStripes(pages, locks);
     backend_->BatchReadPages(io_entries);
     for (size_t i = 0; i < pending.size(); ++i) {
       const auto& item = pending[i];
@@ -224,18 +245,11 @@ public:
   BatchAllocAndWrite(const std::vector<WriteEntry>& entries) override {
     std::vector<uint64_t> handles;
     handles.reserve(entries.size());
-    struct PendingWrite {
-      size_t index      = 0;
-      uint64_t page_off = 0;
-    };
-    struct PageGroup {
-      PageID_t start = 0;
-      uint64_t pages = 0;
-      char* buf      = nullptr;
-      std::vector<PendingWrite> pending;
-    };
-    std::vector<PageGroup> groups;
-    groups.reserve(entries.size());
+    // Length headers stay addressable for the whole batch: page patches hold
+    // pointers into this storage until the write completes.
+    std::vector<uint32_t> lengths(entries.size(), 0);
+    std::vector<PagePatch> patches;
+    patches.reserve(entries.size() * 2);
     for (size_t i = 0; i < entries.size(); ++i) {
       const uint64_t handle = Alloc(entries[i].data_size);
       handles.push_back(handle);
@@ -245,48 +259,15 @@ public:
       uint16_t slab_idx;
       uint64_t local_slot_id;
       Decode(handle, slab_idx, local_slot_id);
-      const auto& slab        = *slabs_.at(slab_idx);
       const uint64_t byte_off = ResolveSlotByteOffset(slab_idx, local_slot_id);
-      const PageID_t start    = byte_off / PAGE_SIZE;
-      const uint64_t page_off = byte_off % PAGE_SIZE;
-      const uint64_t total    = page_off + slab.slot_size;
-      const uint64_t pages    = (total + PAGE_SIZE - 1) / PAGE_SIZE;
-      auto it                 = std::find_if(
-          groups.begin(), groups.end(), [&](const PageGroup& group) {
-            return group.start == start && group.pages == pages;
-          });
-      if (it == groups.end()) {
-        PageGroup group;
-        group.start = start;
-        group.pages = pages;
-        group.buf   = backend_->AllocateBuffer(pages);
-        groups.push_back(std::move(group));
-        it = std::prev(groups.end());
-      }
-      it->pending.push_back(PendingWrite{i, page_off});
+      lengths[i]              = static_cast<uint32_t>(entries[i].data_size);
+      AddPagePatch(patches, byte_off, &lengths[i], sizeof(lengths[i]));
+      AddPagePatch(patches,
+                   byte_off + kHeaderSize,
+                   entries[i].data,
+                   entries[i].data_size);
     }
-    if (!groups.empty()) {
-      std::vector<IOBackend::IOEntry> io_entries;
-      io_entries.reserve(groups.size());
-      for (auto& group : groups) {
-        io_entries.push_back({group.start, group.buf, group.pages});
-      }
-      backend_->BatchReadPages(io_entries);
-      for (auto& group : groups) {
-        for (const auto& item : group.pending) {
-          const auto& spec = entries[item.index];
-          const uint32_t n = static_cast<uint32_t>(spec.data_size);
-          std::memcpy(group.buf + item.page_off, &n, sizeof(n));
-          std::memcpy(group.buf + item.page_off + kHeaderSize,
-                      spec.data,
-                      spec.data_size);
-        }
-      }
-      backend_->BatchWritePages(io_entries);
-      for (auto& group : groups) {
-        backend_->FreeBuffer(group.buf);
-      }
-    }
+    WritePages(patches);
     return handles;
   }
 
@@ -302,6 +283,19 @@ public:
   static constexpr uint64_t kBlockSize = 1ULL << 26;
 
 private:
+  struct alignas(64) PageStripe {
+    std::shared_mutex mu;
+  };
+
+  /// One per-page slice of a slot write. Patches are collected first and
+  /// applied inside a single page read-modify-write cycle.
+  struct PagePatch {
+    uint64_t page   = 0; // absolute page id
+    size_t offset   = 0; // byte offset inside the page
+    const char* src = nullptr;
+    size_t size     = 0;
+  };
+
   struct ThreadLocalBuffer {
     char* ptr      = nullptr;
     uint64_t pages = 0;
@@ -397,6 +391,109 @@ private:
     local_slot_id = (handle & 0x0000FFFFFFFFFFFFULL) - 1;
   }
 
+  static void SortUnique(std::vector<uint64_t>& values) {
+    std::sort(values.begin(), values.end());
+    values.erase(std::unique(values.begin(), values.end()), values.end());
+  }
+
+  /// Locks the stripes covering `pages`. Stripes are always taken in ascending
+  /// order so concurrent readers and writers cannot deadlock.
+  template <typename LockType>
+  void LockStripes(std::vector<uint64_t> pages, std::vector<LockType>& locks) {
+    for (auto& page : pages) {
+      page %= kPageLockStripes;
+    }
+    SortUnique(pages);
+    locks.reserve(locks.size() + pages.size());
+    for (uint64_t stripe : pages) {
+      locks.emplace_back(page_stripes_[stripe].mu);
+    }
+  }
+
+  /// Splits `[byte_offset, byte_offset + size)` into per-page copy requests.
+  /// The referenced source memory must outlive the matching WritePages call.
+  void AddPagePatch(std::vector<PagePatch>& patches,
+                    uint64_t byte_offset,
+                    const void* data,
+                    size_t size) {
+    const char* src = static_cast<const char*>(data);
+    while (size > 0) {
+      const size_t page_off = static_cast<size_t>(byte_offset % PAGE_SIZE);
+      const size_t chunk =
+          std::min(size, static_cast<size_t>(PAGE_SIZE) - page_off);
+      patches.push_back(
+          PagePatch{byte_offset / PAGE_SIZE, page_off, src, chunk});
+      byte_offset += chunk;
+      src += chunk;
+      size -= chunk;
+    }
+  }
+
+  /// Applies a batch of page patches with one read-modify-write per page.
+  ///
+  /// Slots are packed, so several slots (and therefore several writers) can
+  /// share a page. Patching per page instead of per slot keeps same-page
+  /// updates from overwriting each other, and the stripe locks keep two
+  /// threads from filling the same page image and clobbering one of the
+  /// updates (the vanished-update race).
+  void WritePages(const std::vector<PagePatch>& patches) {
+    if (patches.empty()) {
+      return;
+    }
+    std::vector<uint64_t> pages;
+    pages.reserve(patches.size());
+    for (const auto& patch : patches) {
+      pages.push_back(patch.page);
+    }
+    SortUnique(pages);
+
+    std::vector<std::unique_lock<std::shared_mutex>> locks;
+    LockStripes(pages, locks);
+
+    // Coalesce consecutive pages into a single I/O entry.
+    struct PageRun {
+      uint64_t first_page = 0;
+      uint64_t page_count = 0;
+      char* buf           = nullptr;
+    };
+    std::vector<PageRun> runs;
+    std::vector<size_t> page_run(pages.size(), 0);
+    for (size_t i = 0; i < pages.size(); ++i) {
+      if (runs.empty() ||
+          pages[i] != runs.back().first_page + runs.back().page_count) {
+        runs.push_back(PageRun{pages[i], 0, nullptr});
+      }
+      ++runs.back().page_count;
+      page_run[i] = runs.size() - 1;
+    }
+    std::vector<IOBackend::IOEntry> io_entries;
+    io_entries.reserve(runs.size());
+    // A single contiguous run is the common case (one slot, or one packed
+    // batch): reuse the thread-local buffer instead of allocating per write.
+    const bool thread_buffer = runs.size() == 1;
+    for (auto& run : runs) {
+      run.buf = thread_buffer ? AcquireThreadBuffer(run.page_count)
+                              : backend_->AllocateBuffer(run.page_count);
+      io_entries.push_back({run.first_page, run.buf, run.page_count});
+    }
+    backend_->BatchReadPages(io_entries);
+    for (const auto& patch : patches) {
+      const size_t index = static_cast<size_t>(
+          std::lower_bound(pages.begin(), pages.end(), patch.page) -
+          pages.begin());
+      const PageRun& run = runs[page_run[index]];
+      char* dst =
+          run.buf + (patch.page - run.first_page) * PAGE_SIZE + patch.offset;
+      std::memcpy(dst, patch.src, patch.size);
+    }
+    backend_->BatchWritePages(io_entries);
+    if (!thread_buffer) {
+      for (auto& run : runs) {
+        backend_->FreeBuffer(run.buf);
+      }
+    }
+  }
+
   uint16_t SelectSlab(size_t data_size) const {
     for (uint16_t i = 0; i < size_classes_.size(); ++i) {
       if (data_size <= static_cast<size_t>(size_classes_[i])) {
@@ -406,20 +503,13 @@ private:
     throw std::invalid_argument("SsdSlabAllocator value too large");
   }
 
-  void WriteBytes(uint64_t byte_offset,
-                  uint64_t slot_size,
-                  const void* data,
-                  size_t data_size) {
-    const PageID_t start    = byte_offset / PAGE_SIZE;
-    const uint64_t page_off = byte_offset % PAGE_SIZE;
-    const uint64_t total    = page_off + slot_size;
-    const uint64_t pages    = (total + PAGE_SIZE - 1) / PAGE_SIZE;
-    char* buf               = AcquireThreadBuffer(pages);
-    backend_->BatchReadPages({{start, buf, pages}});
-    const uint32_t n = static_cast<uint32_t>(data_size);
-    std::memcpy(buf + page_off, &n, sizeof(n));
-    std::memcpy(buf + page_off + kHeaderSize, data, data_size);
-    backend_->BatchWritePages({{start, buf, pages}});
+  void WriteBytes(uint64_t byte_offset, const void* data, size_t data_size) {
+    const uint32_t stored = static_cast<uint32_t>(data_size);
+    std::vector<PagePatch> patches;
+    patches.reserve(2);
+    AddPagePatch(patches, byte_offset, &stored, sizeof(stored));
+    AddPagePatch(patches, byte_offset + kHeaderSize, data, data_size);
+    WritePages(patches);
   }
 
   size_t ReadBytes(uint64_t byte_offset,
@@ -431,6 +521,13 @@ private:
     const uint64_t total    = page_off + slot_size;
     const uint64_t pages    = (total + PAGE_SIZE - 1) / PAGE_SIZE;
     char* buf               = AcquireThreadBuffer(pages);
+    std::vector<uint64_t> touched;
+    touched.reserve(pages);
+    for (uint64_t page = 0; page < pages; ++page) {
+      touched.push_back(start + page);
+    }
+    std::vector<std::shared_lock<std::shared_mutex>> locks;
+    LockStripes(touched, locks);
     backend_->BatchReadPages({{start, buf, pages}});
     uint32_t n = 0;
     std::memcpy(&n, buf + page_off, sizeof(n));
@@ -439,13 +536,17 @@ private:
     return actual;
   }
 
-  static constexpr uint64_t kHeaderSize = 4;
+  static constexpr uint64_t kHeaderSize      = 4;
+  static constexpr uint64_t kPageLockStripes = 2048;
   IOBackend* backend_;
   std::vector<int> size_classes_;
   std::vector<std::unique_ptr<SlabPool>> slabs_;
 
   std::vector<uint64_t> global_free_blocks_;
   std::mutex global_mu_;
+  std::mutex block_claim_mu_;
+
+  std::array<PageStripe, kPageLockStripes> page_stripes_;
 };
 
 FACTORY_REGISTER(SsdBlockAllocator,

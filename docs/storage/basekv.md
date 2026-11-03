@@ -42,7 +42,7 @@ base_kv_.reset(base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
     resolved.engine, resolved.cfg));
 ```
 
-`ResolveEngine`（`engine_selector.h`）只做两件事：读取 `engine_type`（缺省为 `KVEngineComposite`），校验名称在已知集合内。**不**解析 `index` / `value` 嵌套字段；具体校验在引擎或 `ValueStore` / `Index` 构造时完成。
+`ResolveEngine`（`engine_selector.h`）读取 `engine_type`（缺省为 `KVEngineComposite`）并校验引擎名称。`index` / `value` 嵌套字段的校验在引擎或 `ValueStore` / `Index` 构造时完成。
 
 已移除 `external_engine_type`；配置中若仍出现该字段会抛出 `invalid_argument`。
 

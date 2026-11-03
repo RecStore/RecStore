@@ -53,8 +53,9 @@ docs/superpowers/
 
 rpc_data/
 Testing/
-build_release/
-tmp/
+/build_release
+# ./tmp - project process memory, kept out of version control (whole dir)
+/tmp/
 CURRENT_STATUS_*.md
 dockerfiles/docker_config/.env
 
@@ -69,3 +70,10 @@ model_zoo/RankMixer/
 model_zoo/rs_demo/runtime/local_embedding_backend.py
 src/external_ps_adapter/
 run_3node_bench.sh
+
+# MkDocs build output
+/site/
+
+# Local dependency builds and setup_centos7.sh checkout
+_build/
+/third_party/onetbb/

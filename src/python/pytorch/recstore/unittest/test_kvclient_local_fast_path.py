@@ -73,6 +73,7 @@ class TestKVClientLocalFastPath(unittest.TestCase):
         client._gpu_cache_clear_count = 0
         client._clear_gpu_cache_after_cpu_update = True
         client._prefetch_table_name = None
+        client._perf_stats = {}
         client._initialized = True
         return client
 

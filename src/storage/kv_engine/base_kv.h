@@ -92,6 +92,21 @@ public:
     std::uint64_t missing_rows    = 0;
   };
 
+  // Sub-stage breakdown of ApplySgdUpdateFlat. Only filled when the caller
+  // passes a non-null pointer, so the hot path stays untouched otherwise.
+  struct UpdateFlatStats {
+    std::uint64_t tag_ns           = 0;
+    std::uint64_t batch_get_ns     = 0;
+    std::uint64_t index_lookup_ns  = 0;
+    std::uint64_t store_read_ns    = 0;
+    std::uint64_t writeback_ns     = 0;
+    std::uint64_t missing_write_ns = 0;
+    std::uint64_t missing_alloc_ns = 0;
+    std::uint64_t missing_index_ns = 0;
+    std::uint64_t missing_track_ns = 0;
+    std::uint64_t missing_rows     = 0;
+  };
+
   struct BulkLoadStats {
     std::uint64_t prepare_ns         = 0;
     std::uint64_t value_alloc_ns     = 0;
@@ -167,7 +182,8 @@ public:
       int64_t embedding_dim,
       float learning_rate,
       uint8_t tag,
-      unsigned tid) {
+      unsigned tid,
+      UpdateFlatStats* stats = nullptr) {
     return false;
   }
 

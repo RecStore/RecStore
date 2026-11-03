@@ -1,12 +1,40 @@
 #include "extendible_hash.h"
 #include "../utils/hash.h"
+#include <atomic>
 #include <cassert>
+#include <chrono>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <thread>
 
 size_t lockCount  = 0;
 size_t splitCount = 0;
+
+namespace {
+
+// Off by default: the counters are diagnostic and cost atomics per insert.
+const bool g_hash_counters_enabled = []() {
+  const char* env = std::getenv("RECSTORE_EXTENDIBLE_HASH_COUNTERS");
+  return env != nullptr && env[0] != '\0' && std::strcmp(env, "0") != 0 &&
+         std::strcmp(env, "false") != 0;
+}();
+
+std::atomic<uint64_t> g_insert_calls{0};
+std::atomic<uint64_t> g_split_calls{0};
+std::atomic<uint64_t> g_split_ns{0};
+
+} // namespace
+
+void GetExtendibleHashInsertCounters(ExtendibleHashInsertCounters* out) {
+  if (out == nullptr) {
+    return;
+  }
+  out->insert_calls = g_insert_calls.load(std::memory_order_relaxed);
+  out->split_calls  = g_split_calls.load(std::memory_order_relaxed);
+  out->split_ns     = g_split_ns.load(std::memory_order_relaxed);
+}
 
 static inline uint64_t mypow(uint64_t x, unsigned int y) noexcept {
   if (x == 2) {
@@ -298,6 +326,9 @@ void Directory::LSBUpdate(
 
 Value_t ExtendibleHash::Insert(Key_t& key, Value_t value) {
   using namespace std;
+  if (g_hash_counters_enabled) {
+    g_insert_calls.fetch_add(1, std::memory_order_relaxed);
+  }
   auto key_hash     = h(&key, sizeof(key));
   Value_t old_value = kValueHandleNone;
 
@@ -312,7 +343,20 @@ RETRY:
   auto ret    = target->Insert(key, value, key_hash, &old_value);
 
   if (ret == -1) {
+    const auto split_start =
+        g_hash_counters_enabled
+            ? std::chrono::steady_clock::now()
+            : std::chrono::steady_clock::time_point{};
     Block** s = target->Split();
+    if (g_hash_counters_enabled) {
+      g_split_calls.fetch_add(1, std::memory_order_relaxed);
+      g_split_ns.fetch_add(
+          static_cast<uint64_t>(
+              std::chrono::duration_cast<std::chrono::nanoseconds>(
+                  std::chrono::steady_clock::now() - split_start)
+                  .count()),
+          std::memory_order_relaxed);
+    }
     if (s == nullptr) {
       // another thread is doing split
       goto RETRY;

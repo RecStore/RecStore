@@ -54,8 +54,16 @@ bool SparseTensor::ApplySgdUpdateFlat(
     int64_t num_rows,
     int64_t embedding_dim,
     float learning_rate,
-    unsigned tid) {
+    unsigned tid,
+    BaseKV::UpdateFlatStats* stats) {
   return kv != nullptr &&
          kv->ApplySgdUpdateFlat(
-             keys, grads, num_rows, embedding_dim, learning_rate, tag, tid);
+             keys,
+             grads,
+             num_rows,
+             embedding_dim,
+             learning_rate,
+             tag,
+             tid,
+             stats);
 }

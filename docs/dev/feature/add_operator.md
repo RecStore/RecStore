@@ -1,5 +1,9 @@
 # 如何添加新算子
 
+!!! note "待重写"
+
+    示例仍按单个 op_torch.cc 组织，需更新 binding 文件划分和建表参数。
+
 本文档以 **Optimizer (UpdateParameter)** 为例，介绍如何在 RecStore 中端到端地添加一个新的算子。
 
 ## 流程概览
@@ -7,9 +11,9 @@
 ```mermaid
 graph TD
     User[用户代码 / Optimizer] --> Python[Python Client<br>src/python/pytorch/recstore/KVClient.py]
-    Python -- |torch.ops| --> OP[Torch Binding<br>src/framework/pytorch/op_torch.cc]
-    OP -- |C++ Call| --> Client[C++ Client<br>src/ps/grpc/dist_grpc_ps_client.cpp]
-    Client -- |gRPC| --> Server[PS Server<br>src/ps/grpc/grpc_ps_server.cpp]
+    Python -->|torch.ops| OP[Torch Binding<br>src/framework/pytorch/op_torch.cc]
+    OP -->|C++ Call| Client[C++ Client<br>src/ps/grpc/dist_grpc_ps_client.cpp]
+    Client -->|gRPC| Server[PS Server<br>src/ps/grpc/grpc_ps_server.cpp]
     Server --> Storage[Storage Layer<br>src/ps/base/cache_ps_impl.h]
     
     subgraph Local[Client Side]

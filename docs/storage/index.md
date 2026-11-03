@@ -94,7 +94,7 @@ base_kv_.reset(base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
 |------|------|
 | [basekv.md](./basekv.md) | `BaseKV` 接口、工厂创建、全部 `engine_type` 与外部引擎配置 |
 | [composite_kvengine.md](./composite_kvengine.md) | `KVEngineComposite` 的 Index / ValueStore / IO / allocator 与扩展指南 |
-| [ssd_layout.md](../../src/storage/ssd_layout/ssd_layout.md) | 静态 SSD 布局的使用方式、算法与 artifact 格式 |
+| [ssd_layout.md](https://github.com/RecStore/RecStore/blob/main/src/storage/ssd_layout/ssd_layout.md) | 静态 SSD 布局的使用方式、算法与 artifact 格式 |
 | [config.md](../config.md) | `recstore_config.json` 中 `base_kv_config` 字段 |
 
 ## 验证与基准

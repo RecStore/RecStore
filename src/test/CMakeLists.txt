@@ -662,6 +662,16 @@ set_tests_properties(
     LABELS "hierkv;python;rs_demo"
 )
 
+add_python_unittest(
+    test_torchrec_kv_fused_preload_py
+    src.test.model_zoo.rs_demo.test_fused_preload
+)
+set_tests_properties(
+    test_torchrec_kv_fused_preload_py
+    PROPERTIES
+    LABELS "python;torchrec_kv"
+)
+
 set(HUGECTR_TENSOR2_HEADER
     ${PROJECT_SOURCE_DIR}/third_party/HugeCTR/HugeCTR/include/tensor2.hpp
 )
