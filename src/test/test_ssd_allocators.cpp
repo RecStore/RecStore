@@ -1,9 +1,13 @@
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -24,6 +28,8 @@ public:
   InMemoryIOBackend() : IOBackend(MakeConfig()) {}
 
   void init() override {}
+
+  std::chrono::microseconds read_delay{0};
 
   void*
   GetPage(coroutine<void>::push_type&, uint64_t, PageID_t page_id) override {
@@ -73,6 +79,10 @@ protected:
   }
 
   void ReadPageSync(PageID_t page_id, char* buffer) override {
+    if (read_delay.count() > 0) {
+      std::this_thread::sleep_for(read_delay);
+    }
+    std::lock_guard<std::mutex> lock(page_mu_);
     auto it = pages_.find(page_id);
     if (it == pages_.end()) {
       std::memset(buffer, 0, PAGE_SIZE);
@@ -89,6 +99,7 @@ protected:
   }
 
   void WritePageSync(PageID_t page_id, char* buffer) override {
+    std::lock_guard<std::mutex> lock(page_mu_);
     auto& page = pages_[page_id];
     if (page.empty()) {
       page.resize(PAGE_SIZE, 0);
@@ -104,6 +115,7 @@ private:
   }
 
   std::unordered_map<PageID_t, std::vector<char>> pages_;
+  std::mutex page_mu_;
 };
 
 int BuddyLevelForRequest(size_t data_size, int min_block_size, int num_levels) {
@@ -537,6 +549,162 @@ TEST(SsdSlabAllocatorTest, AllocSpansMultipleBlocks) {
   ASSERT_EQ(alloc.Read(handles[slots_per_block], buf.data(), b.size()),
             b.size());
   EXPECT_EQ(std::string(buf.data(), buf.data() + b.size()), b);
+}
+
+// Regression for #273: slots are packed, so a slot can start near the end of a
+// page and continue into the next one. Patching per _slot_ made the following
+// slot's page write revert the straddling slot's tail.
+TEST(SsdSlabAllocatorTest, BatchAllocAndWriteKeepsSlotsCrossingPageBoundaries) {
+  InMemoryIOBackend backend;
+  SsdSlabAllocator alloc(
+      &backend,
+      /*size_classes=*/{128},
+      /*total_capacity_bytes=*/SsdSlabAllocator::kBlockSize,
+      /*base_byte_offset=*/0);
+
+  // 128 B value + 4 B header = 132 B slots, 31 per 4 KiB page.
+  constexpr size_t kValueSize = 128;
+  constexpr size_t kSlots     = 96;
+
+  std::vector<std::string> values;
+  std::vector<SsdBlockAllocator::WriteEntry> entries;
+  values.reserve(kSlots);
+  entries.reserve(kSlots);
+  for (size_t i = 0; i < kSlots; ++i) {
+    values.emplace_back(kValueSize, static_cast<char>(i + 1));
+    entries.push_back({values.back().data(), kValueSize});
+  }
+
+  const std::vector<uint64_t> handles = alloc.BatchAllocAndWrite(entries);
+  ASSERT_EQ(handles.size(), kSlots);
+  for (size_t i = 0; i < kSlots; ++i) {
+    ASSERT_NE(handles[i], SsdBlockAllocator::kInvalidHandle);
+    std::vector<char> out(kValueSize, 0);
+    ASSERT_EQ(alloc.Read(handles[i], out.data(), out.size()), kValueSize)
+        << "slot=" << i;
+    EXPECT_EQ(std::string(out.begin(), out.end()), values[i]) << "slot=" << i;
+  }
+}
+
+// Regression for #273: single-key writes used to be a page-level
+// read-modify-write with no serialization, so writers whose slots shared a page
+// lost each other's updates.
+TEST(SsdSlabAllocatorTest, ConcurrentWritesToSlotsSharingPagesKeepUpdates) {
+  InMemoryIOBackend backend;
+  // Widen the read->write window so racing writers reliably read the same page
+  // image unless the page is serialized.
+  backend.read_delay = std::chrono::microseconds(200);
+  SsdSlabAllocator alloc(
+      &backend,
+      /*size_classes=*/{128},
+      /*total_capacity_bytes=*/SsdSlabAllocator::kBlockSize,
+      /*base_byte_offset=*/0);
+
+  constexpr size_t kThreads   = 8;
+  constexpr size_t kPerThread = 8;
+  constexpr size_t kValueSize = 128;
+  constexpr size_t kRounds    = 3;
+  constexpr int kBaseByte     = 1;
+
+  std::vector<uint64_t> handles(kThreads * kPerThread);
+  for (auto& handle : handles) {
+    handle = alloc.Alloc(kValueSize);
+    ASSERT_NE(handle, SsdBlockAllocator::kInvalidHandle);
+  }
+  // 64 slots * 132 B span less than three pages, so the threads necessarily
+  // share pages.
+
+  for (size_t round = 0; round < kRounds; ++round) {
+    std::atomic<size_t> ready{0};
+    std::vector<std::thread> writers;
+    writers.reserve(kThreads);
+    for (size_t t = 0; t < kThreads; ++t) {
+      writers.emplace_back([&, t] {
+        const std::string payload(
+            kValueSize, static_cast<char>(kBaseByte + round * kThreads + t));
+        ++ready;
+        while (ready.load() < kThreads) {
+        }
+        for (size_t i = 0; i < kPerThread; ++i) {
+          alloc.Write(
+              handles[t * kPerThread + i], payload.data(), payload.size());
+        }
+      });
+    }
+    for (auto& writer : writers) {
+      writer.join();
+    }
+
+    backend.read_delay = std::chrono::microseconds(0);
+    for (size_t t = 0; t < kThreads; ++t) {
+      const std::string expected(
+          kValueSize, static_cast<char>(kBaseByte + round * kThreads + t));
+      for (size_t i = 0; i < kPerThread; ++i) {
+        std::vector<char> out(kValueSize, 0);
+        const size_t slot = t * kPerThread + i;
+        ASSERT_EQ(alloc.Read(handles[slot], out.data(), out.size()), kValueSize)
+            << "round=" << round << " slot=" << slot;
+        EXPECT_EQ(std::string(out.begin(), out.end()), expected)
+            << "round=" << round << " slot=" << slot;
+      }
+    }
+    backend.read_delay = std::chrono::microseconds(200);
+  }
+}
+
+// Same race on the bulk insert path: several loaders allocate and write packed
+// slots concurrently, so their page read-modify-write cycles overlap.
+TEST(SsdSlabAllocatorTest, ConcurrentBatchAllocAndWriteKeepsEverySlot) {
+  InMemoryIOBackend backend;
+  SsdSlabAllocator alloc(
+      &backend,
+      /*size_classes=*/{64},
+      /*total_capacity_bytes=*/2 * SsdSlabAllocator::kBlockSize,
+      /*base_byte_offset=*/0);
+
+  // 64 B value + 4 B header = 68 B slots, 60 per page.
+  constexpr size_t kValueSize = 64;
+  constexpr size_t kThreads   = 8;
+  constexpr size_t kPerThread = 128;
+
+  std::atomic<size_t> ready{0};
+  std::vector<std::thread> loaders;
+  std::vector<std::vector<uint64_t>> thread_handles(kThreads);
+  std::vector<std::string> thread_payloads(kThreads);
+  for (size_t t = 0; t < kThreads; ++t) {
+    thread_payloads[t] = std::string(kValueSize, static_cast<char>(t + 1));
+  }
+  backend.read_delay = std::chrono::microseconds(200);
+  for (size_t t = 0; t < kThreads; ++t) {
+    loaders.emplace_back([&, t] {
+      std::vector<SsdBlockAllocator::WriteEntry> entries(
+          kPerThread,
+          SsdBlockAllocator::WriteEntry{
+              thread_payloads[t].data(), thread_payloads[t].size()});
+      ++ready;
+      while (ready.load() < kThreads) {
+      }
+      thread_handles[t] = alloc.BatchAllocAndWrite(entries);
+    });
+  }
+  for (auto& loader : loaders) {
+    loader.join();
+  }
+  backend.read_delay = std::chrono::microseconds(0);
+
+  for (size_t t = 0; t < kThreads; ++t) {
+    ASSERT_EQ(thread_handles[t].size(), kPerThread) << "thread=" << t;
+    for (size_t i = 0; i < kPerThread; ++i) {
+      const uint64_t handle = thread_handles[t][i];
+      ASSERT_NE(handle, SsdBlockAllocator::kInvalidHandle)
+          << "thread=" << t << " slot=" << i;
+      std::vector<char> out(kValueSize, 0);
+      ASSERT_EQ(alloc.Read(handle, out.data(), out.size()), kValueSize)
+          << "thread=" << t << " slot=" << i;
+      EXPECT_EQ(std::string(out.begin(), out.end()), thread_payloads[t])
+          << "thread=" << t << " slot=" << i;
+    }
+  }
 }
 
 } // namespace
