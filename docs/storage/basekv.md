@@ -61,24 +61,8 @@ base_kv_.reset(base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
 
 ## KVEngineComposite（摘要）
 
-省略 `engine_type` 或显式写 `KVEngineComposite` 时使用嵌套配置：
-
-```json
-{
-  "engine_type": "KVEngineComposite",
-  "capacity": 1000000,
-  "index": { "type": "DRAM_PET_HASH" },
-  "value": {
-    "type": "DRAM_VALUE_STORE",
-    "default_value_size_hint": 512,
-    "path": "/dev/shm/recstore_kv/value",
-    "dram_allocator": {
-      "type": "CONCURRENT_SLAB_MEMORY_POOL",
-      "capacity_bytes": 512000000
-    }
-  }
-}
-```
+省略 `engine_type` 或显式写 `KVEngineComposite` 时使用嵌套配置，字段与完整示例见
+[composite_kvengine.md](./composite_kvengine.md) 的配置骨架一节。
 
 常用顶层字段：
 

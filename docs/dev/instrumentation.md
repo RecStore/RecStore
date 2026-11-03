@@ -34,7 +34,7 @@ RecStore 的 Grafana 看板基于 `report()` 函数上报链路，完整链路�
 | `ps_server_latency`  | `latency_us`                                                             | PS 服务端侧延迟         |
 | `emb_read_flame_map` | `level`、`value`、`self`、`start`                                           | 火焰图分层结构数据         |
 
-??? note "待重写：旧版 txt 埋点"
+??? note "旧版 txt 埋点（历史）"
 
     RecStore 使用 `xmh::Timer`（位于 `src/base/timer.h`）进行全链路的耗时打点。数据流向如下：
 

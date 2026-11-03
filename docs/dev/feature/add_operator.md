@@ -1,10 +1,11 @@
 # 如何添加新算子
 
-!!! note "待重写"
-
-    示例仍按单个 op_torch.cc 组织，需更新 binding 文件划分和建表参数。
-
 本文档以 **Optimizer (UpdateParameter)** 为例，介绍如何在 RecStore 中端到端地添加一个新的算子。
+
+!!! note "文件划分"
+    当前算子注册拆分在 `op_base.cc`（建表/读写）、`op_flat.cc`（`local_*` 快路径）、
+    `op_prefetch.cc`（预取）和 `cache/cache_bindings.cc`（cache）；`op_torch.cc`
+    只负责打开 `TORCH_LIBRARY`。下面以 update 路径为例，新增算子时按语义放入对应文件。
 
 ## 流程概览
 

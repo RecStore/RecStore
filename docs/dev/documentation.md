@@ -1,26 +1,18 @@
 # 文档维护
 
-缺页用「待补充」标记；需要更新的旧文用「待重写」标记。
+页面内不再使用「待补充 / 待重写」横幅；未完成的内容统一记在本页，按主题追加。
+新增或修改页面后，至少跑一次 `mkdocs build --strict`。
 
-## 待补充
-
-- [配置指南](../usage/configuration.md)
-- [DLRM / TorchRec 集成](../usage/integration.md)
-- [测试范围与指标](../performance/methodology.md)
-- [端到端训练基准](../performance/e2e.md)
-- [参数服务器与传输基准](../performance/ps.md)
-- [命令行与环境变量](../api/cli.md)
-
-## 待重写
+## 内容待补充
 
 | 页面 | 后续修改 |
 | --- | --- |
-| [如何添加新算子](../dev/feature/add_operator.md) | 示例仍按单个 op_torch.cc 组织，需更新 binding 文件划分和建表参数。 |
-| [从源码构建](../quickstart.md) | 与 Docker 开发镜像页面合并重复的环境准备步骤。 |
-| [Docker 开发镜像](../dev/zero_config_run.md) | 统一镜像来源、标签和构建步骤，消除与源码构建指南的重复。 |
-| [监控与 Grafana](../performance/monitoring.md) | 补齐服务安装与看板导入步骤。 |
-| [性能报告](../performance/reports.md) | 补齐环境、版本和复现命令。 |
-| [性能埋点](instrumentation.md) | 整理已折叠的旧版 txt 埋点说明。 |
+| [监控与 Grafana](../performance/monitoring.md) | 补 ClickHouse / Grafana 的安装细节与看板导入步骤。 |
+| [性能报告](../performance/reports.md) | 补历史结果的版本、硬件与拓扑。 |
+| [性能埋点](instrumentation.md) | 把折叠的旧版 txt 埋点并入当前 report 体系。 |
+| [如何添加新算子](../dev/feature/add_operator.md) | 按拆分后的 binding 文件补完整示例。 |
+| [从源码构建](../quickstart.md) / [Docker 开发镜像](zero_config_run.md) | 两条 onboarding 路径已互链；是否合并成一篇需先定 canonical 页。 |
+| [命令行与环境变量](../api/cli.md) | 目前指向各入口 `--help`，后续可自动导出 gflags 与 runner 参数。 |
 
 ## 接口文档核对
 

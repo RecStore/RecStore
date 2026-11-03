@@ -1,9 +1,5 @@
 # 监控与 Grafana
 
-!!! note "待重写"
-
-    整理 ClickHouse、Grafana 与 report service 的安装和看板导入步骤。
-
 编译时开启性能上报宏：
 
 ```bash linenums="1" hl_lines="2 3"
@@ -31,3 +27,8 @@ pkill -f "uvicorn report_service:app" 2>/dev/null; nohup uvicorn report_service:
 
 `report_service` 不在本仓库内，由部署方自行提供；未配置 `report_API` 时客户端默认上报到
 `http://127.0.0.1:8081/report`。
+
+## Grafana 看板
+
+ClickHouse 表与指标定义见[性能埋点](../dev/instrumentation.md)。看板 JSON 不在仓库内，
+需要按这些表自行导入或配置。

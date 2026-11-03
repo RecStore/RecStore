@@ -1,11 +1,7 @@
 # Embedding 模块
 
-计算层的主入口是 `RecStoreEmbeddingBagCollection`。`DistEmbedding` 是单表封装，适合简单实验和兼容旧训练代码；它的更新路径和 EBC 不一样。
-
-| 模块 | 文件 | 使用场景 |
-|------|------|----------|
-| `RecStoreEmbeddingBagCollection` | `src/python/pytorch/torchrec_kv/EmbeddingBag.py` | TorchRec 风格多表、多特征模型。当前模型接入优先看它。 |
-| `DistEmbedding` | `src/python/pytorch/recstore/DistEmb.py` | 单个 embedding table。通过 `DistTensor` 读写，optimizer 在 Python 侧做 SGD 写回。 |
+模块划分与选择（`RecStoreEmbeddingBagCollection` vs `DistEmbedding`）见
+[计算层：Embedding 与 Optimizer](../calc/embedding_optimizer.md)。本文只列 Python API。
 
 ## RecStoreEmbeddingBagCollection
 

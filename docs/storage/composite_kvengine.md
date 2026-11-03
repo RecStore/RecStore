@@ -194,22 +194,7 @@ Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 c
 
 **DRAM + DRAM（仓库默认组合）**
 
-```json
-{
-  "engine_type": "KVEngineComposite",
-  "capacity": 1000000,
-  "index": { "type": "DRAM_PET_HASH" },
-  "value": {
-    "type": "DRAM_VALUE_STORE",
-    "default_value_size_hint": 512,
-    "path": "/dev/shm/recstore_kv/value",
-    "dram_allocator": {
-      "type": "CONCURRENT_SLAB_MEMORY_POOL",
-      "capacity_bytes": 512000000
-    }
-  }
-}
-```
+与上面的配置骨架相同。
 
 **DRAM + SSD**
 
