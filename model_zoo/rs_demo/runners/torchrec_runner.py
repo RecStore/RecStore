@@ -587,7 +587,8 @@ def _run_single_or_dist_worker(
                     try:
                         dense_work.wait()
                     except BaseException as join_error:
-                        sparse_error.add_note("Dense reduction join also failed: " + repr(join_error))
+                        if hasattr(sparse_error, "add_note"):
+                            sparse_error.add_note("Dense reduction join also failed: " + repr(join_error))
                 raise
             if overlap_dense:
                 # The detached embedding backward does not read dense parameters.

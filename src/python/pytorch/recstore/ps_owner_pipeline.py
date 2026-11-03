@@ -534,7 +534,8 @@ class GPUOwnerPipeline(PSPipeline):
             try:
                 torch.cuda.synchronize(self.device)
             except BaseException as cleanup:
-                error.add_note("Owner handoff merge drain also failed: " + repr(cleanup))
+                if hasattr(error, "add_note"):
+                    error.add_note("Owner handoff merge drain also failed: " + repr(cleanup))
             raise
 
     def _pull_owned_step(self, step, metadata, commit):
@@ -609,7 +610,8 @@ class GPUOwnerPipeline(PSPipeline):
                 try:
                     torch.cuda.synchronize(self.device)
                 except BaseException as cleanup:
-                    error.add_note("Owner handoff staging drain also failed: " + repr(cleanup))
+                    if hasattr(error, "add_note"):
+                        error.add_note("Owner handoff staging drain also failed: " + repr(cleanup))
             raise
         row.update(ps_owner_forward_enqueue_ms=(time.perf_counter() - start) * 1e3,
                    ps_owner_local_lookup_rows=ticket[0].numel(),
@@ -760,7 +762,8 @@ class GPUOwnerPipeline(PSPipeline):
                 if error is None:
                     error = cleanup
                 else:
-                    error.add_note("Owner commit cleanup also failed: " + repr(cleanup))
+                    if hasattr(error, "add_note"):
+                        error.add_note("Owner commit cleanup also failed: " + repr(cleanup))
         try:
             if self.candidate_handoff and flush and error is None:
                 # Observe a failed commit/read before secondary cleanup errors.
@@ -777,7 +780,8 @@ class GPUOwnerPipeline(PSPipeline):
             if error is None:
                 error = exc
             else:
-                error.add_note("Owner handoff cleanup also failed: " + repr(exc))
+                if hasattr(error, "add_note"):
+                    error.add_note("Owner handoff cleanup also failed: " + repr(exc))
         if self.compute_ahead and self._retiring_owner is not None:
             for owner in self._retiring_owner[1:]:
                 try:
@@ -787,14 +791,16 @@ class GPUOwnerPipeline(PSPipeline):
                     if error is None:
                         error = cleanup
                     else:
-                        error.add_note("Retiring owner cleanup also failed: " + repr(cleanup))
+                        if hasattr(error, "add_note"):
+                            error.add_note("Retiring owner cleanup also failed: " + repr(cleanup))
         try:
             super().shutdown(flush=flush and error is None)
         except BaseException as exc:
             if error is None:
                 error = exc
             else:
-                error.add_note("PS cleanup also failed: " + repr(exc))
+                if hasattr(error, "add_note"):
+                    error.add_note("PS cleanup also failed: " + repr(exc))
         try:
             # Also drain a partially enqueued exchange after a local exception.
             # Successful native completion already covers candidate/status D2H.
@@ -804,7 +810,8 @@ class GPUOwnerPipeline(PSPipeline):
             if error is None:
                 error = exc
             else:
-                error.add_note("GPU owner cleanup also failed: " + repr(exc))
+                if hasattr(error, "add_note"):
+                    error.add_note("GPU owner cleanup also failed: " + repr(exc))
         finally:
             self._owner_exchange = self._owner_read = self._owner_plan = None
             self._pending_owner_step = None

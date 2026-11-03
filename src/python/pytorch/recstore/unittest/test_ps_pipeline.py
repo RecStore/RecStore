@@ -106,6 +106,28 @@ finally:
                                 capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_cleanup_preserves_error_without_exception_notes(self):
+        class LegacyError(OSError):
+            def __getattribute__(self, name):
+                if name == "add_note":
+                    raise AttributeError(name)
+                return super().__getattribute__(name)
+
+        original = LegacyError("failed PS commit")
+        ps = _PS()
+        ps.sparse_gradient_commit_wait = mock.Mock(side_effect=original)
+        pipeline = _pipeline(ps)
+        try:
+            ticket, _, _ = _consume(pipeline, 0, [3])
+            pipeline.submit_sparse_grad(ticket[0], torch.ones((1, 2)))
+            with self.assertRaises(LegacyError) as caught:
+                pipeline.shutdown()
+            self.assertIs(caught.exception, original)
+            self.assertTrue(pipeline._closed)
+            self.assertFalse(pipeline._pending_commits)
+        finally:
+            pipeline.shutdown(flush=False)
+
     def test_native_acceptance_survives_wait_scheduling_failure(self):
         ps = _PS()
         pipeline = _pipeline(ps)

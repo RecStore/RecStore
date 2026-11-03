@@ -160,9 +160,11 @@ class ContinuousLoop:
             try:
                 event.synchronize()
             except BaseException as cleanup_error:
-                error.add_note("Continuous terminal event drain also failed: " + repr(cleanup_error))
+                if hasattr(error, "add_note"):
+                    error.add_note("Continuous terminal event drain also failed: " + repr(cleanup_error))
         try:
             self.torch.cuda.synchronize(self.device)
         except BaseException as cleanup_error:
-            error.add_note("Continuous device drain also failed: " + repr(cleanup_error))
+            if hasattr(error, "add_note"):
+                error.add_note("Continuous device drain also failed: " + repr(cleanup_error))
         self.pending.clear()

@@ -90,7 +90,8 @@ class GPUOwnerExchange:
             try:
                 self.drain()
             except BaseException as cleanup:
-                original.add_note('Owner preparation drain also failed: '+repr(cleanup))
+                if hasattr(original, "add_note"):
+                    original.add_note('Owner preparation drain also failed: '+repr(cleanup))
             raise
 
     def _check_math_ready(self):

@@ -517,7 +517,8 @@ class PSPipeline:
                 if error is None:
                     error = exc
                 else:
-                    error.add_note("Commit drain also failed: " + repr(exc))
+                    if hasattr(error, "add_note"):
+                        error.add_note("Commit drain also failed: " + repr(exc))
             finally:
                 del self._pending_commits[handle]
         if error is not None:
@@ -582,7 +583,8 @@ class PSPipeline:
             if error is None and flush:
                 error = exc
             elif error is not None:
-                error.add_note("Commit cleanup also failed: " + repr(exc))
+                if hasattr(error, "add_note"):
+                    error.add_note("Commit cleanup also failed: " + repr(exc))
         finally:
             self._worker.shutdown(wait=True, cancel_futures=True)
             if self._metadata_worker is not None:

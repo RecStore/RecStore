@@ -900,7 +900,8 @@ class RecStoreRunner(BenchmarkRunner):
                             try:
                                 dense_work.wait()
                             except BaseException as join_error:
-                                sparse_error.add_note("Dense reduction join also failed: " + repr(join_error))
+                                if hasattr(sparse_error, "add_note"):
+                                    sparse_error.add_note("Dense reduction join also failed: " + repr(join_error))
                         raise
                     with timer.gpu("gradient_communication_ms"):
                         # In overlap mode this event interval is only the remaining join.
@@ -1117,7 +1118,8 @@ class RecStoreRunner(BenchmarkRunner):
                 except BaseException as cleanup_error:
                     if continuous is None:
                         raise
-                    error.add_note("Metadata failure propagation also failed: " + repr(cleanup_error))
+                    if hasattr(error, "add_note"):
+                        error.add_note("Metadata failure propagation also failed: " + repr(cleanup_error))
             raise
         finally:
             if continuous_error is not None:
@@ -1137,7 +1139,8 @@ class RecStoreRunner(BenchmarkRunner):
                     try:
                         cleanup()
                     except BaseException as cleanup_error:
-                        continuous_error.add_note("Continuous worker cleanup also failed: " + repr(cleanup_error))
+                        if hasattr(continuous_error, "add_note"):
+                            continuous_error.add_note("Continuous worker cleanup also failed: " + repr(cleanup_error))
             else:
                 if step_iter is not None:
                     step_iter.close()
