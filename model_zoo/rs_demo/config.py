@@ -166,7 +166,6 @@ class RunConfig:
     validation_state: bool = False
     ps_pipeline_early_submit: bool = False
     ps_pipeline_dependency_split: bool = False
-    ps_pipeline_canonical_plan: str = ""
     dense_cuda_graph: bool = False
     torchrec_profiler_warmup: int = 0
     torchrec_profiler_active: int = 2
@@ -371,10 +370,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--ps-pipeline-dependency-split", action="store_true",
         help="Two-rank PS pipeline: read next-batch clean rows before current SGD commits.",
-    )
-    parser.add_argument(
-        "--ps-pipeline-canonical-plan", default="",
-        help="Experimental world2/D128 FBGEMM 1.2 canonical SGD; JSON table sharding map.",
     )
     parser.add_argument(
         "--prefetch-depth",
@@ -720,12 +715,6 @@ def validate_torchrec_config(cfg: RunConfig) -> None:
 
 
 def validate_recstore_config(cfg: RunConfig) -> None:
-    if cfg.ps_pipeline_canonical_plan and (
-            cfg.backend != "recstore" or cfg.read_mode.strip().lower() != "ps_pipeline"
-            or cfg.nnodes * cfg.nproc_per_node != 2 or cfg.steps < 1
-            or cfg.embedding_dim != 128 or not 1 <= cfg.batch_size <= 1024
-            or cfg.ps_type.upper() != "RDMA"):
-        raise RuntimeError("Canonical PS requires RDMA ps_pipeline, world2, D128, B<=1024 and positive steps")
     if cfg.ps_pipeline_dependency_split and (
             cfg.backend != "recstore" or cfg.read_mode.strip().lower() != "ps_pipeline"
             or cfg.nnodes * cfg.nproc_per_node != 2 or cfg.steps < 1):

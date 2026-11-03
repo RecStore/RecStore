@@ -302,29 +302,8 @@ class RecStoreRunner(BenchmarkRunner):
         if cfg.read_mode == "ps_pipeline":
             from recstore.ps_pipeline import PSPipeline, PSPipelineSGD
             canonical_types = None
-            if cfg.ps_pipeline_canonical_plan:
-                import importlib.metadata
-                import json
-                required = {"torch": "2.7.1", "torchrec": "1.2.0", "fbgemm-gpu": "1.2.0"}
-                if any(importlib.metadata.version(name).split("+")[0] != version
-                       for name, version in required.items()):
-                    raise RuntimeError("Canonical PS requires the validated Torch 2.7.1/FBGEMM 1.2.0 stack")
-                with open(cfg.ps_pipeline_canonical_plan) as plan_file:
-                    reference_plan = json.load(plan_file)
-                expected_tables = {"t_" + feature for feature in table_offsets}
-                if set(reference_plan) != expected_tables:
-                    raise ValueError("Canonical reference plan must cover exactly the model tables")
-                allowed = {("table_wise", "fused"): 0, ("data_parallel", "dense"): 1}
-                canonical_types = []
-                for feature in table_offsets:
-                    entry = reference_plan["t_" + feature]
-                    pair = (entry.get("sharding_type"), entry.get("compute_kernel"))
-                    if pair not in allowed:
-                        raise ValueError("Unsupported canonical reference table sharding/kernel")
-                    canonical_types.append(allowed[pair])
             pipeline_class, owner_options = PSPipeline, {}
             owner_forward = os.environ.get("RECSTORE_PS_OWNER_FORWARD") == "1"
-            owner_gpu_plan = os.environ.get("RECSTORE_PS_CANONICAL_GPU_PLAN") == "1"
             owner_handoff = os.environ.get("RECSTORE_PS_OWNER_CANDIDATE_HANDOFF") == "1"
             owner_verify = os.environ.get("RECSTORE_PS_OWNER_VERIFY_HANDOFF") == "1"
             owner_compute_ahead = os.environ.get("RECSTORE_PS_OWNER_COMPUTE_AHEAD") == "1"
@@ -340,8 +319,6 @@ class RecStoreRunner(BenchmarkRunner):
                 raise ValueError("Diagnostic handoff verification requires candidate handoff")
             if owner_handoff and not owner_forward:
                 raise ValueError("Acknowledged candidate handoff requires unified owner forward")
-            if owner_gpu_plan and os.environ.get("RECSTORE_PS_OWNER_GPU") != "1":
-                raise ValueError("Canonical GPU plan staging requires GPU owner updates")
             if owner_merged_grad and os.environ.get("RECSTORE_PS_OWNER_GPU") != "1":
                 raise ValueError("Merged-gradient owner updates require GPU owner updates")
             if owner_forward and os.environ.get("RECSTORE_PS_OWNER_GPU") != "1":
@@ -349,10 +326,12 @@ class RecStoreRunner(BenchmarkRunner):
             if os.environ.get("RECSTORE_PS_OWNER_GPU") == "1":
                 if not cfg.dense_cuda_graph or cfg.ps_type != "RDMA":
                     raise ValueError("GPU owner updates currently require RDMA and the dense CUDA graph")
+                if not owner_merged_grad:
+                    raise ValueError("GPU owner updates require RECSTORE_PS_OWNER_MERGED_GRAD=1 "
+                                     "(the canonical reduction protocol was removed)")
                 from recstore.ps_owner_pipeline import GPUOwnerPipeline
                 pipeline_class = GPUOwnerPipeline
                 owner_options["unified_forward"] = owner_forward
-                owner_options["canonical_gpu_plan"] = owner_gpu_plan
                 owner_options["owner_merged_grad"] = owner_merged_grad
                 owner_options["candidate_handoff"] = owner_handoff
                 owner_options["verify_handoff"] = owner_verify
@@ -577,13 +556,12 @@ class RecStoreRunner(BenchmarkRunner):
 
             allow_base = os.environ.get("RECSTORE_CONTINUOUS_ALLOW_BASE") == "1"
             if continuous_mode and not allow_base:
-                # Merged-gradient owners replace canonical GPU plan staging; the
-                # forward/handoff/compute-ahead pipeline itself is unchanged.
+                # Merged-gradient owners replaced the removed canonical GPU plan
+                # staging; the forward/handoff/compute-ahead pipeline is unchanged.
                 if not all(getattr(read_path, name, False) for name in (
                     "unified_forward", "candidate_handoff", "compute_ahead"
-                )) or not (getattr(read_path, "canonical_gpu_plan", False)
-                           or getattr(read_path, "owner_merged_grad", False)):
-                    raise ValueError("Continuous PS only supports the selected owner forward/handoff/compute-ahead path")
+                )) or not getattr(read_path, "owner_merged_grad", False):
+                    raise ValueError("Continuous PS only supports the merged owner forward/handoff/compute-ahead path")
             if continuous_mode and not allow_base and getattr(read_path, "metadata_lookahead", 0) != 4:
                 raise ValueError("Continuous PS initially supports the selected H4 metadata queue only")
             _barrier_for_step_alignment(
@@ -631,7 +609,6 @@ class RecStoreRunner(BenchmarkRunner):
                 lifecycle["embedding_namespace"] = embedding_module.shared_fused_namespace_identity()
                 lifecycle["owned_read_native"] = callable(getattr(client.ops, "emb_read_into", None))
                 lifecycle["ps_pipeline_dependency_split"] = cfg.ps_pipeline_dependency_split
-                lifecycle["ps_pipeline_canonical_plan"] = cfg.ps_pipeline_canonical_plan
                 lifecycle["ps_pipeline_canonical_types"] = list(read_path._canonical_table_types)
                 if cfg.ps_pipeline_dependency_split:
                     lifecycle["ps_pipeline_metadata_group_init_ms"] = read_path.metadata_group_init_ms
@@ -719,7 +696,6 @@ class RecStoreRunner(BenchmarkRunner):
                     "step": batch_step,
                     "warmup_excluded": _bool_int(batch_step < cfg.warmup_steps),
                     "ps_owner_forward_enabled": int(getattr(read_path, "unified_forward", False)),
-                    "ps_owner_canonical_gpu_plan_enabled": int(getattr(read_path, "canonical_gpu_plan", False)),
                     "ps_owner_merged_grad_enabled": int(getattr(read_path, "owner_merged_grad", False)),
                     "ps_owner_candidate_handoff_enabled": int(getattr(read_path, "candidate_handoff", False)),
                     "ps_owner_verify_handoff_enabled": int(getattr(read_path, "verify_handoff", False)),

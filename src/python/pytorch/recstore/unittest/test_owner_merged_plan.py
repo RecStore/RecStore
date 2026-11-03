@@ -9,6 +9,7 @@ import unittest
 import numpy as np
 import torch
 
+from .. import canonical_ps as planner
 from ..sharded_client import _city_hash64_of_uint64
 
 OP = getattr(torch.ops.recstore_ops, 'owner_merged_plan', None)
@@ -174,6 +175,79 @@ class TestOwnerMergedPlanNative(unittest.TestCase):
         self.assertEqual(actual['meta'], [[5, 3, 0, 0, 0, 1, 0, 0]])
         self.assertEqual(actual['send'], [1, 0])
         self.assertEqual(actual['recv'], [1, 0])
+
+
+TICKET_OP = getattr(torch.ops.recstore_ops, 'canonical_sparse_ticket', None)
+TICKET_FIELDS = ('keys', 'counts', 'positions', 'starts', 'table_types')
+
+
+@unittest.skipUnless(callable(TICKET_OP), 'requires the rebuilt canonical_sparse_ticket native op')
+class TestNativeTicket(unittest.TestCase):
+    """The ticket op kept after the canonical removal: native vs NumPy ticket."""
+
+    def compare(self, raw, offsets, types):
+        expected = planner.make_ticket(raw, offsets, types)
+        inverse = np.empty(raw.size, np.int64)
+        if raw.size:
+            feature_major = ((expected.positions % expected.features) * expected.batch_size
+                             + expected.positions // expected.features)
+            inverse[feature_major] = np.repeat(np.arange(len(expected.keys), dtype=np.int64),
+                                               expected.counts)
+        before = raw.tobytes()
+        actual, actual_inverse = planner.make_ticket_with_inverse(raw, offsets, types, native=True)
+        for name in TICKET_FIELDS:
+            a, b = getattr(actual, name), getattr(expected, name)
+            self.assertEqual((a.dtype, a.shape), (b.dtype, b.shape), name)
+            self.assertEqual(a.tobytes(), b.tobytes(), name)
+        self.assertEqual((actual_inverse.dtype, actual_inverse.shape),
+                         (inverse.dtype, inverse.shape))
+        self.assertEqual(actual_inverse.tobytes(), inverse.tobytes())
+        self.assertEqual(raw.tobytes(), before)
+
+    def test_frozen_stable_order_fixture(self):
+        # Literal fixture from the frozen v16 reference, including tied IDs.
+        raw = np.array([[2, 1, 2], [1, 0, 0]], np.int64)
+        self.compare(raw, [0, 100], [0, 1])
+        ticket = planner.make_ticket_with_inverse(raw, [0, 100], [0, 1], native=True)[0]
+        golden = ([1, 2, 100, 101], [1, 2, 2, 1], [2, 0, 4, 3, 5, 1],
+                  [0, 1, 3, 5], [0, 0, 1, 1])
+        for name, values in zip(TICKET_FIELDS, golden):
+            self.assertEqual(getattr(ticket, name).tobytes(),
+                             np.array(values, np.int64).tobytes())
+
+    def test_random_shapes_duplicates_and_strides(self):
+        rng = np.random.default_rng(11020537)
+        for features in (1, 2, 26):
+            for batch in (0, 1, 2, 31, 32, 33, 128, 1023, 1024):
+                for cardinality in (1, 3, 1024):
+                    raw = rng.integers(0, cardinality, size=(features, batch), dtype=np.int64)
+                    offsets, types = np.arange(features) << 30, np.arange(features) % 2
+                    for values in (raw, raw[:, ::-1]):
+                        with self.subTest(features=features, batch=batch,
+                                          cardinality=cardinality):
+                            self.compare(values, offsets, types)
+
+    def test_native_rejects_invalid_inputs(self):
+        maximum = np.iinfo(np.int64).max
+        base = [torch.tensor([[0, 1], [1, 0]]), torch.tensor([0, 100]),
+                torch.tensor([0, 1])]
+        cases = [{0: base[0].float()}, {0: base[0].reshape(-1)},
+                 {0: base[0].t()}, {1: base[1].reshape(1, 2)},
+                 {2: base[2].float()}, {1: torch.tensor([0])},
+                 {2: torch.tensor([0, 2])}, {1: torch.tensor([-1, 100])},
+                 {1: torch.tensor([0, 0])}, {1: torch.tensor([100, 0])},
+                 {1: torch.tensor([0, 1])}, {0: torch.tensor([[-1, 0], [0, 1]])},
+                 {1: torch.tensor([0, maximum])},
+                 {0: torch.empty((2, 1025), dtype=torch.int64)},
+                 {0: torch.empty((0, 1), dtype=torch.int64)},
+                 {0: torch.empty((27, 0), dtype=torch.int64)},
+                 {1: torch.tensor([0, 5, 100, 6])[::2]}]
+        for changes in cases:
+            args = base.copy()
+            for index, value in changes.items():
+                args[index] = value
+            with self.subTest(changes=changes), self.assertRaises((RuntimeError, ValueError)):
+                TICKET_OP(*args)
 
 
 if __name__ == '__main__':

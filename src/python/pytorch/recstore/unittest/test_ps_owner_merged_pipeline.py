@@ -2,8 +2,9 @@
 
 The real owner_merged_plan native op performs routing; the exchange transport
 and GPU arithmetic are explicit fakes. These tests cover the merged packing
-branch (deterministic index_add_ rows), submission without canonical partial
-records, and read/version ordering. No claim about NCCL or kernel arithmetic.
+branch (deterministic index_add_ rows), submission without partial records,
+read/version ordering, and count-exchange metadata validation. No claim about
+NCCL or kernel arithmetic.
 """
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -14,8 +15,7 @@ import torch
 
 from .. import owner_merged_gpu
 from ..ps_owner_pipeline import GPUOwnerPipeline
-from . import test_ps_pipeline_canonical as fixtures
-from .test_ps_owner_pipeline import OwnerPS
+from . import _owner_test_fixtures as fixtures
 
 PLAN_OP = getattr(torch.ops.recstore_ops, 'owner_merged_plan', None)
 
@@ -53,8 +53,6 @@ def make_merged_owner(ps):
     pipeline.verify_handoff = False
     pipeline._verified_owner_weights = None
     pipeline._owner_candidate = None
-    pipeline.canonical_gpu_plan = False
-    pipeline._canonical_gpu_staging = None
     pipeline._pending_owner_step = None
     pipeline._owner_failed = False
     pipeline._owner_plan = pipeline._owner_read = pipeline._owner_exchange = None
@@ -96,7 +94,7 @@ class TestGPUOwnerMergedPipelineScheduling(unittest.TestCase):
     def test_merged_packing_plan_and_submission_without_partial_records(self):
         with fixtures.context(fixtures.Collective()), mock.patch.object(
                 owner_merged_gpu, 'MergedGPUOwnerExchange', FakeMergedExchange):
-            ps = OwnerPS()
+            ps = fixtures.OwnerPS()
             pipeline = make_merged_owner(ps)
             optimizer = fixtures.pipeline_module.PSPipelineSGD(
                 SimpleNamespace(reset_trace=lambda: None), pipeline)
@@ -144,7 +142,6 @@ class TestGPUOwnerMergedPipelineScheduling(unittest.TestCase):
                     expected = expected_merged_rows(pipeline, pooled)
                     self.assertTrue(torch.equal(optimizer._grads, expected))
                     optimizer.step()
-                    self.assertIsNone(pipeline._canonical_records)
                     self.assertTrue(torch.equal(ps.commits[-1][0], keys))
                     self.assertEqual(ps.commits[-1][2]['step'], step)
                     self.assertTrue(torch.equal(pipeline._owner_exchange.packed, expected))
@@ -162,7 +159,7 @@ class TestGPUOwnerMergedPipelineScheduling(unittest.TestCase):
     def test_failed_commit_prevents_next_owner_read_and_preserves_error(self):
         with fixtures.context(fixtures.Collective()), mock.patch.object(
                 owner_merged_gpu, 'MergedGPUOwnerExchange', FakeMergedExchange):
-            ps = OwnerPS()
+            ps = fixtures.OwnerPS()
             pipeline = make_merged_owner(ps)
             optimizer = fixtures.pipeline_module.PSPipelineSGD(
                 SimpleNamespace(reset_trace=lambda: None), pipeline)
@@ -189,6 +186,29 @@ class TestGPUOwnerMergedPipelineScheduling(unittest.TestCase):
                 self.assertTrue(ps.closed[-1]['abort'])
             finally:
                 pipeline.shutdown(flush=False)
+
+    def test_bad_count_exchange_fails_before_any_native_submission(self):
+        for bad in ('layout', 'batch', 'width', 'counts', 'keys'):
+            with self.subTest(bad=bad), fixtures.context(fixtures.Collective(bad)):
+                ps = fixtures.OwnerPS()
+                pipeline = make_merged_owner(ps)
+                try:
+                    with self.assertRaises((RuntimeError, ValueError)):
+                        pipeline._exchange_key_counts(0, fixtures.ticket(fixtures.local_batches[0]))
+                    self.assertFalse(ps.commits)
+                finally:
+                    pipeline.shutdown(flush=False)
+
+
+class TestBasePipelineTicketModeGuards(unittest.TestCase):
+    def test_base_pipeline_rejects_the_ticket_mode(self):
+        with self.assertRaises(ValueError) as caught:
+            fixtures.pipeline_module.PSPipeline(
+                None, fixtures.OwnerPS(), table_offsets={'f0': 0, 'f1': 100},
+                master_table_name='master', embedding_dim=128, device='cpu',
+                dependency_split=True, total_steps=3,
+                canonical_table_types=[0, 1])
+        self.assertIn('merged GPU owner pipeline', str(caught.exception))
 
 
 if __name__ == '__main__':

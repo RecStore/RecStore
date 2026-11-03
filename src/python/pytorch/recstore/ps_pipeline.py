@@ -53,33 +53,27 @@ class PSPipeline:
             raise ValueError("Device row merge requires dependency-split CUDA PS")
         self._total_steps = total_steps
         self.canonical = canonical_table_types is not None
-        # Merged-gradient owners reuse the canonical count exchange and ticket
+        # Merged-gradient owners reuse the count exchange and ticket
         # machinery but pack one merged row per unique key (index_add_). The
         # flag must survive the parent constructor: the owner subclass sets it
         # before super() and the optimizer reads it from this shared object.
         self.owner_merged_grad = bool(owner_merged_grad)
         self._canonical_table_types = tuple(canonical_table_types or ())
         self._canonical_metadata = {}
-        self._canonical_records = None
         self._current_metrics = None
         self._gradient_bytes = 0
         if self.canonical:
+            if type(self) is PSPipeline:
+                raise ValueError("The count-exchange ticket mode requires the merged GPU owner pipeline")
             if (self._world != 2 or self.embedding_dim != 128 or self.device.type != "cuda"
                     or len(self._canonical_table_types) != len(self._keys)
                     or any(kind not in (0, 1) for kind in self._canonical_table_types)
                     or not isinstance(total_steps, int) or isinstance(total_steps, bool)
                     or total_steps < 1):
                 raise ValueError("Canonical PS requires world2, CUDA D128 and an explicit table layout")
-            if os.environ.get("RECSTORE_SPARSE_COMMIT_FMA") != "1":
-                raise ValueError("Canonical PS requires RECSTORE_SPARSE_COMMIT_FMA=1 on every endpoint")
             layout = (self._offsets.numpy().tobytes() + bytes(self._canonical_table_types)
                       + "\0".join(self._keys).encode("utf-8"))
             self._canonical_layout = int.from_bytes(hashlib.sha256(layout).digest()[:8], "little") & (2**63 - 1)
-            if not self.owner_merged_grad:
-                # The reduction-tree kernel belongs to the canonical protocol;
-                # merged owners exchange one row per key and never reduce.
-                from .canonical_ps import initialize_gpu_reducer
-                initialize_gpu_reducer()
         if self.dependency_split and (self._world != 2 or not isinstance(total_steps, int)
                                       or isinstance(total_steps, bool) or total_steps < 1):
             raise ValueError("Dependency-split pull requires world=2 and positive total_steps")
@@ -177,12 +171,21 @@ class PSPipeline:
         }
 
     def _build_exchange_plan(self, ticket, peer_keys, peer_counts):
-        """Canonical contribution plan from the exchanged counts; the merged
-        owner pipeline overrides this because merged rows carry no tree."""
-        from .canonical_ps import build_plan
-        return build_plan(ticket, peer_keys, peer_counts, self._rank)
+        """Shape-only exchange plan: merged rows carry no reduction tree.
 
-    def _exchange_canonical_metadata(self, step, ticket):
+        Only ``records.shape[0]`` (the local unique key count) feeds the
+        row-count check in ``_augment_canonical_plan``; the CPU metadata pack
+        reports the record bytes. Building a real per-key tree cost ~20 ms per
+        step at this batch size while nothing else consumed it.
+        """
+        from .canonical_ps import ContributionPlan
+        records = np.zeros((len(ticket.keys), 5), dtype=np.int64)
+        return ContributionPlan(records, np.empty(0, dtype=np.int64),
+                                np.empty(0, dtype=np.int64),
+                                ticket.batch_size, ticket.features,
+                                self._rank, 0)
+
+    def _exchange_key_counts(self, step, ticket):
         start = time.perf_counter()
         header = torch.tensor([step, len(ticket.keys), self._total_steps, self._canonical_layout,
                                ticket.batch_size, ticket.features], dtype=torch.int64)
@@ -225,18 +228,7 @@ class PSPipeline:
         }, plan, (time.perf_counter() - exchanged) * 1e3
 
     def _augment_canonical_plan(self, plan, peers, sizes):
-        """Optional integer-only owner routing after the shared count exchange."""
-
-    def _submit_canonical(self, records, grads):
-        return self.kv_client.sparse_canonical_gradient_commit_async(
-            self.master_table_name, records, grads, session=self._session,
-            step=self._submitted, rank=self._rank, world=self._world, lr=self.lr)
-
-    def _close_canonical(self, abort):
-        self.kv_client.sparse_canonical_gradient_commit_close(
-            self.master_table_name, session=self._session,
-            step=self._submitted - 1, rank=self._rank, world=self._world,
-            lr=self.lr, abort=abort)
+        """Merged owner routing after the shared count exchange."""
 
     @staticmethod
     def _partition_clean_rows(ids, dirty_ids):
@@ -330,22 +322,16 @@ class PSPipeline:
         if self.canonical:
             if step >= self._total_steps:
                 raise RuntimeError("Canonical PS prepared beyond the declared step count")
-            if os.environ.get("RECSTORE_PS_CANONICAL_CPP_TICKET") == "1":
-                from .canonical_ps import make_ticket_with_inverse
-                local_ticket, inverse_numpy = make_ticket_with_inverse(
-                    raw.numpy(), self._offsets.numpy(), self._canonical_table_types)
-                ids = torch.from_numpy(local_ticket.keys)
-            else:
-                from .canonical_ps import make_ticket
-                local_ticket = make_ticket(raw.numpy(), self._offsets.numpy(),
-                                           self._canonical_table_types)
-                ids = torch.from_numpy(local_ticket.keys)
-                inverse_numpy = np.empty(raw.numel(), dtype=np.int64)
-                if raw.numel():
-                    feature_major = ((local_ticket.positions % len(self._keys)) * raw.shape[1]
-                                     + local_ticket.positions // len(self._keys))
-                    inverse_numpy[feature_major] = np.repeat(
-                        np.arange(ids.numel(), dtype=np.int64), local_ticket.counts)
+            from .canonical_ps import make_ticket
+            local_ticket = make_ticket(raw.numpy(), self._offsets.numpy(),
+                                       self._canonical_table_types)
+            ids = torch.from_numpy(local_ticket.keys)
+            inverse_numpy = np.empty(raw.numel(), dtype=np.int64)
+            if raw.numel():
+                feature_major = ((local_ticket.positions % len(self._keys)) * raw.shape[1]
+                                 + local_ticket.positions // len(self._keys))
+                inverse_numpy[feature_major] = np.repeat(
+                    np.arange(ids.numel(), dtype=np.int64), local_ticket.counts)
             inverse = torch.from_numpy(inverse_numpy)
         else:
             raw = (raw + self._offsets[:, None]).reshape(-1)
@@ -373,7 +359,7 @@ class PSPipeline:
         future = None
         if self.canonical:
             # Counts remain required for the final step, without another value read.
-            future = self._metadata_worker.submit(self._exchange_canonical_metadata, step, local_ticket)
+            future = self._metadata_worker.submit(self._exchange_key_counts, step, local_ticket)
         result = self._adopt_cpu_ticket(step, ticket, future, row, build_ms)
         row["lookup_ids_build_ms"] = (time.perf_counter() - start) * 1e3
         return result
@@ -497,16 +483,9 @@ class PSPipeline:
             raise ValueError("PS pipeline gradients must be FP32 with the prepared shape")
         self._require_next_read()
         if self.canonical:
-            if self.owner_merged_grad:
-                # Merged owners submit the exchange result; no packed partial
-                # descriptors exist for one-row-per-key gradients.
-                handle = self._submit_canonical(None, grads)
-            else:
-                records = self._canonical_records
-                if records is None or not torch.equal(records[:, 0], expected):
-                    raise RuntimeError("Canonical gradients lack the prepared key descriptors")
-                handle = self._submit_canonical(records, grads)
-                self._canonical_records = None
+            # Merged owners submit the exchange result; no packed partial
+            # descriptors exist for one-row-per-key gradients.
+            handle = self._submit_owner_grads(grads)
         else:
             handle = self.kv_client.sparse_gradient_commit_async(
                 self.master_table_name, expected, grads, session=self._session,
@@ -550,10 +529,6 @@ class PSPipeline:
     def advance_all(self):
         return 0
 
-    def _pack_canonical_vectors(self, grad, plan):
-        from .canonical_ps import packed_gpu_vectors
-        return packed_gpu_vectors(grad, plan)
-
     def shutdown(self, *, flush=True):
         if self._closed:
             return
@@ -568,7 +543,7 @@ class PSPipeline:
         try:
             if self._submitted:
                 if self.canonical:
-                    self._close_canonical(abort=not flush or error is not None)
+                    self._close_owner_grads(abort=not flush or error is not None)
                 else:
                     self.kv_client.sparse_gradient_commit_close(
                         self.master_table_name, session=self._session,
@@ -593,7 +568,7 @@ class PSPipeline:
                 self._metadata_group = None
             self._metadata.clear()
             self._canonical_metadata.clear()
-            self._canonical_records = self._current_metrics = None
+            self._current_metrics = None
             self._split_clean = self._consumed_read = None
             self._closed = True
             self._read = self._commit = self._current_rows = self._current_ticket = None
@@ -627,37 +602,9 @@ class PSPipelineSGD:
                 or grad.device != self.pipeline._current_inverse.device):
             raise ValueError("PS pipeline pooled gradient does not match the prepared batch")
         if self.pipeline.canonical:
-            if self.pipeline.owner_merged_grad:
-                # Merged rows: keep the metadata lifecycle symmetric with the
-                # canonical branch (the plan is already consumed by lookup).
-                self.pipeline._canonical_metadata.pop(self.pipeline._current_step, None)
-                rows = self.pipeline._current_inverse
-                self._grads = torch.zeros((ids.numel(), grad.size(2)),
-                                          dtype=grad.dtype, device=grad.device)
-                # Same deterministic repeated-key summation as the base path.
-                previous_mode = torch.get_deterministic_debug_mode()
-                try:
-                    torch.set_deterministic_debug_mode(2)
-                    self._grads.index_add_(0, rows, grad.reshape(-1, grad.size(2)))
-                finally:
-                    torch.set_deterministic_debug_mode(previous_mode)
-                return
-            start = time.perf_counter()
-            result = self.pipeline._canonical_metadata.pop(self.pipeline._current_step).result()
-            metadata_done = time.perf_counter()
-            _, stats, plan, planning_ms = result
-            records, self._grads = self.pipeline._pack_canonical_vectors(
-                grad.contiguous(), plan)
-            self.pipeline._canonical_records = records
-            self.pipeline._current_metrics.update(
-                ps_canonical_metadata_wait_ms=(metadata_done - start) * 1e3,
-                ps_canonical_metadata_ms=stats["ps_pipeline_metadata_ms"],
-                ps_canonical_plan_ms=planning_ms,
-                ps_canonical_reduce_enqueue_ms=(time.perf_counter() - metadata_done) * 1e3,
-                ps_canonical_vectors=plan.vector_count,
-                ps_canonical_descriptor_bytes=len(plan.records) * 16,
-                ps_canonical_metadata_sent_bytes=stats["ps_pipeline_metadata_sent_bytes"])
-            return
+            # Merged rows: keep the count-exchange metadata lifecycle symmetric
+            # (the plan is already consumed by lookup).
+            self.pipeline._canonical_metadata.pop(self.pipeline._current_step, None)
         rows = self.pipeline._current_inverse
         self._grads = torch.zeros((ids.numel(), grad.size(2)),
                                   dtype=grad.dtype, device=grad.device)
