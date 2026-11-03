@@ -85,9 +85,11 @@ struct F14Chunk {
     return value_ + i;
   }
   ItemT* Get(size_t i) { return value_ + i; }
-  void IncOverflow() {
-    if (overflow_count_ != 255)
-      ++overflow_count_;
+  bool IncOverflow() {
+    if (overflow_count_ == 255)
+      return false;
+    ++overflow_count_;
+    return true;
   }
   void DecOverflow() {
     if (overflow_count_ != 255)
@@ -129,10 +131,11 @@ public:
   typedef std::function<bool(
       const KeyT&, const ValueT&, const bool& force_delete)>
       CheckFuncT;
-  static constexpr size_t kChunkSize   = ChunkT::kMaxSize;
-  static const uint32_t kSignBit       = 8;
-  static const uint32_t kSignMask      = (1 << kSignBit) - 1;
-  static const uint32_t kMaxLoadFactor = 90;
+  static constexpr size_t kChunkSize      = ChunkT::kMaxSize;
+  static const uint32_t kSignBit          = 8;
+  static const uint32_t kSignMask         = (1 << kSignBit) - 1;
+  static const uint32_t kMaxLoadFactor    = 90;
+  static constexpr size_t kSizeShardCount = Persistence ? 1 : 64;
 
   PetHash() = default;
 
@@ -146,7 +149,7 @@ public:
       capacity /= kMaxLoadFactor / 100.0;
     chunk_num_ = OverFallChunkNum(capacity);
     capacity_  = chunk_num_ * kChunkSize;
-    size_      = 0;
+    ResetSize();
     memset(chunk_table_, 0, chunk_num_ * sizeof(ChunkT));
     for (uint64_t i = 0; i < chunk_num_; i++) {
       chunk_table_[i].Initialize();
@@ -164,9 +167,8 @@ public:
     // chunk_num_ = Next2Power((capacity + kChunkSize - 1) / kChunkSize);
     chunk_num_        = OverFallChunkNum(capacity);
     capacity_         = chunk_num_ * kChunkSize;
-    uint64_t old_size = size_;
-    size_             = 0;
-    std::atomic<uint64_t> count_size(0);
+    uint64_t old_size = Size();
+    ResetSize();
     std::vector<std::thread> thread_pool;
     uint64_t block_num = chunk_num_ / kRecoveryThread + 1;
     for (int i = 0; i < kRecoveryThread; ++i) {
@@ -185,8 +187,7 @@ public:
               continue;
             chunk.size_++;
             ItemT& chunkItem = chunk.value_[chunk_offset];
-            // 设置 size_             √
-            count_size++;
+            IncrementSize(chunkItem.first);
             uint64 hash_value = Hash(chunkItem.first);
             uint8 sign        = Sign(hash_value);
             if (UNLIKELY(chunk.tags_[chunk_offset] != sign)) {
@@ -202,8 +203,7 @@ public:
     }
     for (auto& each : thread_pool)
       each.join();
-    size_.store(count_size);
-    if (fabs((double)old_size - (double)size_) >= 1000) {
+    if (fabs((double)old_size - (double)Size()) >= 1000) {
       LOG(ERROR) << "Large Diff after reload.";
     }
 
@@ -274,7 +274,8 @@ public:
       LOG(ERROR) << "PetHash invalid. capacity_ == 0";
       return false;
     }
-    if (size_ > capacity_) {
+    const uint64_t size = Size();
+    if (size > capacity_) {
       LOG(ERROR) << "PetHash invalid. dict size_ > capacity_";
       return false;
     }
@@ -311,10 +312,9 @@ public:
     if (total_num != chunk_table_total_num)
       LOG(ERROR) << fmt::format(
           "PetHash invalid {} != {}", total_num, chunk_table_total_num);
-    if (total_num != size_)
-      LOG(ERROR) << fmt::format(
-          "PetHash invalid {} != {}", total_num, size_.load());
-    return total_num == chunk_table_total_num && total_num == size_;
+    if (total_num != size)
+      LOG(ERROR) << fmt::format("PetHash invalid {} != {}", total_num, size);
+    return total_num == chunk_table_total_num && total_num == size;
   }
 
   void Debug() {
@@ -525,6 +525,21 @@ public:
     }
   }
 
+  void BatchSet(base::ConstArray<KeyT> keys,
+                const ValueT* values,
+                ValueT* old_values = nullptr) {
+    for (int i = 0; i < keys.Size(); ++i) {
+      if (i + 1 < keys.Size()) {
+        HintPrefetch(keys[i + 1]);
+      }
+      Insert(keys[i],
+             values[i],
+             nullptr,
+             false,
+             old_values == nullptr ? nullptr : &old_values[i]);
+    }
+  }
+
   ValueT* Set(const KeyT& key,
               const ValueT& value,
               CheckFuncT check_func = nullptr,
@@ -587,7 +602,7 @@ public:
     if (UNLIKELY(touch_migrating_chunk)) {
       goto RETRY;
     }
-    return Insert(key, value, check_func, is_force);
+    return Insert(key, value, check_func, is_force, old_value_out);
   }
 
   std::pair<ChunkT*, size_t> HomeChunk(const KeyT& key) {
@@ -600,14 +615,42 @@ public:
   ValueT* Insert(const KeyT& key,
                  const ValueT& value,
                  CheckFuncT check_func = nullptr,
-                 bool force_insert     = false) {
-    uint64_t hash_value = Hash(key);
-    auto sign           = Sign(hash_value);
-    size_t step         = ProbeDelta(sign);
-    auto [chunk, pos]   = HomeChunk(key);
+                 bool force_insert     = false,
+                 ValueT* old_value_out = nullptr) {
+  RETRY:
+    static_assert(sizeof(ValueT) <= sizeof(uint64_t),
+                  "PetHash::Insert CAS update expects a 64-bit-or-smaller "
+                  "value");
+    if (old_value_out != nullptr) {
+      *old_value_out = ValueT();
+    }
+    uint64_t hash_value           = Hash(key);
+    auto sign                     = Sign(hash_value);
+    size_t step                   = ProbeDelta(sign);
+    auto [chunk, pos]             = HomeChunk(key);
+    size_t overflowed_chunk_count = 0;
+    std::vector<size_t> saturated_overflow_steps;
+    auto rollback_overflow = [&] {
+      size_t rollback_pos = hash_value & (chunk_num_ - 1);
+      size_t saturated_id = 0;
+      for (size_t overflow_step = 0; overflow_step < overflowed_chunk_count;
+           ++overflow_step) {
+        if (saturated_id < saturated_overflow_steps.size() &&
+            saturated_overflow_steps[saturated_id] == overflow_step) {
+          ++saturated_id;
+        } else {
+          chunk_table_[rollback_pos].DecOverflow();
+        }
+        rollback_pos = (rollback_pos + step) & (chunk_num_ - 1);
+      }
+    };
 
     for (size_t i = 0; i < chunk_num_; ++i) {
       base::AutoLock lock(chunk->lock_);
+      if (UNLIKELY(chunk->is_migrating)) {
+        rollback_overflow();
+        goto RETRY;
+      }
       // check whether KV expire
       if (UNLIKELY(check_func && chunk->Size() >= kChunkSize - 2)) {
         for (size_t id = 0; id < kChunkSize; ++id)
@@ -625,23 +668,42 @@ public:
           auto id  = it.Next();
           auto val = chunk->Get(id);
           if (LIKELY(key == val->first)) {
-            val->second = value;
-            return &val->second;
+            rollback_overflow();
+            while (LIKELY(key == val->first)) {
+              ValueT expected = val->second;
+              ValueT desired  = value;
+              if (__atomic_compare_exchange(
+                      &val->second,
+                      &expected,
+                      &desired,
+                      false,
+                      __ATOMIC_ACQ_REL,
+                      __ATOMIC_ACQUIRE)) {
+                if (old_value_out != nullptr) {
+                  *old_value_out = expected;
+                }
+                IF_Persistence(clflushopt_range(&val->second, sizeof(uint64)););
+                return &val->second;
+              }
+              __asm__ volatile("pause" ::: "memory");
+            }
+            goto RETRY;
           }
         }
       }
 
       if (LIKELY(chunk->Size() < kChunkSize)) {
         auto val = chunk->Insert(key, value, sign);
-        size_++;
+        IncrementSize(key);
         return &val->second;
       }
       if (UNLIKELY(Full())) {
+        const uint64_t size = Size();
         RECSTORE_LOG_EVERY_MS(ERROR, 1000) << fmt::format(
             "Warning pethash dict full, {}/{}={}",
-            size_.load(),
+            size,
             capacity_,
-            size_ / (double)capacity_);
+            size / (double)capacity_);
         if (!force_insert) {
           LOG(FATAL) << "dict OOM";
           return nullptr;
@@ -651,7 +713,10 @@ public:
           check_func(it->first, it->second, true);
         Delete(it->first);
       } else {
-        chunk->IncOverflow();
+        if (!chunk->IncOverflow()) {
+          saturated_overflow_steps.push_back(overflowed_chunk_count);
+        }
+        ++overflowed_chunk_count;
         pos   = (pos + step) & (chunk_num_ - 1);
         chunk = chunk_table_ + pos;
       }
@@ -675,7 +740,7 @@ public:
       pos = (pos + step) & (chunk_num_ - 1);
     }
     chunk_table_[chunk_id].Delete(chunk_offset);
-    size_--;
+    DecrementSize(key);
     return true;
   }
 
@@ -700,13 +765,33 @@ public:
     return -1;
   }
 
-  uint32_t Size() { return size_; }
+  uint64_t Size() const {
+    uint64_t size = 0;
+    for (const auto& shard : size_shards_)
+      size += shard.load(std::memory_order_relaxed);
+    return size;
+  }
 
   uint32_t Capacity() { return capacity_; }
 
-  inline bool Full() { return size_ * 100 >= capacity_ * kMaxLoadFactor; }
+  inline bool Full() { return Size() * 100 >= capacity_ * kMaxLoadFactor; }
 
 private:
+  void ResetSize() {
+    for (auto& shard : size_shards_)
+      shard.store(0, std::memory_order_relaxed);
+  }
+
+  void IncrementSize(const KeyT& key) {
+    size_shards_[Hash(key) & (kSizeShardCount - 1)].fetch_add(
+        1, std::memory_order_relaxed);
+  }
+
+  void DecrementSize(const KeyT& key) {
+    size_shards_[Hash(key) & (kSizeShardCount - 1)].fetch_sub(
+        1, std::memory_order_relaxed);
+  }
+
   inline size_t ProbeDelta(size_t key) const { return key * 2 | 1; }
 
   static inline uint8_t Sign(const uint64_t& key) { // NOLINT
@@ -721,8 +806,8 @@ private:
 
   uint64_t capacity_;
   uint64_t chunk_num_;
-  std::atomic<uint64_t> size_;
-  uint8_t not_use_[64 - 3 * sizeof(uint64_t)];
+  std::atomic<uint64_t> size_shards_[kSizeShardCount];
+  uint8_t not_use_[Persistence ? 64 - 3 * sizeof(uint64_t) : 0];
   ChunkT chunk_table_[0];
 };
 

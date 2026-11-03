@@ -5,12 +5,13 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
+  <a href="https://github.com/RecStore/RecStore/blob/main/README.md">English</a> | <a href="https://github.com/RecStore/RecStore/blob/main/README.zh-CN.md">简体中文</a>
 </p>
 
 RecStore is a high-performance parameter storage system designed to meet the growing demands of recommendation models in modern AI data centers. Unlike NLP and vision models, where computation dominates, recommendation models are bottlenecked by memory due to massive, trillion-scale sparse embedding parameters. RecStore addresses this challenge by abstracting heterogeneous, networked memory as a unified embedding pool. It provides key functionalities—parameter indexing, memory management, near-memory computation, and communication—as modular components within the system.
 
 RecStore is:
+
 - **Universal** - Easily integrated into existing DL frameworks via minimal OP implementations.
 - **Efficient** - Optimized for the unique access patterns of recommendation models, leveraging GPU and NIC hardware acceleration.
 - **Cost-effective** - Utilizes low-cost storage (e.g., SSDs, persistent memory) to expand memory capacity and reduce large model serving costs.
@@ -38,7 +39,7 @@ Full documentation lives at [recstore.github.io/RecStore](https://recstore.githu
 
 We would appreciate citations to the following papers:
 
-<details>
+<details markdown="1">
 <summary>BibTeX</summary>
 
 ```bibtex
