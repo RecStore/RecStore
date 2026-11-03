@@ -11,7 +11,7 @@ dependencies = [
     # links against, so the wheel does not bundle its own copy.  The pin keeps
     # the installed torch ABI-identical to the one the extension was built
     # against.
-    "torch==2.7.1",
+    "torch==2.13.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
