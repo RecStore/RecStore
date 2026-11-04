@@ -373,31 +373,20 @@ def _run_single_or_dist_worker(
     overlap_groups = {"dense": "WORLD" if use_dist else "local",
                       "dense_buffer_group": "None/default"}
     if overlap_dense and use_dist:
-        # Verify actual runtime groups, including DP reducers, before training.
-        sharded = embedding_module.module
-        world = dist.group.WORLD
-        if sharded._env.process_group is not world:
-            raise RuntimeError("Dense overlap requires the embedding WORLD group")
-        kinds = sharded._sharding_types
-        shardings, lookups = sharded._embedding_shardings, sharded._lookups
-        if not (len(kinds) == len(shardings) == len(lookups)):
-            raise RuntimeError("Unexpected TorchRec sharding/lookup structure")
-        checked = []
-        for kind, sharding, lookup in zip(kinds, shardings, lookups):
-            if kind == "table_wise":
-                same_group = sharding._pg is world
-            elif kind == "data_parallel":
-                same_group = (isinstance(lookup, torch.nn.parallel.DistributedDataParallel)
-                              and lookup.process_group is world
-                              and sharding._env.process_group is world)
-            else:
-                raise RuntimeError("Dense overlap only reviewed TW/DP sharding: " + kind)
-            if not same_group:
-                raise RuntimeError("Dense overlap requires WORLD for " + kind)
-            checked.append({"sharding_type": kind, "group": "WORLD", "identity_verified": True})
-        tables = {key: value.sharding_type for key, value in sharded.module_sharding_plan.items()}
-        overlap_groups.update(sparse=checked, table_sharding=tables,
-            table_counts={kind: sum(value == kind for value in tables.values()) for kind in kinds})
+        tables = {
+            name: sharding.sharding_type
+            for module_plan in plan.plan.values()
+            for name, sharding in module_plan.items()
+        }
+        kinds = set(tables.values())
+        if not kinds.issubset({"table_wise", "data_parallel"}):
+            raise RuntimeError("Dense overlap only supports TW/DP sharding")
+        overlap_groups.update(
+            sparse=[{"sharding_type": kind, "group": "WORLD"} for kind in sorted(kinds)],
+            table_sharding=tables,
+            table_counts={kind: sum(value == kind for value in tables.values())
+                          for kind in kinds},
+        )
     timing_metadata = {
         "timing_protocol": "aligned_step",
         "timing_mode": cfg.torchrec_timing_sync_mode,
@@ -412,17 +401,10 @@ def _run_single_or_dist_worker(
     lifecycle = {"rank": rank, **timing_metadata}
     dense_graph = dense_gradient_buffer = None
     if cfg.dense_cuda_graph:
-        from ..runtime.dense_graph import CapturedDlrmDense, DenseGradientBuffer
-        local_samples = len(dataloader.batch_sampler.sampler)
-        batch_sizes = {min(cfg.batch_size, local_samples)}
-        tail = local_samples % cfg.batch_size
-        if tail and not dataloader.drop_last:
-            batch_sizes.add(tail)
-        dense_gradient_buffer = DenseGradientBuffer(dense_module)
-        dense_graph = CapturedDlrmDense(
-            dense_module, criterion, dense_gradient_buffer,
-            batch_sizes=sorted(batch_sizes), num_features=len(DEFAULT_CAT_NAMES),
-            embedding_dim=cfg.embedding_dim,
+        from ..runtime.dense_graph import capture_dlrm_dense
+        dense_graph, dense_gradient_buffer = capture_dlrm_dense(
+            dense_module, criterion, dataloader, cfg.batch_size,
+            num_features=len(DEFAULT_CAT_NAMES), embedding_dim=cfg.embedding_dim,
         )
         lifecycle = {
             **timing_metadata,
@@ -583,12 +565,8 @@ def _run_single_or_dist_worker(
                     sparse_optimizer.step()
                     sparse_optimizer.zero_grad(set_to_none=True)
             except BaseException as sparse_error:
-                if dense_work is not None:
-                    try:
-                        dense_work.wait()
-                    except BaseException as join_error:
-                        if hasattr(sparse_error, "add_note"):
-                            sparse_error.add_note("Dense reduction join also failed: " + repr(join_error))
+                from ..runtime.dense_graph import wait_dense_after_error
+                wait_dense_after_error(dense_work, sparse_error)
                 raise
             if overlap_dense:
                 # The detached embedding backward does not read dense parameters.

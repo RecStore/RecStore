@@ -957,7 +957,7 @@ class TestRecStoreRunner(unittest.TestCase):
                 calls = []
                 read_path = mock.MagicMock(desired_buffer_size=0, metadata_group_init_ms=0.1,
                                            metadata_lookahead=0, table_types=(),
-                                           owner_merged_grad=False, compute_ahead=False)
+                                           owner_merged_grad=False)
                 optimizer = mock.MagicMock()
 
                 def prepare(step, features, sparse_batch, row):
@@ -976,7 +976,7 @@ class TestRecStoreRunner(unittest.TestCase):
                 with mock.patch.object(RecStoreRunner, "_build_read_path",
                                        return_value=(None, read_path, optimizer, False)), \
                      mock.patch.object(_FakeRecStoreEmbeddingBagCollection,
-                                       "shared_fused_namespace_identity", return_value={}, create=True), \
+                                       "fused_backend_identity", return_value={}, create=True), \
                      mock.patch.object(_FakeDirectReadRecStoreClient, "ops", object(), create=True):
                     # One-batch iterator wraps every step, exercising epoch reset.
                     self._run_local_worker_with_fake_embedding_module(cfg, captured_rows=captured)

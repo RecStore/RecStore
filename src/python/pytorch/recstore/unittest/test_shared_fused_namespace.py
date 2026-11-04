@@ -52,7 +52,7 @@ def configs(prefix):
 def build(kv, prefix="a", **kwargs):
     return RecStoreEmbeddingBagCollection(
         configs(prefix), kv_client=kv, fusion_k=4, fast_path_mode="off",
-        shared_fused_namespace=True, **kwargs)
+        fused_backend_table=f"{prefix}_t0", **kwargs)
 
 
 def set_initial_values(kv, values):
@@ -77,44 +77,48 @@ class TestSharedFusedNamespace(unittest.TestCase):
         kv = client()
         kv.init_data("prior", (4, 2), torch.float32,
                      init_func=lambda shape, dtype: torch.full(shape, 3., dtype=dtype))
-        set_initial_values(kv, {"a_t0": 7., "a_t1": 11., "b_t0": 13., "b_t1": 17.})
+        set_initial_values(kv, {"a_t0": 7., "b_t0": 13.})
         first, second = build(kv, "a"), build(kv, "b")
-        self.assertTrue(torch.equal(pooled(first, "a"), torch.tensor([[7., 7., 11., 11.]])))
-        self.assertTrue(torch.equal(pooled(second, "b"), torch.tensor([[13., 13., 17., 17.]])))
+        self.assertTrue(torch.equal(pooled(first, "a"), torch.tensor([[7., 7., 0., 0.]])))
+        self.assertTrue(torch.equal(pooled(second, "b"), torch.tensor([[13., 13., 0., 0.]])))
         self.assertTrue(torch.equal(kv.pull("prior", torch.tensor([1])), torch.tensor([[3., 3.]])))
         self.assertEqual([kv.get_embedding_table_namespace(n)[0]
-                          for n in ["prior", "a_t0", "a_t1", "b_t0", "b_t1"]], [0, 1, 1, 2, 2])
+                          for n in ["prior", "a_t0", "b_t0"]], [0, 1, 2])
+        self.assertNotIn("a_t1", kv.data_name_list())
+        self.assertNotIn("b_t1", kv.data_name_list())
         self.assertEqual(kv._next_table_id, 3)
         self.assertEqual(len(kv.ops._store), 20)
-        self.assertEqual(first.shared_fused_namespace_identity()["table_id"], 1)
+        self.assertEqual(first.fused_backend_identity()["table_id"], 1)
 
     def test_metadata_rank_registers_without_writes_and_matches_explicit_master(self):
         ops = NamespaceOps(roles=3)
         owner = client(ops)
-        set_initial_values(owner, {"a_t0": 7., "a_t1": 11.})
+        set_initial_values(owner, {"a_t0": 7.})
         source = build(owner, backend_table_id=5)
         writes = ops.write_calls
         reader = client(ops)
         replica = build(reader, initialize_tables=False, backend_table_id=5)
         self.assertEqual(ops.write_calls, writes)
-        self.assertEqual(len(ops.init_calls), 4)
-        self.assertEqual(source.shared_fused_namespace_identity(), replica.shared_fused_namespace_identity())
-        self.assertEqual(reader.get_embedding_table_namespace("a_t1"), (5, 15))
-        self.assertTrue(torch.equal(pooled(replica, "a"), torch.tensor([[7., 7., 11., 11.]])))
+        self.assertEqual(len(ops.init_calls), 2)
+        self.assertEqual(source.fused_backend_identity(), replica.fused_backend_identity())
+        with self.assertRaises(RuntimeError):
+            reader.get_embedding_table_namespace("a_t1")
+        self.assertTrue(torch.equal(pooled(replica, "a"), torch.tensor([[7., 7., 0., 0.]])))
 
     def test_optimizer_role_tags_are_not_table_ids_and_state_rows_are_separate(self):
         for roles in (1, 2, 3):
             with self.subTest(roles=roles):
                 kv = client(NamespaceOps(roles))
-                set_initial_values(kv, {"a_t0": 7., "a_t1": 11.})
+                set_initial_values(kv, {"a_t0": 7.})
                 module = build(kv, backend_table_id=5)
                 tag = 5 * roles
                 self.assertEqual(kv.get_embedding_table_namespace("a_t0"), (5, tag))
-                self.assertEqual(kv.get_embedding_table_namespace("a_t1"), (5, tag))
+                with self.assertRaises(RuntimeError):
+                    kv.get_embedding_table_namespace("a_t1")
                 for role in range(1, roles):
                     kv.ops._store[((tag + role) << 56) | 17] = torch.full((2,), 100. + role)
                 kv.update("a_t0", torch.tensor([17]), torch.full((1, 2), 3.))
-                self.assertTrue(torch.equal(pooled(module, "a"), torch.tensor([[7., 7., 8., 8.]])))
+                self.assertTrue(torch.equal(pooled(module, "a"), torch.tensor([[7., 7., -3., -3.]])))
                 for role in range(1, roles):
                     self.assertTrue(torch.equal(kv.ops._store[((tag + role) << 56) | 17], torch.full((2,), 100. + role)))
 
@@ -180,33 +184,21 @@ class TestSharedFusedNamespace(unittest.TestCase):
                 kv = client()
                 with self.assertRaises(ValueError):
                     RecStoreEmbeddingBagCollection(configs("a"), kv_client=kv,
-                        shared_fused_namespace=True, **({"fusion_k": 4} | override))
+                        fused_backend_table="a_t0", **({"fusion_k": 4} | override))
                 self.assertFalse(kv.ops.tables)
         invalid = configs("a")
         invalid[1]["embedding_dim"] = 3
         with self.assertRaises(ValueError):
-            RecStoreEmbeddingBagCollection(invalid, kv_client=client(), shared_fused_namespace=True)
-
-    def test_checkpoint_layout_is_rejected_in_both_creation_orders(self):
-        metadata = {"identity": {}, "checkpoint_id": "legacy"}
-        kv = client()
-        module = build(kv)
-        self.assertEqual(module.shared_fused_namespace_identity()["layout"], "shared_fused_namespace_v1")
-        for method in (kv.save_checkpoint, kv.load_checkpoint):
-            with self.assertRaisesRegex(RuntimeError, "unsupported.*shared_fused_namespace_v1"):
-                method("unused", metadata)
-        loaded = client()
-        loaded.load_checkpoint("unused", metadata)
-        with self.assertRaisesRegex(RuntimeError, "legacy checkpoint"):
-            build(loaded)
-        self.assertFalse(loaded.ops.tables)
+            RecStoreEmbeddingBagCollection(
+                invalid, kv_client=client(), fused_backend_table="a_t0")
 
     def test_legacy_default_still_allocates_separate_table_namespaces(self):
         kv = client()
-        RecStoreEmbeddingBagCollection(configs("a"), kv_client=kv, fusion_k=4)
+        module = RecStoreEmbeddingBagCollection(
+            configs("a"), kv_client=kv, fusion_k=4)
         self.assertEqual(kv.get_embedding_table_namespace("a_t0"), (0, 0))
         self.assertEqual(kv.get_embedding_table_namespace("a_t1"), (1, 1))
-        self.assertFalse(getattr(kv, "_shared_fused_namespace", False))
+        self.assertIsNone(module._fused_backend_table)
 
 
 if __name__ == "__main__":

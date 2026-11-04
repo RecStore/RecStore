@@ -7,6 +7,16 @@ import torch
 import torch.distributed as dist
 
 
+def wait_dense_after_error(work, error):
+    if work is None:
+        return
+    try:
+        work.wait()
+    except BaseException as join_error:
+        if hasattr(error, "add_note"):
+            error.add_note("Dense reduction join also failed: " + repr(join_error))
+
+
 class DenseGradientBuffer:
     """Fixed gradient storage for an unwrapped module with explicit mean reduction.
 
@@ -190,3 +200,19 @@ class CapturedDlrmDense:
                 expected.copy_(actual)
         graph.replay()
         return loss.detach(), sparse_grad
+
+
+def capture_dlrm_dense(module, criterion, dataloader, batch_size, *,
+                       num_features, embedding_dim):
+    """Capture the full batch and, when present, the final tail batch."""
+    local_samples = len(dataloader.batch_sampler.sampler)
+    batch_sizes = {min(batch_size, local_samples)}
+    tail = local_samples % batch_size
+    if tail and not dataloader.drop_last:
+        batch_sizes.add(tail)
+    gradient_buffer = DenseGradientBuffer(module)
+    graph = CapturedDlrmDense(
+        module, criterion, gradient_buffer, batch_sizes=sorted(batch_sizes),
+        num_features=num_features, embedding_dim=embedding_dim,
+    )
+    return graph, gradient_buffer

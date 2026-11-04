@@ -1008,8 +1008,6 @@ class RecStoreClient:
 
     def save_checkpoint(self, path: str, metadata: Any) -> None:
         """Save all RecStore shards after applying queued sparse updates."""
-        if getattr(self, "_shared_fused_namespace", False):
-            raise RuntimeError("Checkpoints are unsupported for shared_fused_namespace_v1; no layout migration is available")
         checkpoint_path = os.fspath(path)
         if not checkpoint_path:
             raise ValueError("checkpoint path must be non-empty")
@@ -1025,8 +1023,6 @@ class RecStoreClient:
 
     def load_checkpoint(self, path: str, metadata: Any) -> None:
         """Load all RecStore shards into a fresh, unmodified parameter server."""
-        if getattr(self, "_shared_fused_namespace", False):
-            raise RuntimeError("Checkpoints are unsupported for shared_fused_namespace_v1; no layout migration is available")
         checkpoint_path = os.fspath(path)
         if not checkpoint_path:
             raise ValueError("checkpoint path must be non-empty")

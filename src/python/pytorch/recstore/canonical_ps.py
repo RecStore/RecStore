@@ -47,37 +47,17 @@ def make_ticket(feature_major_ids, table_offsets, table_types):
                        types[feature_index], b, f)
 
 
-def make_ticket_with_inverse(feature_major_ids, table_offsets, table_types, native=False):
-    """Return the local ticket and feature-major inverse; native is opt-in."""
-    if not native:
-        ticket = make_ticket(feature_major_ids, table_offsets, table_types)
-        size = ticket.batch_size * ticket.features
-        inverse = np.empty(size, dtype=np.int64)
-        if size:
-            feature_major = ((ticket.positions % ticket.features) * ticket.batch_size
-                             + ticket.positions // ticket.features)
-            inverse[feature_major] = np.repeat(
-                np.arange(len(ticket.keys), dtype=np.int64), ticket.counts)
-        return ticket, inverse
-    import torch
-    raw = np.asarray(feature_major_ids)
-    offsets = np.asarray(table_offsets, dtype=np.int64)
-    types = np.asarray(table_types, dtype=np.int64)
-    if raw.dtype != np.int64 or raw.ndim != 2:
-        raise ValueError('Expected CPU int64 feature-major IDs [F,B]')
-    f, b = raw.shape
-    if not (1 <= f <= 26 and 0 <= b <= 1024) or offsets.shape != (f,) or types.shape != (f,):
-        raise ValueError('Invalid fixed-workload shape/layout')
-    op = getattr(torch.ops.recstore_ops, 'canonical_sparse_ticket', None)
-    if not callable(op):
-        raise RuntimeError('The native ticket path requires the canonical_sparse_ticket native op')
-    # NumPy may mark empty/singleton arrays contiguous despite negative strides.
-    arrays = (x.copy(order='C') if any(stride < 0 for stride in x.strides)
-              else np.ascontiguousarray(x) for x in (raw, offsets, types))
-    keys, counts, positions, starts, key_types, inverse = op(
-        *(torch.from_numpy(x) for x in arrays))
-    return LocalTicket(keys.numpy(), counts.numpy(), positions.numpy(), starts.numpy(),
-                       key_types.numpy(), b, f), inverse.numpy()
+def make_ticket_with_inverse(feature_major_ids, table_offsets, table_types):
+    """Return the local ticket and feature-major inverse."""
+    ticket = make_ticket(feature_major_ids, table_offsets, table_types)
+    size = ticket.batch_size * ticket.features
+    inverse = np.empty(size, dtype=np.int64)
+    if size:
+        feature_major = ((ticket.positions % ticket.features) * ticket.batch_size
+                         + ticket.positions // ticket.features)
+        inverse[feature_major] = np.repeat(
+            np.arange(len(ticket.keys), dtype=np.int64), ticket.counts)
+    return ticket, inverse
 
 
 @dataclass

@@ -30,10 +30,6 @@ inline SparseGradientCommitHeader MakeSparseGradientCommitHeader(
   h.learning_rate = lr;
   h.divisor       = divisor;
   h.kind          = kind;
-  const char* sorted_stream =
-      std::getenv("RECSTORE_SPARSE_COMMIT_SORTED_STREAM");
-  if (world == 2 && sorted_stream && std::strcmp(sorted_stream, "1") == 0)
-    h.version = 2;
   DecodeSparseGradientCommit(PackSparseGradientCommit(h));
   return h;
 }

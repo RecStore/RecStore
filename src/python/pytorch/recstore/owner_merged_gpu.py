@@ -1,8 +1,6 @@
-"""Merged-gradient world2 owner arithmetic; one batch of GPU staging.
+"""Merged-gradient world2 owner arithmetic kernel.
 
-The exchange, validation, staging and cleanup contracts are inherited from
-GPUOwnerExchange/ForwardGPUOwnerExchange unchanged. Only the arithmetic hooks
-are replaced: per row g = ((rank0 row?) + (rank1 row?)) * 0.5 in fixed order
+Per row g = ((rank0 row?) + (rank1 row?)) * 0.5 in fixed order
 (the v1/v2 TW/DP world mean; v1 received pre-divided inputs, the v4 wire
 carries raw pooled rows so the kernel halves the sum), then
 updated = fmaf(-lr, g, old) on the v2 kernel (recstore_owner_math_v2, its own
@@ -11,9 +9,6 @@ JIT cache name, same strict FP flags as v1).
 from pathlib import Path
 
 import torch
-
-from .owner_gpu import GPUOwnerExchange
-from .owner_forward_gpu import ForwardGPUOwnerExchange
 
 _EXTENSION = None
 _WARMED_DEVICES = set()
@@ -38,7 +33,7 @@ def initialize_owner_merged_math(device):
     if _EXTENSION is None:
         _EXTENSION = load_inline(
             name='recstore_owner_math_v2',
-            cpp_sources='std::vector<torch::Tensor> owner_merged_math(torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, double, bool);',
+            cpp_sources='std::vector<torch::Tensor> owner_merged_math(torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, double);',
             cuda_sources=Path(__file__).with_name('owner_merged_math.cu').read_text(),
             functions=['owner_merged_math'], extra_cflags=['-O3', '-fno-fast-math', '-ffp-contract=off'],
             extra_cuda_cflags=['-O3', '--ftz=false', '--fmad=false', '--prec-div=true', '--prec-sqrt=true'],
@@ -47,21 +42,6 @@ def initialize_owner_merged_math(device):
         with torch.cuda.device(device):
             meta = torch.tensor([[0, 1, 0, 0, 0, 1, 0, 0]], dtype=torch.int64, device=device)
             values = torch.zeros((1, 128), dtype=torch.float32, device=device)
-            _EXTENSION.owner_merged_math(meta, values, values[:0], values, .01, False)
+            _EXTENSION.owner_merged_math(meta, values, values[:0], values, .01)
             torch.cuda.synchronize(device)
         _WARMED_DEVICES.add(device.index)
-
-
-class MergedGPUOwnerExchange(GPUOwnerExchange):
-    """Same plan/exchange contract; merged-row kernel arithmetic."""
-
-    def _check_math_ready(self):
-        if _EXTENSION is None or self.device.index not in _WARMED_DEVICES:
-            raise RuntimeError('Call initialize_owner_merged_math before training')
-
-    def _owner_math(self, meta, v0, v1, weights, learning_rate):
-        return _EXTENSION.owner_merged_math(meta, v0, v1, weights, float(learning_rate), False)
-
-
-class ForwardMergedGPUOwnerExchange(ForwardGPUOwnerExchange, MergedGPUOwnerExchange):
-    """Unified forward staging with merged-row backward arithmetic."""

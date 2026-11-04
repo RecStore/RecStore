@@ -1,7 +1,6 @@
 """One-step PS pipeline with committed reads and no parameter cache."""
 from __future__ import annotations
 
-import hashlib
 import os
 import secrets
 from typing import NamedTuple
@@ -36,8 +35,7 @@ class PSPipeline:
 
     def __init__(self, embedding_module, kv_client, *, table_offsets,
                  master_table_name, embedding_dim, device, lr=0.01,
-                 validation_state=False, dependency_split=False, total_steps=None,
-                 owner_table_types=None):
+                 validation_state=False, dependency_split=False, total_steps=None):
         self.embedding_module = embedding_module
         self.kv_client = kv_client
         self.master_table_name = master_table_name
@@ -53,23 +51,8 @@ class PSPipeline:
         if self._device_merge and not (self.dependency_split and self.device.type == "cuda"):
             raise ValueError("Device row merge requires dependency-split CUDA PS")
         self._total_steps = total_steps
-        self.owner_updates = owner_table_types is not None
-        self._owner_table_types = tuple(owner_table_types or ())
-        self._owner_metadata = {}
         self._current_metrics = None
         self._gradient_bytes = 0
-        if self.owner_updates:
-            if not self.owner_merged_grad:
-                raise ValueError("The count-exchange ticket mode requires the merged GPU owner pipeline")
-            if (self._world != 2 or self.embedding_dim != 128 or self.device.type != "cuda"
-                    or len(self._owner_table_types) != len(self._keys)
-                    or any(kind not in (0, 1) for kind in self._owner_table_types)
-                    or not isinstance(total_steps, int) or isinstance(total_steps, bool)
-                    or total_steps < 1):
-                raise ValueError("Owner PS requires world2, CUDA D128 and an explicit table layout")
-            layout = (self._offsets.numpy().tobytes() + bytes(self._owner_table_types)
-                      + "\0".join(self._keys).encode("utf-8"))
-            self._layout_digest = int.from_bytes(hashlib.sha256(layout).digest()[:8], "little") & (2**63 - 1)
         if self.dependency_split and (self._world != 2 or not isinstance(total_steps, int)
                                       or isinstance(total_steps, bool) or total_steps < 1):
             raise ValueError("Dependency-split pull requires world=2 and positive total_steps")
@@ -100,7 +83,7 @@ class PSPipeline:
         self._closed = False
         self._updated_ids = set() if validation_state else None
         try:
-            if self.dependency_split or self.owner_updates:
+            if self.dependency_split:
                 start = time.perf_counter()
                 self._metadata_group = dist.new_group(backend="gloo", timeout=timedelta(seconds=60))
                 self.metadata_group_init_ms = (time.perf_counter() - start) * 1e3
@@ -169,50 +152,6 @@ class PSPipeline:
             "ps_pipeline_local_dirty_rows": ids.numel(),
             "ps_pipeline_global_dirty_rows": dirty.numel(),
         }
-
-    def _exchange_key_counts(self, step, ticket):
-        start = time.perf_counter()
-        header = torch.tensor([step, len(ticket.keys), self._total_steps, self._layout_digest,
-                               ticket.batch_size, ticket.features], dtype=torch.int64)
-        headers = [torch.empty_like(header) for _ in range(self._world)]
-        dist.all_gather(headers, header, group=self._metadata_group)
-        for peer in headers:
-            if (int(peer[0]) != step or int(peer[2]) != self._total_steps
-                    or int(peer[3]) != self._layout_digest or int(peer[5]) != ticket.features
-                    or not 0 <= int(peer[4]) <= 1024
-                    or not 0 <= int(peer[1]) <= int(peer[4]) * ticket.features):
-                raise RuntimeError("Owner metadata layout/step/count mismatch")
-        sizes = [int(peer[1]) for peer in headers]
-        width = max(sizes)
-        payload = torch.zeros((width, 2), dtype=torch.int64)
-        payload[:len(ticket.keys), 0] = torch.from_numpy(ticket.keys)
-        payload[:len(ticket.keys), 1] = torch.from_numpy(ticket.counts)
-        peers = [torch.empty_like(payload) for _ in range(self._world)]
-        if width:
-            dist.all_gather(peers, payload, group=self._metadata_group)
-        for rank, peer in enumerate(peers):
-            counts = peer[:sizes[rank], 1]
-            if (bool((counts < 1).any()) or bool((counts > int(headers[rank][4])).any())
-                    or int(counts.sum()) != int(headers[rank][4]) * ticket.features):
-                raise RuntimeError("Owner metadata occurrence counts disagree with batch shape")
-        exchanged = time.perf_counter()
-        from .canonical_ps import OwnerExchangePlan
-        plan = OwnerExchangePlan(len(ticket.keys))
-        self._build_owner_plan(plan, peers, sizes)
-        dirty = torch.from_numpy(np.unique(np.concatenate(
-            [peer[:count, 0].numpy() for peer, count in zip(peers, sizes)])))
-        peer_bytes = (header.numel() + 2 * width) * 8
-        return dirty, {
-            "ps_pipeline_metadata_step": step,
-            "ps_pipeline_metadata_ms": (exchanged - start) * 1e3,
-            "ps_pipeline_metadata_sent_bytes": peer_bytes,
-            "ps_pipeline_metadata_received_bytes": peer_bytes,
-            "ps_pipeline_local_dirty_rows": len(ticket.keys),
-            "ps_pipeline_global_dirty_rows": dirty.numel(),
-        }, plan, (time.perf_counter() - exchanged) * 1e3
-
-    def _build_owner_plan(self, plan, peers, sizes):
-        raise NotImplementedError("Owner routing requires the GPU owner pipeline")
 
     @staticmethod
     def _partition_clean_rows(ids, dirty_ids):
@@ -284,14 +223,12 @@ class PSPipeline:
                 step == self._submitted + 1 and self._current_step == self._submitted):
             raise RuntimeError("PS pipeline prepares at most the next batch")
 
-    def _build_cpu_ticket(self, step, sparse_features, sparse_batch):
-        """Pure ticket construction; no read, collective, or preparation counters."""
+    def _raw_sparse_ids(self, sparse_features, sparse_batch):
         if sparse_features is not None:
             if list(sparse_features.keys()) != self._keys:
                 raise ValueError("PS pipeline feature order differs from the table layout")
         elif sparse_batch is None:
             raise ValueError("PS pipeline needs a sparse tensor or keyed features")
-        start = time.perf_counter()
         if sparse_batch is not None:
             if sparse_batch.ndim != 2 or sparse_batch.shape[1] != len(self._keys):
                 raise ValueError("PS pipeline requires one ID per feature per sample")
@@ -302,29 +239,20 @@ class PSPipeline:
             if raw.numel() % len(self._keys) or lengths.numel() != raw.numel() or not bool((lengths == 1).all()):
                 raise ValueError("PS pipeline requires one ID per feature per sample")
             raw = raw.reshape(len(self._keys), -1)
-        local_ticket = None
-        if self.owner_updates:
-            if step >= self._total_steps:
-                raise RuntimeError("Owner PS prepared beyond the declared step count")
-            from .canonical_ps import make_ticket_with_inverse
-            local_ticket, inverse_numpy = make_ticket_with_inverse(
-                raw.numpy(), self._offsets.numpy(), self._owner_table_types)
-            ids = torch.from_numpy(local_ticket.keys)
-            inverse = torch.from_numpy(inverse_numpy)
-        else:
-            raw = (raw + self._offsets[:, None]).reshape(-1)
-            ids, inverse = torch.unique(raw, return_inverse=True)
-        ticket = ids, inverse, raw.numel()
-        return ticket, local_ticket, (time.perf_counter() - start) * 1e3
+        return raw
 
-    def _adopt_cpu_ticket(self, step, ticket, future, row, build_ms):
+    def _build_cpu_ticket(self, step, sparse_features, sparse_batch):
+        """Pure ticket construction; no read, collective, or preparation counters."""
+        del step
+        start = time.perf_counter()
+        raw = (self._raw_sparse_ids(sparse_features, sparse_batch)
+               + self._offsets[:, None]).reshape(-1)
+        ids, inverse = torch.unique(raw, return_inverse=True)
+        ticket = ids, inverse, raw.numel()
+        return ticket, (time.perf_counter() - start) * 1e3
+
+    def _adopt_cpu_ticket(self, step, ticket, row, build_ms):
         self._check_prepared_step(step)
-        if self.owner_updates:
-            if future is None:
-                raise RuntimeError("Owner ticket lacks its metadata Future")
-            self._owner_metadata[step] = future
-            if self.dependency_split and step + 1 < self._total_steps:
-                self._metadata[step] = future
         self._queue_prepared_read(step, ticket[0])
         self._prepared += 1
         row["lookup_ids_build_ms"] = build_ms
@@ -333,18 +261,14 @@ class PSPipeline:
     def on_batch_prepared(self, step, sparse_features, sparse_batch, row):
         self._check_prepared_step(step)
         start = time.perf_counter()
-        ticket, local_ticket, build_ms = self._build_cpu_ticket(step, sparse_features, sparse_batch)
-        future = None
-        if self.owner_updates:
-            # Counts remain required for the final step, without another value read.
-            future = self._metadata_worker.submit(self._exchange_key_counts, step, local_ticket)
-        result = self._adopt_cpu_ticket(step, ticket, future, row, build_ms)
+        ticket, build_ms = self._build_cpu_ticket(step, sparse_features, sparse_batch)
+        result = self._adopt_cpu_ticket(step, ticket, row, build_ms)
         row["lookup_ids_build_ms"] = (time.perf_counter() - start) * 1e3
         return result
 
     def _queue_prepared_read(self, step, ids):
         if self.dependency_split:
-            if not self.owner_updates and step + 1 < self._total_steps:
+            if step + 1 < self._total_steps:
                 self._metadata[step] = self._metadata_worker.submit(self._exchange_dirty_ids, step, ids)
             if step == 0:
                 self._read = self._worker.submit(self._pull, ids, None)
@@ -452,9 +376,7 @@ class PSPipeline:
         expected = self._current_ticket[0]
         if ids is not expected and (ids.device.type != "cpu" or not torch.equal(ids, expected)):
             raise ValueError("PS pipeline gradients do not match the prepared IDs")
-        if (grads.ndim != 2 or grads.shape[1] != self.embedding_dim
-                or grads.dtype != torch.float32
-                or (not self.owner_updates and grads.shape[0] != ids.numel())):
+        if not self._valid_gradient_shape(ids, grads):
             raise ValueError("PS pipeline gradients must be FP32 with the prepared shape")
         self._require_next_read()
         # Reap completed waits without blocking compute-ahead on its predecessor.
@@ -475,7 +397,14 @@ class PSPipeline:
         if self._updated_ids is not None:
             self._updated_ids.update(expected.tolist())
         self._current_rows = None
-        self._owner_metadata.pop(self._current_step, None)
+        self._release_step(self._current_step)
+
+    def _valid_gradient_shape(self, ids, grads):
+        return (grads.ndim == 2 and grads.shape == (ids.numel(), self.embedding_dim)
+                and grads.dtype == torch.float32)
+
+    def _release_step(self, step):
+        del step
 
     def _track_commit(self, handle):
         # Native acceptance precedes Python scheduling, which can still fail.
@@ -527,10 +456,6 @@ class PSPipeline:
     @property
     def prepared_steps(self):
         return self._prepared
-
-    @property
-    def table_types(self):
-        return self._owner_table_types
 
     def finish_training(self):
         """Include the final commit in the measured training interval."""
@@ -597,7 +522,6 @@ class PSPipeline:
                         error = exc
                 self._metadata_group = None
             self._metadata.clear()
-            self._owner_metadata.clear()
             self._current_metrics = None
             self._split_clean = self._consumed_read = None
             self._closed = True

@@ -1,60 +1,9 @@
 #include "framework/pytorch/op_sparse_gradient_commit.h"
 #include "framework/pytorch/op_internal.h"
-#include "framework/common/canonical_sparse_ticket.h"
 #include "framework/common/owner_merged_plan.h"
 
 namespace recstore::framework {
 namespace {
-std::tuple<torch::Tensor,
-           torch::Tensor,
-           torch::Tensor,
-           torch::Tensor,
-           torch::Tensor,
-           torch::Tensor>
-canonical_sparse_ticket(const torch::Tensor& ids,
-                        const torch::Tensor& offsets,
-                        const torch::Tensor& types) {
-  for (const auto* tensor : {&ids, &offsets, &types}) {
-    TORCH_CHECK(
-        tensor->device().is_cpu() && tensor->scalar_type() == torch::kInt64 &&
-            tensor->is_contiguous(),
-        "Canonical ticket inputs require contiguous CPU int64 tensors");
-  }
-  TORCH_CHECK(ids.dim() == 2 && offsets.dim() == 1 && types.dim() == 1,
-              "Canonical ticket expects IDs[F,B], offsets[F], types[F]");
-  const int64_t features = ids.size(0), batch = ids.size(1);
-  TORCH_CHECK(features >= 1 && features <= 26 && batch >= 0 && batch <= 1024 &&
-                  offsets.numel() == features && types.numel() == features,
-              "Invalid canonical ticket fixed-workload dimensions");
-  const auto options =
-      torch::TensorOptions().device(torch::kCPU).dtype(torch::kInt64);
-  const int64_t size = features * batch;
-  auto keys          = torch::empty({size}, options),
-       counts        = torch::empty({size}, options);
-  auto positions     = torch::empty({size}, options),
-       starts        = torch::empty({size}, options);
-  auto key_types     = torch::empty({size}, options),
-       inverse       = torch::empty({size}, options);
-  const auto unique  = BuildCanonicalSparseTicket(
-      ids.data_ptr<int64_t>(),
-      offsets.data_ptr<int64_t>(),
-      types.data_ptr<int64_t>(),
-      features,
-      batch,
-      keys.data_ptr<int64_t>(),
-      counts.data_ptr<int64_t>(),
-      positions.data_ptr<int64_t>(),
-      starts.data_ptr<int64_t>(),
-      key_types.data_ptr<int64_t>(),
-      inverse.data_ptr<int64_t>());
-  return {keys.narrow(0, 0, unique).clone(),
-          counts.narrow(0, 0, unique).clone(),
-          positions,
-          starts.narrow(0, 0, unique).clone(),
-          key_types.narrow(0, 0, unique).clone(),
-          inverse};
-}
-
 std::vector<torch::Tensor> owner_merged_plan_tensors(
     const torch::Tensor& keys0,
     const torch::Tensor& counts0,
@@ -63,8 +12,7 @@ std::vector<torch::Tensor> owner_merged_plan_tensors(
     const torch::Tensor& boundaries,
     const torch::Tensor& types,
     int64_t tag,
-    int64_t rank,
-    bool forward) {
+    int64_t rank) {
   for (const auto* tensor :
        {&keys0, &counts0, &keys1, &counts1, &boundaries, &types}) {
     TORCH_CHECK(
@@ -87,8 +35,7 @@ std::vector<torch::Tensor> owner_merged_plan_tensors(
       boundaries.data_ptr<int64_t>(),
       types.data_ptr<int64_t>(),
       tag,
-      rank,
-      forward);
+      rank);
   const auto options =
       torch::TensorOptions().device(torch::kCPU).dtype(torch::kInt64);
   auto copy = [&](const int64_t* data, size_t n) {
@@ -103,34 +50,13 @@ std::vector<torch::Tensor> owner_merged_plan_tensors(
       copy(plan.meta.data(), plan.meta.size()).reshape({-1, 8}),
       copy(plan.send.data(), 2),
       copy(plan.recv.data(), 2)};
-  if (forward) {
-    outputs.push_back(
-        copy(plan.forward_send_index.data(), plan.forward_send_index.size()));
-    outputs.push_back(copy(plan.forward_send.data(), 2));
-    outputs.push_back(copy(plan.forward_recv.data(), 2));
-    outputs.push_back(
-        copy(plan.forward_reorder.data(), plan.forward_reorder.size()));
-  }
+  outputs.push_back(
+      copy(plan.forward_send_index.data(), plan.forward_send_index.size()));
+  outputs.push_back(copy(plan.forward_send.data(), 2));
+  outputs.push_back(copy(plan.forward_recv.data(), 2));
+  outputs.push_back(
+      copy(plan.forward_reorder.data(), plan.forward_reorder.size()));
   return outputs;
-}
-
-std::tuple<torch::Tensor,
-           torch::Tensor,
-           torch::Tensor,
-           torch::Tensor,
-           torch::Tensor>
-owner_merged_plan(
-    const torch::Tensor& keys0,
-    const torch::Tensor& counts0,
-    const torch::Tensor& keys1,
-    const torch::Tensor& counts1,
-    const torch::Tensor& boundaries,
-    const torch::Tensor& types,
-    int64_t tag,
-    int64_t rank) {
-  auto outputs = owner_merged_plan_tensors(
-      keys0, counts0, keys1, counts1, boundaries, types, tag, rank, false);
-  return {outputs[0], outputs[1], outputs[2], outputs[3], outputs[4]};
 }
 
 std::vector<torch::Tensor> owner_merged_forward_plan(
@@ -143,7 +69,7 @@ std::vector<torch::Tensor> owner_merged_forward_plan(
     int64_t tag,
     int64_t rank) {
   return owner_merged_plan_tensors(
-      keys0, counts0, keys1, counts1, boundaries, types, tag, rank, true);
+      keys0, counts0, keys1, counts1, boundaries, types, tag, rank);
 }
 
 int64_t sparse_gradient_commit_async(
@@ -256,8 +182,6 @@ void sparse_gradient_commit_close(
 }
 } // namespace
 void RegisterSparseGradientCommitOps(torch::Library& m) {
-  m.def("canonical_sparse_ticket", canonical_sparse_ticket);
-  m.def("owner_merged_plan", owner_merged_plan);
   m.def("owner_merged_forward_plan", owner_merged_forward_plan);
   m.def("sparse_gradient_commit_async", sparse_gradient_commit_async);
   m.def("sparse_owner_replace_async", sparse_owner_replace_async);

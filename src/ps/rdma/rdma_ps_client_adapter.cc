@@ -231,10 +231,7 @@ void InitializeRdmaProcessRuntime() {
 }
 
 RDMAPSClientAdapter::RDMAPSClientAdapter(json config)
-    : BasePSClient(config), config_(std::move(config)), split_lanes_([] {
-        const char* value = std::getenv("RECSTORE_RDMA_SPLIT_LANES");
-        return value != nullptr && std::strcmp(value, "1") == 0;
-      }()) {}
+    : BasePSClient(config), config_(std::move(config)) {}
 
 void RDMAPSClientAdapter::EnsureClientInitialized() {
   std::lock_guard<std::mutex> guard(init_mu_);
@@ -289,10 +286,6 @@ void RDMAPSClientAdapter::EnsureClientInitialized() {
   const int logical_client_id =
       config_.value("rdma_logical_client_id", FLAGS_rdma_rc_client_id_base);
 
-  if (split_lanes_ && FLAGS_rdma_rc_qps_per_client_per_shard < 2) {
-    throw std::invalid_argument(
-        "RECSTORE_RDMA_SPLIT_LANES requires at least two QPs");
-  }
   shard_clients_.clear();
   client_ = nullptr;
 
@@ -310,17 +303,6 @@ void RDMAPSClientAdapter::EnsureClientInitialized() {
     }
   }
 
-  if (split_lanes_) {
-    for (auto& shard_client : shard_clients_) {
-      shard_client->EnableSplitLanes();
-    }
-    LOG(WARNING) << "component=rdma_adapter event=split_lanes_enabled"
-                 << " get_qps=" << FLAGS_rdma_rc_qps_per_client_per_shard - 1
-                 << " commit_qps=1 contract=fully_initialized_ps_pipeline"
-                 << " all_ranks_same_pipeline=required missing_rows=forbidden"
-                 << " external_writers_or_checkpoints=forbidden"
-                 << " dirty_reads_require_global_commit=true";
-  }
   executor_ = std::make_unique<RdmaDistributedExecutor>(
       [&]() {
         std::vector<petps::PetPSClient*> clients;
@@ -435,15 +417,7 @@ std::size_t RDMAPSClientAdapter::MaxInFlightGetRpcs() const {
       std::max(FLAGS_rdma_rc_qps_per_client_per_shard, 1));
   const std::size_t slots =
       static_cast<std::size_t>(std::max(FLAGS_rdma_rc_slots_per_qp, 1));
-  return std::max<std::size_t>((qps - (split_lanes_ ? 1 : 0)) * slots, 1);
-}
-
-std::size_t RDMAPSClientAdapter::MaxInFlightCommitRpcs() const {
-  // Conservative global window: no shard can exceed its reserved QP slots,
-  // including uneven sharding and empty-rank markers.
-  return split_lanes_
-           ? static_cast<std::size_t>(std::max(FLAGS_rdma_rc_slots_per_qp, 1))
-           : MaxInFlightGetRpcs();
+  return std::max<std::size_t>(qps * slots, 1);
 }
 
 bool RDMAPSClientAdapter::QueryRPCFinished(int rpc_id) {
@@ -526,7 +500,7 @@ int RDMAPSClientAdapter::PutParameter(const base::ConstArray<uint64_t>& keys,
     return 0;
   }
   EnsureThreadInitialized();
-  std::scoped_lock lifecycle_guard(io_mu_, commit_mu_);
+  std::lock_guard<std::mutex> io_guard(io_mu_);
   executor_->DrainBatchSlots();
   return executor_->PutParameter(
       BuildChunks(keys, MaxPutKeysPerRpc(values.shape(1))), values);
@@ -540,10 +514,8 @@ int64_t RDMAPSClientAdapter::SparseGradientCommit(
   EnsureClientInitialized();
   EnsureThreadInitialized();
   EnsureTableReady(table, h.dim);
-  std::lock_guard<std::mutex> io_guard(split_lanes_ ? commit_mu_ : io_mu_);
-  if (!split_lanes_) {
-    executor_->DrainBatchSlots();
-  }
+  std::lock_guard<std::mutex> io_guard(io_mu_);
+  executor_->DrainBatchSlots();
   if (h.kind == 0 && (grads.dim() != 2 || grads.shape(1) != h.dim ||
                       !IsFloatEmbeddingValues(grads, keys.Size()))) {
     throw std::invalid_argument("Invalid RDMA sparse gradients");
@@ -640,7 +612,7 @@ int64_t RDMAPSClientAdapter::SparseGradientCommit(
         pending.emplace_back(
             client,
             shard_clients_[client]->SubmitSparseGradientCommit(table, packet));
-        if (pending.size() >= MaxInFlightCommitRpcs())
+        if (pending.size() >= MaxInFlightGetRpcs())
           drain_one();
       }
     }
@@ -672,10 +644,6 @@ uint64_t RDMAPSClientAdapter::SubmitUpdateParameterAsync(
     const std::string& table_name,
     const base::ConstArray<uint64_t>& keys,
     const base::RecTensor& grads) {
-  if (split_lanes_) {
-    throw std::logic_error(
-        "Legacy async update is unsupported with split RDMA lanes");
-  }
   if (keys.Size() == 0) {
     throw std::invalid_argument("RDMA update requires at least one key");
   }
@@ -703,7 +671,7 @@ int RDMAPSClientAdapter::WaitUpdateParameter(uint64_t update_id) {
 int RDMAPSClientAdapter::InitEmbeddingTable(
     const std::string& table_name, const EmbeddingTableConfig& config) {
   EnsureThreadInitialized();
-  std::scoped_lock lifecycle_guard(io_mu_, commit_mu_);
+  std::lock_guard<std::mutex> io_guard(io_mu_);
   executor_->DrainBatchSlots();
   int tag = -1;
   for (auto& shard_client : shard_clients_) {
@@ -735,7 +703,7 @@ int RDMAPSClientAdapter::InitEmbeddingTable(
 
 void RDMAPSClientAdapter::Command(PSCommand) {
   EnsureThreadInitialized();
-  std::scoped_lock lifecycle_guard(io_mu_, commit_mu_);
+  std::lock_guard<std::mutex> io_guard(io_mu_);
   if (deployment_.num_shards <= 1) {
     if (client_ == nullptr) {
       throw std::runtime_error("RDMA adapter has no initialized client");
@@ -751,10 +719,6 @@ void RDMAPSClientAdapter::Command(PSCommand) {
 
 uint64_t
 RDMAPSClientAdapter::PrefetchParameter(const base::ConstArray<uint64_t>& keys) {
-  if (split_lanes_) {
-    throw std::logic_error(
-        "Legacy prefetch is unsupported with split RDMA lanes");
-  }
   EnsureThreadInitialized();
   std::lock_guard<std::mutex> io_guard(io_mu_);
   if (keys.Size() == 0) {

@@ -1,5 +1,4 @@
 #include "optimizer.h"
-#include "base/sgd_update.h"
 #include "ps/local_shm/local_shm_stage_report.h"
 #include "storage/index/dram/extendible_hash.h"
 #include <algorithm>
@@ -272,13 +271,10 @@ void SGD::UpdateFlat(
     const auto& current   = current_values[static_cast<size_t>(row)];
     if (current.Size() == 0) {
       ++missing_rows;
-      std::vector<float> zero_init(static_cast<size_t>(embedding_dim), 0.0f);
-      recstore::ApplySgdRow(
-          zero_init.data(),
-          row_grad,
-          static_cast<size_t>(embedding_dim),
-          learning_rate_,
-          true);
+      std::vector<float> zero_init(static_cast<size_t>(embedding_dim));
+#pragma omp simd
+      for (int64_t col = 0; col < embedding_dim; ++col)
+        zero_init[static_cast<size_t>(col)] = -learning_rate_ * row_grad[col];
       std::string val_str(reinterpret_cast<char*>(zero_init.data()),
                           zero_init.size() * sizeof(float));
       it->second->Put(keys[static_cast<size_t>(row)], val_str, tid);
@@ -290,8 +286,9 @@ void SGD::UpdateFlat(
     }
 
     float* data = const_cast<float*>(current.Data());
-    recstore::ApplySgdRow(
-        data, row_grad, static_cast<size_t>(embedding_dim), learning_rate_);
+#pragma omp simd
+    for (int64_t col = 0; col < embedding_dim; ++col)
+      data[col] -= learning_rate_ * row_grad[col];
   }
   recstore::ReportLocalShmStageMetric(
       "sgd_update_apply_us", recstore::LocalShmElapsedUs(apply_start));

@@ -84,17 +84,6 @@ PetPSClient::~PetPSClient() = default;
 
 void PetPSClient::Barrier(const std::string&, int) {}
 
-void PetPSClient::EnableSplitLanes() {
-  std::lock_guard<std::mutex> guard(mu_);
-  if (transport_ != nullptr || thread_initialized_) {
-    throw std::logic_error("Configure split RDMA lanes before InitThread");
-  }
-  if (FLAGS_rdma_rc_qps_per_client_per_shard < 2) {
-    throw std::invalid_argument("Split RDMA lanes require at least two QPs");
-  }
-  split_lanes_ = true;
-}
-
 void PetPSClient::InitializeTransport() {
   if (transport_ != nullptr) {
     return;
@@ -119,10 +108,7 @@ void PetPSClient::InitializeTransport() {
   config_.client_id                = client_id_;
   config_.num_clients              = logical_num_clients;
   config_.qps_per_client_per_shard = FLAGS_rdma_rc_qps_per_client_per_shard;
-  if (split_lanes_ && config_.qps_per_client_per_shard < 2) {
-    throw std::invalid_argument("Split RDMA lanes require at least two QPs");
-  }
-  config_.slots_per_qp = FLAGS_rdma_rc_slots_per_qp;
+  config_.slots_per_qp             = FLAGS_rdma_rc_slots_per_qp;
   config_.request_slot_bytes =
       static_cast<std::size_t>(FLAGS_rdma_rc_request_slot_bytes);
   config_.response_slot_bytes =
@@ -296,8 +282,7 @@ const float* PetPSClient::BorrowGetResultPayload(
 bool PetPSClient::HasAvailableSlots(std::size_t required) const {
   std::lock_guard<std::mutex> guard(mu_);
   std::size_t available = 0;
-  for (std::size_t i = split_lanes_ ? 1 : 0; i < qps_.size(); ++i) {
-    const auto& qp = qps_[i];
+  for (const auto& qp : qps_) {
     // Drain old GETs before an acquire can rebuild a lane and invalidate them.
     if (qp.dead.load(std::memory_order_relaxed) ||
         qp.dirty.load(std::memory_order_relaxed)) {
@@ -312,16 +297,14 @@ bool PetPSClient::HasAvailableSlots(std::size_t required) const {
   return available >= required;
 }
 
-PetPSClient::SlotHandle PetPSClient::AcquireIdleSlot(bool sparse_commit) {
+PetPSClient::SlotHandle PetPSClient::AcquireIdleSlot() {
   if (FLAGS_rdma_rc_profile_interval_ms > 0) {
     profile_.acquire_qp_count.fetch_add(1, std::memory_order_relaxed);
   }
-  int usable_lanes        = 0;
-  int dead_lanes          = 0;
-  int degraded_lanes      = 0;
-  const std::size_t begin = split_lanes_ && !sparse_commit ? 1 : 0;
-  const std::size_t end   = split_lanes_ && sparse_commit ? 1 : qps_.size();
-  for (std::size_t qp_index = begin; qp_index < end; ++qp_index) {
+  int usable_lanes   = 0;
+  int dead_lanes     = 0;
+  int degraded_lanes = 0;
+  for (std::size_t qp_index = 0; qp_index < qps_.size(); ++qp_index) {
     auto& qp = qps_[qp_index];
     if (qp.dead.load(std::memory_order_relaxed)) {
       ++dead_lanes;
@@ -1478,7 +1461,7 @@ int PetPSClient::SubmitSparseGradientCommit(const std::string& table,
     if (!RequestPayloadFitsSlot(data.size())) {
       throw std::runtime_error("Sparse gradient commit exceeds RDMA slot");
     }
-    const auto slot_handle = AcquireIdleSlot(/*sparse_commit=*/true);
+    const auto slot_handle = AcquireIdleSlot();
     auto& slot = SlotAt(slot_handle.qp_index, slot_handle.slot_in_qp);
     RequestDescriptor descriptor;
     FillUpdateFlatDescriptor(

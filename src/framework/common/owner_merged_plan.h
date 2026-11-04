@@ -62,8 +62,7 @@ inline OwnerMergedPlan BuildOwnerMergedPlan(
     const int64_t* table_boundaries,
     const int64_t* table_types,
     int64_t registered_tag,
-    int64_t rank,
-    bool include_forward = false) {
+    int64_t rank) {
   constexpr uint64_t kLogicalLimit = uint64_t{1} << 56;
   if (features < 1 || features > 26 || !table_boundaries || !table_types ||
       registered_tag < 0 || registered_tag > 255 || rank < 0 || rank > 1)
@@ -105,15 +104,13 @@ inline OwnerMergedPlan BuildOwnerMergedPlan(
         ::CityHash64(reinterpret_cast<const char*>(&physical),
                      sizeof(physical)) %
         2);
-    if (include_forward) {
-      if (owner == rank) {
-        for (int destination = 0; destination < 2; ++destination)
-          if (present[destination])
-            forward_sends[destination].push_back(result.keys.size());
-      }
-      if (present[rank])
-        forward_local_positions[owner].push_back(local_row++);
+    if (owner == rank) {
+      for (int destination = 0; destination < 2; ++destination)
+        if (present[destination])
+          forward_sends[destination].push_back(result.keys.size());
     }
+    if (present[rank])
+      forward_local_positions[owner].push_back(local_row++);
     if (owner == rank) {
       result.keys.push_back(key);
       const auto& prefix = destination_rows[owner];
@@ -139,22 +136,20 @@ inline OwnerMergedPlan BuildOwnerMergedPlan(
       result.send[0] + result.send[1] != result.rows[rank])
     throw std::logic_error(
         "Merged owner permutation does not cover local rows");
-  if (include_forward) {
-    if (local_row != (rank == 0 ? n0 : n1))
-      throw std::logic_error(
-          "Owner forward plan does not cover local unique keys");
-    result.forward_reorder.resize(static_cast<size_t>(local_row));
-    int64_t received_row = 0;
-    for (int peer = 0; peer < 2; ++peer) {
-      result.forward_send[peer] = forward_sends[peer].size();
-      result.forward_recv[peer] = forward_local_positions[peer].size();
-      result.forward_send_index.insert(
-          result.forward_send_index.end(),
-          forward_sends[peer].begin(),
-          forward_sends[peer].end());
-      for (const auto position : forward_local_positions[peer])
-        result.forward_reorder[position] = received_row++;
-    }
+  if (local_row != (rank == 0 ? n0 : n1))
+    throw std::logic_error(
+        "Owner forward plan does not cover local unique keys");
+  result.forward_reorder.resize(static_cast<size_t>(local_row));
+  int64_t received_row = 0;
+  for (int peer = 0; peer < 2; ++peer) {
+    result.forward_send[peer] = forward_sends[peer].size();
+    result.forward_recv[peer] = forward_local_positions[peer].size();
+    result.forward_send_index.insert(
+        result.forward_send_index.end(),
+        forward_sends[peer].begin(),
+        forward_sends[peer].end());
+    for (const auto position : forward_local_positions[peer])
+      result.forward_reorder[position] = received_row++;
   }
   return result;
 }

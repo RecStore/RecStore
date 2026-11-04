@@ -158,31 +158,6 @@ namespace petps {
 // rebuild of healthy lanes has no production caller; the integration test uses
 // it to drive the bilateral handshake deterministically.
 struct PetPSClientTestAccess {
-  // CPU-only allocation tests: no transport, MR or server is constructed.
-  static void FakeSlots(PetPSClient& client, int qps, int slots, bool split) {
-    client.qps_         = std::vector<PetPSClient::QpContext>(qps);
-    client.split_lanes_ = split;
-    for (int qp = 0; qp < qps; ++qp) {
-      client.qps_[qp].qp_index = qp;
-      client.qps_[qp].slots.resize(slots);
-    }
-  }
-  static std::pair<int, int> Acquire(PetPSClient& client, bool commit) {
-    std::lock_guard<std::mutex> guard(client.mu_);
-    auto slot = client.AcquireIdleSlot(commit);
-    return {slot.qp_index, slot.slot_in_qp};
-  }
-  static void Release(PetPSClient& client, int qp, int slot) {
-    std::lock_guard<std::mutex> guard(client.mu_);
-    client.qps_[qp].slots[slot].busy = false;
-  }
-  static void Retire(PetPSClient& client, int qp) {
-    client.qps_[qp].dirty.store(true);
-    client.qps_[qp].rebuildable.store(false);
-  }
-  static void MarkInitialized(PetPSClient& client) {
-    client.thread_initialized_ = true;
-  }
   static int RebuildAllLanes(PetPSClient& client) {
     std::lock_guard<std::mutex> guard(client.mu_);
     int recovered = 0;
@@ -199,102 +174,6 @@ struct PetPSClientTestAccess {
 };
 
 } // namespace petps
-
-TEST(PetPSSplitLaneCpuTest, ReservesCommitSlotsUnderGetSaturation) {
-  for (int qps : {2, 4}) {
-    for (int slots : {1, 3}) {
-      petps::PetPSClient client("unused", 0, 0, 0);
-      petps::PetPSClientTestAccess::FakeSlots(client, qps, slots, true);
-      EXPECT_TRUE(client.HasAvailableSlots((qps - 1) * slots));
-      EXPECT_FALSE(client.HasAvailableSlots((qps - 1) * slots + 1));
-      for (int i = 0; i < (qps - 1) * slots; ++i) {
-        const auto slot = petps::PetPSClientTestAccess::Acquire(client, false);
-        EXPECT_GE(slot.first, 1);
-        EXPECT_LT(slot.first, qps);
-      }
-      EXPECT_FALSE(client.HasAvailableSlots(1));
-      EXPECT_THROW(petps::PetPSClientTestAccess::Acquire(client, false),
-                   std::runtime_error);
-      for (int i = 0; i < slots; ++i) {
-        EXPECT_EQ(petps::PetPSClientTestAccess::Acquire(client, true).first, 0);
-      }
-      EXPECT_THROW(petps::PetPSClientTestAccess::Acquire(client, true),
-                   std::runtime_error);
-      petps::PetPSClientTestAccess::Release(client, 1, 0);
-      EXPECT_TRUE(client.HasAvailableSlots(1));
-      EXPECT_THROW(petps::PetPSClientTestAccess::Acquire(client, true),
-                   std::runtime_error);
-      EXPECT_EQ(petps::PetPSClientTestAccess::Acquire(client, false),
-                std::make_pair(1, 0));
-      petps::PetPSClientTestAccess::Release(client, 0, 0);
-      EXPECT_EQ(petps::PetPSClientTestAccess::Acquire(client, true),
-                std::make_pair(0, 0));
-    }
-  }
-}
-
-TEST(PetPSSplitLaneCpuTest, FailedLaneCannotStealSiblingSlots) {
-  petps::PetPSClient client("unused", 0, 0, 0);
-  petps::PetPSClientTestAccess::FakeSlots(client, 2, 1, true);
-  petps::PetPSClientTestAccess::Retire(client, 0);
-  EXPECT_TRUE(client.HasAvailableSlots(1));
-  EXPECT_THROW(petps::PetPSClientTestAccess::Acquire(client, true),
-               std::runtime_error);
-  EXPECT_EQ(petps::PetPSClientTestAccess::Acquire(client, false).first, 1);
-  petps::PetPSClientTestAccess::FakeSlots(client, 2, 1, true);
-  petps::PetPSClientTestAccess::Retire(client, 1);
-  EXPECT_FALSE(client.HasAvailableSlots(1));
-  EXPECT_THROW(petps::PetPSClientTestAccess::Acquire(client, false),
-               std::runtime_error);
-  EXPECT_EQ(petps::PetPSClientTestAccess::Acquire(client, true).first, 0);
-}
-
-TEST(PetPSSplitLaneCpuTest, DefaultModeSharesAllSlots) {
-  petps::PetPSClient client("unused", 0, 0, 0);
-  petps::PetPSClientTestAccess::FakeSlots(client, 2, 2, false);
-  EXPECT_TRUE(client.HasAvailableSlots(4));
-  EXPECT_EQ(petps::PetPSClientTestAccess::Acquire(client, false).first, 0);
-  EXPECT_EQ(petps::PetPSClientTestAccess::Acquire(client, true).first, 0);
-  EXPECT_EQ(petps::PetPSClientTestAccess::Acquire(client, true).first, 1);
-  EXPECT_EQ(petps::PetPSClientTestAccess::Acquire(client, false).first, 1);
-  EXPECT_FALSE(client.HasAvailableSlots(1));
-}
-
-TEST(PetPSSplitLaneCpuTest, RejectsOneQpAndLateConfiguration) {
-  const int original = FLAGS_rdma_rc_qps_per_client_per_shard;
-  petps::PetPSClient client("unused", 0, 0, 0);
-  FLAGS_rdma_rc_qps_per_client_per_shard = 1;
-  EXPECT_THROW(client.EnableSplitLanes(), std::invalid_argument);
-  FLAGS_rdma_rc_qps_per_client_per_shard = 2;
-  EXPECT_NO_THROW(client.EnableSplitLanes());
-  petps::PetPSClientTestAccess::MarkInitialized(client);
-  EXPECT_THROW(client.EnableSplitLanes(), std::logic_error);
-  FLAGS_rdma_rc_qps_per_client_per_shard = original;
-}
-
-TEST(PetPSSplitLaneCpuTest,
-     AdapterRejectsUnsupportedAsyncApisWithoutTransport) {
-  const char* old         = std::getenv("RECSTORE_RDMA_SPLIT_LANES");
-  const bool had_old      = old != nullptr;
-  const std::string saved = had_old ? old : "";
-  ::setenv("RECSTORE_RDMA_SPLIT_LANES", "1", 1);
-  {
-    recstore::RDMAPSClientAdapter adapter(json::object());
-    std::vector<std::uint64_t> ids{1};
-    const base::ConstArray<std::uint64_t> keys(ids);
-    base::RecTensor grads({1, 1}, base::DataType::FLOAT32);
-    recstore::RdmaRawAccess raw(&adapter);
-    EXPECT_THROW(adapter.PrefetchParameter(keys), std::logic_error);
-    EXPECT_THROW(adapter.SubmitUpdateParameterAsync("unused", keys, grads),
-                 std::logic_error);
-    EXPECT_THROW(raw.SubmitGetParameter(keys, nullptr, true, 0, 1),
-                 std::logic_error);
-  }
-  if (had_old)
-    ::setenv("RECSTORE_RDMA_SPLIT_LANES", saved.c_str(), 1);
-  else
-    ::unsetenv("RECSTORE_RDMA_SPLIT_LANES");
-}
 
 TEST(PetPSIntegrationTest, PutGetRoundTripSingleShard) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);
@@ -666,8 +545,6 @@ TEST(PetPSIntegrationTest, OwnerAdapterAbortReachesAllShardsWindowOne) {
   ASSERT_EQ(FLAGS_rdma_rc_num_logical_clients, 2);
   ASSERT_EQ(FLAGS_rdma_rc_qps_per_client_per_shard, 1);
   ASSERT_EQ(FLAGS_rdma_rc_slots_per_qp, 1);
-  const char* split = std::getenv("RECSTORE_RDMA_SPLIT_LANES");
-  ASSERT_FALSE(split && std::strcmp(split, "1") == 0);
   const int observer_id = ActiveLogicalClientId();
   ASSERT_GE(observer_id, 0);
   ASSERT_LT(observer_id, 2);

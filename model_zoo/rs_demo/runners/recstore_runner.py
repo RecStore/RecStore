@@ -508,7 +508,9 @@ class RecStoreRunner(BenchmarkRunner):
                 fusion_k=cfg.fuse_k,
                 kv_client=client,
                 initialize_tables=(rank == 0),
-                shared_fused_namespace=(cfg.read_mode == "ps_pipeline"),
+                fused_backend_table=(
+                    eb_configs[0]["name"] if cfg.read_mode == "ps_pipeline" else None
+                ),
             )
             embedding_init_ms = (time.perf_counter() - embedding_init_start) * 1e3
             # -- optimization plugin + read path --------------------------------
@@ -526,16 +528,8 @@ class RecStoreRunner(BenchmarkRunner):
                 )
             )
 
-            allow_base = os.environ.get("RECSTORE_CONTINUOUS_ALLOW_BASE") == "1"
-            if continuous_mode and not allow_base:
-                # Merged-gradient owners replaced the removed canonical GPU plan
-                # staging; the forward/handoff/compute-ahead pipeline is unchanged.
-                if not all(getattr(read_path, name, False) for name in (
-                    "unified_forward", "candidate_handoff", "compute_ahead"
-                )) or not getattr(read_path, "owner_merged_grad", False):
-                    raise ValueError("Continuous PS only supports the merged owner forward/handoff/compute-ahead path")
-            if continuous_mode and not allow_base and getattr(read_path, "metadata_lookahead", 0) != 4:
-                raise ValueError("Continuous PS initially supports the selected H4 metadata queue only")
+            if continuous_mode and not getattr(read_path, "owner_merged_grad", False):
+                raise ValueError("Continuous PS requires the merged GPU owner pipeline")
             _barrier_for_step_alignment(
                 dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
             )
@@ -578,7 +572,7 @@ class RecStoreRunner(BenchmarkRunner):
                 "gradient_communication_semantics": "remaining_join" if overlap_dense else "full_reduce"}
             lifecycle.update(timing_metadata)
             if use_ps_pipeline:
-                lifecycle["embedding_namespace"] = embedding_module.shared_fused_namespace_identity()
+                lifecycle["embedding_namespace"] = embedding_module.fused_backend_identity()
                 lifecycle["owned_read_native"] = callable(getattr(client.ops, "emb_read_into", None))
                 lifecycle["ps_pipeline_dependency_split"] = cfg.ps_pipeline_dependency_split
                 lifecycle["ps_pipeline_canonical_types"] = list(read_path.table_types)
@@ -587,17 +581,10 @@ class RecStoreRunner(BenchmarkRunner):
                     lifecycle["ps_pipeline_metadata_byte_semantics"] = "padded tensor payload per peer; excludes transport framing"
             dense_graph = dense_gradient_buffer = None
             if cfg.dense_cuda_graph:
-                from ..runtime.dense_graph import CapturedDlrmDense, DenseGradientBuffer
-                local_samples = len(dataloader.batch_sampler.sampler)
-                batch_sizes = {min(cfg.batch_size, local_samples)}
-                tail = local_samples % cfg.batch_size
-                if tail and not dataloader.drop_last:
-                    batch_sizes.add(tail)
-                dense_gradient_buffer = DenseGradientBuffer(dense_module)
-                dense_graph = CapturedDlrmDense(
-                    dense_module, criterion, dense_gradient_buffer,
-                    batch_sizes=sorted(batch_sizes), num_features=len(default_cat_names),
-                    embedding_dim=cfg.embedding_dim,
+                from ..runtime.dense_graph import capture_dlrm_dense
+                dense_graph, dense_gradient_buffer = capture_dlrm_dense(
+                    dense_module, criterion, dataloader, cfg.batch_size,
+                    num_features=len(default_cat_names), embedding_dim=cfg.embedding_dim,
                 )
                 lifecycle.update(
                     dense_graph_capture_ms=dense_graph.capture_ms,
@@ -644,47 +631,37 @@ class RecStoreRunner(BenchmarkRunner):
                 )
 
             rows: list[dict[str, Any]] = []
-            data_iter_state = {"iter": iter(dataloader)}
+            data_iter = iter(dataloader)
             prepared_batches: deque = deque()
             metadata_depth = getattr(read_path, "metadata_lookahead", 0)
-            cpu_metadata_handles = {}  # Bounded CPU inputs only, never parameter values.
             metadata_loop_start = None
             if metadata_depth:
                 lifecycle["metadata_lookahead_depth"] = metadata_depth
                 lifecycle["metadata_lookahead_capacity"] = metadata_depth + 1
                 lifecycle["lookup_ids_build_scope"] = "background CPU ticket service; not main wait"
                 lifecycle["metadata_cpu_byte_scope"] = "buffered logical payload; aliases may count twice; excludes worker scratch"
-            skip_kjt = os.environ.get("RECSTORE_PS_SKIP_KJT") == "1"
-            if skip_kjt and not use_ps_pipeline:
-                raise ValueError("Skipping KJT requires PS pipeline")
-            if os.environ.get("RECSTORE_PS_PREPARE_ASYNC") == "1":
-                raise ValueError("Async CPU preparation is not enabled in this composition")
-
             def prepare_next_batch(batch_step: int):
+                nonlocal data_iter
                 events.emit("prepare_start", step=batch_step)
                 row: dict[str, Any] = {
                     "rank": rank,
                     "batch_size": cfg.batch_size,
                     "step": batch_step,
                     "warmup_excluded": _bool_int(batch_step < cfg.warmup_steps),
-                    "ps_owner_forward_enabled": int(getattr(read_path, "unified_forward", False)),
                     "ps_owner_merged_grad_enabled": int(getattr(read_path, "owner_merged_grad", False)),
-                    "ps_owner_candidate_handoff_enabled": int(getattr(read_path, "candidate_handoff", False)),
-                    "ps_owner_verify_handoff_enabled": int(getattr(read_path, "verify_handoff", False)),
-                    "ps_owner_compute_ahead_enabled": int(getattr(read_path, "compute_ahead", False)),
                     "ps_metadata_lookahead_depth": metadata_depth,
                 }
                 batch_prepare_start = time.perf_counter()
                 try:
-                    dense_batch, sparse_batch, labels_batch = next(data_iter_state["iter"])
+                    dense_batch, sparse_batch, labels_batch = next(data_iter)
                 except StopIteration:
-                    data_iter_state["iter"] = iter(dataloader)
-                    dense_batch, sparse_batch, labels_batch = next(data_iter_state["iter"])
+                    data_iter = iter(dataloader)
+                    dense_batch, sparse_batch, labels_batch = next(data_iter)
                 row["batch_prepare_ms"] = (time.perf_counter() - batch_prepare_start) * 1e3
                 row["batch_size"] = int(dense_batch.shape[0])
 
                 input_pack_start = time.perf_counter()
-                if skip_kjt:
+                if use_ps_pipeline:
                     sparse_features = None
                 else:
                     _, sparse_features = build_kjt_batch_from_dense_sparse_labels(
@@ -695,13 +672,10 @@ class RecStoreRunner(BenchmarkRunner):
 
                 if metadata_depth:
                     ticket = read_path.queue_cpu_metadata(batch_step, sparse_batch)
-                    cpu_metadata_handles[batch_step] = ticket
                 else:
                     ticket = read_path.on_batch_prepared(
                         batch_step, sparse_features, sparse_batch, row)
-                if metadata_depth:
-                    pass  # ID statistics are attached after main-thread adoption.
-                elif isinstance(ticket, PreparedTicket):
+                if not metadata_depth and isinstance(ticket, PreparedTicket):
                     _add_sparse_id_stats(
                         row,
                         sparse_features,
@@ -742,7 +716,7 @@ class RecStoreRunner(BenchmarkRunner):
             def adopt_metadata_batch(batch):
                 batch_step, row, dense, features, labels, ticket = batch
                 if batch_step >= read_path.prepared_steps:
-                    ticket = read_path.adopt_cpu_metadata(batch_step, cpu_metadata_handles[batch_step], row)
+                    ticket = read_path.adopt_cpu_metadata(batch_step, ticket, row)
                     _add_sparse_id_stats(row, features, table_offsets,
                                          precomputed=(int(ticket[0].numel()), int(ticket[2])))
                 return batch_step, row, dense, features, labels, ticket
@@ -750,12 +724,12 @@ class RecStoreRunner(BenchmarkRunner):
             def metadata_buffer_stats(row):
                 inputs = plans = completed = 0
                 for entry in prepared_batches:
-                    handle = cpu_metadata_handles[entry[0]]
+                    handle = entry[5]
                     inputs += sum(x.numel()*x.element_size() for x in (entry[2], entry[4], handle.source))
                     if handle.future.done():
                         plans += handle.future.result()[7]
                         completed += 1
-                row.update(ps_metadata_cpu_queued=len(cpu_metadata_handles),
+                row.update(ps_metadata_cpu_queued=len(prepared_batches),
                            ps_metadata_cpu_completed=completed,
                            ps_metadata_cpu_queue_hwm=read_path.metadata_queue_high_watermark,
                            ps_metadata_cpu_input_bytes=inputs,
@@ -808,7 +782,6 @@ class RecStoreRunner(BenchmarkRunner):
                 batch = prepared_batches.popleft()
                 if metadata_depth:
                     batch = adopt_metadata_batch(batch)
-                    cpu_metadata_handles.pop(step)  # Producer is complete before its source is released.
                 (
                     _, row, dense_batch, sparse_features, labels_batch,
                     ticket,
@@ -896,12 +869,8 @@ class RecStoreRunner(BenchmarkRunner):
                             with timer.cpu("sparse_optimizer_step_ms"):
                                 sparse_optimizer.step()
                     except BaseException as sparse_error:
-                        if dense_work is not None:
-                            try:
-                                dense_work.wait()
-                            except BaseException as join_error:
-                                if hasattr(sparse_error, "add_note"):
-                                    sparse_error.add_note("Dense reduction join also failed: " + repr(join_error))
+                        from ..runtime.dense_graph import wait_dense_after_error
+                        wait_dense_after_error(dense_work, sparse_error)
                         raise
                     with timer.gpu("gradient_communication_ms"):
                         # In overlap mode this event interval is only the remaining join.
@@ -994,7 +963,7 @@ class RecStoreRunner(BenchmarkRunner):
                     if use_ps_pipeline and step == cfg.steps - 1:
                         read_path.finish_training()
                         if metadata_depth:
-                            if cpu_metadata_handles or prepared_batches or read_path.prepared_steps != cfg.steps:
+                            if prepared_batches or read_path.prepared_steps != cfg.steps:
                                 raise RuntimeError("Metadata lookahead did not consume the exact tail")
                             # All producer results were adopted; include executor drain in final timing.
                             lifecycle["metadata_final_drain_complete"] = True
@@ -1036,12 +1005,12 @@ class RecStoreRunner(BenchmarkRunner):
                     timing_label = "host_enqueue" if continuous is not None else "step"
                     timing_value = rows[-1]["host_step_enqueue_wall_ms" if continuous is not None else "step_total_ms"]
                     print(
-                        f"[rs_demo] {'computed step' if getattr(read_path, 'compute_ahead', False) else 'step'} {step + 1}/{cfg.steps} "
+                        f"[rs_demo] {'computed step' if getattr(read_path, 'owner_merged_grad', False) else 'step'} {step + 1}/{cfg.steps} "
                         f"emb={rows[-1]['emb_stage_ms']:.2f}ms {timing_label}={timing_value:.2f}ms"
                     )
                 events.emit(
                     "step_end", step=step, step_total_ms=row["step_total_ms"],
-                    provisional=bool(getattr(read_path, "compute_ahead", False) and
+                    provisional=bool(getattr(read_path, "owner_merged_grad", False) and
                                      getattr(read_path, "_retired_step", -1) < step)
                 )
                 if profiler is not None:

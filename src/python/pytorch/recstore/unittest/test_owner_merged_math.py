@@ -31,7 +31,7 @@ class TestOwnerMergedMath(unittest.TestCase):
     def run_kernel(self, meta_rows, v0, v1, weights, lr):
         meta = torch.tensor(meta_rows, dtype=torch.int64, device=CUDA)
         result = owner_merged_gpu._EXTENSION.owner_merged_math(
-            meta, v0.to(CUDA), v1.to(CUDA), weights.to(CUDA), lr, True)
+            meta, v0.to(CUDA), v1.to(CUDA), weights.to(CUDA), lr)
         torch.cuda.synchronize(CUDA)
         return result
 
@@ -52,11 +52,10 @@ class TestOwnerMergedMath(unittest.TestCase):
                 torch.tensor(candidate, dtype=torch.float32).view(len(meta_rows), 128))
 
     def check(self, meta_rows, v0, v1, weights, lr):
-        gradient, candidate, error = self.run_kernel(meta_rows, v0, v1, weights, lr)
-        expect_g, expect_c = self.oracle(meta_rows, v0, v1, weights, lr)
+        candidate, error = self.run_kernel(meta_rows, v0, v1, weights, lr)
+        _, expect_c = self.oracle(meta_rows, v0, v1, weights, lr)
         self.assertEqual(error.item(), 0)
         # Compare raw FP32 bits so signed zeros cannot pass as equal.
-        self.assertTrue(torch.equal(gradient.cpu().view(torch.int32), expect_g.view(torch.int32)))
         self.assertTrue(torch.equal(candidate.cpu().view(torch.int32), expect_c.view(torch.int32)))
 
     def test_presence_combinations_match_cpu_scalar_fma_bitwise(self):
@@ -98,7 +97,7 @@ class TestOwnerMergedMath(unittest.TestCase):
         v0 = torch.full((1, 128), 3e38, dtype=torch.float32)
         v1 = torch.full((1, 128), 3e38, dtype=torch.float32)
         weights = torch.zeros(1, 128, dtype=torch.float32)
-        _, _, error = self.run_kernel(meta, v0, v1, weights, .01)
+        _, error = self.run_kernel(meta, v0, v1, weights, .01)
         self.assertEqual(error.item(), 2)  # a+b overflows to inf
 
     def test_error_code_one_on_malformed_metadata(self):
@@ -115,17 +114,17 @@ class TestOwnerMergedMath(unittest.TestCase):
         ]
         for row in bad_rows:
             with self.subTest(row=row):
-                _, _, error = self.run_kernel([row], v0, v1, weights, 0.01)
+                _, error = self.run_kernel([row], v0, v1, weights, 0.01)
                 self.assertEqual(error.item(), 1)
 
     def test_host_checks_reject_bad_shapes_and_rates(self):
         meta = torch.zeros(1, 8, dtype=torch.int64, device=CUDA)
         v = torch.zeros(1, 128, dtype=torch.float32, device=CUDA)
-        for args in ((meta.view(8), v, v[:0], v, .01, False),
-                     (meta, torch.zeros(1, 64, device=CUDA), v[:0], v, .01, False),
-                     (meta, v, v[:0], torch.zeros(2, 128, device=CUDA), .01, False),
-                     (meta, v, v[:0], v, 0.0, False),
-                     (meta, v, v[:0], v, float('nan'), False)):
+        for args in ((meta.view(8), v, v[:0], v, .01),
+                     (meta, torch.zeros(1, 64, device=CUDA), v[:0], v, .01),
+                     (meta, v, v[:0], torch.zeros(2, 128, device=CUDA), .01),
+                     (meta, v, v[:0], v, 0.0),
+                     (meta, v, v[:0], v, float('nan'))):
             with self.subTest(args=args[:2]):
                 with self.assertRaises(RuntimeError):
                     owner_merged_gpu._EXTENSION.owner_merged_math(*args)
@@ -134,9 +133,8 @@ class TestOwnerMergedMath(unittest.TestCase):
         meta = torch.zeros(0, 8, dtype=torch.int64, device=CUDA)
         v = torch.zeros(0, 128, dtype=torch.float32, device=CUDA)
         weights = torch.zeros(0, 128, dtype=torch.float32, device=CUDA)
-        gradient, candidate, error = owner_merged_gpu._EXTENSION.owner_merged_math(
-            meta, v, v, weights, .01, True)
-        self.assertEqual(gradient.shape, (0, 128))
+        candidate, error = owner_merged_gpu._EXTENSION.owner_merged_math(
+            meta, v, v, weights, .01)
         self.assertEqual(candidate.shape, (0, 128))
         self.assertEqual(error.item(), 0)
 

@@ -1,9 +1,4 @@
-"""Experimental world2 owner exchange transport with one batch of GPU staging.
-
-The canonical v1 reduction kernel was removed with the canonical protocol;
-arithmetic now lives in subclasses (see owner_merged_gpu.py). The exchange,
-staging, and cleanup contracts here are shared unchanged.
-"""
+"""World2 merged-owner exchange with one batch of GPU staging."""
 import math
 from numbers import Integral, Real
 
@@ -40,9 +35,7 @@ class GPUOwnerExchange:
 
     Group ranks must equal physical owner ranks. Packed merged rows must be
     ready on the calling stream. No arithmetic reduction occurs in the
-    collective. Subclasses provide the arithmetic hooks
-    (_check_math_ready/_owner_math); the exchange, staging, and cleanup
-    contracts stay byte-identical.
+    collective; the single validated merged-row kernel applies it afterward.
     """
     def __init__(self, permutation, owner_keys, metadata, send_splits, recv_splits,
                  old_weights, *, process_group, device, source_refs=()):
@@ -95,10 +88,15 @@ class GPUOwnerExchange:
             raise
 
     def _check_math_ready(self):
-        raise NotImplementedError('Owner exchanges require an arithmetic subclass')
+        from . import owner_merged_gpu
+        if (owner_merged_gpu._EXTENSION is None
+                or self.device.index not in owner_merged_gpu._WARMED_DEVICES):
+            raise RuntimeError('Call initialize_owner_merged_math before training')
 
     def _owner_math(self, meta, v0, v1, weights, learning_rate):
-        raise NotImplementedError('Owner exchanges require an arithmetic subclass')
+        from .owner_merged_gpu import _EXTENSION
+        return _EXTENSION.owner_merged_math(
+            meta, v0, v1, weights, float(learning_rate))
 
     def run(self, packed_rows, learning_rate):
         if self._ran:
@@ -125,7 +123,7 @@ class GPUOwnerExchange:
         self._work.wait()  # Establish NCCL completion on this CUDA stream.
         v0, v1 = self._received.split(self.recv_splits, dim=0)
         self._result = self._owner_math(meta, v0, v1, weights, learning_rate)
-        return self._result[1], self._result[2]
+        return self._result
 
     def drain(self):
         """Error cleanup only; successful global ACK already covers producer work."""

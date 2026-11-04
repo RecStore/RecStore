@@ -81,7 +81,6 @@ private:
   std::size_t MaxGetKeysPerRpc(int64_t embedding_dim) const;
   std::size_t MaxPutKeysPerRpc(int64_t embedding_dim) const;
   std::size_t MaxInFlightGetRpcs() const;
-  std::size_t MaxInFlightCommitRpcs() const;
   std::vector<ShardChunk> BuildChunks(base::ConstArray<uint64_t> keys,
                                       std::size_t max_keys_per_rpc) const;
   int SubmitGetParameter(
@@ -97,13 +96,7 @@ private:
 
   json config_;
   std::mutex init_mu_;
-  // Default mode serializes all windows. Split mode keeps separate owners
-  // locked through wait/copy/revoke on disjoint QPs. It requires initialized
-  // PS-pipeline tables on all ranks, no missing rows/external writers or
-  // checkpoints, and dirty reads gated on global commit.
   std::mutex io_mu_;
-  std::mutex commit_mu_;
-  const bool split_lanes_;
   std::mutex thread_init_mu_;
   mutable std::mutex state_mu_;
   bool initialized_ = false;
@@ -129,10 +122,6 @@ public:
                          bool isAsync,
                          int async_req_id,
                          int64_t embedding_dim) {
-    if (adapter_->split_lanes_) {
-      throw std::logic_error(
-          "Raw async GET is unsupported with split RDMA lanes");
-    }
     std::lock_guard<std::mutex> io_guard(adapter_->io_mu_);
     return adapter_->SubmitGetParameter(
         keys, values, isAsync, async_req_id, embedding_dim);

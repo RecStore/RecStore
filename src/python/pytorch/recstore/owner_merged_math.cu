@@ -10,8 +10,8 @@
 // The merged row is the world-2 mean of the source rows (v1/v2 divisor
 // semantics); see the kernel comment for the exact FP ordering.
 // The kernel contract mirrors owner_math.cu v1: defensive device bounds, the
-// same atomicOr error codes (1 malformed metadata, 2 arithmetic), optional
-// gradient output, and the status[1] tensor checked by the v4 commit callback.
+// same atomicOr error codes (1 malformed metadata, 2 arithmetic), and the
+// status tensor checked by the v4 commit callback.
 namespace {
 __global__ void owner_merged_kernel(
     const int64_t* meta,
@@ -21,7 +21,6 @@ __global__ void owner_merged_kernel(
     int64_t total0,
     int64_t total1,
     float lr,
-    float* gradient,
     float* candidate,
     int* error) {
   const int64_t row = blockIdx.x;
@@ -53,8 +52,6 @@ __global__ void owner_merged_kernel(
   const float updated = __fmaf_rn(-lr, result, weight);
   const bool failed   = !isfinite(a) || !isfinite(b) || !isfinite(result) ||
                       !isfinite(weight) || !isfinite(updated);
-  if (gradient)
-    gradient[at] = result;
   candidate[at] = updated;
   if (failed)
     atomicOr(error, 2);
@@ -66,8 +63,7 @@ std::vector<torch::Tensor> owner_merged_math(
     torch::Tensor v0,
     torch::Tensor v1,
     torch::Tensor weights,
-    double learning_rate,
-    bool keep_gradient) {
+    double learning_rate) {
   TORCH_CHECK(meta.is_cuda() && meta.scalar_type() == torch::kInt64 &&
               meta.is_contiguous());
   TORCH_CHECK(
@@ -84,8 +80,6 @@ std::vector<torch::Tensor> owner_merged_math(
   TORCH_CHECK(std::isfinite(lr) && lr > 0,
               "finite positive FP32 learning rate required");
   c10::cuda::CUDAGuard guard(meta.device());
-  auto gradient = torch::empty(
-      {keep_gradient ? meta.size(0) : 0, int64_t{128}}, weights.options());
   auto candidate = torch::empty_like(weights);
   auto error     = torch::zeros({1}, meta.options().dtype(torch::kInt32));
   if (meta.size(0)) {
@@ -100,10 +94,9 @@ std::vector<torch::Tensor> owner_merged_math(
         v0.size(0),
         v1.size(0),
         lr,
-        keep_gradient ? gradient.data_ptr<float>() : nullptr,
         candidate.data_ptr<float>(),
         error.data_ptr<int>());
     C10_CUDA_KERNEL_LAUNCH_CHECK();
   }
-  return {gradient, candidate, error};
+  return {candidate, error};
 }

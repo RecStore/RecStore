@@ -15,29 +15,8 @@ from .ps_pipeline import PSPipeline
 
 
 def owner_options_from_env(environ):
-    """Parse owner options once; the constructor validates their dependencies.
-
-    MERGED_GRAD=1 remains accepted for existing launch scripts. GPU owner
-    updates always use merged gradients, including when that flag is absent.
-    """
-    enabled = environ.get("RECSTORE_PS_OWNER_GPU") == "1"
-    options = {name: environ.get("RECSTORE_PS_" + suffix) == "1"
-               for name, suffix in (
-                   ("unified_forward", "OWNER_FORWARD"),
-                   ("candidate_handoff", "OWNER_CANDIDATE_HANDOFF"),
-                   ("verify_handoff", "OWNER_VERIFY_HANDOFF"),
-                   ("compute_ahead", "OWNER_COMPUTE_AHEAD"))}
-    options["metadata_lookahead"] = int(environ.get("RECSTORE_PS_METADATA_LOOKAHEAD", "0"))
-    merged = environ.get("RECSTORE_PS_OWNER_MERGED_GRAD")
-    if not enabled:
-        if any(options.values()) or merged == "1":
-            raise ValueError("Owner options require RECSTORE_PS_OWNER_GPU=1")
-        return None
-    if merged not in (None, "1"):
-        raise ValueError("GPU owner updates only support merged gradients")
-    if options["metadata_lookahead"] and environ.get("RECSTORE_PS_PREPARE_DURING_DENSE") == "1":
-        raise ValueError("Metadata lookahead keeps the original one-next adoption point")
-    return options
+    """Enable the single validated merged-owner profile."""
+    return {} if environ.get("RECSTORE_PS_OWNER_GPU") == "1" else None
 
 
 def _validate_owner_handoff_indices(current, ids, clean, dirty, source):
@@ -103,69 +82,58 @@ class GPUOwnerPipeline(PSPipeline):
     """
 
     owner_merged_grad = True
+    owner_updates = True
+    metadata_lookahead = 4
 
-    def __init__(self, embedding_module, kv_client, *, owner_table_end, unified_forward=False,
-                 candidate_handoff=False, verify_handoff=False,
-                 compute_ahead=False, metadata_lookahead=0, **kwargs):
-        if (type(metadata_lookahead) is not int or metadata_lookahead not in (0, 4, 8)
-                or (metadata_lookahead and not unified_forward)):
-            raise ValueError("Metadata lookahead requires unified owner and depth 0/4/8")
-        self.metadata_lookahead = metadata_lookahead
+    def __init__(self, embedding_module, kv_client, *, owner_table_end, **kwargs):
         self._metadata_enqueued = self._metadata_queue_hwm = 0
         self._metadata_stopping = False
         self._metadata_prepare_error = None
-        if not isinstance(compute_ahead, bool) or (compute_ahead and not (unified_forward and candidate_handoff)):
-            raise ValueError("Owner compute-ahead requires unified candidate handoff")
-        self.compute_ahead = compute_ahead
         self._retired_step = self._accepted_step = self._candidate_step = -1
         self._commit_step = -1
         self._compute_read_step = None
         self._retiring_owner = self._compute_error = None
-        if not isinstance(verify_handoff, bool) or (verify_handoff and not candidate_handoff):
-            raise ValueError("Handoff verification requires acknowledged candidate handoff")
-        self.verify_handoff = verify_handoff
-        self._verified_owner_weights = None
-        if not isinstance(candidate_handoff, bool) or (candidate_handoff and not unified_forward):
-            raise ValueError("Acknowledged candidate handoff requires unified owner forward")
-        self.candidate_handoff = candidate_handoff
         self._owner_candidate = None
-        if not isinstance(unified_forward, bool):
-            raise ValueError("unified_forward must be a bool")
-        self.unified_forward = unified_forward
         self._pending_owner_step = None
         self._owner_failed = False
-        if kwargs.get("owner_table_types") is None:
-            # Merged owners ride the shared count-exchange ticket machinery,
-            # which needs a table plan; without an explicit plan every feature
-            # defaults to table-wise. The merged plan records the per-row type
-            # but never branches on it.
-            kwargs = dict(kwargs, owner_table_types=[0] * len(kwargs["table_offsets"]))
+        owner_table_types = kwargs.pop("owner_table_types", None)
+        self._owner_table_types = tuple(
+            owner_table_types or [0] * len(kwargs["table_offsets"]))
+        self._owner_metadata = {}
         if not kwargs.get("dependency_split"):
             raise ValueError("GPU owner updates currently require dependency splitting")
-        plan_op = "owner_merged_forward_plan" if unified_forward else "owner_merged_plan"
-        for name in (plan_op, "sparse_owner_replace_async",
+        world = dist.get_world_size() if dist.is_initialized() else 1
+        device = torch.device(kwargs["device"])
+        total_steps = kwargs.get("total_steps")
+        if (world != 2 or kwargs["embedding_dim"] != 128 or device.type != "cuda"
+                or len(self._owner_table_types) != len(kwargs["table_offsets"])
+                or any(kind not in (0, 1) for kind in self._owner_table_types)
+                or not isinstance(total_steps, int) or isinstance(total_steps, bool)
+                or total_steps < 1):
+            raise ValueError("Owner PS requires world2, CUDA D128 and an explicit table layout")
+        for name in ("owner_merged_forward_plan", "sparse_owner_replace_async",
                      "sparse_owner_replace_close"):
             if not callable(getattr(kv_client.ops, name, None)):
                 raise RuntimeError("GPU owner path requires native op " + name)
         offsets = list(kwargs["table_offsets"].values())
         self._owner_boundaries = torch.tensor(offsets + [owner_table_end], dtype=torch.int64)
-        self._owner_types = torch.tensor(kwargs["owner_table_types"], dtype=torch.int64)
+        self._owner_types = torch.tensor(self._owner_table_types, dtype=torch.int64)
         _, self._owner_tag = kv_client.get_embedding_table_namespace(kwargs["master_table_name"])
-        self._owner_plan = self._owner_read = self._owner_exchange = None
+        self._owner_plan = self._owner_exchange = None
         from .owner_merged_gpu import initialize_owner_merged_math
         initialize_owner_merged_math(torch.device(kwargs["device"]))
         super().__init__(embedding_module, kv_client, **kwargs)
+        layout = (self._offsets.numpy().tobytes() + bytes(self._owner_table_types)
+                  + "\0".join(self._keys).encode("utf-8"))
+        self._layout_digest = int.from_bytes(
+            hashlib.sha256(layout).digest()[:8], "little") & (2**63 - 1)
         # Peer vector splits must agree on the real encoded-key ownership too.
         identity = (self._layout_digest.to_bytes(8, "little")
                     + self._owner_tag.to_bytes(8, "little")
                     + self._owner_boundaries.numpy().tobytes()
                     + b"owner-v4/world2/city_hash/rank-equals-shard"
-                    + (b"/unified-forward-v1" if unified_forward else b"")
-                    + (b"/acknowledged-handoff-v1" if candidate_handoff else b"")
-                    + (b"/verify-handoff-v1" if verify_handoff else b"")
-                    + (b"/compute-ahead-v1" if compute_ahead else b"")
-                    + (b"/cpu-metadata-v1/" + bytes([metadata_lookahead]) if metadata_lookahead else b"")
-                    + b"/merged-grad-v1")
+                    + b"/unified-forward-v1/acknowledged-handoff-v1"
+                    + b"/compute-ahead-v1/cpu-metadata-v1/\x04/merged-grad-v1")
         self._layout_digest = int.from_bytes(hashlib.sha256(identity).digest()[:8], "little") & (2**63 - 1)
         if dist.get_backend() != "nccl":
             self.shutdown(flush=False)
@@ -177,11 +145,10 @@ class GPUOwnerPipeline(PSPipeline):
 
     def finish_training(self):
         super().finish_training()
-        if self.metadata_lookahead:
-            if self._prepared != self._total_steps or self._metadata_enqueued != self._total_steps:
-                raise RuntimeError("Metadata lookahead did not consume the exact tail")
-            self._metadata_stopping = True
-            self._metadata_worker.shutdown(wait=True, cancel_futures=False)
+        if self._prepared != self._total_steps or self._metadata_enqueued != self._total_steps:
+            raise RuntimeError("Metadata lookahead did not consume the exact tail")
+        self._metadata_stopping = True
+        self._metadata_worker.shutdown(wait=True, cancel_futures=False)
 
     def fail(self, error):
         self._metadata_failed(error)
@@ -190,8 +157,71 @@ class GPUOwnerPipeline(PSPipeline):
         if self._metadata_prepare_error is None:
             self._metadata_prepare_error = error
         self._owner_failed = True
-        if self.compute_ahead:
-            self._compute_failed(error)
+        self._compute_failed(error)
+
+    def _build_cpu_ticket(self, step, sparse_features, sparse_batch):
+        if step >= self._total_steps:
+            raise RuntimeError("Owner PS prepared beyond the declared step count")
+        start = time.perf_counter()
+        raw = self._raw_sparse_ids(sparse_features, sparse_batch)
+        from .canonical_ps import make_ticket_with_inverse
+        local_ticket, inverse = make_ticket_with_inverse(
+            raw.numpy(), self._offsets.numpy(), self._owner_table_types)
+        ticket = (torch.from_numpy(local_ticket.keys), torch.from_numpy(inverse), raw.numel())
+        return ticket, local_ticket, (time.perf_counter() - start) * 1e3
+
+    def _adopt_cpu_ticket(self, step, ticket, future, row, build_ms):
+        self._check_prepared_step(step)
+        if future is None:
+            raise RuntimeError("Owner ticket lacks its metadata Future")
+        self._owner_metadata[step] = future
+        if step + 1 < self._total_steps:
+            self._metadata[step] = future
+        self._queue_prepared_read(step, ticket[0])
+        self._prepared += 1
+        row["lookup_ids_build_ms"] = build_ms
+        return ticket
+
+    def _exchange_key_counts(self, step, ticket):
+        start = time.perf_counter()
+        header = torch.tensor([step, len(ticket.keys), self._total_steps, self._layout_digest,
+                               ticket.batch_size, ticket.features], dtype=torch.int64)
+        headers = [torch.empty_like(header) for _ in range(self._world)]
+        dist.all_gather(headers, header, group=self._metadata_group)
+        for peer in headers:
+            if (int(peer[0]) != step or int(peer[2]) != self._total_steps
+                    or int(peer[3]) != self._layout_digest or int(peer[5]) != ticket.features
+                    or not 0 <= int(peer[4]) <= 1024
+                    or not 0 <= int(peer[1]) <= int(peer[4]) * ticket.features):
+                raise RuntimeError("Owner metadata layout/step/count mismatch")
+        sizes = [int(peer[1]) for peer in headers]
+        width = max(sizes)
+        payload = torch.zeros((width, 2), dtype=torch.int64)
+        payload[:len(ticket.keys), 0] = torch.from_numpy(ticket.keys)
+        payload[:len(ticket.keys), 1] = torch.from_numpy(ticket.counts)
+        peers = [torch.empty_like(payload) for _ in range(self._world)]
+        if width:
+            dist.all_gather(peers, payload, group=self._metadata_group)
+        for rank, peer in enumerate(peers):
+            counts = peer[:sizes[rank], 1]
+            if (bool((counts < 1).any()) or bool((counts > int(headers[rank][4])).any())
+                    or int(counts.sum()) != int(headers[rank][4]) * ticket.features):
+                raise RuntimeError("Owner metadata occurrence counts disagree with batch shape")
+        exchanged = time.perf_counter()
+        from .canonical_ps import OwnerExchangePlan
+        plan = OwnerExchangePlan(len(ticket.keys))
+        self._build_owner_plan(plan, peers, sizes)
+        dirty = torch.from_numpy(np.unique(np.concatenate(
+            [peer[:count, 0].numpy() for peer, count in zip(peers, sizes)])))
+        peer_bytes = (header.numel() + 2 * width) * 8
+        return dirty, {
+            "ps_pipeline_metadata_step": step,
+            "ps_pipeline_metadata_ms": (exchanged - start) * 1e3,
+            "ps_pipeline_metadata_sent_bytes": peer_bytes,
+            "ps_pipeline_metadata_received_bytes": peer_bytes,
+            "ps_pipeline_local_dirty_rows": len(ticket.keys),
+            "ps_pipeline_global_dirty_rows": dirty.numel(),
+        }, plan, (time.perf_counter() - exchanged) * 1e3
 
     def _build_cpu_metadata(self, step, source):
         if self._metadata_stopping or self._metadata_prepare_error is not None:
@@ -214,7 +244,7 @@ class GPUOwnerPipeline(PSPipeline):
 
     def queue_cpu_metadata(self, step, source):
         try:
-            if (not self.metadata_lookahead or self._closed or self._owner_failed
+            if (self._closed or self._owner_failed
                     or self._metadata_stopping or self._metadata_prepare_error is not None):
                 raise self._metadata_prepare_error or RuntimeError("Owner metadata queue is unavailable")
             if (step != self._metadata_enqueued or step >= self._total_steps
@@ -288,23 +318,7 @@ class GPUOwnerPipeline(PSPipeline):
                 raise RuntimeError("Owner retirement holder has the wrong step")
             self._retiring_owner = None  # ACK covers its candidate/status D2H and producers.
 
-    def _verify_forward_weights(self, keys):
-        # Diagnostic only, after prior retirement and before current publication.
-        weights = self._owner_exchange._gpu[2]
-        if weights is not self._verified_owner_weights:
-            raise RuntimeError("Owner backward does not use verified forward weights")
-        start = time.perf_counter()
-        expected, _, _ = self._pull(keys, None)
-        if not torch.equal(weights.detach().cpu().view(torch.int32), expected.view(torch.int32)):
-            raise RuntimeError("Owner handoff differs from authoritative PS FP32 bits")
-        self._current_metrics.update(ps_owner_handoff_verified_rows=keys.numel(),
-                                     ps_owner_handoff_verify_passed=1,
-                                     ps_owner_handoff_same_tensor_passed=1,
-                                     ps_owner_handoff_verify_ms=(time.perf_counter() - start) * 1e3)
-
     def submit_sparse_grad(self, ids, grads):
-        if not self.compute_ahead:
-            return super().submit_sparse_grad(ids, grads)
         if self._owner_failed:
             raise RuntimeError("GPU owner session has failed")
         try:
@@ -315,8 +329,6 @@ class GPUOwnerPipeline(PSPipeline):
             raise
 
     def _wait_pending(self):
-        if not self.compute_ahead:
-            return super()._wait_pending()
         if self._owner_failed:
             raise self._compute_error or RuntimeError("GPU owner session has failed")
         try:
@@ -335,37 +347,36 @@ class GPUOwnerPipeline(PSPipeline):
 
     def after_step_sync(self, row):
         super().after_step_sync(row)
-        if self.compute_ahead:
-            self._record_compute_state(row)
+        self._record_compute_state(row)
 
     def _build_owner_plan(self, plan, peers, sizes):
         columns = [peer[:size, column].contiguous()
                    for peer, size in zip(peers, sizes) for column in (0, 1)]
-        plan_name = ("owner_merged_forward_plan" if self.unified_forward
-                     else "owner_merged_plan")
-        operation = getattr(self.kv_client.ops, plan_name)
+        operation = self.kv_client.ops.owner_merged_forward_plan
         owner = operation(
             *columns, self._owner_boundaries, self._owner_types, self._owner_tag, self._rank)
-        if len(owner) != (9 if self.unified_forward else 5):
+        if len(owner) != 9:
             raise RuntimeError("Unexpected owner plan schema")
         if owner[0].numel() != plan.local_unique_count:
             raise RuntimeError("Owner routing disagrees with the local unique key count")
         plan.owner = owner
 
     def on_batch_prepared(self, step, sparse_features, sparse_batch, row):
-        if self.unified_forward and self._owner_failed:
+        if self._owner_failed:
             raise RuntimeError("Unified owner session has failed")
-        if not self.compute_ahead:
-            return super().on_batch_prepared(step, sparse_features, sparse_batch, row)
         try:
-            return super().on_batch_prepared(step, sparse_features, sparse_batch, row)
+            self._check_prepared_step(step)
+            start = time.perf_counter()
+            ticket, local, build_ms = self._build_cpu_ticket(step, sparse_features, sparse_batch)
+            future = self._metadata_worker.submit(self._exchange_key_counts, step, local)
+            result = self._adopt_cpu_ticket(step, ticket, future, row, build_ms)
+            row["lookup_ids_build_ms"] = (time.perf_counter() - start) * 1e3
+            return result
         except BaseException as error:
             self._compute_failed(error)
             raise
 
     def _queue_prepared_read(self, step, ids):
-        if not self.unified_forward:
-            return super()._queue_prepared_read(step, ids)
         if self._owner_failed:
             raise RuntimeError("Unified owner session has failed")
         if step == 0:
@@ -374,66 +385,41 @@ class GPUOwnerPipeline(PSPipeline):
         else:
             if self._pending_owner_step is not None:
                 raise RuntimeError("Unified owner prepares only one next step")
-            if self.candidate_handoff:
-                # A speculative input Future is not a committed-version proof.
-                if self.compute_ahead and step > 1:
-                    if self._commit_step != step - 2 or self._commit is None:
-                        raise RuntimeError("Owner clean read lacks its exact prior global commit")
-                    previous_read = self._commit
-                else:
-                    previous_read = self._read
-                    if previous_read is None:
-                        previous_read = self._consumed_read
-                if previous_read is None:
-                    raise RuntimeError("Current complete owner read was not published")
-                self._split_clean = self._worker.submit(
-                    self._read_owner_clean, step, previous_read,
-                    self._owner_metadata[step - 1], self._owner_metadata[step])
+            # A speculative input Future is not a committed-version proof.
+            if step > 1:
+                if self._commit_step != step - 2 or self._commit is None:
+                    raise RuntimeError("Owner clean read lacks its exact prior global commit")
+                previous_read = self._commit
+            else:
+                previous_read = self._read or self._consumed_read
+            if previous_read is None:
+                raise RuntimeError("Current complete owner read was not published")
+            self._split_clean = self._worker.submit(
+                self._read_owner_clean, step, previous_read,
+                self._owner_metadata[step - 1], self._owner_metadata[step])
             self._pending_owner_step = step
             # Only owner_metadata is consumed by backward in this mode.
             self._metadata.pop(step - 1, None)
 
     def _require_next_read(self):
-        if not self.unified_forward:
-            return super()._require_next_read()
         if self._owner_failed:
             raise RuntimeError("Unified owner session has failed")
         if (self._submitted + 1 < self._total_steps
                 and self._pending_owner_step != self._submitted + 1):
             raise RuntimeError("Prepare next owner metadata before current submission")
-        if (self.candidate_handoff and self._submitted + 1 < self._total_steps
-                and self._split_clean is None):
+        if self._submitted + 1 < self._total_steps and self._split_clean is None:
             raise RuntimeError("Prepare next owner clean read before current submission")
 
     def _queue_next_read(self, commit):
-        if not self.unified_forward:
-            return super()._queue_next_read(commit)
-        if self.compute_ahead:
-            step = self._submitted - 1
-            if self._accepted_step != step or self._commit is not commit:
-                raise RuntimeError("Owner commit tracking differs from native acceptance")
-            self._commit_step = step  # Base has already enqueued W(step).
-            if self._pending_owner_step is not None:
-                if (self._pending_owner_step != self._submitted
-                        or self._compute_read_step != self._submitted or self._read is None):
-                    raise RuntimeError("Owner speculative read was not queued before commit wait")
-                self._pending_owner_step = self._compute_read_step = None
-            return
+        step = self._submitted - 1
+        if self._accepted_step != step or self._commit is not commit:
+            raise RuntimeError("Owner commit tracking differs from native acceptance")
+        self._commit_step = step  # Base has already enqueued W(step).
         if self._pending_owner_step is not None:
-            step = self._pending_owner_step
-            if step != self._submitted:
-                raise RuntimeError("Owner read step differs from accepted submission")
-            # The commit-wait task is already queued on this same single worker.
-            if self.candidate_handoff:
-                if self._owner_candidate is None or self._split_clean is None:
-                    raise RuntimeError("Owner handoff lacks candidate or clean read")
-                self._read = self._worker.submit(
-                    self._finish_owner_handoff, step, self._split_clean, commit, self._owner_candidate)
-                self._split_clean = self._owner_candidate = None
-            else:
-                self._read = self._worker.submit(
-                    self._pull_owned_step, step, self._owner_metadata[step], commit)
-            self._pending_owner_step = None
+            if (self._pending_owner_step != self._submitted
+                    or self._compute_read_step != self._submitted or self._read is None):
+                raise RuntimeError("Owner speculative read was not queued before commit wait")
+            self._pending_owner_step = self._compute_read_step = None
 
     def _read_owner_clean(self, step, previous_read, current_metadata, next_metadata):
         # Only earlier read and independent metadata futures are awaited here.
@@ -459,12 +445,9 @@ class GPUOwnerPipeline(PSPipeline):
                                clean_pos, dirty_pos, candidate_pos, values, stats)
 
     def _finish_owner_handoff(self, step, clean, commit, candidate):
-        if self.compute_ahead:
-            if commit is not None:
-                raise RuntimeError("Speculative input must not wait on current publication")
-            waited = 0.0
-        else:
-            waited = commit.result()  # Successful GLOBAL ACK, including empty owners.
+        if commit is not None:
+            raise RuntimeError("Speculative input must not wait on current publication")
+        waited = 0.0
         parts = clean.result()
         session, previous_step, rank, keys, values, ready = candidate
         if ((session, previous_step + 1, rank) != (self._session, step, self._rank)
@@ -550,13 +533,11 @@ class GPUOwnerPipeline(PSPipeline):
             "ps_owner_rows": plan[1].numel(),
             "ps_owner_old_read_bytes": values.numel() * 4,
             "ps_owner_pull_ms": pull_ms,
-            "ps_owner_bootstrap_rows": values.shape[0] if self.candidate_handoff else 0,
+            "ps_owner_bootstrap_rows": values.shape[0],
         }
 
     def _stage_rows(self, step, ticket, values, row_count, row):
-        if not self.unified_forward:
-            return super()._stage_rows(step, ticket, values, row_count, row)
-        from .owner_merged_gpu import ForwardMergedGPUOwnerExchange as ForwardExchange
+        from .owner_forward_gpu import ForwardGPUOwnerExchange as ForwardExchange
         plan = self._owner_metadata[step].result()[2].owner
         permutation, keys, metadata, send, recv, index, fsend, frecv, reorder = plan
         if reorder.numel() != ticket[0].numel():
@@ -569,8 +550,6 @@ class GPUOwnerPipeline(PSPipeline):
         source_refs = ()
         try:
             if isinstance(values, _OwnerHandoffRows):
-                if not self.candidate_handoff:
-                    raise RuntimeError("Unexpected owner handoff in legacy mode")
                 merge_start = time.perf_counter()
                 values, source_refs = self._merge_owner_handoff(step, values, keys)
                 row["ps_owner_handoff_merge_enqueue_ms"] = (time.perf_counter() - merge_start) * 1e3
@@ -585,33 +564,13 @@ class GPUOwnerPipeline(PSPipeline):
                 forward_send_index=index, forward_reorder=reorder,
                 forward_send_splits=fsend, forward_recv_splits=frecv,
                 process_group=dist.group.WORLD, device=self.device, source_refs=source_refs)
-            if self.verify_handoff and self.compute_ahead:
-                self._verified_owner_weights = self._owner_exchange._gpu[2]
-            elif self.verify_handoff:
-                # Diagnostic only: extra full PS GET/synchronization, never a performance lane.
-                verify_start = time.perf_counter()
-                if self._submitted != step or (step > 0 and
-                        (self._commit is None or not self._commit.done())):
-                    raise RuntimeError("Owner verification lacks a completed global commit")
-                if step > 0:
-                    self._commit.result()
-                expected, _, _ = self._pull(keys, None)
-                weights = self._owner_exchange._gpu[2]
-                actual = weights.detach().cpu()
-                if not torch.equal(actual.view(torch.int32), expected.view(torch.int32)):
-                    raise RuntimeError("Owner handoff differs from authoritative PS FP32 bits")
-                self._verified_owner_weights = weights
-                row.update(ps_owner_handoff_verified_rows=keys.numel(),
-                           ps_owner_handoff_verify_passed=1,
-                           ps_owner_handoff_verify_ms=(time.perf_counter() - verify_start) * 1e3)
             self._current_rows = self._owner_exchange.forward_rows()
         except BaseException as error:
-            if self.candidate_handoff:
-                try:
-                    torch.cuda.synchronize(self.device)
-                except BaseException as cleanup:
-                    if hasattr(error, "add_note"):
-                        error.add_note("Owner handoff staging drain also failed: " + repr(cleanup))
+            try:
+                torch.cuda.synchronize(self.device)
+            except BaseException as cleanup:
+                if hasattr(error, "add_note"):
+                    error.add_note("Owner handoff staging drain also failed: " + repr(cleanup))
             raise
         row.update(ps_owner_forward_enqueue_ms=(time.perf_counter() - start) * 1e3,
                    ps_owner_local_lookup_rows=ticket[0].numel(),
@@ -626,83 +585,42 @@ class GPUOwnerPipeline(PSPipeline):
                      "handoff_verified_rows", "handoff_verify_passed",
                      "handoff_same_tensor_passed", "handoff_verify_ms"):
             row["ps_owner_" + name] = 0
-        if self.unified_forward and self._owner_failed:
+        if self._owner_failed:
             raise RuntimeError("GPU owner session has failed")
-        if self.unified_forward:
-            try:
-                if self.compute_ahead:
-                    if self._retiring_owner is not None:
-                        raise RuntimeError("Owner retirement holder is still occupied")
-                    if step:
-                        if self._owner_exchange is None or self._current_step != step - 1:
-                            raise RuntimeError("Owner compute-ahead lacks preceding GPU staging")
-                        self._retiring_owner = (step - 1, self._owner_exchange)
-                        self._owner_exchange = None
-                    row.update(ps_owner_retire_wait_ms=0.0, ps_owner_max_unretired_depth=0)
-                    self._record_compute_state(row)
-                super().before_lookup(step, sparse_features, ticket, row)
-                if self.candidate_handoff:
-                    row["ps_pipeline_read_bytes"] = row["ps_owner_old_read_bytes"]
-                return
-            except BaseException as error:
-                if self.compute_ahead:
-                    self._compute_failed(error)
-                else:
-                    self._owner_failed = True
-                raise
         try:
+            if self._retiring_owner is not None:
+                raise RuntimeError("Owner retirement holder is still occupied")
+            if step:
+                if self._owner_exchange is None or self._current_step != step - 1:
+                    raise RuntimeError("Owner compute-ahead lacks preceding GPU staging")
+                self._retiring_owner = (step - 1, self._owner_exchange)
+                self._owner_exchange = None
+            row.update(ps_owner_retire_wait_ms=0.0, ps_owner_max_unretired_depth=0)
+            self._record_compute_state(row)
             super().before_lookup(step, sparse_features, ticket, row)
-            # The completed ordinary read proves the prior GLOBAL commit. Retain the
-            # same commit future explicitly for the owner read as a second guard.
-            start = time.perf_counter()
-            plan = self._owner_metadata[step].result()[2]
-            self._owner_plan = plan.owner
-            self._owner_exchange = None
-            self._owner_read = self._worker.submit(self._pull, self._owner_plan[1], self._commit)
-            row["ps_owner_plan_wait_ms"] = (time.perf_counter() - start) * 1e3
-            row["ps_owner_rows"] = self._owner_plan[1].numel()
-            row["ps_owner_old_read_bytes"] = self._owner_plan[1].numel() * 128 * 4
-        except BaseException:
+            row["ps_pipeline_read_bytes"] = row["ps_owner_old_read_bytes"]
+        except BaseException as error:
+            self._compute_failed(error)
             raise
 
     def _submit_gradients(self, ids, grads):
-        if not self.unified_forward:
-            return self._submit_owner_merged(grads)
         if self._owner_failed:
             raise RuntimeError("Unified owner session has failed")
         try:
             return self._submit_owner_merged(grads)
         except BaseException as error:
-            if self.compute_ahead:
-                self._compute_failed(error)
-            else:
-                self._owner_failed = True
+            self._compute_failed(error)
             raise
 
     def _submit_owner_merged(self, grads):
         start = time.perf_counter()
-        if self.unified_forward:
-            if self._owner_exchange is None or self._owner_plan is None:
-                raise RuntimeError("Owner submission lacks completed forward staging")
-            permutation, keys, metadata, send, recv = self._owner_plan[:5]
-            pull_ms = self._current_metrics["ps_owner_pull_ms"]
-            read_done = start
-        else:
-            if self._owner_read is None or self._owner_plan is None:
-                raise RuntimeError("GPU owner submission lacks a committed old-weight read")
-            from .owner_merged_gpu import MergedGPUOwnerExchange as Exchange
-            weights, _, pull_ms = self._owner_read.result()
-            read_done = time.perf_counter()
-            permutation, keys, metadata, send, recv = self._owner_plan
-            self._owner_exchange = Exchange(
-                permutation, keys, metadata, send.tolist(), recv.tolist(), weights,
-                process_group=dist.group.WORLD, device=self.device)
-        if self.verify_handoff:
-            if self._owner_exchange._gpu[2] is not self._verified_owner_weights:
-                raise RuntimeError("Owner backward does not use verified forward weights")
-            self._current_metrics["ps_owner_handoff_same_tensor_passed"] = 1
+        if self._owner_exchange is None or self._owner_plan is None:
+            raise RuntimeError("Owner submission lacks completed forward staging")
+        permutation, keys, metadata, send, recv = self._owner_plan[:5]
+        pull_ms = self._current_metrics["ps_owner_pull_ms"]
+        read_done = start
         candidates, status = self._owner_exchange.run(grads, self.lr)
-        if self.candidate_handoff and self._submitted + 1 < self._total_steps:
+        if self._submitted + 1 < self._total_steps:
             if self._owner_candidate is not None:
                 raise RuntimeError("Owner candidate already awaits handoff")
             ready = torch.cuda.Event()
@@ -710,29 +628,25 @@ class GPUOwnerPipeline(PSPipeline):
             self._owner_candidate = (self._session, self._submitted, self._rank,
                                      keys, candidates, ready)
         enqueued = time.perf_counter()
-        if self.compute_ahead:
-            self._candidate_step = self._submitted  # Kernel enqueued, not yet a retired result.
-            self._record_compute_state(self._current_metrics)
-            retire_start = time.perf_counter()
-            self._retire_previous(self._submitted)
-            self._current_metrics["ps_owner_retire_wait_ms"] = (time.perf_counter() - retire_start) * 1e3
-            if self.verify_handoff:
-                self._verify_forward_weights(keys)
-        publish_start = time.perf_counter() if self.compute_ahead else enqueued
+        self._candidate_step = self._submitted  # Kernel enqueued, not yet a retired result.
+        self._record_compute_state(self._current_metrics)
+        retire_start = time.perf_counter()
+        self._retire_previous(self._submitted)
+        self._current_metrics["ps_owner_retire_wait_ms"] = (time.perf_counter() - retire_start) * 1e3
+        publish_start = time.perf_counter()
         handle = self.kv_client.sparse_owner_replace_async(
             self.master_table_name, keys, candidates, status, session=self._session,
             step=self._submitted, rank=self._rank, world=self._world, lr=self.lr)
         self._track_commit(handle)
-        if self.compute_ahead:
-            if self._pending_owner_step is not None:
-                if (self._pending_owner_step != self._submitted + 1
-                        or self._split_clean is None or self._owner_candidate is None):
-                    raise RuntimeError("Owner compute-ahead lacks a prepared successor")
-                self._read = self._worker.submit(self._finish_owner_handoff,
-                    self._pending_owner_step, self._split_clean, None, self._owner_candidate)
-                self._compute_read_step = self._pending_owner_step
-                self._split_clean = self._owner_candidate = None
-            self._record_compute_state(self._current_metrics)
+        if self._pending_owner_step is not None:
+            if (self._pending_owner_step != self._submitted + 1
+                    or self._split_clean is None or self._owner_candidate is None):
+                raise RuntimeError("Owner compute-ahead lacks a prepared successor")
+            self._read = self._worker.submit(self._finish_owner_handoff,
+                self._pending_owner_step, self._split_clean, None, self._owner_candidate)
+            self._compute_read_step = self._pending_owner_step
+            self._split_clean = self._owner_candidate = None
+        self._record_compute_state(self._current_metrics)
         self._current_metrics.update(
             ps_owner_read_wait_ms=(read_done - start) * 1e3,
             ps_owner_pull_ms=pull_ms,
@@ -742,6 +656,18 @@ class GPUOwnerPipeline(PSPipeline):
             ps_owner_peer_recv_bytes=int(recv[1 - self._rank]) * 128 * 4,
             ps_owner_candidate_bytes=candidates.numel() * 4)
         return handle
+
+    def _valid_gradient_shape(self, ids, grads):
+        del ids
+        return (grads.ndim == 2 and grads.shape[1] == self.embedding_dim
+                and grads.dtype == torch.float32)
+
+    def _release_step(self, step):
+        self._owner_metadata.pop(step, None)
+
+    @property
+    def table_types(self):
+        return self._owner_table_types
 
     def _close_commit_session(self, abort):
         self.kv_client.sparse_owner_replace_close(
@@ -753,7 +679,7 @@ class GPUOwnerPipeline(PSPipeline):
         if self._closed:
             return
         self._metadata_stopping = True
-        error = (self._compute_error if self.compute_ahead else None) or self._metadata_prepare_error
+        error = self._compute_error or self._metadata_prepare_error
         if not flush or error is not None or self._submission_error is not None:
             # Abort and drain before synchronizing GPU producers or releasing rows.
             try:
@@ -765,7 +691,7 @@ class GPUOwnerPipeline(PSPipeline):
                     if hasattr(error, "add_note"):
                         error.add_note("Owner commit cleanup also failed: " + repr(cleanup))
         try:
-            if self.candidate_handoff and flush and error is None:
+            if flush and error is None:
                 # Observe a failed commit/read before secondary cleanup errors.
                 self._wait_pending()
                 if self._read is not None:
@@ -773,16 +699,15 @@ class GPUOwnerPipeline(PSPipeline):
         except BaseException as exc:
             error = exc
         try:
-            if self.candidate_handoff:
-                # Read futures may own merge sources: drain before base clears them.
-                torch.cuda.synchronize(self.device)
+            # Read futures may own merge sources: drain before base clears them.
+            torch.cuda.synchronize(self.device)
         except BaseException as exc:
             if error is None:
                 error = exc
             else:
                 if hasattr(error, "add_note"):
                     error.add_note("Owner handoff cleanup also failed: " + repr(exc))
-        if self.compute_ahead and self._retiring_owner is not None:
+        if self._retiring_owner is not None:
             for owner in self._retiring_owner[1:]:
                 try:
                     if owner is not None:
@@ -813,10 +738,10 @@ class GPUOwnerPipeline(PSPipeline):
                 if hasattr(error, "add_note"):
                     error.add_note("GPU owner cleanup also failed: " + repr(exc))
         finally:
-            self._owner_exchange = self._owner_read = self._owner_plan = None
+            self._owner_exchange = self._owner_plan = None
             self._pending_owner_step = None
             self._owner_candidate = None
-            self._verified_owner_weights = None
             self._retiring_owner = None
+            self._owner_metadata.clear()
         if error is not None:
             raise error

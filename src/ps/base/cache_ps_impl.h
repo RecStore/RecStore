@@ -488,7 +488,7 @@ public:
 
   void FailSparseGradientSession(const std::string& table,
                                  const std::string& payload) {
-    sparse_gradient_commits_.FailSortedSession(table, payload);
+    sparse_gradient_commits_.FailSession(table, payload);
   }
 
   int64_t SparseGradientCommit(const std::string& table,
@@ -515,7 +515,7 @@ public:
             "Sparse gradient commit table or dimension mismatch");
       }
     } catch (...) {
-      sparse_gradient_commits_.FailSortedSession(table, payload);
+      sparse_gradient_commits_.FailSession(table, payload);
       throw;
     }
     return sparse_gradient_commits_.Exchange(

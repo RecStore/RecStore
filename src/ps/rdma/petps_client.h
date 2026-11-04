@@ -28,9 +28,6 @@ public:
 
   void Barrier(const std::string& ss, int k);
   void InitThread();
-  // Configure before InitThread; the adapter owns each complete operation.
-  // QP 0 is reserved for sparse commits and all other QPs serve GETs.
-  void EnableSplitLanes();
 
   int64_t ExchangeSparseGradientCommit(const std::string& table,
                                        const std::string& payload) override;
@@ -175,7 +172,7 @@ private:
     int qp_index   = -1;
     int slot_in_qp = -1;
   };
-  SlotHandle AcquireIdleSlot(bool sparse_commit = false);
+  SlotHandle AcquireIdleSlot();
   // Waits for the slot status word, running the slow-path health probe after
   // the configured delay and failing fast with ShardUnreachableError once the
   // lane is dirty.
@@ -284,7 +281,6 @@ private:
   // health probes.
   std::unique_ptr<RdmaControlPlaneClient> control_plane_;
   std::vector<QpContext> qps_; // One context per client-side QP lane.
-  bool split_lanes_ = false;   // Immutable after transport initialization.
   std::vector<std::vector<char>>
       receive_buffers_; // All heap-backed response buffers ever allocated.
                         // Element data() pointers stay stable for the buffer
