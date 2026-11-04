@@ -242,6 +242,71 @@ TEST(SsdBuddyAllocatorTest, AllocWriteReadAndReuse) {
   EXPECT_EQ(h2, h1);
 }
 
+// Buddy blocks are 256 B here, so 16 of them share one 4 KiB page. Unlike the
+// slab allocator, buddy serializes every device read and write behind io_mu_,
+// so its page read-modify-write cycle is already atomic; this test pins that
+// invariant so a future per-page stripe refactor cannot silently drop updates.
+TEST(SsdBuddyAllocatorTest, ConcurrentWritesToSlotsSharingPagesKeepUpdates) {
+  InMemoryIOBackend backend;
+  // Widen the read->write window so unserialized writers would race.
+  backend.read_delay = std::chrono::microseconds(200);
+  SsdBuddyAllocator alloc(
+      &backend,
+      /*min_block_size=*/128,
+      /*num_levels=*/6,
+      /*capacity_bytes=*/32768,
+      /*base_byte_offset=*/0);
+
+  constexpr size_t kThreads   = 8;
+  constexpr size_t kPerThread = 8;
+  constexpr size_t kValueSize = 128;
+  constexpr size_t kRounds    = 3;
+  constexpr int kBaseByte     = 1;
+
+  std::vector<uint64_t> handles(kThreads * kPerThread);
+  for (auto& handle : handles) {
+    handle = alloc.Alloc(kValueSize);
+    ASSERT_NE(handle, SsdBlockAllocator::kInvalidHandle);
+  }
+
+  for (size_t round = 0; round < kRounds; ++round) {
+    std::atomic<size_t> ready{0};
+    std::vector<std::thread> writers;
+    writers.reserve(kThreads);
+    for (size_t t = 0; t < kThreads; ++t) {
+      writers.emplace_back([&, t] {
+        const std::string payload(
+            kValueSize, static_cast<char>(kBaseByte + round * kThreads + t));
+        ++ready;
+        while (ready.load() < kThreads) {
+        }
+        for (size_t i = 0; i < kPerThread; ++i) {
+          alloc.Write(
+              handles[t * kPerThread + i], payload.data(), payload.size());
+        }
+      });
+    }
+    for (auto& writer : writers) {
+      writer.join();
+    }
+
+    backend.read_delay = std::chrono::microseconds(0);
+    for (size_t t = 0; t < kThreads; ++t) {
+      const std::string expected(
+          kValueSize, static_cast<char>(kBaseByte + round * kThreads + t));
+      for (size_t i = 0; i < kPerThread; ++i) {
+        std::vector<char> out(kValueSize, 0);
+        const size_t slot = t * kPerThread + i;
+        ASSERT_EQ(alloc.Read(handles[slot], out.data(), out.size()), kValueSize)
+            << "round=" << round << " slot=" << slot;
+        EXPECT_EQ(std::string(out.begin(), out.end()), expected)
+            << "round=" << round << " slot=" << slot;
+      }
+    }
+    backend.read_delay = std::chrono::microseconds(200);
+  }
+}
+
 TEST(SsdBuddyAllocatorTest, OversizedValueThrows) {
   InMemoryIOBackend backend;
   SsdBuddyAllocator alloc(
