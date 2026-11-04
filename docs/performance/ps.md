@@ -12,5 +12,4 @@ PS/network 层只测参数服务器与客户端之间的传输，不含模型训
 python3 tools/benchmarks/run_benchmark_ps.py --help
 ```
 
-RDMA 的设备、GID、QP 与 lane 参数见[RDMA 实现](../parameter_server/rdma.md)；拓扑配置
-见[分布式训练](../dev/distributed.md)。三层指标口径见[测试范围与指标](methodology.md)。
+RDMA 的设备、GID、QP 与 lane 参数见[RDMA 实现](../parameter_server/rdma.md)；拓扑配置见[分布式训练](../dev/distributed.md)。三层指标口径见[测试范围与指标](methodology.md)。

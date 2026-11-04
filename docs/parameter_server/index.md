@@ -18,10 +18,7 @@ RecStore 参数服务器（PS）模块负责分布式训练中模型参数和嵌
 
 ### 核心接口
 
-`BaseParameterServer` 定义 `Init(config)` / `Run()`；`BasePSClient` 定义
-`GetParameter`、`PutParameter`、`UpdateParameter`、`InitEmbeddingTable`、
-`AsyncGetParameter`、`PrefetchParameter` 等操作。完整签名、数据结构和控制命令见
-[base.md](./base.md)。
+`BaseParameterServer` 定义 `Init(config)` / `Run()`；`BasePSClient` 定义 `GetParameter`、`PutParameter`、`UpdateParameter`、`InitEmbeddingTable`、`AsyncGetParameter`、`PrefetchParameter` 等操作。完整签名、数据结构和控制命令见 [base.md](./base.md)。
 
 ## 工作流程
 

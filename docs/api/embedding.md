@@ -1,7 +1,6 @@
 # Embedding 模块
 
-模块划分与选择（`RecStoreEmbeddingBagCollection` vs `DistEmbedding`）见
-[计算层：Embedding 与 Optimizer](../calc/embedding_optimizer.md)。本文只列 Python API。
+模块划分与选择（`RecStoreEmbeddingBagCollection` vs `DistEmbedding`）见 [计算层：Embedding 与 Optimizer](../calc/embedding_optimizer.md)。本文只列 Python API。
 
 ## RecStoreEmbeddingBagCollection
 

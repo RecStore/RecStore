@@ -69,8 +69,7 @@ python3 model_zoo/rs_demo/run_mock_stress.py \
 
 ### 服务端 (PS Server)
 
-服务端的结构化统计通过 `RECSTORE_REPORT_*` 上报（见[监控与 Grafana](monitoring.md)），
-编译时打开 `-DUSE_PERF_REPORT=ON`。
+服务端的结构化统计通过 `RECSTORE_REPORT_*` 上报（见[监控与 Grafana](monitoring.md)），编译时打开 `-DUSE_PERF_REPORT=ON`。
 
 CPU Profiler 通过 `CPUPROFILE` 开启，需要带 `-DCMAKE_BUILD_TYPE=Debug
 -DUSE_GPERF_PROFILING=ON` 构建：

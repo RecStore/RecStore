@@ -6,10 +6,10 @@
 面向真实跨机部署的配置、IB/RoCE v1/RoCE v2 选择和改造边界，以代码中的
 `ResolvedRdmaDeployment` 配置契约和本页的稳定架构说明为准。
 
-默认工作目录为仓库根目录：
+默认工作目录为仓库根目录，本文命令按容器内的固定路径书写；在宿主机上跑时把 `/app/RecStore` 换成自己的仓库根目录。
 
 ```bash
-cd <repo root>
+cd /app/RecStore
 ```
 
 ## 1. 适用范围

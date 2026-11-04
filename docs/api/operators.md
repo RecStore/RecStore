@@ -1,8 +1,6 @@
 # PyTorch Operators
 
-算子注册分散在多个 binding 文件：`src/framework/pytorch/op_base.cc`（建表/读写）、
-`op_flat.cc`（`local_*` 快路径）、`op_prefetch.cc`（预取）、
-`cache/cache_bindings.cc`（embedding cache）。
+算子注册分散在多个 binding 文件：`src/framework/pytorch/op_base.cc`（建表/读写）、`op_flat.cc`（`local_*` 快路径）、`op_prefetch.cc`（预取）、`cache/cache_bindings.cc`（embedding cache）。
 
 | op | 作用 |
 |----|------|

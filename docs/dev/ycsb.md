@@ -1,15 +1,23 @@
 # KVEngine 存储基准
 
-`tools/benchmarks/run_kvengine_compare.py` 驱动 `benchmark_kv_engine`，在多个 KVEngine
-组合上运行 YCSB 风格的 workload。它只测存储层，不经过 PS 和 RDMA，因此用来定位
-“PS/network 是否已经被 KVEngine 本地能力卡住”。
+`tools/benchmarks/run_kvengine_compare.py` 驱动 `benchmark_kv_engine`，在多个 KVEngine 组合上运行 YCSB A/B/C 与随机批量读。它只走存储层，不经过 PS 和网络，因此数字用来回答两件事：某个 index/value 组合的本地读写上限是多少，PS/network 层的吞吐是不是已经撞到这个上限。
 
-## 支持的引擎
+## 1. 先确认正确性
+
+改动过存储层时先跑一次单测，再谈吞吐：
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target test_kvengine -j
+ctest --test-dir build -R '^test_kvengine$' -VV
+```
+
+## 2. 支持的引擎
 
 脚本用别名选择引擎组合（`--engines`）：
 
 | 别名 | index | value store | 说明 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `petkv` | PET hash | 值内联 | 独立 KVEngine 实现 |
 | `dram_pet_dram` | `DRAM_PET_HASH` | `DRAM_VALUE_STORE` | 默认组合 |
 | `dram_pet_tiered` | `DRAM_PET_HASH` | `TIERED_VALUE_STORE` | 默认组合 |
@@ -22,23 +30,23 @@
 
 默认只跑 `petkv`、`dram_pet_dram`、`dram_pet_tiered`。
 
-## 构建
+## 3. 构建
 
 ```bash
 cmake -S . -B build
 cmake --build build --target benchmark_kv_engine -j
 ```
 
-外部引擎（`fasterkv*`、`hps_rocksdb`）需要额外打开：
+外部引擎（`fasterkv*`、`hps_rocksdb`）需要打开第三方开关：
 
 ```bash
 cmake -S . -B build -DRECSTORE_ENABLE_THIRD_PARTY_ENGINES=ON
 cmake --build build --target benchmark_kv_engine -j
 ```
 
-给 runner 加 `--build` 会自动完成上面两步，并根据 `--engines` 决定是否打开外部引擎。
+给 runner 加 `--build` 会自动完成上面两步，并按 `--engines` 决定是否打开外部引擎。
 
-## 运行
+## 4. 运行 YCSB
 
 ```bash
 python3 tools/benchmarks/run_kvengine_compare.py \
@@ -49,26 +57,22 @@ python3 tools/benchmarks/run_kvengine_compare.py \
   --runtime-seconds 5 \
   --threads 16 \
   --value-size 128 \
-  --read-mode get \
   --output-dir results/kvengine_compare
 ```
 
-- `--operation-count` 仅为兼容 `summary.csv` 保留，计时基准会忽略它；用
-  `--runtime-seconds` 控制 run 阶段时长。
+- `--operation-count` 只为兼容 `summary.csv` 保留，计时基准实际忽略它；run 阶段时长由 `--runtime-seconds` 决定。
 - `--load-threads 0` 表示 load 阶段复用 `--threads`。
-- `--repeat` 重复轮次，`--keep-data` 保留上一轮数据，`--skip-load` / `--skip-run`
-  只跑其中一个阶段。
-- 数据目录默认落在 `/dev/shm/recstore`（DRAM）和 `/mnt/nvme1n1_recstore/recstore`（SSD），
-  可用 `--dram-capacity-bytes` / `--ssd-capacity-bytes` 覆盖容量。
+- `--repeat` 重复轮次；`--keep-data` 保留上一轮数据；`--skip-load` / `--skip-run` 只跑其中一个阶段。
+- 数据目录默认 `/dev/shm/recstore`（DRAM）与 `/mnt/nvme1n1_recstore/recstore`（SSD），容量用 `--dram-capacity-bytes` / `--ssd-capacity-bytes` 覆盖。
+- 跑之前清一次残留进程，只使用 `tools/benchmarks/kill_bench_procs.sh`。
 
 ### 引擎专属参数
 
-全局参数用 `--extra-arg` 透传给 `benchmark_kv_engine`：
+全局参数通过 `--extra-arg` 透传给 `benchmark_kv_engine`：
 
 ```bash
 python3 tools/benchmarks/run_kvengine_compare.py \
-  --engines dram_pet_dram \
-  --workloads a \
+  --engines dram_pet_dram --workloads a \
   --extra-arg=--print_util=true
 ```
 
@@ -76,28 +80,26 @@ python3 tools/benchmarks/run_kvengine_compare.py \
 
 ```bash
 python3 tools/benchmarks/run_kvengine_compare.py \
-  --engines dram_pet_dram dram_eh_dram \
-  --workloads a \
+  --engines dram_pet_dram dram_eh_dram --workloads a \
   --engine-prop dram_pet_dram:dram_capacity_bytes=1073741824
 ```
 
-## KVEngine 随机 batch lookup 对齐
+## 5. 随机批量读（对齐 PS RDMA GET）
 
-对齐 PS RDMA GET 的 `batch_keys=N` 时，使用 `benchmark_kv_engine` 的
-`batch_get_flat` 模式。普通 `get` 每次读取单个 key；`batch_get_flat` 每次生成一组随机
-key，直接调用 `BaseKV::BatchGetFlat`，吞吐单位为 keys/s。
+普通 `get` 每次读一个 key；`batch_get_flat` 每次生成一组随机 key，直接调用 `BaseKV::BatchGetFlat`，吞吐单位为 keys/s。要判断 PS RDMA GET 是否已经撞到存储层上限，就用这一档和 PS/network 层同 `batch_keys` 对比。
 
-通过对比 storage-only 与 PS/network，可以判断 PS RDMA 是否已经被 KVEngine 本地
-lookup 上限卡住。2026-05-31 的 RDMA GET 报告使用了 `batch_keys=500`：
+```bash
+python3 tools/benchmarks/run_kvengine_compare.py \
+  --engines dram_pet_dram \
+  --workloads c \
+  --record-count 300000 \
+  --threads 16 \
+  --read-mode batch_get_flat \
+  --batch-keys 500 \
+  --output-dir results/kv_batchget_compare
+```
 
-| index | storage-only `BatchGetFlat(500 random keys)` | PS RDMA 对齐结论 |
-|---|---:|---|
-| `DRAM_EXTENDIBLE_HASH` | `19.45M keys/s` | PS RDMA EH `19.37M keys/s` 基本碰到存储层上限 |
-| `DRAM_PET_HASH` | `51.96M keys/s` | PET 需要搭配 staging-copy response path 才能释放存储层优势 |
-
-PS RDMA 对齐结论和 response path 选择见 `docs/parameter_server/rdma.md`。
-
-直接运行二进制：
+等价的二进制调用：
 
 ```bash
 ./build/bin/benchmark_kv_engine \
@@ -116,34 +118,21 @@ PS RDMA 对齐结论和 response path 选择见 `docs/parameter_server/rdma.md`�
   --batch_keys=500
 ```
 
-通过 runner 运行时，对应参数是：
+对比时 `read_mode`、`batch_keys`、value size、线程数必须与 PS 层一致，`summary.csv` 会把这几项一起记下来。
 
-```bash
-python3 tools/benchmarks/run_kvengine_compare.py \
-  --engines dram_pet_dram \
-  --workloads c \
-  --record-count 300000 \
-  --threads 16 \
-  --read-mode batch_get_flat \
-  --batch-keys 500 \
-  --output-dir results/kv_batchget_compare
-```
-
-`summary.csv` 会记录 `read_mode` 和 `batch_keys`，用于和 PS/network 层报告对齐。
-
-## 结果
+## 6. 结果怎么读
 
 每次运行在 `--output-dir` 下生成：
 
 - `summary.csv`：每次引擎 / workload / repeat 一行；
 - `kvengine_workload_summary.csv`：按 workload 聚合；
-- `kvengine_ycsb_run_throughput.svg`：run 阶段吞吐图（matplotlib 可用时）。
-- `log_path` / `raw_log_path`：单个引擎运行的完整日志。
+- `kvengine_ycsb_run_throughput.svg`：run 阶段吞吐图（matplotlib 可用时）；
+- `log_path` / `raw_log_path`：单次运行的完整日志。
 
 `summary.csv` 的主要字段：
 
 | 字段 | 内容 |
-|---|---|
+| --- | --- |
 | `workload` | YCSB workload，`a` / `b` / `c` |
 | `engine` | `--engines` 里的别名 |
 | `index_type` / `value_store_type` | 该别名的 index 与 value store |
@@ -156,4 +145,6 @@ python3 tools/benchmarks/run_kvengine_compare.py \
 | `run_read_operations` / `run_update_operations` | run 阶段读写操作数 |
 | `exit_code` / `error_tail` | 退出码与失败时的错误摘要 |
 
-只重绘已有结果时加 `--draw --output-dir <dir>`。
+- `exit_code != 0` 的行不能计入结论，先看 `error_tail` 和对应日志。
+- 只重绘已有结果时加 `--draw --output-dir <dir>`。
+- 与 PS 层的对照结论写进 `docs/parameter_server/rdma.md` 的既有结构，历史报告见[性能报告](../performance/reports.md)。

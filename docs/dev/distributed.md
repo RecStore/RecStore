@@ -17,7 +17,7 @@
 
 ??? example "配置文件示例"
 
-    ```json title="recstore_config.distributed.json" linenums="1"
+    ```json title="recstore_config.distributed.json" linenums="1" hl_lines="6 7-18 37 38 40-51"
     {
       "cache_ps": {
         "ps_type": "BRPC",
@@ -77,6 +77,13 @@
       }
     }
     ```
+
+高亮的字段是两台机器必须一致的部分：
+
+- `cache_ps.num_shards` 与 `distributed_client.num_shards` 必须相等，且等于 `servers` 的条目数；
+- 两处 `servers` 的 `host` / `port` / `shard` 要能一一对应，`shard` 覆盖 `0..num_shards-1`（顺序无所谓）；
+- `hash_method` 决定 key 落到哪个分片，两端不一致会出现"读得到但写到别的分片"；
+- `client` 只给单机入口用，分布式训练不走它。
 
 ## 参数服务器
 

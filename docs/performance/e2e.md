@@ -1,7 +1,6 @@
 # 端到端训练基准
 
-端到端基准覆盖模型层全链路：数据加载、forward、backward、sparse update 和 dense
-optimizer，产物是 samples/s 与 ms/step。
+端到端基准覆盖模型层全链路：数据加载、forward、backward、sparse update 和 dense optimizer，产物是 samples/s 与 ms/step。
 
 入口：
 
@@ -9,8 +8,7 @@ optimizer，产物是 samples/s 与 ms/step。
 python3 -m tools.benchmarks.e2e.custom.cli --help
 ```
 
-运行前先按[快速运行](../quickrun.md)准备好 PS 和训练进程；机器与拓扑要求见
-[分布式训练](../dev/distributed.md)。
+运行前先按[快速运行](../quickrun.md)准备好 PS 和训练进程；机器与拓扑要求见 [分布式训练](../dev/distributed.md)。
 
 结果口径：
 

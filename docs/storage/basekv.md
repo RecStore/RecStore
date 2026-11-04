@@ -61,8 +61,7 @@ base_kv_.reset(base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
 
 ## KVEngineComposite（摘要）
 
-省略 `engine_type` 或显式写 `KVEngineComposite` 时使用嵌套配置，字段与完整示例见
-[composite_kvengine.md](./composite_kvengine.md) 的配置骨架一节。
+省略 `engine_type` 或显式写 `KVEngineComposite` 时使用嵌套配置，字段与完整示例见 [composite_kvengine.md](./composite_kvengine.md) 的配置骨架一节。
 
 常用顶层字段：
 

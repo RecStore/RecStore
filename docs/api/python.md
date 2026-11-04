@@ -8,8 +8,7 @@ from recstore.KVClient import RecStoreClient
 client = RecStoreClient(role="default")
 ```
 
-`RecStoreClient` 按 role 缓存实例，底层 `lib_recstore_ops.so` 按构建目录约定查找。
-测试辅助类 `src/test/framework/pytorch/client.py` 另有 `library_path=` 参数，生产路径不使用。
+`RecStoreClient` 按 role 缓存实例，底层 `lib_recstore_ops.so` 按构建目录约定查找。测试辅助类 `src/test/framework/pytorch/client.py` 另有 `library_path=` 参数，生产路径不使用。
 
 | API | 作用 |
 |-----|------|
