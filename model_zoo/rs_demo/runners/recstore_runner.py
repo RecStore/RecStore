@@ -43,6 +43,7 @@ from python.pytorch.recstore.analysis.profiler import (
     build_torchrec_profiler,
 )
 from ..runtime.timing import StepTimer
+from ..runtime.continuous_loop import ContinuousLoop, continuous_enabled, verify_continuous_protocol
 from ..runtime.worker_common import (
     barrier_for_step_alignment as _barrier_for_step_alignment,
     bool_int as _bool_int,
@@ -301,6 +302,29 @@ class RecStoreRunner(BenchmarkRunner):
         use_bagpipe = cfg.optimization.plugin == "bagpipe" or cfg.read_mode == "bagpipe"
         use_planned_bagpipe = use_bagpipe and cfg.optimization.prescan
 
+        if cfg.read_mode == "ps_pipeline":
+            from recstore.ps_pipeline import (
+                GPUOwnerPipeline,
+                PSPipeline,
+                PSPipelineSGD,
+                owner_options_from_env,
+            )
+            owner_options = owner_options_from_env(os.environ)
+            pipeline_class = PSPipeline if owner_options is None else GPUOwnerPipeline
+            if owner_options is not None:
+                if not cfg.dense_cuda_graph or cfg.ps_type != "RDMA":
+                    raise ValueError("GPU owner updates currently require RDMA and the dense CUDA graph")
+                owner_options["owner_table_end"] = (
+                    list(table_offsets.values())[-1] + int(eb_configs[-1]["num_embeddings"]))
+            read_path = pipeline_class(
+                embedding_module, client, table_offsets=table_offsets,
+                master_table_name=eb_configs[0]["name"],
+                embedding_dim=cfg.embedding_dim, device=device,
+                validation_state=cfg.validation_state,
+                dependency_split=cfg.ps_pipeline_dependency_split, total_steps=cfg.steps,
+                **(owner_options or {}),
+            )
+            return None, read_path, PSPipelineSGD(embedding_module, read_path), False
         if use_bagpipe:
             fused_id_prefixes = torch.tensor(
                 [table_offsets[name] for name in default_cat_names],
@@ -404,10 +428,17 @@ class RecStoreRunner(BenchmarkRunner):
             embedding_dim=cfg.embedding_dim,
             device=device,
         )
-        dense_module = _maybe_wrap_dense_module_for_dist(
-            dense_module=dense_module, device=device,
-            local_rank=local_rank, use_dist=use_dist,
-        )
+        if cfg.dense_cuda_graph:
+            # DDP hooks remain after unwrapping; never install them for capture.
+            if use_dist:
+                with torch.no_grad():
+                    for value in list(dense_module.parameters()) + list(dense_module.buffers()):
+                        torch.distributed.broadcast(value, src=0)
+        else:
+            dense_module = _maybe_wrap_dense_module_for_dist(
+                dense_module=dense_module, device=device,
+                local_rank=local_rank, use_dist=use_dist,
+            )
         unwrapped_module = (
             dense_module.module
             if isinstance(dense_module, torch.nn.parallel.DistributedDataParallel)
@@ -429,6 +460,16 @@ class RecStoreRunner(BenchmarkRunner):
         inject_project_paths(repo_root)
         from torch import distributed as dist
 
+        overlap_dense = os.environ.get("RECSTORE_DENSE_REDUCE_OVERLAP") == "1"
+        if overlap_dense and (not cfg.dense_cuda_graph or cfg.read_mode != "ps_pipeline"
+                              or cfg.torchrec_dist_mode == "fair_remote"):
+            raise ValueError("Dense overlap requires PS pipeline CUDA graph and no fair_remote")
+        prepare_during_dense = os.environ.get("RECSTORE_PS_PREPARE_DURING_DENSE") == "1"
+        if prepare_during_dense and not (
+            cfg.read_mode == "ps_pipeline" and cfg.ps_pipeline_dependency_split
+            and cfg.dense_cuda_graph and overlap_dense
+        ):
+            raise ValueError("Prepare during dense requires dependency-split PS CUDA graph and dense overlap")
         default_cat_names = get_default_cat_names()
         print(f"[rs_demo] repo_root={repo_root}")
         print("[rs_demo] backend=recstore")
@@ -442,6 +483,7 @@ class RecStoreRunner(BenchmarkRunner):
         plugin = None
         events: _EventLog | None = None
         step_iter = None
+        continuous = continuous_error = None
         try:
             os.chdir(str(self.runtime_dir))
             torch.manual_seed(cfg.seed)
@@ -449,6 +491,8 @@ class RecStoreRunner(BenchmarkRunner):
                 world_size, local_rank, dist
             )
 
+            verify_continuous_protocol(torch, dist, device, world_size, cfg.steps)
+            continuous_mode = continuous_enabled(cfg, device, world_size, lane="recstore")
             recstore.load_ops_library()
             client = recstore.RecStoreClient()
             if cfg.ps_type.upper() in {"LOCAL_SHM", "HIERKV"}:
@@ -461,15 +505,21 @@ class RecStoreRunner(BenchmarkRunner):
             eb_configs, table_offsets, RecStoreEmbeddingBagCollection = (
                 self._build_embedding_module(cfg, client, default_cat_names)
             )
+            embedding_init_start = time.perf_counter()
             embedding_module = RecStoreEmbeddingBagCollection(
                 embedding_bag_configs=eb_configs,
                 enable_fusion=cfg.recstore_enable_fusion,
                 fusion_k=cfg.fuse_k,
                 kv_client=client,
                 initialize_tables=(rank == 0),
+                fused_backend_table=(
+                    eb_configs[0]["name"] if cfg.read_mode == "ps_pipeline" else None
+                ),
             )
+            embedding_init_ms = (time.perf_counter() - embedding_init_start) * 1e3
             # -- optimization plugin + read path --------------------------------
             use_bagpipe = cfg.optimization.plugin == "bagpipe" or cfg.read_mode == "bagpipe"
+            use_ps_pipeline = cfg.read_mode == "ps_pipeline"
             plugin, read_path, sparse_optimizer, use_planned_bagpipe = (
                 self._build_read_path(
                     cfg=cfg,
@@ -482,6 +532,8 @@ class RecStoreRunner(BenchmarkRunner):
                 )
             )
 
+            if continuous_mode and not getattr(read_path, "owner_merged_grad", False):
+                raise ValueError("Continuous PS requires the merged GPU owner pipeline")
             _barrier_for_step_alignment(
                 dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
             )
@@ -503,7 +555,50 @@ class RecStoreRunner(BenchmarkRunner):
                     dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
                 )
 
-            lifecycle = {"rank": rank}
+            timing_metadata = {
+                "timing_protocol": "aligned_step",
+                "timing_mode": cfg.torchrec_timing_sync_mode,
+                "gpu_stage_timing_semantics": (
+                    "cuda_event_elapsed" if device.type == "cuda" and cfg.torchrec_timing_sync_mode == "stage"
+                    else "host_enqueue_wall" if device.type == "cuda" else "cpu_wall"),
+            }
+
+            if continuous_mode:
+                timing_metadata.update(timing_protocol="continuous_loop_all_steps", timing_mode="none",
+                                       gpu_stage_timing_semantics="host_enqueue_wall")
+            lifecycle = {"rank": rank, "embedding_init_ms": embedding_init_ms,
+                "dense_reduce_overlap_enabled": int(overlap_dense),
+                "ps_pipeline_prepare_during_dense_enabled": int(prepare_during_dense),
+                "dense_reduce_overlap_groups": {"dense": "WORLD" if use_dist else "local",
+                    "sparse": ("GPU owner NCCL/WORLD + PS exact writeback" if
+                               os.environ.get("RECSTORE_PS_OWNER_GPU") == "1" else "PS/RDMA, no NCCL"),
+                    "dense_buffer_group": "None/default"},
+                "gradient_communication_semantics": "remaining_join" if overlap_dense else "full_reduce"}
+            lifecycle.update(timing_metadata)
+            if use_ps_pipeline:
+                lifecycle["embedding_namespace"] = embedding_module.fused_backend_identity()
+                lifecycle["owned_read_native"] = callable(getattr(client.ops, "emb_read_into", None))
+                lifecycle["ps_pipeline_dependency_split"] = cfg.ps_pipeline_dependency_split
+                lifecycle["ps_pipeline_canonical_types"] = list(read_path.table_types)
+                if cfg.ps_pipeline_dependency_split:
+                    lifecycle["ps_pipeline_metadata_group_init_ms"] = read_path.metadata_group_init_ms
+                    lifecycle["ps_pipeline_metadata_byte_semantics"] = "padded tensor payload per peer; excludes transport framing"
+            dense_graph = dense_gradient_buffer = None
+            if cfg.dense_cuda_graph:
+                from ..runtime.dense_graph import capture_dlrm_dense
+                dense_graph, dense_gradient_buffer = capture_dlrm_dense(
+                    dense_module, criterion, dataloader, cfg.batch_size,
+                    num_features=len(default_cat_names), embedding_dim=cfg.embedding_dim,
+                )
+                lifecycle.update(
+                    dense_graph_capture_ms=dense_graph.capture_ms,
+                    dense_graph_batch_sizes=list(dense_graph.batch_sizes),
+                    dense_graph_memory=dense_graph.memory_stats,
+                    dense_graph_scope="dense forward/backward; individual stage times unavailable",
+                )
+                _barrier_for_step_alignment(
+                    dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
+                )
             # Keep the complete access schedule on CPU, including epoch transitions.
             if (
                 use_planned_bagpipe
@@ -540,36 +635,51 @@ class RecStoreRunner(BenchmarkRunner):
                 )
 
             rows: list[dict[str, Any]] = []
-            data_iter_state = {"iter": iter(dataloader)}
+            data_iter = iter(dataloader)
             prepared_batches: deque = deque()
-
+            metadata_depth = getattr(read_path, "metadata_lookahead", 0)
+            metadata_loop_start = None
+            if metadata_depth:
+                lifecycle["metadata_lookahead_depth"] = metadata_depth
+                lifecycle["metadata_lookahead_capacity"] = metadata_depth + 1
+                lifecycle["lookup_ids_build_scope"] = "background CPU ticket service; not main wait"
+                lifecycle["metadata_cpu_byte_scope"] = "buffered logical payload; aliases may count twice; excludes worker scratch"
             def prepare_next_batch(batch_step: int):
+                nonlocal data_iter
                 events.emit("prepare_start", step=batch_step)
                 row: dict[str, Any] = {
                     "rank": rank,
                     "batch_size": cfg.batch_size,
                     "step": batch_step,
                     "warmup_excluded": _bool_int(batch_step < cfg.warmup_steps),
+                    "ps_owner_merged_grad_enabled": int(getattr(read_path, "owner_merged_grad", False)),
+                    "ps_metadata_lookahead_depth": metadata_depth,
                 }
                 batch_prepare_start = time.perf_counter()
                 try:
-                    dense_batch, sparse_batch, labels_batch = next(data_iter_state["iter"])
+                    dense_batch, sparse_batch, labels_batch = next(data_iter)
                 except StopIteration:
-                    data_iter_state["iter"] = iter(dataloader)
-                    dense_batch, sparse_batch, labels_batch = next(data_iter_state["iter"])
+                    data_iter = iter(dataloader)
+                    dense_batch, sparse_batch, labels_batch = next(data_iter)
                 row["batch_prepare_ms"] = (time.perf_counter() - batch_prepare_start) * 1e3
                 row["batch_size"] = int(dense_batch.shape[0])
 
                 input_pack_start = time.perf_counter()
-                _, sparse_features = build_kjt_batch_from_dense_sparse_labels(
-                    dense_batch, sparse_batch, labels_batch, device=device
-                )
+                if use_ps_pipeline:
+                    sparse_features = None
+                else:
+                    _, sparse_features = build_kjt_batch_from_dense_sparse_labels(
+                        dense_batch, sparse_batch, labels_batch,
+                        device=None if use_ps_pipeline else device,
+                    )
                 row["input_pack_ms"] = (time.perf_counter() - input_pack_start) * 1e3
 
-                ticket = read_path.on_batch_prepared(
-                    batch_step, sparse_features, sparse_batch, row
-                )
-                if isinstance(ticket, PreparedTicket):
+                if metadata_depth:
+                    ticket = read_path.queue_cpu_metadata(batch_step, sparse_batch)
+                else:
+                    ticket = read_path.on_batch_prepared(
+                        batch_step, sparse_features, sparse_batch, row)
+                if not metadata_depth and isinstance(ticket, PreparedTicket):
                     _add_sparse_id_stats(
                         row,
                         sparse_features,
@@ -596,6 +706,8 @@ class RecStoreRunner(BenchmarkRunner):
                 events.emit(
                     "prepare_end",
                     step=batch_step,
+                    scope="cpu_inputs_and_metadata_enqueue" if metadata_depth else "batch_prepare",
+                    metadata_pending=bool(metadata_depth and not ticket.future.done()),
                     enqueue_ms=row.get("bagpipe_enqueue_ms"),
                     prepare_ms=row.get("batch_prepare_ms", 0.0)
                     + row.get("input_pack_ms", 0.0),
@@ -604,6 +716,28 @@ class RecStoreRunner(BenchmarkRunner):
                     batch_step, row,
                     dense_batch, sparse_features, labels_batch, ticket,
                 )
+
+            def adopt_metadata_batch(batch):
+                batch_step, row, dense, features, labels, ticket = batch
+                if batch_step >= read_path.prepared_steps:
+                    ticket = read_path.adopt_cpu_metadata(batch_step, ticket, row)
+                    _add_sparse_id_stats(row, features, table_offsets,
+                                         precomputed=(int(ticket[0].numel()), int(ticket[2])))
+                return batch_step, row, dense, features, labels, ticket
+
+            def metadata_buffer_stats(row):
+                inputs = plans = completed = 0
+                for entry in prepared_batches:
+                    handle = entry[5]
+                    inputs += sum(x.numel()*x.element_size() for x in (entry[2], entry[4], handle.source))
+                    if handle.future.done():
+                        plans += handle.future.result()[7]
+                        completed += 1
+                row.update(ps_metadata_cpu_queued=len(prepared_batches),
+                           ps_metadata_cpu_completed=completed,
+                           ps_metadata_cpu_queue_hwm=read_path.metadata_queue_high_watermark,
+                           ps_metadata_cpu_input_bytes=inputs,
+                           ps_metadata_cpu_plan_payload_bytes=plans)
 
             profiler = build_torchrec_profiler(
                 ProfilerConfig(
@@ -631,11 +765,17 @@ class RecStoreRunner(BenchmarkRunner):
             step_iter = _iter_profiled_steps(
                 range(cfg.steps), profiler or nullcontext()
             )
+            if continuous_mode:
+                continuous = ContinuousLoop(torch, device, cfg.steps)
+                continuous.start()
             for step in step_iter:
                 step_wall_start = time.perf_counter()
+                backpressure_ms = continuous.admit(step) if continuous is not None else 0.0
+                if metadata_depth and metadata_loop_start is None:
+                    metadata_loop_start = step_wall_start  # Includes step-0 initial fill.
                 events.emit("step_start", step=step)
                 observed_depth = read_path.desired_buffer_size
-                target_buffer = observed_depth
+                target_buffer = metadata_depth if metadata_depth else observed_depth
                 _fill_prefetch_buffer(
                     prepared_batches, prepare_next_batch,
                     from_step=step, target_buffer=target_buffer, max_steps=cfg.steps,
@@ -643,21 +783,44 @@ class RecStoreRunner(BenchmarkRunner):
                 if step + len(prepared_batches) >= cfg.steps:
                     read_path.advance_all()
 
+                batch = prepared_batches.popleft()
+                if metadata_depth:
+                    batch = adopt_metadata_batch(batch)
                 (
                     _, row, dense_batch, sparse_features, labels_batch,
                     ticket,
-                ) = prepared_batches.popleft()
+                ) = batch
 
+                row["ps_pipeline_prepare_during_dense_enabled"] = int(prepare_during_dense)
+                if cfg.ps_pipeline_dependency_split:
+                    row["ps_pipeline_lookahead_prepare_ms"] = 0.0
+                if (cfg.ps_pipeline_dependency_split and step + 1 < cfg.steps
+                        and not prepare_during_dense):
+                    prepare_start = time.perf_counter()
+                    if metadata_depth:
+                        prepared_batches[0] = adopt_metadata_batch(prepared_batches[0])
+                    else:
+                        prepared_batches.append(prepare_next_batch(step + 1))
+                    row["ps_pipeline_lookahead_prepare_ms"] = (time.perf_counter() - prepare_start) * 1e3
+
+                if metadata_depth:
+                    metadata_buffer_stats(row)
                 _reset_perf_stats(embedding_module)
                 sparse_optimizer.zero_grad()
-                timer = StepTimer(row, torch, device)
+                row.update(timing_metadata)
+                timer = StepTimer(row, torch, device, mode="none" if continuous_mode else cfg.torchrec_timing_sync_mode)
+                row["dense_reduce_overlap_enabled"] = int(overlap_dense)
+                row["gradient_communication_enqueue_ms"] = 0.0
+                row["gradient_communication_semantics"] = "remaining_join" if overlap_dense else "full_reduce"
                 # embed_lookup and sparse_update hit the PS over the network (host
                 # + network work) so they stay on the wall clock; the pure-GPU
                 # dense stages use CUDA events via timer.gpu().
                 events.emit("consume_start", step=step)
                 with timer.cpu("embed_lookup_ms"):
                     read_path.before_lookup(step, sparse_features, ticket, row)
-                    if use_bagpipe:
+                    if use_ps_pipeline:
+                        embeddings = read_path.lookup(sparse_features)
+                    elif use_bagpipe:
                         embeddings = plugin._controller.lookup(sparse_features)
                     elif callable(record_pooled_grad):
                         with torch.no_grad():
@@ -680,31 +843,70 @@ class RecStoreRunner(BenchmarkRunner):
                         embedded_sparse_source=embedded_sparse_source,
                         labels_batch=labels_batch,
                         torch=torch, device=device, detach_sparse=True,
+                        synchronize=not cfg.dense_cuda_graph,
                     )
+                if use_ps_pipeline and cfg.ps_pipeline_early_submit:
+                    embedded_sparse.register_hook(sparse_optimizer.submit_pooled_grad)
                 events.emit("pack_end", step=step)
-                events.emit("fwd_start", step=step)
-                with timer.gpu("dense_fwd_ms"):
-                    loss, _ = compute_dense_loss(
-                        cfg, dense_module, criterion, dense_features, embedded_sparse, labels
-                    )
-
-                events.emit("fwd_end", step=step)
-                events.emit("bwd_start", step=step)
-                with timer.gpu("backward_ms"):
-                    for param in dense_module.parameters():
-                        if param.requires_grad:
-                            param.grad = None
-                    if not embedded_sparse.is_leaf:
-                        embedded_sparse.retain_grad()
-                    embedded_sparse.grad = None
-                    loss.backward()
-                    if embedded_sparse.grad is None:
-                        raise RuntimeError(
-                            "missing embedded_sparse gradient after backward"
+                if dense_graph is not None:
+                    events.emit("dense_graph_start", step=step)
+                    with timer.gpu("dense_graph_ms"):
+                        loss, embedded_sparse_grad = dense_graph(
+                            dense_features, embedded_sparse, labels
                         )
-                    embedded_sparse_grad = embedded_sparse.grad.detach()
+                    events.emit("dense_graph_end", step=step)
+                    row["dense_fwd_ms"] = row["backward_ms"] = ""
+                    dense_work = None
+                    if overlap_dense:
+                        with timer.cpu("gradient_communication_enqueue_ms"):
+                            dense_work = dense_gradient_buffer.submit_reduce()
+                    # The flat dense buffer and owned sparse staging are disjoint.
+                    try:
+                        if prepare_during_dense and step + 1 < cfg.steps:
+                            # Current read was consumed; the pipeline uses its completed
+                            # _consumed_read. Prepare before submit advances _submitted.
+                            with timer.cpu("ps_pipeline_lookahead_prepare_ms"):
+                                prepared_batches.append(prepare_next_batch(step + 1))
+                        with timer.cpu("sparse_graph_submit_ms"):
+                            with timer.cpu("sparse_backward_replay_ms"):
+                                sparse_optimizer.record_pooled_grad(embedded_sparse_grad)
+                            with timer.cpu("sparse_optimizer_step_ms"):
+                                sparse_optimizer.step()
+                    except BaseException as sparse_error:
+                        from ..runtime.dense_graph import wait_dense_after_error
+                        wait_dense_after_error(dense_work, sparse_error)
+                        raise
+                    with timer.gpu("gradient_communication_ms"):
+                        # In overlap mode this event interval is only the remaining join.
+                        if overlap_dense:
+                            if dense_work is not None:
+                                dense_work.wait()
+                        else:
+                            dense_gradient_buffer.reduce()
+                else:
+                    events.emit("fwd_start", step=step)
+                    with timer.gpu("dense_fwd_ms"):
+                        loss, _ = compute_dense_loss(
+                            cfg, dense_module, criterion, dense_features, embedded_sparse, labels
+                        )
 
-                events.emit("bwd_end", step=step)
+                    events.emit("fwd_end", step=step)
+                    events.emit("bwd_start", step=step)
+                    with timer.gpu("backward_ms"):
+                        for param in dense_module.parameters():
+                            if param.requires_grad:
+                                param.grad = None
+                        if not embedded_sparse.is_leaf:
+                            embedded_sparse.retain_grad()
+                        embedded_sparse.grad = None
+                        loss.backward()
+                        if embedded_sparse.grad is None:
+                            raise RuntimeError(
+                                "missing embedded_sparse gradient after backward"
+                            )
+                        embedded_sparse_grad = embedded_sparse.grad.detach()
+
+                    events.emit("bwd_end", step=step)
                 events.emit("dense_opt_start", step=step)
                 with timer.gpu("dense_optimizer_ms"):
                     dense_optimizer.step()
@@ -713,31 +915,35 @@ class RecStoreRunner(BenchmarkRunner):
                 events.emit("dense_opt_end", step=step)
                 events.emit("sparse_start", step=step)
                 with timer.cpu("sparse_optimizer_ms"):
-                    replay_start = time.perf_counter()
-                    sparse_grad = embedded_sparse_grad.to(embedded_sparse_source.device)
-                    if callable(record_pooled_grad):
-                        prepared_ids = (
-                            ticket
-                            if isinstance(ticket, tuple) and len(ticket) == 3
-                            else None
-                        )
-                        record_pooled_grad(
-                            sparse_features, sparse_grad, prepared_ids=prepared_ids
-                        )
-                    else:
-                        embedded_sparse_source.backward(sparse_grad)
-                    row["sparse_backward_replay_ms"] = (time.perf_counter() - replay_start) * 1e3
+                    if dense_graph is None:
+                        replay_start = time.perf_counter()
+                        sparse_grad = embedded_sparse_grad.to(embedded_sparse_source.device)
+                        if use_ps_pipeline:
+                            if not cfg.ps_pipeline_early_submit:
+                                sparse_optimizer.record_pooled_grad(sparse_grad)
+                        elif callable(record_pooled_grad):
+                            prepared_ids = (
+                                ticket
+                                if isinstance(ticket, tuple) and len(ticket) == 3
+                                else None
+                            )
+                            record_pooled_grad(
+                                sparse_features, sparse_grad, prepared_ids=prepared_ids
+                            )
+                        else:
+                            embedded_sparse_source.backward(sparse_grad)
+                        row["sparse_backward_replay_ms"] = (time.perf_counter() - replay_start) * 1e3
 
-                    optimizer_step_start = time.perf_counter()
-                    sparse_optimizer.step()
-                    row["sparse_optimizer_step_ms"] = (
-                        time.perf_counter() - optimizer_step_start
-                    ) * 1e3
+                        optimizer_step_start = time.perf_counter()
+                        sparse_optimizer.step()
+                        row["sparse_optimizer_step_ms"] = (
+                            time.perf_counter() - optimizer_step_start
+                        ) * 1e3
 
                     # Overlap PS update latency by preparing future batches.
                     overlap_prepare_start = time.perf_counter()
                     while (
-                        len(prepared_batches) <= observed_depth
+                        not metadata_depth and len(prepared_batches) <= observed_depth
                         and step + 1 + len(prepared_batches) < cfg.steps
                     ):
                         prepared_batches.append(
@@ -758,61 +964,104 @@ class RecStoreRunner(BenchmarkRunner):
                     if use_bagpipe and step == cfg.steps - 1:
                         # Charge the final deferred SGD to training as well.
                         plugin._controller._wait_pending()
+                    if use_ps_pipeline and step == cfg.steps - 1:
+                        read_path.finish_training()
+                        if metadata_depth:
+                            if prepared_batches or read_path.prepared_steps != cfg.steps:
+                                raise RuntimeError("Metadata lookahead did not consume the exact tail")
+                            # All producer results were adopted; include executor drain in final timing.
+                            lifecycle["metadata_final_drain_complete"] = True
                     sparse_optimizer.zero_grad()
 
+                row["sparse_optimizer_ms"] += row.get("sparse_graph_submit_ms", 0.0)
                 events.emit("sparse_end", step=step)
-                row["loss"] = float(loss.detach().float().cpu().item())
+                if continuous is not None:
+                    continuous.record_loss_and_terminal(step, loss)
+                    row["loss"] = ""
+                else:
+                    row["loss"] = float(loss.detach().float().cpu().item())
                 _merge_consumed_perf_stats(row, _consume_perf_stats(embedding_module))
                 _merge_consumed_perf_stats(row, _consume_perf_stats(sparse_optimizer))
                 _merge_consumed_perf_stats(
                     row, _consume_perf_stats(getattr(embedding_module, "kv_client", None))
                 )
                 row["step_sync_wait_ms"] = timer.finish()
-                # After the device drain point: readbacks here (stats
-                # draining) add no hidden wait to the phase timers above.
+                # These stats are CPU-only. In continuous mode they describe
+                # enqueue/protocol state, not completed GPU work.
                 read_path.after_step_sync(row)
-                row["dense_compute_ms"] = (
-                    row["dense_fwd_ms"]
-                    + row["backward_ms"]
-                    + row["dense_optimizer_ms"]
+                row["dense_compute_ms"] = row["dense_optimizer_ms"] + (
+                    row["dense_graph_ms"] if dense_graph is not None
+                    else row["dense_fwd_ms"] + row["backward_ms"]
                 )
-                _finalize_step_timing(row, wall_start=step_wall_start)
+                if continuous is None:
+                    _finalize_step_timing(row, wall_start=step_wall_start)
+                else:
+                    continuous.finish_row(row, step_wall_start, backpressure_ms)
                 rows.append(finalize_recstore_row(row))
                 events.emit("barrier_start", step=step)
-                _barrier_for_step_alignment(
-                    dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
-                )
+                if continuous is None:
+                    _barrier_for_step_alignment(
+                        dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
+                    )
                 events.emit("barrier_end", step=step)
 
                 if (step + 1) % 10 == 0:
+                    timing_label = "host_enqueue" if continuous is not None else "step"
+                    timing_value = rows[-1]["host_step_enqueue_wall_ms" if continuous is not None else "step_total_ms"]
                     print(
-                        f"[rs_demo] step {step + 1}/{cfg.steps} "
-                        f"emb={rows[-1]['emb_stage_ms']:.2f}ms step={rows[-1]['step_total_ms']:.2f}ms"
+                        f"[rs_demo] {'computed step' if getattr(read_path, 'owner_merged_grad', False) else 'step'} {step + 1}/{cfg.steps} "
+                        f"emb={rows[-1]['emb_stage_ms']:.2f}ms {timing_label}={timing_value:.2f}ms"
                     )
                 events.emit(
-                    "step_end", step=step, step_total_ms=row["step_total_ms"]
+                    "step_end", step=step, step_total_ms=row["step_total_ms"],
+                    provisional=bool(getattr(read_path, "owner_merged_grad", False) and
+                                     getattr(read_path, "_retired_step", -1) < step)
                 )
                 if profiler is not None:
                     profiler.step()
-                rows[-1]["step_wall_ms"] = (time.perf_counter() - step_wall_start) * 1e3
+                if continuous is None:
+                    rows[-1]["step_wall_ms"] = (time.perf_counter() - step_wall_start) * 1e3
+                else:
+                    rows[-1]["host_step_enqueue_wall_ms"] = (time.perf_counter() - step_wall_start) * 1e3
 
+            if continuous is not None:
+                loop_summary = continuous.finish(rows, lambda: _barrier_for_step_alignment(
+                    dist=dist, device=device, local_rank=local_rank, use_dist=use_dist))
+                loop_summary.update(rank=rank, backend="recstore", world_size=world_size,
+                                    configured_warmup_steps=cfg.warmup_steps, run_id=cfg.run_id)
+                lifecycle["continuous_loop"] = loop_summary
+                loop_path = Path(cfg.output_root) / "outputs" / cfg.run_id / f"continuous_rank{rank}.json"
+                loop_path.parent.mkdir(parents=True, exist_ok=True)
+                loop_path.write_text(json.dumps(loop_summary, indent=2) + "\n")
+            if metadata_depth:
+                lifecycle["metadata_training_loop_ms"] = (time.perf_counter()-metadata_loop_start)*1e3
             print("[rs_demo] workload finished")
 
+            if device.type == "cuda":
+                lifecycle["training_cuda_memory"] = {
+                    "allocated_bytes": torch.cuda.memory_allocated(device),
+                    "reserved_bytes": torch.cuda.memory_reserved(device),
+                    "peak_allocated_bytes": torch.cuda.max_memory_allocated(device),
+                    "peak_reserved_bytes": torch.cuda.max_memory_reserved(device),
+                }
             _write_rows(out_csv, rows)
             if cfg.validation_state:
-                if not use_bagpipe:
-                    raise RuntimeError("RecStore validation-state requires bagpipe")
+                if not (use_bagpipe or use_ps_pipeline):
+                    raise RuntimeError("RecStore validation-state requires bagpipe or ps_pipeline")
                 from ..runtime.validation import export_validation_state
                 export_validation_state(
                     Path(cfg.output_root) / "outputs" / cfg.run_id / f"validation_rank{rank}.pt",
-                    embedding_module, dense_module, planned_controller=plugin._controller,
+                    embedding_module, dense_module,
+                    planned_controller=read_path if use_ps_pipeline else plugin._controller,
                 )
+            if use_ps_pipeline:
+                read_path.shutdown()
             if plugin is not None:
                 shutdown_start = time.perf_counter()
                 plugin.shutdown()
                 lifecycle["bagpipe_shutdown_ms"] = (time.perf_counter() - shutdown_start) * 1e3
                 plugin = None
-            if use_bagpipe:
+            if use_bagpipe or use_ps_pipeline or dense_graph is not None:
                 lifecycle_path = Path(cfg.output_root) / "outputs" / cfg.run_id / f"lifecycle_rank{rank}.json"
                 lifecycle_path.parent.mkdir(parents=True, exist_ok=True)
                 lifecycle_path.write_text(json.dumps(lifecycle, indent=2) + "\n")
@@ -834,17 +1083,50 @@ class RecStoreRunner(BenchmarkRunner):
                 "backend": "recstore",
                 "rows": rows,
             }
+        except BaseException as error:
+            continuous_error = error if continuous is not None else None
+            if "read_path" in locals() and getattr(read_path, "metadata_lookahead", 0):
+                try:
+                    read_path.fail(error)
+                except BaseException as cleanup_error:
+                    if continuous is None:
+                        raise
+                    if hasattr(error, "add_note"):
+                        error.add_note("Metadata failure propagation also failed: " + repr(cleanup_error))
+            raise
         finally:
-            if step_iter is not None:
-                step_iter.close()
-            if events is not None:
-                events.close()
-            if plugin is not None:
-                if use_bagpipe:
-                    plugin._controller.shutdown(flush=False)
-                else:
-                    plugin.shutdown()
-            os.chdir(str(orig_cwd))
+            if continuous_error is not None:
+                # Keep the first training error and attempt every owned cleanup.
+                cleanups = []
+                if step_iter is not None:
+                    cleanups.append(step_iter.close)
+                if events is not None:
+                    cleanups.append(events.close)
+                if plugin is not None:
+                    cleanups.append(plugin.shutdown)
+                if "read_path" in locals():
+                    cleanups.append(lambda: read_path.shutdown(flush=False))
+                cleanups.append(lambda: continuous.drain_after_error(continuous_error))
+                cleanups.append(lambda: os.chdir(str(orig_cwd)))
+                for cleanup in cleanups:
+                    try:
+                        cleanup()
+                    except BaseException as cleanup_error:
+                        if hasattr(continuous_error, "add_note"):
+                            continuous_error.add_note("Continuous worker cleanup also failed: " + repr(cleanup_error))
+            else:
+                if step_iter is not None:
+                    step_iter.close()
+                if events is not None:
+                    events.close()
+                if plugin is not None:
+                    if use_bagpipe:
+                        plugin._controller.shutdown(flush=False)
+                    else:
+                        plugin.shutdown()
+                if cfg.read_mode == "ps_pipeline" and "read_path" in locals():
+                    read_path.shutdown(flush=False)
+                os.chdir(str(orig_cwd))
 
     def run(self, repo_root: Path, cfg: RunConfig) -> dict:
         if cfg.backend != "recstore":

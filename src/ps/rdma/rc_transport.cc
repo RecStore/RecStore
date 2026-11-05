@@ -812,6 +812,15 @@ RcShardServerTransport::RcShardServerTransport(const RcTransportConfig& config)
     }
     lane.verbs->PublishAndConnect();
   }
+  request_slots_.reserve(static_cast<std::size_t>(TotalSlots()));
+  for (int slot = 0; slot < TotalSlots(); ++slot) {
+    int client_id, qp_index, slot_in_qp;
+    DecodeSlotIndex(slot, &client_id, &qp_index, &slot_in_qp);
+    const Lane& lane = LaneAt(client_id, qp_index);
+    request_slots_.push_back(
+        static_cast<char*>(lane.request_slots) +
+        ServerRequestOffset(config_, client_id, slot_in_qp));
+  }
 }
 
 RcShardServerTransport::~RcShardServerTransport() {
@@ -918,13 +927,11 @@ void RcShardServerTransport::DecodeSlotIndex(
 }
 
 void* RcShardServerTransport::RequestSlot(int slot_index) const {
-  int client_id  = -1;
-  int qp_index   = -1;
-  int slot_in_qp = -1;
-  DecodeSlotIndex(slot_index, &client_id, &qp_index, &slot_in_qp);
-  const Lane& lane = LaneAt(client_id, qp_index);
-  return static_cast<char*>(lane.request_slots) +
-         ServerRequestOffset(config_, client_id, slot_in_qp);
+  if (slot_index < 0 ||
+      static_cast<std::size_t>(slot_index) >= request_slots_.size()) {
+    throw std::runtime_error("slot_index out of range");
+  }
+  return request_slots_[static_cast<std::size_t>(slot_index)];
 }
 
 RequestDescriptor*

@@ -596,6 +596,35 @@ set_tests_properties(
     LABELS "hierkv;python;integration"
 )
 
+# PS lifecycle tests use fake transport; native planning and CUDA math have
+# a separate lane so a missing extension cannot silently skip all coverage.
+add_python_unittest(
+    test_ps_pipeline_py
+    recstore.unittest.test_ps_pipeline
+    recstore.unittest.test_ps_pipeline_dependency_split
+    recstore.unittest.test_ps_owner_merged_pipeline.TestOwnerConstruction
+    recstore.unittest.test_ps_owner_merged_pipeline.TestBasePipelineTicketModeGuards
+)
+set_tests_properties(test_ps_pipeline_py PROPERTIES
+    LABELS "python;ps"
+    ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/src/python/pytorch;RECSTORE_DEFER_OPS_LOAD=1;PYTHONDONTWRITEBYTECODE=1"
+    TIMEOUT 120
+)
+if(TARGET recstore_torch_ops)
+    add_python_unittest(
+        test_ps_owner_native_py
+        recstore.unittest.test_owner_merged_plan
+        recstore.unittest.test_owner_merged_math
+        recstore.unittest.test_ps_owner_merged_pipeline
+    )
+    set_tests_properties(test_ps_owner_native_py PROPERTIES
+        LABELS "python;ps;torch_ops"
+        ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/src/python/pytorch;RECSTORE_DEFER_OPS_LOAD=0;PYTHONDONTWRITEBYTECODE=1"
+        RESOURCE_LOCK gpu_tests
+        TIMEOUT 300
+    )
+endif()
+
 add_python_unittest(
     test_sparse_optimizer_config_py
     src.python.pytorch.recstore.unittest.test_sparse_optimizer_config

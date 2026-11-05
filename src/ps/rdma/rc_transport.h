@@ -229,6 +229,8 @@ private:
 
   RcTransportConfig config_; // Transport sizing and namespace config.
   std::vector<Lane> lanes_;  // One verbs RC lane per qp_index.
+  // Local MR addresses survive QP rebuilds and are fixed until destruction.
+  std::vector<void*> request_slots_;
   // Fence observability: incremented by WriteResponsePayloadSg() when it
   // refuses to post into a rebuilt lane.
   std::atomic<std::uint64_t> response_rejected_epoch_count_{0};
