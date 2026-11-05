@@ -1,6 +1,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -81,6 +82,15 @@ DEFINE_int32(thread_num, 16, "worker thread count");
 DEFINE_int32(load_thread_num, 0, "load thread count; 0 uses thread_num");
 DEFINE_int32(value_size, 128, "value size bytes");
 DEFINE_int32(running_seconds, 5, "transaction runtime seconds");
+DEFINE_bool(
+    report_latency,
+    false,
+    "record per-iteration latency (one batch_get_flat call counts once) "
+    "and print p50/p90/p99/max");
+DEFINE_bool(report_stages,
+            false,
+            "collect BatchGetFlat stage stats (index/zero-fill/row-copy); adds "
+            "clock calls to the measured path");
 DEFINE_string(ssd_layout_strategy, "", "plain, bandana, or maxembed");
 DEFINE_string(ssd_layout_mapping, "", "precomputed SSD layout artifact");
 DEFINE_string(ssd_layout_query, "", "text query log replayed after load");
@@ -91,6 +101,22 @@ struct PhaseStats {
   uint64_t total_ops  = 0;
   uint64_t read_ops   = 0;
   uint64_t update_ops = 0;
+
+  // Linear 100 ns buckets up to ~102 us, with everything slower folded into the
+  // last bucket. That resolution separates p50 from p99 in the sub-10 us range
+  // where these engines live; max_latency_ns keeps the exact tail.
+  static constexpr uint64_t kLatencyBucketNs   = 100;
+  static constexpr std::size_t kLatencyBuckets = 1024;
+  std::array<uint64_t, kLatencyBuckets> latency_ns{};
+  uint64_t max_latency_ns = 0;
+  BaseKV::BatchGetFlatStats get_stats;
+
+  void RecordLatency(uint64_t ns) {
+    const auto bucket =
+        std::min<uint64_t>(ns / kLatencyBucketNs, kLatencyBuckets - 1);
+    ++latency_ns[static_cast<std::size_t>(bucket)];
+    max_latency_ns = std::max(max_latency_ns, ns);
+  }
 };
 
 struct WorkloadMix {
@@ -488,7 +514,20 @@ PhaseStats RunTransactions(
         PhaseStats local;
         while (!start.load(std::memory_order_acquire)) {
         }
+        const bool sample_latency = FLAGS_report_latency;
+        const auto clock          = std::chrono::steady_clock::now;
         while (!stop.load(std::memory_order_relaxed)) {
+          const auto iter_begin =
+              sample_latency ? clock()
+                             : std::chrono::steady_clock::time_point{};
+          auto record_latency = [&] {
+            if (sample_latency) {
+              local.RecordLatency(static_cast<uint64_t>(
+                  std::chrono::duration_cast<std::chrono::nanoseconds>(
+                      clock() - iter_begin)
+                      .count()));
+            }
+          };
           const bool do_read =
               static_cast<int>(key_gen.NextUint(100)) < mix.read_percent;
           if (do_read) {
@@ -496,13 +535,23 @@ PhaseStats RunTransactions(
               for (int i = 0; i < FLAGS_batch_keys; ++i) {
                 batch_keys[static_cast<size_t>(i)] = key_gen.NextKey();
               }
+              // The engine assigns the stats struct per call, so accumulate a
+              // scratch copy instead of passing the running total.
+              BaseKV::BatchGetFlatStats scratch;
               const bool ok = kv->BatchGetFlat(
                   base::ConstArray<uint64_t>(
                       batch_keys.data(), batch_keys.size()),
                   flat_values.data(),
                   FLAGS_batch_keys,
                   embedding_dim,
-                  tid);
+                  tid,
+                  FLAGS_report_stages ? &scratch : nullptr);
+              if (FLAGS_report_stages) {
+                local.get_stats.index_lookup_ns += scratch.index_lookup_ns;
+                local.get_stats.zero_fill_ns += scratch.zero_fill_ns;
+                local.get_stats.row_copy_ns += scratch.row_copy_ns;
+                local.get_stats.missing_rows += scratch.missing_rows;
+              }
               if (!ok) {
                 throw std::runtime_error(
                     "read_mode=batch_get_flat is unsupported by this KV "
@@ -510,6 +559,7 @@ PhaseStats RunTransactions(
               }
               local.read_ops += static_cast<uint64_t>(FLAGS_batch_keys);
               local.total_ops += static_cast<uint64_t>(FLAGS_batch_keys);
+              record_latency();
               continue;
             }
             const uint64_t key = key_gen.NextKey();
@@ -525,6 +575,7 @@ PhaseStats RunTransactions(
             ++local.update_ops;
           }
           ++local.total_ops;
+          record_latency();
         }
         stats[tid] = local;
       } catch (...) {
@@ -554,6 +605,14 @@ PhaseStats RunTransactions(
     total.total_ops += each.total_ops;
     total.read_ops += each.read_ops;
     total.update_ops += each.update_ops;
+    for (std::size_t bucket = 0; bucket < each.latency_ns.size(); ++bucket) {
+      total.latency_ns[bucket] += each.latency_ns[bucket];
+    }
+    total.get_stats.index_lookup_ns += each.get_stats.index_lookup_ns;
+    total.get_stats.zero_fill_ns += each.get_stats.zero_fill_ns;
+    total.get_stats.row_copy_ns += each.get_stats.row_copy_ns;
+    total.get_stats.missing_rows += each.get_stats.missing_rows;
+    total.max_latency_ns = std::max(total.max_latency_ns, each.max_latency_ns);
   }
   return total;
 }
@@ -563,6 +622,72 @@ double SecondsSince(std::chrono::steady_clock::time_point start,
   return std::chrono::duration_cast<std::chrono::duration<double>>(end - start)
       .count();
 }
+
+namespace {
+
+double BucketUpperBoundNs(std::size_t bucket) {
+  // Linear buckets: report the bucket's upper bound in ns.
+  return static_cast<double>((bucket + 1) * PhaseStats::kLatencyBucketNs - 1);
+}
+
+void PrintLatencyPercentiles(const PhaseStats& stats) {
+  uint64_t samples = 0;
+  for (const uint64_t count : stats.latency_ns) {
+    samples += count;
+  }
+  if (samples == 0) {
+    return;
+  }
+  auto percentile_ns = [&](double fraction) {
+    const auto target = static_cast<uint64_t>(
+        std::ceil(fraction * static_cast<double>(samples)));
+    uint64_t seen = 0;
+    for (std::size_t bucket = 0; bucket < stats.latency_ns.size(); ++bucket) {
+      seen += stats.latency_ns[bucket];
+      if (seen >= target) {
+        return BucketUpperBoundNs(bucket);
+      }
+    }
+    return BucketUpperBoundNs(stats.latency_ns.size() - 1);
+  };
+  const double p50 = percentile_ns(0.50);
+  const double p90 = percentile_ns(0.90);
+  const double p99 = percentile_ns(0.99);
+  const double max = static_cast<double>(stats.max_latency_ns);
+  std::printf(
+      "YCSB_LATENCY samples=%lu p50_us=%.3f p90_us=%.3f p99_us=%.3f "
+      "max_us=%.3f\n",
+      samples,
+      p50 / 1000.0,
+      p90 / 1000.0,
+      p99 / 1000.0,
+      max / 1000.0);
+}
+
+void PrintStageBreakdown(const PhaseStats& stats) {
+  const auto& get = stats.get_stats;
+  const uint64_t total =
+      get.index_lookup_ns + get.zero_fill_ns + get.row_copy_ns;
+  auto percent = [total](uint64_t value) {
+    return total == 0
+             ? 0.0
+             : 100.0 * static_cast<double>(value) / static_cast<double>(total);
+  };
+  std::printf(
+      "YCSB_STAGES batch_get_total_us=%llu index_lookup_us=%llu (%.1f%%) "
+      "zero_fill_us=%llu (%.1f%%) row_copy_us=%llu (%.1f%%) "
+      "missing_rows=%llu\n",
+      static_cast<unsigned long long>(total / 1000),
+      static_cast<unsigned long long>(get.index_lookup_ns / 1000),
+      percent(get.index_lookup_ns),
+      static_cast<unsigned long long>(get.zero_fill_ns / 1000),
+      percent(get.zero_fill_ns),
+      static_cast<unsigned long long>(get.row_copy_ns / 1000),
+      percent(get.row_copy_ns),
+      static_cast<unsigned long long>(get.missing_rows));
+}
+
+} // namespace
 
 void ReplayQueryLog(BaseKV* kv) {
   if (FLAGS_ssd_layout_query.empty()) {
@@ -713,6 +838,17 @@ int RunBenchmark(int argc, char* argv[]) {
         throughput,
         run_stats.read_ops,
         run_stats.update_ops);
+    if (FLAGS_report_latency) {
+      PrintLatencyPercentiles(run_stats);
+    }
+    if (FLAGS_report_stages) {
+      if (FLAGS_read_mode == "batch_get_flat") {
+        PrintStageBreakdown(run_stats);
+      } else {
+        std::printf("YCSB_STAGES skipped=1 reason=read_mode_has_no_"
+                    "batch_get_flat_stats\n");
+      }
+    }
   }
 
   ReplayQueryLog(kv.get());
