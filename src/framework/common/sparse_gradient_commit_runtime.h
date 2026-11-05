@@ -34,6 +34,21 @@ inline SparseGradientCommitHeader MakeSparseGradientCommitHeader(
   return h;
 }
 
+inline SparseGradientCommitHeader MakeOwnerExactReplaceHeader(
+    int64_t session,
+    int64_t step,
+    int64_t rank,
+    int64_t world,
+    int64_t dim,
+    double lr,
+    int64_t kind) {
+  auto h = MakeSparseGradientCommitHeader(
+      session, step, rank, world, dim, lr, 1, kind);
+  h.version = 4;
+  DecodeSparseGradientCommit(PackSparseGradientCommit(h));
+  return h;
+}
+
 // The adapter's readiness callback owns staged buffers and source storage
 // until the worker finishes. No framework tensor or device API is needed here.
 class SparseGradientCommitRuntime {
@@ -49,28 +64,57 @@ public:
                  base::RecTensor grads,
                  std::function<void()> ready,
                  std::chrono::milliseconds timeout = std::chrono::seconds(60)) {
-    auto work = std::async(
+    const bool profile   = SparseCommitProfileEnabled();
+    const auto submitted = profile ? SparseCommitProfileNowNs() : 0;
+    auto work            = std::async(
         std::launch::async,
         [exchange = std::move(exchange),
          h,
          keys  = std::move(keys),
          grads = std::move(grads),
          ready = std::move(ready),
-         timeout]() mutable {
+         timeout,
+         profile,
+         submitted]() mutable {
+          const auto started = profile ? SparseCommitProfileNowNs() : 0;
           base::RecTensor empty_keys({0}, base::DataType::UINT64);
           base::RecTensor empty_grads(
               {0, int64_t(h.dim)}, base::DataType::FLOAT32);
           try {
             if (ready)
               ready();
-            auto committed      = exchange(h, keys, grads);
-            h.kind              = 1;
-            const auto deadline = std::chrono::steady_clock::now() + timeout;
+            const auto ready_done = profile ? SparseCommitProfileNowNs() : 0;
+            auto committed        = exchange(h, keys, grads);
+            const auto exchanged  = profile ? SparseCommitProfileNowNs() : 0;
+            uint64_t polls        = 0;
+            h.kind                = 1;
+            const auto deadline   = std::chrono::steady_clock::now() + timeout;
             while (committed < h.step) {
               if (std::chrono::steady_clock::now() >= deadline)
                 throw std::runtime_error("Sparse gradient commit timed out");
               std::this_thread::sleep_for(std::chrono::microseconds(100));
               committed = exchange(h, empty_keys, empty_grads);
+              if (profile)
+                ++polls;
+            }
+            if (profile) {
+              const auto completed = SparseCommitProfileNowNs();
+              std::fprintf(
+                  stderr,
+                  "component=sparse_commit event=runtime_phase session=%llu "
+                             "step=%lld rank=%u world=%u worker_start_ms=%.6f "
+                             "ready_ms=%.6f first_exchange_ms=%.6f poll_count=%llu "
+                             "poll_ms=%.6f total_ms=%.6f\n",
+                  static_cast<unsigned long long>(h.session),
+                  static_cast<long long>(h.step),
+                  h.rank,
+                  h.world,
+                  (started - submitted) / 1e6,
+                  (ready_done - started) / 1e6,
+                  (exchanged - ready_done) / 1e6,
+                  static_cast<unsigned long long>(polls),
+                  (completed - exchanged) / 1e6,
+                  (completed - submitted) / 1e6);
             }
           } catch (...) {
             // A failed optimizer may have applied part of an update. Abort

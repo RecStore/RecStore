@@ -571,9 +571,9 @@ public:
       const auto& row   = rows[static_cast<size_t>(r)];
       const float* grad = grads + r * embedding_dim;
       if (row.missing) {
-        for (int64_t c = 0; c < embedding_dim; ++c) {
+#pragma omp simd
+        for (int64_t c = 0; c < embedding_dim; ++c)
           missing_row[static_cast<size_t>(c)] = -learning_rate * grad[c];
-        }
         const auto miss_start =
             stats != nullptr ? clock::now() : clock::time_point{};
         PutInternalStats miss_stats;
@@ -597,9 +597,8 @@ public:
 
       float* value = reinterpret_cast<float*>(const_cast<char*>(row.data));
 #pragma omp simd
-      for (int64_t c = 0; c < embedding_dim; ++c) {
+      for (int64_t c = 0; c < embedding_dim; ++c)
         value[c] -= learning_rate * grad[c];
-      }
     }
     if (stats != nullptr) {
       const auto loop_ns = static_cast<std::uint64_t>(

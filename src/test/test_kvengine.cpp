@@ -667,6 +667,7 @@ TEST_P(KVEngineCartesianTest, ApplySgdUpdateFlatUpdatesAndInitializesRows) {
       0);
 
   std::vector<float> grads(keys.size() * kDim, 2.0f);
+  BaseKV::UpdateFlatStats stats;
   ASSERT_TRUE(kv_engine_->ApplySgdUpdateFlat(
       base::ConstArray<uint64_t>(keys),
       grads.data(),
@@ -674,7 +675,10 @@ TEST_P(KVEngineCartesianTest, ApplySgdUpdateFlatUpdatesAndInitializesRows) {
       kDim,
       0.1f,
       0,
-      0));
+      0,
+      &stats));
+  EXPECT_EQ(stats.missing_rows, 1u);
+  EXPECT_GE(stats.batch_get_ns, stats.index_lookup_ns);
 
   for (size_t row = 0; row < keys.size(); ++row) {
     std::string value;

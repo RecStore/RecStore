@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <exception>
 #include <fstream>
 #include <limits>
 #include <memory>
@@ -519,8 +520,47 @@ int64_t RDMAPSClientAdapter::SparseGradientCommit(
                       !IsFloatEmbeddingValues(grads, keys.Size()))) {
     throw std::invalid_argument("Invalid RDMA sparse gradients");
   }
-  const size_t limit =
+  if (h.version == 4) {
+    DecodeSparseGradientCommit(PackSparseGradientCommit(h));
+    if (deployment_.num_shards != 2 || deployment_.hash_method != "city_hash" ||
+        keys.Size() > 2 * 26 * 1024 ||
+        (h.kind != 0 && (keys.Size() || grads.shape(0))))
+      throw std::invalid_argument(
+          "Unsupported owner replacement deployment or bounds");
+    // Validate every candidate before the first RPC can publish any row.
+    for (size_t i = 0; i < keys.Size(); ++i) {
+      if ((i && keys[i - 1] >= keys[i]) ||
+          shard_routing::PartitionKey(keys[i], 2, deployment_.hash_method) !=
+              h.rank)
+        throw std::invalid_argument(
+            "Owner replacement requires sorted owned keys");
+    }
+    if (!CanonicalAllFinite(grads.data_as<float>(), keys.Size() * h.dim))
+      throw std::invalid_argument("Nonfinite owner candidate");
+  }
+  if (h.version == 4 && h.kind == 3) {
+    // Abort replies intentionally fail. An early shard error must not prevent
+    // the remaining owners from receiving the same sticky-failure notification.
+    std::exception_ptr first_error;
+    int64_t committed = std::numeric_limits<int64_t>::max();
+    const auto packet = PackSparseGradientCommit(h);
+    for (auto& client : shard_clients_) {
+      try {
+        const auto rpc = client->SubmitSparseGradientCommit(table, packet);
+        committed = std::min(committed, client->WaitSparseGradientCommit(rpc));
+      } catch (...) {
+        if (!first_error)
+          first_error = std::current_exception();
+      }
+    }
+    if (first_error)
+      std::rethrow_exception(first_error);
+    return committed;
+  }
+  const size_t raw_limit =
       shard_clients_.front()->SparseGradientCommitPayloadLimit();
+  const size_t limit =
+      h.version == 4 ? std::min(size_t{1} << 20, raw_limit) : raw_limit;
   const size_t row_bytes = 8 + size_t(h.dim) * 4;
   if (limit < sizeof(h) + row_bytes)
     throw std::runtime_error("Gradient row exceeds RDMA slot");
@@ -535,6 +575,8 @@ int64_t RDMAPSClientAdapter::SparseGradientCommit(
     if (shard.empty())
       shard.emplace_back(); // Empty-rank marker for every PS.
     rounds = std::max(rounds, shard.size());
+    if (h.version == 4 && shard.size() > 64)
+      throw std::invalid_argument("Owner replacement exceeds 64 chunks");
   }
   std::vector<int64_t> committed(shards.size(), -1);
   std::deque<std::pair<size_t, int>> pending;
@@ -661,6 +703,7 @@ int RDMAPSClientAdapter::InitEmbeddingTable(
 
 void RDMAPSClientAdapter::Command(PSCommand) {
   EnsureThreadInitialized();
+  std::lock_guard<std::mutex> io_guard(io_mu_);
   if (deployment_.num_shards <= 1) {
     if (client_ == nullptr) {
       throw std::runtime_error("RDMA adapter has no initialized client");

@@ -53,7 +53,7 @@ docs/superpowers/
 
 rpc_data/
 Testing/
-build_release/
+/build_release
 # ./tmp - project process memory, kept out of version control (whole dir)
 /tmp/
 CURRENT_STATUS_*.md
@@ -73,3 +73,7 @@ run_3node_bench.sh
 
 # MkDocs build output
 /site/
+
+# Local dependency builds and setup_centos7.sh checkout
+_build/
+/third_party/onetbb/

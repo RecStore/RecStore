@@ -651,6 +651,8 @@ class TestRecStoreRunner(unittest.TestCase):
                 stack.enter_context(mock.patch("torch.distributed.is_initialized", fake_dist.is_initialized))
                 stack.enter_context(mock.patch("torch.distributed.init_process_group", fake_dist.init_process_group))
                 stack.enter_context(mock.patch("torch.distributed.barrier", fake_dist.barrier))
+                stack.enter_context(mock.patch("torch.distributed.all_gather",
+                    lambda outputs, value, **kwargs: [out.copy_(value) for out in outputs]))
                 stack.enter_context(mock.patch("torch.distributed.destroy_process_group", fake_dist.destroy_process_group))
 
             runner = RecStoreRunner(runner_runtime)
@@ -948,6 +950,45 @@ class TestRecStoreRunner(unittest.TestCase):
         self.assertNotIn("backend", captured_rows[0])
         self.assertNotIn("ps_kv_backend", captured_rows[0])
         self.assertNotIn("model_backend_label", captured_rows[0])
+
+    def test_dependency_split_prepares_next_before_read_wait_and_stops_at_final(self) -> None:
+        for steps in (1, 3):
+            with self.subTest(steps=steps), tempfile.TemporaryDirectory() as output:
+                calls = []
+                read_path = mock.MagicMock(desired_buffer_size=0, metadata_group_init_ms=0.1,
+                                           metadata_lookahead=0, table_types=(),
+                                           owner_merged_grad=False)
+                optimizer = mock.MagicMock()
+
+                def prepare(step, features, sparse_batch, row):
+                    calls.append(("prepare", step))
+                    return torch.tensor([0]), torch.tensor([0]), 1
+
+                read_path.on_batch_prepared.side_effect = prepare
+                read_path.before_lookup.side_effect = lambda step, *a: calls.append(("consume", step))
+                optimizer.step.side_effect = lambda: calls.append(("submit", None))
+                cfg = RunConfig(backend="recstore", read_mode="ps_pipeline",
+                                ps_pipeline_dependency_split=True, nnodes=2,
+                                steps=steps, warmup_steps=0, batch_size=1,
+                                embedding_dim=4, num_embeddings=16,
+                                output_root=output, run_id="split-order")
+                captured = []
+                with mock.patch.object(RecStoreRunner, "_build_read_path",
+                                       return_value=(None, read_path, optimizer, False)), \
+                     mock.patch.object(_FakeRecStoreEmbeddingBagCollection,
+                                       "fused_backend_identity", return_value={}, create=True), \
+                     mock.patch.object(_FakeDirectReadRecStoreClient, "ops", object(), create=True):
+                    # One-batch iterator wraps every step, exercising epoch reset.
+                    self._run_local_worker_with_fake_embedding_module(cfg, captured_rows=captured)
+                expected = [("prepare", 0)]
+                for step in range(steps):
+                    if step + 1 < steps:
+                        expected.append(("prepare", step + 1))
+                    expected.extend([("consume", step), ("submit", None)])
+                self.assertEqual(calls, expected)
+                read_path.finish_training.assert_called_once_with()
+                self.assertEqual(len(captured), steps)
+                self.assertEqual(captured[-1]["ps_pipeline_lookahead_prepare_ms"], 0)
 
     def test_embedding_module_auto_detects_fast_path_without_runner_injection(self) -> None:
         # Neither the default path nor the explicit single-node config should make

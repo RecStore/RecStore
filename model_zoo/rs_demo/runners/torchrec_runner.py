@@ -28,6 +28,7 @@ from ..models.utils import (
 )
 from python.pytorch.recstore.benchmark.report import finalize_torchrec_row
 from ..runtime.timing import StepTimer
+from ..runtime.continuous_loop import ContinuousLoop, continuous_enabled, verify_continuous_protocol
 from ..runtime.worker_common import (
     barrier_for_step_alignment as _barrier_for_step_alignment,
     bool_int as _bool_int,
@@ -58,6 +59,8 @@ def _build_worker_fingerprint(repo_root: Path) -> dict[str, dict[str, str]]:
         "model_zoo/rs_demo/models/dlrm.py",
         "model_zoo/rs_demo/models/utils.py",
         "model_zoo/rs_demo/runtime/hybrid_dlrm.py",
+        "model_zoo/rs_demo/runtime/dense_graph.py",
+        "model_zoo/rs_demo/runtime/continuous_loop.py",
     ]
     files: dict[str, str] = {}
     for rel_path in rel_paths:
@@ -241,6 +244,10 @@ def _run_single_or_dist_worker(
     from torchrec.modules.embedding_configs import EmbeddingBagConfig
     from torchrec.modules.embedding_modules import EmbeddingBagCollection
 
+    overlap_dense = os.environ.get("RECSTORE_DENSE_REDUCE_OVERLAP") == "1"
+    if overlap_dense and (not cfg.dense_cuda_graph or cfg.torchrec_memory_mode != "hbm"
+                          or cfg.torchrec_dist_mode == "fair_remote"):
+        raise ValueError("Dense overlap requires HBM CUDA graph and no fair_remote")
     is_dist = world_size > 1
     use_uvm_caching = cfg.torchrec_memory_mode == "uvm_caching"
     backend = "nccl" if torch.cuda.is_available() else "gloo"
@@ -254,6 +261,8 @@ def _run_single_or_dist_worker(
         if backend == "nccl" and is_dist:
             dist.barrier()
 
+    verify_continuous_protocol(torch, dist, device, world_size, cfg.steps)
+    continuous_mode = continuous_enabled(cfg, device, world_size, lane="torchrec")
     if is_dist:
         fingerprint_path = Path(cfg.output_root) / "outputs" / cfg.run_id / "torchrec_worker_fingerprints.json"
         fingerprint = _build_worker_fingerprint(repo_root)
@@ -342,19 +351,77 @@ def _run_single_or_dist_worker(
         embedding_dim=cfg.embedding_dim,
         device=device,
     )
-    dense_module = _maybe_wrap_dense_module_for_dist(
-        dense_module=dense_module,
-        device=device,
-        local_rank=local_rank,
-        use_dist=use_dist,
-        fair_remote_mode=fair_remote_mode,
-    )
+    if cfg.dense_cuda_graph:
+        if use_dist:
+            with torch.no_grad():
+                for value in list(dense_module.parameters()) + list(dense_module.buffers()):
+                    dist.broadcast(value, src=0)
+    else:
+        dense_module = _maybe_wrap_dense_module_for_dist(
+            dense_module=dense_module,
+            device=device,
+            local_rank=local_rank,
+            use_dist=use_dist,
+            fair_remote_mode=fair_remote_mode,
+        )
 
     _dispatch_module = dense_module.module if isinstance(
         dense_module, torch.nn.parallel.DistributedDataParallel) else dense_module
     criterion = build_criterion(cfg, _dispatch_module)
     dense_optimizer = torch.optim.SGD(dense_module.parameters(), lr=0.01)
     sparse_optimizer = torch.optim.SGD(embedding_module.parameters(), lr=0.01)
+    overlap_groups = {"dense": "WORLD" if use_dist else "local",
+                      "dense_buffer_group": "None/default"}
+    if overlap_dense and use_dist:
+        tables = {
+            name: sharding.sharding_type
+            for module_plan in plan.plan.values()
+            for name, sharding in module_plan.items()
+        }
+        kinds = set(tables.values())
+        if not kinds.issubset({"table_wise", "data_parallel"}):
+            raise RuntimeError("Dense overlap only supports TW/DP sharding")
+        overlap_groups.update(
+            sparse=[{"sharding_type": kind, "group": "WORLD"} for kind in sorted(kinds)],
+            table_sharding=tables,
+            table_counts={kind: sum(value == kind for value in tables.values())
+                          for kind in kinds},
+        )
+    timing_metadata = {
+        "timing_protocol": "aligned_step",
+        "timing_mode": cfg.torchrec_timing_sync_mode,
+        "gpu_stage_timing_semantics": (
+            "cuda_event_elapsed" if device.type == "cuda" and cfg.torchrec_timing_sync_mode == "stage"
+            else "host_enqueue_wall" if device.type == "cuda" else "cpu_wall"),
+    }
+
+    if continuous_mode:
+        timing_metadata.update(timing_protocol="continuous_loop_all_steps", timing_mode="none",
+                               gpu_stage_timing_semantics="host_enqueue_wall")
+    lifecycle = {"rank": rank, **timing_metadata}
+    dense_graph = dense_gradient_buffer = None
+    if cfg.dense_cuda_graph:
+        from ..runtime.dense_graph import capture_dlrm_dense
+        dense_graph, dense_gradient_buffer = capture_dlrm_dense(
+            dense_module, criterion, dataloader, cfg.batch_size,
+            num_features=len(DEFAULT_CAT_NAMES), embedding_dim=cfg.embedding_dim,
+        )
+        lifecycle = {
+            **timing_metadata,
+            "rank": rank, "dense_graph_capture_ms": dense_graph.capture_ms,
+            "dense_graph_batch_sizes": list(dense_graph.batch_sizes),
+            "dense_graph_memory": dense_graph.memory_stats,
+            "dense_graph_scope": "dense forward/backward; individual stage times unavailable",
+        }
+        lifecycle.update(dense_reduce_overlap_enabled=int(overlap_dense),
+            dense_reduce_overlap_groups=overlap_groups,
+            gradient_communication_semantics="remaining_join" if overlap_dense else "full_reduce")
+        lifecycle_path = Path(cfg.output_root) / "outputs" / cfg.run_id / f"lifecycle_rank{rank}.json"
+        lifecycle_path.parent.mkdir(parents=True, exist_ok=True)
+        lifecycle_path.write_text(json.dumps(lifecycle, indent=2) + "\n")
+        _barrier_for_step_alignment(
+            dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
+        )
 
     profiler = build_torchrec_profiler(
         ProfilerConfig(
@@ -368,11 +435,31 @@ def _run_single_or_dist_worker(
     )
     profiler_context = profiler or nullcontext()
 
+    def prepare_batch():
+        nonlocal data_iter
+        start = time.perf_counter()
+        try:
+            dense, sparse, labels = next(data_iter)
+        except StopIteration:
+            data_iter = iter(dataloader)
+            dense, sparse, labels = next(data_iter)
+        prepare_ms = (time.perf_counter() - start) * 1e3
+        start = time.perf_counter()
+        dense, features = build_kjt_batch_from_dense_sparse_labels(dense, sparse, labels)
+        features = features.to(device, non_blocking=True)
+        pack_ms = (time.perf_counter() - start) * 1e3
+        return dense, features, labels, prepare_ms, pack_ms
+
+    prepared_batch = None
     rows: list[dict[str, Any]] = []
     is_trainer_rank = (not fair_remote_mode) or rank == 0
-    with profiler_context:
+    continuous = ContinuousLoop(torch, device, cfg.steps) if continuous_mode else None
+    with profiler_context, continuous or nullcontext():
         for step in range(cfg.steps):
+            step_start = time.perf_counter() if continuous is not None else None
+            backpressure_ms = continuous.admit(step) if continuous is not None else 0.0
             row: dict[str, Any] = {
+                **timing_metadata,
                 "backend": "torchrec",
                 "nproc": world_size,
                 "rank": rank,
@@ -387,28 +474,25 @@ def _run_single_or_dist_worker(
                 "dist_mode": "multi_node" if cfg.nnodes > 1 else "single_node",
                 "torchrec_dist_mode": cfg.torchrec_dist_mode,
                 "torchrec_memory_mode": cfg.torchrec_memory_mode,
-                "torchrec_timing_sync_mode": cfg.torchrec_timing_sync_mode,
+                "torchrec_timing_sync_mode": "none" if continuous_mode else cfg.torchrec_timing_sync_mode,
                 "torchrec_role": "trainer" if is_trainer_rank else "embedding_worker",
                 "torchrec_is_trainer": _bool_int(is_trainer_rank),
             }
-            step_start = time.perf_counter()
-            timer = StepTimer(row, torch, device, mode=cfg.torchrec_timing_sync_mode)
+            if continuous is None:
+                step_start = time.perf_counter()
+            timer = StepTimer(row, torch, device, mode="none" if continuous_mode else cfg.torchrec_timing_sync_mode)
+            dense_work = None
+            row["dense_reduce_overlap_enabled"] = int(overlap_dense)
+            row["gradient_communication_enqueue_ms"] = 0.0
+            row["gradient_communication_semantics"] = "remaining_join" if overlap_dense else "full_reduce"
 
-            with timer.cpu("batch_prepare_ms"):
-                try:
-                    dense_batch, sparse_batch, labels_batch = next(data_iter)
-                except StopIteration:
-                    data_iter = iter(dataloader)
-                    dense_batch, sparse_batch, labels_batch = next(data_iter)
+            if prepared_batch is None:
+                prepared_batch = prepare_batch()
+            dense_batch, sparse_features, labels_batch, prepare_ms, pack_ms = prepared_batch
+            prepared_batch = None
+            row["batch_prepare_ms"] = prepare_ms
+            row["input_pack_ms"] = pack_ms
             row["batch_size"] = int(dense_batch.shape[0])
-
-            with timer.cpu("input_pack_ms"):
-                dense_batch, sparse_features = build_kjt_batch_from_dense_sparse_labels(
-                    dense_batch,
-                    sparse_batch,
-                    labels_batch,
-                )
-                sparse_features = sparse_features.to(device, non_blocking=True)
 
             with timer.gpu("embed_lookup_ms"):
                 embeddings = embedding_module(sparse_features)
@@ -428,47 +512,85 @@ def _run_single_or_dist_worker(
                     torch=torch,
                     device=device,
                     detach_sparse=True,
+                    synchronize=not cfg.dense_cuda_graph,
                 )
 
             if is_trainer_rank:
-                with timer.gpu("dense_fwd_ms"):
-                    loss, _ = compute_dense_loss(
-                        cfg, dense_module, criterion,
-                        dense_features, embedded_sparse, labels)
-                with timer.gpu("backward_ms"):
-                    embedded_sparse_grad = run_hybrid_backward(
-                        loss=loss,
-                        embedded_sparse=embedded_sparse,
-                        dense_module=dense_module,
-                        torch=torch,
-                        device=device,
-                        synchronize=False,
-                    )
+                if dense_graph is not None:
+                    with timer.gpu("dense_graph_ms"):
+                        loss, embedded_sparse_grad = dense_graph(
+                            dense_features, embedded_sparse, labels
+                        )
+                    row["dense_fwd_ms"] = row["backward_ms"] = ""
+                    if overlap_dense:
+                        with timer.cpu("gradient_communication_enqueue_ms"):
+                            dense_work = dense_gradient_buffer.submit_reduce()
+                    else:
+                        with timer.gpu("gradient_communication_ms"):
+                            dense_gradient_buffer.reduce()
+                else:
+                    with timer.gpu("dense_fwd_ms"):
+                        loss, _ = compute_dense_loss(
+                            cfg, dense_module, criterion,
+                            dense_features, embedded_sparse, labels)
+                    with timer.gpu("backward_ms"):
+                        embedded_sparse_grad = run_hybrid_backward(
+                            loss=loss,
+                            embedded_sparse=embedded_sparse,
+                            dense_module=dense_module,
+                            torch=torch,
+                            device=device,
+                            synchronize=False,
+                        )
 
-                with timer.gpu("dense_optimizer_ms"):
-                    dense_optimizer.step()
-                    dense_optimizer.zero_grad(set_to_none=True)
+                if not overlap_dense:
+                    with timer.gpu("dense_optimizer_ms"):
+                        dense_optimizer.step()
+                        dense_optimizer.zero_grad(set_to_none=True)
             else:
                 row["dense_fwd_ms"] = 0.0
                 row["backward_ms"] = 0.0
                 row["dense_optimizer_ms"] = 0.0
                 embedded_sparse_grad = torch.zeros_like(embedded_sparse)
 
-            embedded_sparse_grad = embedded_sparse_grad.contiguous()
+            try:
+                embedded_sparse_grad = embedded_sparse_grad.contiguous()
+                with timer.gpu("sparse_optimizer_ms"):
+                    if fair_remote_mode and use_dist:
+                        dist.broadcast(embedded_sparse_grad, src=0)
+                    # Preserve TorchRec's internal TW/DP collective order.
+                    embedded_sparse_source.backward(
+                        embedded_sparse_grad.to(embedded_sparse_source.device)
+                    )
+                    sparse_optimizer.step()
+                    sparse_optimizer.zero_grad(set_to_none=True)
+            except BaseException as sparse_error:
+                from ..runtime.dense_graph import wait_dense_after_error
+                wait_dense_after_error(dense_work, sparse_error)
+                raise
+            if overlap_dense:
+                # The detached embedding backward does not read dense parameters.
+                with timer.gpu("gradient_communication_ms"):
+                    if dense_work is not None:
+                        dense_work.wait()
+                with timer.gpu("dense_optimizer_ms"):
+                    dense_optimizer.step()
+                    dense_optimizer.zero_grad(set_to_none=True)
 
-            with timer.gpu("sparse_optimizer_ms"):
-                if fair_remote_mode and use_dist:
-                    dist.broadcast(embedded_sparse_grad, src=0)
-                embedded_sparse_source.backward(
-                    embedded_sparse_grad.to(embedded_sparse_source.device)
-                )
-                sparse_optimizer.step()
-                sparse_optimizer.zero_grad(set_to_none=True)
+            if cfg.dense_cuda_graph and step + 1 < cfg.steps:
+                # Match the PS pipeline's one-batch CPU lookahead. This only
+                # prepares inputs; next-step embedding reads stay after SGD.
+                with timer.cpu("update_overlap_prepare_ms"):
+                    prepared_batch = prepare_batch()
 
             if is_trainer_rank:
                 # Match RecStore's readback boundary; stream dependencies and
                 # the final device drain already order the backward/update work.
-                row["loss"] = float(loss.detach().float().cpu().item())
+                if continuous is not None:
+                    continuous.record_loss_and_terminal(step, loss)
+                    row["loss"] = ""
+                else:
+                    row["loss"] = float(loss.detach().float().cpu().item())
             if profiler is not None:
                 profiler.step()
 
@@ -477,20 +599,49 @@ def _run_single_or_dist_worker(
             # tail. finish() returns that drain wait (the cross-rank straggler
             # cost) instead of letting it vanish into the step_total gap.
             row["step_sync_wait_ms"] = timer.finish()
-            row["step_total_ms"] = (time.perf_counter() - step_start) * 1e3
+            row["dense_compute_ms"] = row["dense_optimizer_ms"] + (
+                row["dense_graph_ms"] if dense_graph is not None
+                else row["dense_fwd_ms"] + row["backward_ms"]
+            )
+            if continuous is None:
+                row["step_total_ms"] = (time.perf_counter() - step_start) * 1e3
+            else:
+                continuous.finish_row(row, step_start, backpressure_ms)
             row["collective_launch_ms"] = 0.0
             row["collective_wait_ms"] = (
                 row["embed_lookup_ms"] if use_dist else 0.0
             )
             rows.append(finalize_torchrec_row(row))
-            _barrier_for_step_alignment(
-                dist=dist,
-                device=device,
-                local_rank=local_rank,
-                use_dist=use_dist,
-            )
-            rows[-1]["step_wall_ms"] = (time.perf_counter() - step_start) * 1e3
+            if continuous is None:
+                _barrier_for_step_alignment(
+                    dist=dist,
+                    device=device,
+                    local_rank=local_rank,
+                    use_dist=use_dist,
+                )
+                rows[-1]["step_wall_ms"] = (time.perf_counter() - step_start) * 1e3
+            else:
+                rows[-1]["host_step_enqueue_wall_ms"] = (time.perf_counter() - step_start) * 1e3
+        if continuous is not None:
+            loop_summary = continuous.finish(rows, lambda: _barrier_for_step_alignment(
+                dist=dist, device=device, local_rank=local_rank, use_dist=use_dist))
+            loop_summary.update(rank=rank, backend="torchrec", world_size=world_size,
+                                configured_warmup_steps=cfg.warmup_steps, run_id=cfg.run_id)
+            lifecycle["continuous_loop"] = loop_summary
+            loop_path = Path(cfg.output_root) / "outputs" / cfg.run_id / f"continuous_rank{rank}.json"
+            loop_path.parent.mkdir(parents=True, exist_ok=True)
+            loop_path.write_text(json.dumps(loop_summary, indent=2) + "\n")
 
+    if device.type == "cuda":
+        lifecycle["training_cuda_memory"] = {
+            "allocated_bytes": torch.cuda.memory_allocated(device),
+            "reserved_bytes": torch.cuda.memory_reserved(device),
+            "peak_allocated_bytes": torch.cuda.max_memory_allocated(device),
+            "peak_reserved_bytes": torch.cuda.max_memory_reserved(device),
+        }
+    lifecycle_path = Path(cfg.output_root) / "outputs" / cfg.run_id / f"lifecycle_rank{rank}.json"
+    lifecycle_path.parent.mkdir(parents=True, exist_ok=True)
+    lifecycle_path.write_text(json.dumps(lifecycle, indent=2) + "\n")
     _write_rows(out_csv, rows)
     if cfg.validation_state:
         from ..runtime.validation import export_validation_state

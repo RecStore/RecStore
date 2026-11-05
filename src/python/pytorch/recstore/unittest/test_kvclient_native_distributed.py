@@ -66,6 +66,41 @@ class TestKVClientNativeDistributed(unittest.TestCase):
         self.assertTrue(torch.equal(ids, torch.tensor([100, 101, 102, 103])))
         self.assertTrue(torch.equal(values, torch.zeros((4, 2))))
 
+    def test_pull_into_owns_destination_and_normalizes_namespace(self) -> None:
+        self.client.register_tensor_meta("table", (16, 2), torch.float32)
+        self.client._tensor_meta["table"]["tag"] = 3
+        ids = torch.tensor([4, 1, 4], dtype=torch.int64)
+        destination = torch.empty((3, 2))
+        for native in (False, True):
+            calls = []
+            if native:
+                def read_into(keys, values):
+                    calls.append((keys.clone(), values.data_ptr()))
+                    values.copy_(torch.tensor([[4., 8.], [1., 2.], [4., 8.]]))
+                self.client.ops.emb_read_into = read_into
+            returned = self.client.pull_into("table", ids, destination)
+            self.assertIs(returned, destination)
+            expected_keys = ids | (3 << 56)
+            if native:
+                self.assertTrue(torch.equal(calls[0][0], expected_keys))
+                self.assertEqual(calls[0][1], destination.data_ptr())
+                torch.testing.assert_close(destination[:, 0], ids.float())
+            else:
+                self.assertTrue(torch.equal(self.client.ops.read_calls[-1][0], expected_keys))
+                torch.testing.assert_close(destination[:, 0], expected_keys.float())
+
+    def test_pull_into_rejects_invalid_destination_before_read(self) -> None:
+        self.client.register_tensor_meta("table", (16, 2), torch.float32)
+        ids = torch.tensor([1, 2], dtype=torch.int64)
+        for values in (torch.empty((2, 3)), torch.empty((2, 2), dtype=torch.float64),
+                       torch.empty((2, 2)).t(), torch.empty((2, 2), requires_grad=True)):
+            with self.subTest(shape=values.shape, dtype=values.dtype):
+                with self.assertRaises(ValueError):
+                    self.client.pull_into("table", ids, values)
+        self.assertEqual(self.client.ops.read_calls, [])
+        with self.assertRaises(RuntimeError):
+            self.client.pull_into("missing", ids, torch.empty((2, 2)))
+
     def test_native_backend_requests_are_forwarded_without_python_sharding(self) -> None:
         self.client.register_tensor_meta("table", (16, 2), torch.float32)
         ids = torch.tensor([9, 2, 11, 4], dtype=torch.int64)
