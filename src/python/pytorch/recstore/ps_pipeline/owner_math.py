@@ -34,7 +34,7 @@ def initialize_owner_merged_math(device):
         _EXTENSION = load_inline(
             name='recstore_owner_math_v2',
             cpp_sources='std::vector<torch::Tensor> owner_merged_math(torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, double);',
-            cuda_sources=Path(__file__).with_name('owner_merged_math.cu').read_text(),
+            cuda_sources=Path(__file__).with_name('owner_math.cu').read_text(),
             functions=['owner_merged_math'], extra_cflags=['-O3', '-fno-fast-math', '-ffp-contract=off'],
             extra_cuda_cflags=['-O3', '--ftz=false', '--fmad=false', '--prec-div=true', '--prec-sqrt=true'],
             verbose=False)

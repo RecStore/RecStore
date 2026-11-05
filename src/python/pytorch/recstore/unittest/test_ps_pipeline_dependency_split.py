@@ -252,7 +252,8 @@ class TestDependencySplit(unittest.TestCase):
                                          get_world_size=lambda: 2, get_rank=lambda: 0,
                                          broadcast=lambda *a, **kw: None,
                                          new_group=create_group, destroy_process_group=destroy), \
-                     mock.patch("recstore.ps_pipeline.ThreadPoolExecutor", side_effect=effects) as create_worker:
+                     mock.patch("recstore.ps_pipeline.pipeline.ThreadPoolExecutor",
+                                side_effect=effects) as create_worker:
                     with self.assertRaises(RuntimeError) as raised:
                         _pipeline(_PS(), dependency_split=True, total_steps=2)
                     self.assertIs(raised.exception, original)

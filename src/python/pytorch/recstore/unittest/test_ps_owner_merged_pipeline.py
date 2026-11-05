@@ -12,8 +12,8 @@ from unittest import mock
 
 import torch
 
-from .. import owner_forward_gpu, owner_merged_gpu
-from ..ps_owner_pipeline import GPUOwnerPipeline, owner_options_from_env
+from ..ps_pipeline import GPUOwnerPipeline, owner_options_from_env
+from ..ps_pipeline import owner_exchange, owner_math
 from . import _owner_test_fixtures as fixtures
 
 PLAN_OP = getattr(torch.ops.recstore_ops, 'owner_merged_forward_plan', None)
@@ -50,7 +50,7 @@ def make_merged_owner(ps, *, table_types=fixtures.types):
         return tensor(*args, **kwargs)
 
     with mock.patch.object(torch, 'tensor', side_effect=cpu_tensor), mock.patch.object(
-            owner_merged_gpu, 'initialize_owner_merged_math'), mock.patch.object(
+            owner_math, 'initialize_owner_merged_math'), mock.patch.object(
             fixtures.dist, 'get_backend', return_value='nccl'):
         pipeline = GPUOwnerPipeline(
             None, ps, table_offsets={'f0': 0, 'f1': 100}, master_table_name='master',
@@ -116,7 +116,7 @@ class TestOwnerOptimizedLifecycle(unittest.TestCase):
     def test_full_options_finish_and_failed_wait_scheduling(self):
         for failed_step in (None, 0, 1):
             with self.subTest(failed_step=failed_step), fixtures.context(fixtures.Collective()), mock.patch.object(
-                    owner_forward_gpu, 'ForwardGPUOwnerExchange', FakeForwardExchange):
+                    owner_exchange, 'ForwardGPUOwnerExchange', FakeForwardExchange):
                 ps = fixtures.OwnerPS()
                 pipeline = make_merged_owner(ps)
                 pipeline.device = torch.device('cuda', torch.cuda.current_device())

@@ -303,8 +303,12 @@ class RecStoreRunner(BenchmarkRunner):
         use_planned_bagpipe = use_bagpipe and cfg.optimization.prescan
 
         if cfg.read_mode == "ps_pipeline":
-            from recstore.ps_pipeline import PSPipeline, PSPipelineSGD
-            from recstore.ps_owner_pipeline import GPUOwnerPipeline, owner_options_from_env
+            from recstore.ps_pipeline import (
+                GPUOwnerPipeline,
+                PSPipeline,
+                PSPipelineSGD,
+                owner_options_from_env,
+            )
             owner_options = owner_options_from_env(os.environ)
             pipeline_class = PSPipeline if owner_options is None else GPUOwnerPipeline
             if owner_options is not None:

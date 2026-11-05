@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 
-from .ps_pipeline import PSPipeline
+from .pipeline import PSPipeline
 
 
 def owner_options_from_env(environ):
@@ -120,7 +120,7 @@ class GPUOwnerPipeline(PSPipeline):
         self._owner_types = torch.tensor(self._owner_table_types, dtype=torch.int64)
         _, self._owner_tag = kv_client.get_embedding_table_namespace(kwargs["master_table_name"])
         self._owner_plan = self._owner_exchange = None
-        from .owner_merged_gpu import initialize_owner_merged_math
+        from .owner_math import initialize_owner_merged_math
         initialize_owner_merged_math(torch.device(kwargs["device"]))
         super().__init__(embedding_module, kv_client, **kwargs)
         layout = (self._offsets.numpy().tobytes() + bytes(self._owner_table_types)
@@ -164,7 +164,7 @@ class GPUOwnerPipeline(PSPipeline):
             raise RuntimeError("Owner PS prepared beyond the declared step count")
         start = time.perf_counter()
         raw = self._raw_sparse_ids(sparse_features, sparse_batch)
-        from .canonical_ps import make_ticket_with_inverse
+        from ..canonical_ps import make_ticket_with_inverse
         local_ticket, inverse = make_ticket_with_inverse(
             raw.numpy(), self._offsets.numpy(), self._owner_table_types)
         ticket = (torch.from_numpy(local_ticket.keys), torch.from_numpy(inverse), raw.numel())
@@ -208,7 +208,7 @@ class GPUOwnerPipeline(PSPipeline):
                     or int(counts.sum()) != int(headers[rank][4]) * ticket.features):
                 raise RuntimeError("Owner metadata occurrence counts disagree with batch shape")
         exchanged = time.perf_counter()
-        from .canonical_ps import OwnerExchangePlan
+        from ..canonical_ps import OwnerExchangePlan
         plan = OwnerExchangePlan(len(ticket.keys))
         self._build_owner_plan(plan, peers, sizes)
         dirty = torch.from_numpy(np.unique(np.concatenate(
@@ -537,7 +537,7 @@ class GPUOwnerPipeline(PSPipeline):
         }
 
     def _stage_rows(self, step, ticket, values, row_count, row):
-        from .owner_forward_gpu import ForwardGPUOwnerExchange as ForwardExchange
+        from .owner_exchange import ForwardGPUOwnerExchange as ForwardExchange
         plan = self._owner_metadata[step].result()[2].owner
         permutation, keys, metadata, send, recv, index, fsend, frecv, reorder = plan
         if reorder.numel() != ticket[0].numel():

@@ -1,4 +1,4 @@
-"""World2 merged-owner exchange with one batch of GPU staging."""
+"""World-2 merged-owner GPU exchange for forward and backward."""
 import math
 from numbers import Integral, Real
 
@@ -88,13 +88,13 @@ class GPUOwnerExchange:
             raise
 
     def _check_math_ready(self):
-        from . import owner_merged_gpu
-        if (owner_merged_gpu._EXTENSION is None
-                or self.device.index not in owner_merged_gpu._WARMED_DEVICES):
+        from . import owner_math
+        if (owner_math._EXTENSION is None
+                or self.device.index not in owner_math._WARMED_DEVICES):
             raise RuntimeError('Call initialize_owner_merged_math before training')
 
     def _owner_math(self, meta, v0, v1, weights, learning_rate):
-        from .owner_merged_gpu import _EXTENSION
+        from .owner_math import _EXTENSION
         return _EXTENSION.owner_merged_math(
             meta, v0, v1, weights, float(learning_rate))
 
@@ -128,3 +128,78 @@ class GPUOwnerExchange:
     def drain(self):
         """Error cleanup only; successful global ACK already covers producer work."""
         torch.cuda.synchronize(self.device)
+
+
+class ForwardGPUOwnerExchange(GPUOwnerExchange):
+    """Owner exchange that also stages the current batch's forward rows."""
+
+    def __init__(self, permutation, owner_keys, metadata, send_splits, recv_splits,
+                 old_weights, *, forward_send_index, forward_reorder,
+                 forward_send_splits, forward_recv_splits, process_group, device, source_refs=()):
+        self.forward_send_splits = _splits(forward_send_splits)
+        self.forward_recv_splits = _splits(forward_recv_splits)
+        for value in (forward_send_index, forward_reorder):
+            if (not isinstance(value, torch.Tensor) or value.device.type != 'cpu'
+                    or value.dtype != torch.int64 or value.ndim != 1
+                    or not value.is_contiguous() or value.requires_grad):
+                raise ValueError('Forward owner indices must be contiguous CPU int64 vectors')
+        if (len(forward_send_index) != sum(self.forward_send_splits)
+                or len(forward_reorder) != sum(self.forward_recv_splits)
+                or len(forward_reorder) > _LIMIT // 2):
+            raise ValueError('Forward owner split/index shape mismatch')
+        super().__init__(permutation, owner_keys, metadata, send_splits, recv_splits,
+                         old_weights, process_group=process_group, device=device,
+                         source_refs=source_refs)
+        self._forward_started = self._forward_done = self._failed = False
+        self._forward_gpu = []
+        try:
+            self._forward_host = tuple(
+                value.pin_memory() for value in (forward_send_index, forward_reorder))
+            for value in self._forward_host:
+                self._forward_gpu.append(value.to(self.device, non_blocking=True))
+            self._forward_ready = torch.cuda.Event()
+            self._forward_ready.record(torch.cuda.current_stream(self.device))
+        except BaseException as original:
+            try:
+                self.drain()
+            except BaseException as cleanup:
+                if hasattr(original, "add_note"):
+                    original.add_note('Forward preparation drain also failed: ' + repr(cleanup))
+            raise
+
+    def forward_rows(self):
+        """Return local unique rows in ticket order; no arithmetic or publication."""
+        if self._forward_started or self._failed or self._ran:
+            raise RuntimeError('Owner forward cannot be reused or retried')
+        self._forward_started = True
+        try:
+            stream = torch.cuda.current_stream(self.device)
+            stream.wait_event(self._forward_ready)
+            indices, reorder = self._forward_gpu
+            weights = self._gpu[2]  # The exact object later consumed by owner_math.
+            for value in (weights, indices, reorder):
+                value.record_stream(stream)
+            self._forward_send = torch.index_select(weights, 0, indices)
+            self._forward_received = torch.empty(
+                (len(reorder), 128), dtype=torch.float32, device=self.device)
+            self._forward_work = dist.all_to_all_single(
+                self._forward_received, self._forward_send,
+                output_split_sizes=self.forward_recv_splits,
+                input_split_sizes=self.forward_send_splits,
+                group=self.group, async_op=True)
+            self._forward_work.wait()
+            self._forward_rows = torch.index_select(self._forward_received, 0, reorder)
+            self._forward_done = True
+            return self._forward_rows
+        except BaseException:
+            self._failed = True
+            raise
+
+    def run(self, packed_partials, learning_rate):
+        if not self._forward_done or self._failed:
+            raise RuntimeError('Owner backward requires a successful forward')
+        try:
+            return super().run(packed_partials, learning_rate)
+        except BaseException:
+            self._failed = True
+            raise

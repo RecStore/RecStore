@@ -11,7 +11,7 @@ import unittest
 
 import torch
 
-from .. import owner_merged_gpu
+from ..ps_pipeline import owner_math
 
 CUDA = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 SUPPORTED = (CUDA.type == 'cuda'
@@ -26,11 +26,11 @@ def cpu_f32(value):
 class TestOwnerMergedMath(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        owner_merged_gpu.initialize_owner_merged_math(CUDA)
+        owner_math.initialize_owner_merged_math(CUDA)
 
     def run_kernel(self, meta_rows, v0, v1, weights, lr):
         meta = torch.tensor(meta_rows, dtype=torch.int64, device=CUDA)
-        result = owner_merged_gpu._EXTENSION.owner_merged_math(
+        result = owner_math._EXTENSION.owner_merged_math(
             meta, v0.to(CUDA), v1.to(CUDA), weights.to(CUDA), lr)
         torch.cuda.synchronize(CUDA)
         return result
@@ -127,13 +127,13 @@ class TestOwnerMergedMath(unittest.TestCase):
                      (meta, v, v[:0], v, float('nan'))):
             with self.subTest(args=args[:2]):
                 with self.assertRaises(RuntimeError):
-                    owner_merged_gpu._EXTENSION.owner_merged_math(*args)
+                    owner_math._EXTENSION.owner_merged_math(*args)
 
     def test_empty_meta_returns_empty_outputs(self):
         meta = torch.zeros(0, 8, dtype=torch.int64, device=CUDA)
         v = torch.zeros(0, 128, dtype=torch.float32, device=CUDA)
         weights = torch.zeros(0, 128, dtype=torch.float32, device=CUDA)
-        candidate, error = owner_merged_gpu._EXTENSION.owner_merged_math(
+        candidate, error = owner_math._EXTENSION.owner_merged_math(
             meta, v, v, weights, .01)
         self.assertEqual(candidate.shape, (0, 128))
         self.assertEqual(error.item(), 0)
