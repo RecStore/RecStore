@@ -1,39 +1,26 @@
 # 文档维护
 
-缺页用「待补充」标记；需要更新的旧文用「待重写」标记。
+页面内不再使用「待补充 / 待重写」横幅；未完成的内容统一记在本页，按主题追加。新增或修改页面后，至少跑一次 `mkdocs build --strict`。
 
-## 待补充
-
-- [代码地图](index.md)
-
-- [配置指南](../usage/configuration.md)
-- [DLRM / TorchRec 集成](../usage/integration.md)
-- [测试范围与指标](../performance/methodology.md)
-- [端到端训练基准](../performance/e2e.md)
-- [参数服务器与传输基准](../performance/ps.md)
-- [命令行与环境变量](../api/cli.md)
-
-## 待重写
+## 内容待补充
 
 | 页面 | 后续修改 |
 | --- | --- |
-| [PyTorch Operators](../api/operators.md) | 按当前算子签名更新参数表；init_embedding_table 示例仍是旧的三参数形式。 |
-| [CommonOp / KVClientOp](../api/cpp.md) | 按当前接口声明核对示例，并更新按算子拆分后的文件位置。 |
-| [如何添加新算子](../dev/feature/add_operator.md) | 示例仍按单个 op_torch.cc 组织，需更新 binding 文件划分和建表参数。 |
-| [分布式训练](../dev/distributed.md) | 配置示例仍使用旧的 index_type、value_type 等字段，需按当前 Composite 配置重写。 |
-| [Python 客户端基础测试](../dev/tests/client_test.md) | 更新建表参数，并将表格内的代码示例改为独立代码块。 |
-| [从源码构建](../quickstart.md) | 与 Docker 开发镜像页面合并重复的环境准备步骤。 |
-| [Docker 开发镜像](../dev/zero_config_run.md) | 统一镜像来源、标签和构建步骤，消除与源码构建指南的重复。 |
-| [Profiling](../performance/profiling.md) | 核对运行入口、二进制名称和输出路径。 |
-| [监控与 Grafana](../performance/monitoring.md) | 补齐服务安装与看板导入步骤。 |
-| [性能报告](../performance/reports.md) | 补齐环境、版本和复现命令。 |
-| [性能埋点](instrumentation.md) | 整理已折叠的旧版 txt 埋点说明。 |
+| [监控与 Grafana](../performance/monitoring.md) | 补 ClickHouse / Grafana 的安装细节与看板导入步骤。 |
+| [性能报告](../performance/reports.md) | 补历史结果的版本、硬件与拓扑。 |
+| [性能埋点](instrumentation.md) | 把折叠的旧版 txt 埋点并入当前 report 体系。 |
+| [如何添加新算子](../dev/feature/add_operator.md) | 按拆分后的 binding 文件补完整示例；文件划分本身不在这里重复。 |
+| [DLRM / TorchRec 集成](../usage/integration.md) | 补一个只依赖 `recstore` 包的最小训练 demo（放到 `examples/`）。 |
+| [Docker 开发镜像](zero_config_run.md) | 目前只有 CPU 镜像；可用的 GPU 镜像还在做，完成后补 GPU 训练路径。 |
+| [配置指南](../usage/configuration.md) | 场景与加载顺序已收敛到本页，字段表留在 [配置字段参考](../config.md)；后续把 `config.md` 里重复的示例收敛成 tab。 |
+| [命令行与环境变量](../api/cli.md) | 常用编译参数与 RDMA 变量已补；后续可自动导出 gflags 与 runner 参数。 |
+| [KVEngine 存储基准](ycsb.md) | 页面已按"先正确性、再 YCSB、再 batch lookup、再读结果"重写；补 SSD 分档与外部引擎（FASTERKV / HPS）的对照结果。 |
 
 ## 接口文档核对
 
 `EmbWriteAsync`、`IsWriteDone`、`WaitForWrite`、`SaveToFile`、`LoadFromFile` 在现有文档中列为占位接口，后续按实现进度更新 API 说明。
 
-新增接口时，同步修改 `op.h`、`op.cc`、`op_torch.cc` 和 mock 路径；文件划分随前面的接口核对一并更新。
+新增接口时，同步修改骨架与各 binding 文件（`op.h` / `op.cc` / `op_base.cc` / `op_flat.cc` / `op_prefetch.cc` / `cache/cache_bindings.cc`）以及 mock 路径；文件划分随接口核对一并更新。
 
 ## 性能文档维护
 

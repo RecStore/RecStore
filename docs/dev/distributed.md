@@ -1,9 +1,5 @@
 # 分布式训练
 
-!!! note "待重写"
-
-    配置示例仍使用旧的 index_type、value_type 等字段，需按当前 Composite 配置重写。
-
 以两台机器为例，每台机器 1 个 trainer，1 个分片的存储后端。
 
 ## 环境
@@ -21,7 +17,7 @@
 
 ??? example "配置文件示例"
 
-    ```json title="recstore_config.distributed.json" linenums="1" hl_lines="6 28-44"
+    ```json title="recstore_config.distributed.json" linenums="1" hl_lines="6 7-18 37 38 40-51"
     {
       "cache_ps": {
         "ps_type": "BRPC",
@@ -41,12 +37,20 @@
           }
         ],
         "base_kv_config": {
-          "path": "/tmp/recstore_dist_data",
+          "engine_type": "KVEngineComposite",
           "capacity": 1000000,
-          "value_size": 512,
-          "value_type": "DRAM",
-          "index_type": "DRAM",
-          "value_memory_management": "PersistLoopShmMalloc"
+          "index": {
+            "type": "DRAM_PET_HASH"
+          },
+          "value": {
+            "type": "DRAM_VALUE_STORE",
+            "path": "/tmp/recstore_dist_data",
+            "default_value_size_hint": 512,
+            "dram_allocator": {
+              "type": "CONCURRENT_SLAB_MEMORY_POOL",
+              "capacity_bytes": 512000000
+            }
+          }
         }
       },
       "distributed_client": {
@@ -73,6 +77,13 @@
       }
     }
     ```
+
+高亮的字段是两台机器必须一致的部分：
+
+- `cache_ps.num_shards` 与 `distributed_client.num_shards` 必须相等，且等于 `servers` 的条目数；
+- 两处 `servers` 的 `host` / `port` / `shard` 要能一一对应，`shard` 覆盖 `0..num_shards-1`（顺序无所谓）；
+- `hash_method` 决定 key 落到哪个分片，两端不一致会出现"读得到但写到别的分片"；
+- `client` 只给单机入口用，分布式训练不走它。
 
 ## 参数服务器
 

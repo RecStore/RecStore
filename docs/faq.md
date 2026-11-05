@@ -109,14 +109,15 @@
 
 ## Runtime Errors
 
-??? failure "shm malloc failed (OOM?), key: ... size: ..."
-    通常是 `cache_ps.base_kv_config` 的容量预算过小导致。优先检查并调大以下字段之一：
+??? failure "ConcurrentSlabMemoryPool OOM / Persist Memory Pool OOM"
+    通常是 `cache_ps.base_kv_config` 的容量预算过小导致。按 value store 调大：
 
-    - `ENTRY_CAPACITY`
-    - `DRAM_SIZE`
-    - `SSD_SIZE`
+    - `cache_ps.base_kv_config.capacity`：条目数
+    - `cache_ps.base_kv_config.value.dram_allocator.capacity_bytes`：DRAM value 容量
+    - `cache_ps.base_kv_config.value.ssd_allocator.capacity_bytes`：SSD value 容量
 
-    如果仍在使用旧配置字段，则对应为 `capacity`、`shmcapacity`、`ssdcapacity`。
+    日志原文分别为 `ConcurrentSlabMemoryPool OOM, slab_size=...` 和
+    `Persist Memory Pool OOM, total_malloc=...`。
 
 
 ??? failure "Fail to listen 127.0.0.1:xxxxx/xxxxx"
