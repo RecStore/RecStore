@@ -3072,7 +3072,8 @@
 
 <h1 id="_1">配置字段参考<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <h2 id="_2">配置文件结构<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含以下顶层配置块：<code>cache_ps</code>、<code>distributed_client</code>、<code>client</code>、<code>report_API</code>，以及按需启用的 <code>hugectr</code>、<code>hierkv</code>。</p>
+<p>RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含以下顶层配置块：<code>cache_ps</code>、<code>distributed_client</code>、<code>client</code>；<code>report_API</code>、<code>hugectr</code>、<code>hierkv</code> 按需添加。</p>
+<p>本页只列字段。配置文件放哪、读取优先级、单机 / 多机 / RDMA / 换存储的改法见<a href="../usage/configuration/">配置指南</a>。</p>
 <h2 id="1-cache_ps">1. cache_ps 配置<a class="headerlink" href="#1-cache_ps" title="Permanent link">&para;</a></h2>
 <p><code>cache_ps</code> 配置用于参数服务器（Parameter Server）端，定义服务器的运行参数和底层存储引擎。</p>
 <h3 id="11">1.1 服务器基础配置<a class="headerlink" href="#11" title="Permanent link">&para;</a></h3>
@@ -3580,7 +3581,7 @@
 <a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a><span class="w">    </span><span class="p">}</span>
 <a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a><span class="p">}</span>
 </code></pre></div>
-<p>推导引擎类型：<code>KVEngineCCEH</code></p>
+<p>推导引擎类型：<code>KVEngineComposite</code></p>
 </details>
 <details class="example">
 <summary>HYBRID 混合模式配置</summary>
@@ -3614,7 +3615,7 @@
 <a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a><span class="w">    </span><span class="p">}</span>
 <a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a><span class="p">}</span>
 </code></pre></div>
-<p>推导引擎类型：<code>KVEngineHybrid</code></p>
+<p>推导引擎类型：<code>KVEngineComposite</code></p>
 </details>
 <details class="example">
 <summary>在 CI 中的配置</summary>

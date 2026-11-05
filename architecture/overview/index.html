@@ -2847,8 +2847,8 @@
 <h2 id="2-parameter-server-layer">2. 参数服务器层 (Parameter Server Layer)<a class="headerlink" href="#2-parameter-server-layer" title="Permanent link">&para;</a></h2>
 <p>参数服务器层负责分布式环境下参数的分发与通信。它屏蔽了底层的网络细节，支持多种通信协议。</p>
 <ul>
-<li><strong>RPC 通信</strong>: 支持 gRPC 和 bRPC。例如 <code>DistGRPCPSClient</code>（<code>src/ps/grpc/dist_grpc_ps_client.cpp</code>）负责序列化数据并发送请求。</li>
-<li><strong>服务端分发</strong>: <code>GRPCPS_Server</code>（<code>src/ps/grpc/grpc_ps_server.cpp</code>）接收请求并将其路由给后端的存储逻辑。</li>
+<li><strong>RPC 通信</strong>: 支持 gRPC 和 bRPC。例如 <code>DistributedGRPCParameterClient</code>（<code>src/ps/grpc/dist_grpc_ps_client.cpp</code>）负责序列化数据并发送请求。</li>
+<li><strong>服务端分发</strong>: <code>GRPCParameterServer</code>（<code>src/ps/grpc/grpc_ps_server.cpp</code>）接收请求并将其路由给后端的存储逻辑。</li>
 <li><strong>协议定义</strong>: <code>src/ps/proto/ps.proto</code> 定义了 <code>GetParameter</code>、<code>UpdateParameter</code> 等核心接口。</li>
 </ul>
 <hr />

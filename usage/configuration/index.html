@@ -744,6 +744,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    配置指南
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -760,6 +778,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 配置文件放在哪
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 三种常见场景
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 顶层块
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 配置文件、命令行与环境变量的分工
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 排错
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -2648,6 +2740,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 配置文件放在哪
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 三种常见场景
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 顶层块
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 配置文件、命令行与环境变量的分工
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 排错
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -2672,16 +2827,93 @@
 
 
 <h1 id="_1">配置指南<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>RecStore 只用一个 JSON 配置文件。本页回答"配置放哪、怎么被读到、常见场景改什么"；字段含义统一查<a href="../../config/">配置字段参考</a>，本页不重复字段表。</p>
+<h2 id="1">1. 配置文件放在哪<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
+<p>默认文件名 <code>recstore_config.json</code>，仓库根目录已经带了一份可直接运行的。读取顺序与 <code>src/ps/ps_server.cpp</code>、<code>tools/config/recstore_config_path.py</code> 一致：</p>
+<ol>
+<li>命令行 <code>ps_server --config_path &lt;file&gt;</code>；文件不存在时忽略并继续向下回落（<code>--brpc_config_path</code> 仍然可用，但只在 <code>--config_path</code> 为空时生效，部分 benchmark runner 还在用它）。</li>
+<li>环境变量 <code>RECSTORE_CONFIG=&lt;file&gt;</code>；测试 runner 和 <code>model_zoo/rs_demo</code> 都走这条。</li>
+<li>从当前工作目录逐级向上查找 <code>recstore_config.json</code>。</li>
+<li>仓库根目录的 <code>recstore_config.json</code>。</li>
+</ol>
+<p>四处都没有时启动直接失败，报 <code>recstore_config.json not found</code>。服务端与客户端必须读同一份配置，<code>distributed_client</code> 尤其是这样。</p>
+<h2 id="2">2. 三种常见场景<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>关键改动</th>
+<th>参考</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单机跑通</td>
+<td>保持默认：<code>ps_type=GRPC</code>、<code>num_shards=2</code>、<code>127.0.0.1</code> 上 15000/15001 两个端口</td>
+<td><a href="../../quickrun/">快速运行</a></td>
+</tr>
+<tr>
+<td>多机多分片</td>
+<td>两台机器共享同一份 <code>distributed_client</code>（<code>num_shards</code> / <code>hash_method</code> / <code>servers</code> 必须一致），<code>servers</code> 换成真实 IP，服务端 <code>host</code> 改成 <code>0.0.0.0</code> 或 LAN IP</td>
+<td><a href="../../dev/distributed/">分布式训练</a></td>
+</tr>
+<tr>
+<td>换存储后端</td>
+<td>只改 <code>cache_ps.base_kv_config</code> 的 <code>index</code> / <code>value</code> / <code>capacity</code></td>
+<td><a href="../../storage/composite_kvengine/">KVEngineComposite</a></td>
+</tr>
+<tr>
+<td>RDMA 数据面</td>
+<td><code>cache_ps.ps_type</code> 写 <code>RDMA</code>，服务端换成 <code>petps_server</code>（<code>ps_server</code> 只分发 GRPC/BRPC）</td>
+<td><a href="../../parameter_server/rdma/">RDMA 参数</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="3">3. 顶层块<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>块</th>
+<th>谁读</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cache_ps</code></td>
+<td>参数服务器、框架客户端</td>
+<td><code>ps_type</code>、<code>num_threads</code>、<code>max_batch_keys_size</code>、<code>num_shards</code>、<code>servers</code>、<code>base_kv_config</code></td>
+</tr>
+<tr>
+<td><code>distributed_client</code></td>
+<td>计算层客户端</td>
+<td><code>num_shards</code>、<code>hash_method</code>、<code>max_keys_per_request</code>、<code>servers</code></td>
+</tr>
+<tr>
+<td><code>client</code></td>
+<td>单机客户端</td>
+<td>单分片的 <code>host</code> / <code>port</code> / <code>shard</code></td>
+</tr>
+<tr>
+<td><code>report_API</code></td>
+<td>可选</td>
+<td>性能上报接收端</td>
+</tr>
+<tr>
+<td><code>hugectr</code> / <code>hierkv</code></td>
+<td>可选</td>
+<td>第三方适配层配置</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4">4. 配置文件、命令行与环境变量的分工<a class="headerlink" href="#4" title="Permanent link">&para;</a></h2>
+<p>配置文件管"拓扑和存储"；命令行和环境变量管"这一次运行怎么起"：<code>--local_shard_id</code> 选本机分片，<code>RECSTORE_CONFIG</code> 选配置文件，<code>CPUPROFILE</code> 开 profiling。所有入口见<a href="../../api/cli/">命令行与环境变量</a>。</p>
+<h2 id="5">5. 排错<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
 <ul>
-<li><a href="../../config/">项目配置字段</a></li>
-<li><a href="../../dev/distributed/">分布式训练配置</a></li>
-<li><a href="../../parameter_server/rdma/">RDMA 参数</a></li>
-<li><a href="../../storage/composite_kvengine/">存储引擎与组件配置</a></li>
+<li><code>Unknown ps_type</code>：<code>ps_server</code> 只接受 <code>GRPC</code> / <code>BRPC</code>；RDMA 走 <code>petps_server</code>，<code>LOCAL_SHM</code> 只用于测试与 benchmark。</li>
+<li>服务端起来了但客户端连不上：先对齐 <code>cache_ps.servers</code> 与 <code>distributed_client.servers</code> 的 <code>host</code>/<code>port</code>/<code>shard</code>；跨机时服务端 <code>host</code> 不能还是 <code>127.0.0.1</code>。</li>
+<li>表建出来读不到值：检查 <code>capacity</code> 与 <code>default_value_size_hint</code> 是否够用，以及 index/value 组合是否在 <a href="../../storage/composite_kvengine/">KVEngineComposite</a> 的支持矩阵里。</li>
 </ul>
-<div class="admonition note">
-<p class="admonition-title">待补充</p>
-<p>补充按部署场景选择传输方式与存储后端的示例。</p>
-</div>
 
 
 

@@ -2674,11 +2674,17 @@
 
 
 <h1 id="_1">端到端训练基准<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">待补充</p>
-<p>整理端到端训练基准的环境、命令与结果读取方式。</p>
-</div>
-<p><a href="../#benchmark-entry">现有基准入口</a>。</p>
+<p>端到端基准覆盖模型层全链路：数据加载、forward、backward、sparse update 和 dense optimizer，产物是 samples/s 与 ms/step。</p>
+<p>入口：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>tools.benchmarks.e2e.custom.cli<span class="w"> </span>--help
+</code></pre></div>
+<p>运行前先按<a href="../../quickrun/">快速运行</a>准备好 PS 和训练进程；机器与拓扑要求见 <a href="../../dev/distributed/">分布式训练</a>。</p>
+<p>结果口径：</p>
+<ul>
+<li>报告 samples/s 与 p50 ms/step，必要时拆出 sparse / lookup / dense 分项；</li>
+<li>历史结果与环境说明见<a href="../reports/">性能报告</a>；</li>
+<li>三层指标的含义与不可比性见<a href="../methodology/">测试范围与指标</a>。</li>
+</ul>
 
 
 

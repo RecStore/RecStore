@@ -1219,10 +1219,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#grpcpsclient" class="md-nav__link">
+  <a href="#grpcparameterclient" class="md-nav__link">
     <span class="md-ellipsis">
       
-        GRPCPSClient
+        GRPCParameterClient
       
     </span>
   </a>
@@ -1230,10 +1230,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#distgrpcpsclient" class="md-nav__link">
+  <a href="#distributedgrpcparameterclient" class="md-nav__link">
     <span class="md-ellipsis">
       
-        DistGRPCPSClient
+        DistributedGRPCParameterClient
       
     </span>
   </a>
@@ -2861,10 +2861,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#grpcpsclient" class="md-nav__link">
+  <a href="#grpcparameterclient" class="md-nav__link">
     <span class="md-ellipsis">
       
-        GRPCPSClient
+        GRPCParameterClient
       
     </span>
   </a>
@@ -2872,10 +2872,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#distgrpcpsclient" class="md-nav__link">
+  <a href="#distributedgrpcparameterclient" class="md-nav__link">
     <span class="md-ellipsis">
       
-        DistGRPCPSClient
+        DistributedGRPCParameterClient
       
     </span>
   </a>
@@ -2995,7 +2995,7 @@
 </tbody>
 </table>
 <h2 id="_3">客户端实现<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<h3 id="grpcpsclient">GRPCPSClient<a class="headerlink" href="#grpcpsclient" title="Permanent link">&para;</a></h3>
+<h3 id="grpcparameterclient">GRPCParameterClient<a class="headerlink" href="#grpcparameterclient" title="Permanent link">&para;</a></h3>
 <p>单服务器客户端，继承自 <code>BasePSClient</code>，使用 gRPC Channel 与服务器通信。</p>
 <p>关键成员：</p>
 <table>
@@ -3019,7 +3019,7 @@
 </tr>
 </tbody>
 </table>
-<h3 id="distgrpcpsclient">DistGRPCPSClient<a class="headerlink" href="#distgrpcpsclient" title="Permanent link">&para;</a></h3>
+<h3 id="distributedgrpcparameterclient">DistributedGRPCParameterClient<a class="headerlink" href="#distributedgrpcparameterclient" title="Permanent link">&para;</a></h3>
 <p>分布式客户端，支持连接多个服务器进行参数分片。</p>
 <table>
 <thead>
@@ -3031,7 +3031,7 @@
 <tbody>
 <tr>
 <td>clients_</td>
-<td>多个 GRPCPSClient 实例</td>
+<td>多个 GRPCParameterClient 实例</td>
 </tr>
 <tr>
 <td>分片策略</td>
@@ -3079,9 +3079,13 @@
 </table>
 <h2 id="_5">配置<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"backend"</span><span class="p">:</span><span class="w"> </span><span class="s2">"grpc"</span><span class="p">,</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"server_addresses"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"192.168.1.1:50051"</span><span class="p">]</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">}</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"cache_ps"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">"ps_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"GRPC"</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">"servers"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">"host"</span><span class="p">:</span><span class="w"> </span><span class="s2">"192.168.1.1"</span><span class="p">,</span><span class="w"> </span><span class="nt">"port"</span><span class="p">:</span><span class="w"> </span><span class="mi">50051</span><span class="p">,</span><span class="w"> </span><span class="nt">"shard"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="p">]</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">}</span>
 </code></pre></div>
 <h2 id="_6">文件组织<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <table>

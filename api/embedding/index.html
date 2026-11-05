@@ -2385,9 +2385,10 @@
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
+    <nav class="md-nav" aria-label="RecStoreEmbeddingBagCollection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#distembedding" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2395,6 +2396,11 @@
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2724,9 +2730,10 @@
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
+    <nav class="md-nav" aria-label="RecStoreEmbeddingBagCollection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#distembedding" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2734,6 +2741,11 @@
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2763,29 +2775,8 @@
 
 
 <h1 id="embedding">Embedding 模块<a class="headerlink" href="#embedding" title="Permanent link">&para;</a></h1>
-<p>计算层的主入口是 <code>RecStoreEmbeddingBagCollection</code>。<code>DistEmbedding</code> 是单表封装，适合简单实验和兼容旧训练代码；它的更新路径和 EBC 不一样。</p>
-<table>
-<thead>
-<tr>
-<th>模块</th>
-<th>文件</th>
-<th>使用场景</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>RecStoreEmbeddingBagCollection</code></td>
-<td><code>src/python/pytorch/torchrec_kv/EmbeddingBag.py</code></td>
-<td>TorchRec 风格多表、多特征模型。当前模型接入优先看它。</td>
-</tr>
-<tr>
-<td><code>DistEmbedding</code></td>
-<td><code>src/python/pytorch/recstore/DistEmb.py</code></td>
-<td>单个 embedding table。通过 <code>DistTensor</code> 读写，optimizer 在 Python 侧做 SGD 写回。</td>
-</tr>
-</tbody>
-</table>
-<h3 id="recstoreembeddingbagcollection">RecStoreEmbeddingBagCollection<a class="headerlink" href="#recstoreembeddingbagcollection" title="Permanent link">&para;</a></h3>
+<p>模块划分与选择（<code>RecStoreEmbeddingBagCollection</code> vs <code>DistEmbedding</code>）见 <a href="../../calc/embedding_optimizer/">计算层：Embedding 与 Optimizer</a>。本文只列 Python API。</p>
+<h2 id="recstoreembeddingbagcollection">RecStoreEmbeddingBagCollection<a class="headerlink" href="#recstoreembeddingbagcollection" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">module</span> <span class="o">=</span> <span class="n">RecStoreEmbeddingBagCollection</span><span class="p">(</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">embedding_bag_configs</span><span class="o">=</span><span class="n">configs</span><span class="p">,</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">lr</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>

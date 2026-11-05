@@ -2152,6 +2152,56 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="运行性能统计">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ps-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        服务端 (PS Server)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dlrm-trainer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        训练端 (DLRM Trainer)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cpu-profiling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CPU Profiling 分析
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        模型层统计
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -2769,6 +2819,56 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="运行性能统计">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ps-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        服务端 (PS Server)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dlrm-trainer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        训练端 (DLRM Trainer)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cpu-profiling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CPU Profiling 分析
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        模型层统计
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -2797,10 +2897,6 @@
 
 
 <h1 id="profiling">Profiling 与瓶颈分析<a class="headerlink" href="#profiling" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">待重写</p>
-<p>核对模型运行入口、Profiler 二进制名称与输出路径。</p>
-</div>
 <p>性能上报的编译选项见<a href="../monitoring/">监控与 Grafana</a>。</p>
 <h2 id="_1">本地分析<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <p>该模式无需依赖 ClickHouse/Grafana，可直接在模型训练时采集 <code>embupdate_stages</code> 真实链路数据，分析 update 在 OP 层、gRPC 客户端、gRPC 服务端各阶段耗时。</p>
@@ -2850,38 +2946,29 @@
 <li>服务端日志：<code>/tmp/rs_demo_ps_server.log</code></li>
 </ul>
 <h2 id="_2">运行性能统计<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p><strong>服务端 (PS Server)</strong></p>
-<p>可以通过环境变量 <code>CPUPROFILE</code> 开启 CPU Profiler，并通过 <code>--perf_report_path</code> 指定性能报告输出路径：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">CPUPROFILE</span><span class="o">=</span>/tmp/ps_cpu.prof<span class="w"> </span>./build/bin/ps_server<span class="w"> </span>--perf_report_path<span class="o">=</span>/tmp/ps_perf.log
+<h3 id="ps-server">服务端 (PS Server)<a class="headerlink" href="#ps-server" title="Permanent link">&para;</a></h3>
+<p>服务端的结构化统计通过 <code>RECSTORE_REPORT_*</code> 上报（见<a href="../monitoring/">监控与 Grafana</a>），编译时打开 <code>-DUSE_PERF_REPORT=ON</code>。</p>
+<p>CPU Profiler 通过 <code>CPUPROFILE</code> 开启，需要带 <code>-DCMAKE_BUILD_TYPE=Debug
+-DUSE_GPERF_PROFILING=ON</code> 构建：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">CPUPROFILE</span><span class="o">=</span>/tmp/ps_cpu.prof<span class="w"> </span>./build/bin/ps_server
 </code></pre></div>
-<p><strong>训练端 (DLRM Trainer)</strong></p>
-<p>使用 <code>run_single_day.sh</code> 脚本一键运行性能测试：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_PERF_REPORT_PATH</span><span class="o">=</span>/tmp/trainer_perf.log
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RECSTORE_PERF_INTERVAL_MS</span><span class="o">=</span><span class="m">5000</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>bash<span class="w"> </span>run_single_day.sh<span class="w"> </span>--custom<span class="w"> </span>--dataset-size<span class="w"> </span><span class="m">4096</span><span class="w"> </span>--epochs<span class="w"> </span><span class="m">10</span>
+<h3 id="dlrm-trainer">训练端 (DLRM Trainer)<a class="headerlink" href="#dlrm-trainer" title="Permanent link">&para;</a></h3>
+<p>使用 <code>run_single_day.sh</code> 脚本一键运行模型层测试：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>bash<span class="w"> </span>run_single_day.sh<span class="w"> </span>--custom<span class="w"> </span>--dataset-size<span class="w"> </span><span class="m">4096</span><span class="w"> </span>--epochs<span class="w"> </span><span class="m">10</span>
 </code></pre></div>
 <details class="note" open="open">
 <summary>关于run_single_day 脚本</summary>
 <p>这是对于模型层 DLRM 的小型测试脚本，可以使用单天数据进行测试，同时限制了数据量和嵌入表的大小。
 运行 <code>bash run_single_day.sh --help</code> 可查看更多参数说明。</p>
 </details>
-<p><strong>查看结果</strong></p>
-<p><strong>日志分析</strong></p>
-<p><code>perf_report_path</code> 指定的文件会实时记录每个时间窗口（如 5000ms）内的耗时统计（P50/P99）：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># 查看服务端性能概览</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">50</span><span class="w"> </span>/tmp/ps_perf.log
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># 查看训练端性能概览</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">50</span><span class="w"> </span>/tmp/trainer_perf.log
-</code></pre></div>
-<p><strong>CPU Profiling 分析</strong></p>
+<h3 id="cpu-profiling">CPU Profiling 分析<a class="headerlink" href="#cpu-profiling" title="Permanent link">&para;</a></h3>
 <p>使用 <code>google-pprof</code> 分析 CPU 热点（需要安装 <code>gperftools</code>）：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>google-pprof<span class="w"> </span>--text<span class="w"> </span>build/bin/grpc_ps_server<span class="w"> </span>/tmp/ps_cpu.prof
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># 或者导出 pdf/svg</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>google-pprof<span class="w"> </span>--pdf<span class="w"> </span>build/bin/grpc_ps_server<span class="w"> </span>/tmp/ps_cpu.prof<span class="w"> </span>&gt;<span class="w"> </span>ps_cpu.pdf
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>google-pprof<span class="w"> </span>--text<span class="w"> </span>build/bin/ps_server<span class="w"> </span>/tmp/ps_cpu.prof
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># 或者导出 pdf/svg</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>google-pprof<span class="w"> </span>--pdf<span class="w"> </span>build/bin/ps_server<span class="w"> </span>/tmp/ps_cpu.prof<span class="w"> </span>&gt;<span class="w"> </span>ps_cpu.pdf
 </code></pre></div>
-<p><strong>模型层统计</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>tensorboard<span class="w"> </span>--logdir<span class="o">=</span>./logs<span class="w"> </span>--port<span class="o">=</span><span class="m">6006</span>
+<h3 id="_3">模型层统计<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>tensorboard<span class="w"> </span>--logdir<span class="o">=</span>./logs<span class="w"> </span>--port<span class="o">=</span><span class="m">6006</span>
 </code></pre></div>
 
 

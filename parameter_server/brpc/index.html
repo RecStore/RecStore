@@ -1258,10 +1258,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#brpcpsclient" class="md-nav__link">
+  <a href="#brpcparameterclient" class="md-nav__link">
     <span class="md-ellipsis">
       
-        BRPCPSClient
+        BRPCParameterClient
       
     </span>
   </a>
@@ -1269,10 +1269,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#distbrpcpsclient" class="md-nav__link">
+  <a href="#distributedbrpcparameterclient" class="md-nav__link">
     <span class="md-ellipsis">
       
-        DistBRPCPSClient
+        DistributedBRPCParameterClient
       
     </span>
   </a>
@@ -2872,10 +2872,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#brpcpsclient" class="md-nav__link">
+  <a href="#brpcparameterclient" class="md-nav__link">
     <span class="md-ellipsis">
       
-        BRPCPSClient
+        BRPCParameterClient
       
     </span>
   </a>
@@ -2883,10 +2883,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#distbrpcpsclient" class="md-nav__link">
+  <a href="#distributedbrpcparameterclient" class="md-nav__link">
     <span class="md-ellipsis">
       
-        DistBRPCPSClient
+        DistributedBRPCParameterClient
       
     </span>
   </a>
@@ -3011,7 +3011,7 @@
 </tbody>
 </table>
 <h2 id="_3">客户端实现<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<h3 id="brpcpsclient">BRPCPSClient<a class="headerlink" href="#brpcpsclient" title="Permanent link">&para;</a></h3>
+<h3 id="brpcparameterclient">BRPCParameterClient<a class="headerlink" href="#brpcparameterclient" title="Permanent link">&para;</a></h3>
 <p>单服务器客户端，使用 brpc::Channel 通信。</p>
 <table>
 <thead>
@@ -3034,13 +3034,17 @@
 </tr>
 </tbody>
 </table>
-<h3 id="distbrpcpsclient">DistBRPCPSClient<a class="headerlink" href="#distbrpcpsclient" title="Permanent link">&para;</a></h3>
+<h3 id="distributedbrpcparameterclient">DistributedBRPCParameterClient<a class="headerlink" href="#distributedbrpcparameterclient" title="Permanent link">&para;</a></h3>
 <p>分布式客户端，支持多服务器分片。</p>
 <h2 id="_4">配置<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"backend"</span><span class="p">:</span><span class="w"> </span><span class="s2">"brpc"</span><span class="p">,</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"server_addresses"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"192.168.1.1:50051"</span><span class="p">]</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">}</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"cache_ps"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">"ps_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"BRPC"</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">"servers"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">"host"</span><span class="p">:</span><span class="w"> </span><span class="s2">"192.168.1.1"</span><span class="p">,</span><span class="w"> </span><span class="nt">"port"</span><span class="p">:</span><span class="w"> </span><span class="mi">50051</span><span class="p">,</span><span class="w"> </span><span class="nt">"shard"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="p">]</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">}</span>
 </code></pre></div>
 <h2 id="_5">文件组织<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <table>

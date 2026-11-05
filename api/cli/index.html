@@ -2597,6 +2597,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行与环境变量
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -2613,6 +2631,47 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常用编译参数
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常用环境变量
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -2646,6 +2705,36 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常用编译参数
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常用环境变量
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -2670,10 +2759,164 @@
 
 
 <h1 id="_1">命令行与环境变量<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">待补充</p>
-<p>整理参数服务器、训练脚本的命令行参数与环境变量。</p>
-</div>
+<p>常用入口都可以用 <code>--help</code> 查看当前参数：</p>
+<table>
+<thead>
+<tr>
+<th>入口</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>build/bin/ps_server</code></td>
+<td>启动参数服务器，<code>--config_path</code> 指定 JSON 配置，<code>-local_shard_id</code> 指定分片</td>
+</tr>
+<tr>
+<td><code>build/bin/petps_server</code></td>
+<td>RDMA 参数服务器入口，配置与线程数走 flags</td>
+</tr>
+<tr>
+<td><code>build/bin/benchmark_kv_engine</code></td>
+<td>storage-only 基准，<code>--engine_class</code>、<code>--index_type</code>、<code>--value_store_type</code> 等</td>
+</tr>
+<tr>
+<td><code>tools/benchmarks/run_benchmark_ps.py</code></td>
+<td>PS/network 基准 runner</td>
+</tr>
+<tr>
+<td><code>tools/benchmarks/run_kvengine_compare.py</code></td>
+<td>KVEngine 对比 runner</td>
+</tr>
+<tr>
+<td><code>tools/benchmarks/e2e/custom/cli.py</code></td>
+<td>端到端基准入口</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>./build/bin/ps_server<span class="w"> </span>--help
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>python3<span class="w"> </span>tools/benchmarks/run_benchmark_ps.py<span class="w"> </span>--help
+</code></pre></div>
+<h2 id="_2">常用编译参数<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>默认</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-DCMAKE_BUILD_TYPE=Release</code></td>
+<td>—</td>
+<td>基准与对外数字只认 Release；Debug 仅用于排查</td>
+</tr>
+<tr>
+<td><code>-DUSE_PERF_REPORT=ON</code></td>
+<td><code>OFF</code></td>
+<td>编译期打开性能埋点（会带来几个百分点的开销）</td>
+</tr>
+<tr>
+<td><code>-DRECSTORE_ENABLE_THIRD_PARTY_ENGINES=ON</code></td>
+<td><code>OFF</code></td>
+<td>编入 FASTERKV / HPS 等外部存储引擎</td>
+</tr>
+<tr>
+<td><code>-DENABLE_CUDA=OFF</code></td>
+<td><code>ON</code></td>
+<td>无 GPU 环境做纯 CPU 构建</td>
+</tr>
+<tr>
+<td><code>-DUSE_BRPC_CPU_PROFILER=ON</code></td>
+<td><code>OFF</code></td>
+<td>打开 bRPC 内置 CPU profiler</td>
+</tr>
+<tr>
+<td><code>-DCMAKE_POLICY_VERSION_MINIMUM=3.5</code></td>
+<td>—</td>
+<td>新版 CMake 兼容旧 <code>cmake_minimum_required</code></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>cmake<span class="w"> </span>-S<span class="w"> </span>.<span class="w"> </span>-B<span class="w"> </span>build_release<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>cmake<span class="w"> </span>--build<span class="w"> </span>build_release<span class="w"> </span>-j
+</code></pre></div>
+<p>仓库里 <code>build/</code> 与 <code>build_release/</code> 是两种常用目录；测试与 runner 默认找 <code>build/bin/...</code>，用 <code>build_release</code> 时记得让仓库根的 <code>build -&gt; build_release</code> 软链保持有效。</p>
+<h2 id="_3">常用环境变量<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>变量</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RECSTORE_CONFIG</code></td>
+<td>配置文件路径；未设置时从当前目录逐级向上找 <code>recstore_config.json</code></td>
+</tr>
+<tr>
+<td><code>RECSTORE_REPORT_MODE</code> / <code>RECSTORE_REPORT_LOCAL_SINK</code> / <code>RECSTORE_REPORT_JSONL_PATH</code></td>
+<td>性能上报模式与本地落盘（见 <a href="../../performance/profiling/">Profiling</a>）</td>
+</tr>
+<tr>
+<td><code>RECSTORE_ENABLE_GPU_CACHE</code></td>
+<td>打开 GPU cache 路径</td>
+</tr>
+<tr>
+<td><code>RECSTORE_LOG</code> / <code>RECSTORE_LOG_EVERY_MS</code></td>
+<td>日志级别与限流间隔</td>
+</tr>
+<tr>
+<td><code>CPUPROFILE</code></td>
+<td>开启 gperftools CPU profiling</td>
+</tr>
+</tbody>
+</table>
+<details class="note">
+<summary>RDMA 常用环境变量</summary>
+<table>
+<thead>
+<tr>
+<th>变量</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RECSTORE_RDMA_CONTROL_PLANE_HOST</code> / <code>RECSTORE_RDMA_CONTROL_PLANE_PORT</code></td>
+<td>client 连 server 控制面的地址，默认取配置文件里的 server</td>
+</tr>
+<tr>
+<td><code>RECSTORE_RDMA_GET_RESPONSE_MODE</code></td>
+<td><code>direct_sg</code> 或 <code>staging_copy</code>；按 key 批量大小选择，选错会走到慢路径</td>
+</tr>
+<tr>
+<td><code>RECSTORE_RDMA_VALIDATE_ROUTING</code></td>
+<td>打开后校验 key 路由，仅用于排查</td>
+</tr>
+<tr>
+<td><code>RECSTORE_RDMA_WIRE_TRACE</code> / <code>RECSTORE_RDMA_WIRE_TRACE_TAG</code></td>
+<td>线上 trace 采集</td>
+</tr>
+<tr>
+<td><code>RECSTORE_RDMA_WAIT_TIMEOUT_MS</code></td>
+<td>等待完成超时</td>
+</tr>
+<tr>
+<td><code>RECSTORE_RDMA_RC_NAMESPACE</code></td>
+<td>多进程共享同一套 RC 资源时的命名空间</td>
+</tr>
+<tr>
+<td><code>RS_DEMO_RDMA_FABRIC</code></td>
+<td>端到端 runner 用的 fabric，格式 <code>device:port:gid_index:mode</code>，如 <code>mlx5_0:1:0:ib</code></td>
+</tr>
+</tbody>
+</table>
+<p>设备与 GID 的默认值和选择规则见 <a href="../../parameter_server/rdma/">RDMA 参数</a>。</p>
+</details>
+<p>配置字段本身见<a href="../../config/">配置字段参考</a>；配置文件放在哪、怎么被读到见<a href="../../usage/configuration/">配置指南</a>。</p>
 
 
 

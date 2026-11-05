@@ -3144,10 +3144,6 @@
 
 
 <h1 id="_1">如何添加新算子<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">待重写</p>
-<p>示例仍按单个 op_torch.cc 组织，需更新 binding 文件划分和建表参数。</p>
-</div>
 <p>本文档以 <strong>Optimizer (UpdateParameter)</strong> 为例，介绍如何在 RecStore 中端到端地添加一个新的算子。</p>
 <h2 id="_2">流程概览<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>graph TD
@@ -3258,7 +3254,7 @@
 </code></pre></div>
 <h3 id="32-rpc">3.2 实现 RPC 发送<a class="headerlink" href="#32-rpc" title="Permanent link">&para;</a></h3>
 <p>在 <code>src/ps/grpc/dist_grpc_ps_client.cpp</code> 中负责序列化数据并发送网络请求。</p>
-<div class="highlight"><span class="filename">src/ps/grpc/dist_grpc_ps_client.cpp</span><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">DistGRPCPSClient::UpdateParameter</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span>
+<div class="highlight"><span class="filename">src/ps/grpc/dist_grpc_ps_client.cpp</span><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">DistributedGRPCParameterClient::UpdateParameter</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">                                       </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">                                       </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">grads</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="c1">// 1. 序列化数据 (例如使用 ParameterCompressor)</span>

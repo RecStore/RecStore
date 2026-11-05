@@ -1772,7 +1772,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        待补充
+        内容待补充
       
     </span>
   </a>
@@ -1783,7 +1783,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        待重写
+        接口文档核对
       
     </span>
   </a>
@@ -1794,17 +1794,6 @@
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        接口文档核对
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
         性能文档维护
       
     </span>
@@ -1813,7 +1802,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         本地预览
@@ -2753,7 +2742,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        待补充
+        内容待补充
       
     </span>
   </a>
@@ -2764,7 +2753,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        待重写
+        接口文档核对
       
     </span>
   </a>
@@ -2775,17 +2764,6 @@
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        接口文档核对
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
         性能文档维护
       
     </span>
@@ -2794,7 +2772,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         本地预览
@@ -2830,22 +2808,8 @@
 
 
 <h1 id="_1">文档维护<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<p>缺页用「待补充」标记；需要更新的旧文用「待重写」标记。</p>
-<h2 id="_2">待补充<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<ul>
-<li>
-<p><a href="../">代码地图</a></p>
-</li>
-<li>
-<p><a href="../../usage/configuration/">配置指南</a></p>
-</li>
-<li><a href="../../usage/integration/">DLRM / TorchRec 集成</a></li>
-<li><a href="../../performance/methodology/">测试范围与指标</a></li>
-<li><a href="../../performance/e2e/">端到端训练基准</a></li>
-<li><a href="../../performance/ps/">参数服务器与传输基准</a></li>
-<li><a href="../../api/cli/">命令行与环境变量</a></li>
-</ul>
-<h2 id="_3">待重写<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>页面内不再使用「待补充 / 待重写」横幅；未完成的内容统一记在本页，按主题追加。新增或修改页面后，至少跑一次 <code>mkdocs build --strict</code>。</p>
+<h2 id="_2">内容待补充<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -2855,58 +2819,50 @@
 </thead>
 <tbody>
 <tr>
-<td><a href="../../api/operators/">PyTorch Operators</a></td>
-<td>按当前算子签名更新参数表；init_embedding_table 示例仍是旧的三参数形式。</td>
-</tr>
-<tr>
-<td><a href="../../api/cpp/">CommonOp / KVClientOp</a></td>
-<td>按当前接口声明核对示例，并更新按算子拆分后的文件位置。</td>
-</tr>
-<tr>
-<td><a href="../feature/add_operator/">如何添加新算子</a></td>
-<td>示例仍按单个 op_torch.cc 组织，需更新 binding 文件划分和建表参数。</td>
-</tr>
-<tr>
-<td><a href="../distributed/">分布式训练</a></td>
-<td>配置示例仍使用旧的 index_type、value_type 等字段，需按当前 Composite 配置重写。</td>
-</tr>
-<tr>
-<td><a href="../tests/client_test/">Python 客户端基础测试</a></td>
-<td>更新建表参数，并将表格内的代码示例改为独立代码块。</td>
-</tr>
-<tr>
-<td><a href="../../quickstart/">从源码构建</a></td>
-<td>与 Docker 开发镜像页面合并重复的环境准备步骤。</td>
-</tr>
-<tr>
-<td><a href="../zero_config_run/">Docker 开发镜像</a></td>
-<td>统一镜像来源、标签和构建步骤，消除与源码构建指南的重复。</td>
-</tr>
-<tr>
-<td><a href="../../performance/profiling/">Profiling</a></td>
-<td>核对运行入口、二进制名称和输出路径。</td>
-</tr>
-<tr>
 <td><a href="../../performance/monitoring/">监控与 Grafana</a></td>
-<td>补齐服务安装与看板导入步骤。</td>
+<td>补 ClickHouse / Grafana 的安装细节与看板导入步骤。</td>
 </tr>
 <tr>
 <td><a href="../../performance/reports/">性能报告</a></td>
-<td>补齐环境、版本和复现命令。</td>
+<td>补历史结果的版本、硬件与拓扑。</td>
 </tr>
 <tr>
 <td><a href="../instrumentation/">性能埋点</a></td>
-<td>整理已折叠的旧版 txt 埋点说明。</td>
+<td>把折叠的旧版 txt 埋点并入当前 report 体系。</td>
+</tr>
+<tr>
+<td><a href="../feature/add_operator/">如何添加新算子</a></td>
+<td>按拆分后的 binding 文件补完整示例；文件划分本身不在这里重复。</td>
+</tr>
+<tr>
+<td><a href="../../usage/integration/">DLRM / TorchRec 集成</a></td>
+<td>补一个只依赖 <code>recstore</code> 包的最小训练 demo（放到 <code>examples/</code>）。</td>
+</tr>
+<tr>
+<td><a href="../zero_config_run/">Docker 开发镜像</a></td>
+<td>目前只有 CPU 镜像；可用的 GPU 镜像还在做，完成后补 GPU 训练路径。</td>
+</tr>
+<tr>
+<td><a href="../../usage/configuration/">配置指南</a></td>
+<td>场景与加载顺序已收敛到本页，字段表留在 <a href="../../config/">配置字段参考</a>；后续把 <code>config.md</code> 里重复的示例收敛成 tab。</td>
+</tr>
+<tr>
+<td><a href="../../api/cli/">命令行与环境变量</a></td>
+<td>常用编译参数与 RDMA 变量已补；后续可自动导出 gflags 与 runner 参数。</td>
+</tr>
+<tr>
+<td><a href="../ycsb/">KVEngine 存储基准</a></td>
+<td>页面已按"先正确性、再 YCSB、再 batch lookup、再读结果"重写；补 SSD 分档与外部引擎（FASTERKV / HPS）的对照结果。</td>
 </tr>
 </tbody>
 </table>
-<h2 id="_4">接口文档核对<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<h2 id="_3">接口文档核对<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p><code>EmbWriteAsync</code>、<code>IsWriteDone</code>、<code>WaitForWrite</code>、<code>SaveToFile</code>、<code>LoadFromFile</code> 在现有文档中列为占位接口，后续按实现进度更新 API 说明。</p>
-<p>新增接口时，同步修改 <code>op.h</code>、<code>op.cc</code>、<code>op_torch.cc</code> 和 mock 路径；文件划分随前面的接口核对一并更新。</p>
-<h2 id="_5">性能文档维护<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p>新增接口时，同步修改骨架与各 binding 文件（<code>op.h</code> / <code>op.cc</code> / <code>op_base.cc</code> / <code>op_flat.cc</code> / <code>op_prefetch.cc</code> / <code>cache/cache_bindings.cc</code>）以及 mock 路径；文件划分随接口核对一并更新。</p>
+<h2 id="_4">性能文档维护<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>RDMA 模块页维护架构与参数语义，单次运行的吞吐数据和矩阵结果放在性能报告中。benchmark 输出、日志和 <code>summary.md</code> 放在独立的 <code>results/</code> 目录。</p>
 <p>性能比较标注 storage-only、PS/network 或 PyTorch/model 层，指标解释见<a href="../../agent/perf/">性能比较背景</a>。</p>
-<h2 id="_6">本地预览<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h2 id="_5">本地预览<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>docs/requirements.txt
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>mkdocs<span class="w"> </span>serve
 </code></pre></div>

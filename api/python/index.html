@@ -2677,9 +2677,9 @@
 <p>文件：<code>src/python/pytorch/recstore/KVClient.py</code></p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">recstore.KVClient</span><span class="w"> </span><span class="kn">import</span> <span class="n">RecStoreClient</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">client</span> <span class="o">=</span> <span class="n">RecStoreClient</span><span class="p">(</span><span class="n">library_path</span><span class="o">=</span><span class="s2">"/path/to/lib_recstore_ops.so"</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">client</span> <span class="o">=</span> <span class="n">RecStoreClient</span><span class="p">(</span><span class="n">role</span><span class="o">=</span><span class="s2">"default"</span><span class="p">)</span>
 </code></pre></div>
-<p><code>RecStoreClient</code> 按 role 缓存实例。未传 <code>library_path</code> 时，代码按构建目录约定查找 <code>lib_recstore_ops.so</code>。</p>
+<p><code>RecStoreClient</code> 按 role 缓存实例，底层 <code>lib_recstore_ops.so</code> 按构建目录约定查找。测试辅助类 <code>src/test/framework/pytorch/client.py</code> 另有 <code>library_path=</code> 参数，生产路径不使用。</p>
 <table>
 <thead>
 <tr>
@@ -2701,8 +2701,8 @@
 <td>写入 <code>[N, D]</code> embedding。</td>
 </tr>
 <tr>
-<td><code>prefetch(ids)</code> / <code>wait_for_prefetch(handle)</code></td>
-<td>异步预取。</td>
+<td><code>prefetch(ids)</code> / <code>wait_and_get(prefetch_id, embedding_dim)</code></td>
+<td>异步预取；<code>prefetch</code> 返回 id，<code>wait_and_get</code> 取回 <code>[N, D]</code>。也可用 <code>wait(handle)</code> 只等待完成。</td>
 </tr>
 <tr>
 <td><code>update(name, ids, grads)</code></td>

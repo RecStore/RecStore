@@ -2154,6 +2154,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#grafana_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grafana 看板
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2715,6 +2726,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#grafana_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grafana 看板
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2741,10 +2763,6 @@
 
 
 <h1 id="grafana">监控与 Grafana<a class="headerlink" href="#grafana" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">待重写</p>
-<p>整理 ClickHouse、Grafana 与 report service 的安装和看板导入步骤。</p>
-</div>
 <p>编译时开启性能上报宏：</p>
 <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1">1</a></span>
 <span class="normal"><a href="#__codelineno-0-2">2</a></span>
@@ -2758,8 +2776,11 @@
 </code></pre></div>
 <div class="highlight"><span class="filename">启动 Grafana</span><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>systemctl<span class="w"> </span>is-active<span class="w"> </span>--quiet<span class="w"> </span>grafana-server<span class="w"> </span><span class="o">||</span><span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>grafana-server<span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"✅ Grafana is running (http://localhost:3000)."</span>
 </code></pre></div>
-<div class="highlight"><span class="filename">启动 Report Service（端口需要和 recstore_config.json 对齐）</span><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>pkill<span class="w"> </span>-f<span class="w"> </span><span class="s2">"uvicorn report_service:app"</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="p">;</span><span class="w"> </span>nohup<span class="w"> </span>uvicorn<span class="w"> </span>report_service:app<span class="w"> </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span><span class="w"> </span>&gt;<span class="w"> </span>report_service.log<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"✅ Report Service is running (http://127.0.0.1:8080)."</span>
+<div class="highlight"><span class="filename">启动 Report Service（端口需要和 recstore_config.json 对齐）</span><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>pkill<span class="w"> </span>-f<span class="w"> </span><span class="s2">"uvicorn report_service:app"</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="p">;</span><span class="w"> </span>nohup<span class="w"> </span>uvicorn<span class="w"> </span>report_service:app<span class="w"> </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>--port<span class="w"> </span><span class="m">8081</span><span class="w"> </span>&gt;<span class="w"> </span>report_service.log<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"✅ Report Service is running (http://127.0.0.1:8081)."</span>
 </code></pre></div>
+<p><code>report_service</code> 不在本仓库内，由部署方自行提供；未配置 <code>report_API</code> 时客户端默认上报到 <code>http://127.0.0.1:8081/report</code>。</p>
+<h2 id="grafana_1">Grafana 看板<a class="headerlink" href="#grafana_1" title="Permanent link">&para;</a></h2>
+<p>ClickHouse 表与指标定义见<a href="../../dev/instrumentation/">性能埋点</a>。看板 JSON 不在仓库内，需要按这些表自行导入或配置。</p>
 
 
 

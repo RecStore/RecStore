@@ -1819,6 +1819,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    测试范围与指标
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1835,6 +1853,97 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        每个基准负责验证什么
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="每个基准负责验证什么">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#storage-only-rs-benchmark-kvengine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        storage-only —— rs-benchmark-kvengine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#psnetwork-rs-benchmark-ps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PS/network —— rs-benchmark-ps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rs-benchmark-e2e" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        端到端 —— rs-benchmark-e2e
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#skill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        怎么读 skill 的输出
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        口径纪律
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -2648,6 +2757,86 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        每个基准负责验证什么
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="每个基准负责验证什么">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#storage-only-rs-benchmark-kvengine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        storage-only —— rs-benchmark-kvengine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#psnetwork-rs-benchmark-ps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PS/network —— rs-benchmark-ps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rs-benchmark-e2e" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        端到端 —— rs-benchmark-e2e
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#skill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        怎么读 skill 的输出
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        口径纪律
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -2672,11 +2861,42 @@
 
 
 <h1 id="_1">测试范围与指标<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">待补充</p>
-<p>补充端到端、PS/network、storage-only 的测量范围与指标口径。</p>
-</div>
-<p><a href="../#benchmark-entry">现有基准入口</a>。</p>
+<p>本页说明三层基准各自验证什么、跑完怎么读结果。层级选择和入口总表在<a href="../">性能指南</a>，这里不重复。</p>
+<h2 id="_2">每个基准负责验证什么<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h3 id="storage-only-rs-benchmark-kvengine">storage-only —— <code>rs-benchmark-kvengine</code><a class="headerlink" href="#storage-only-rs-benchmark-kvengine" title="Permanent link">&para;</a></h3>
+<ul>
+<li>覆盖：<code>benchmark_kv_engine</code> 的 YCSB A/B/C、<code>batch_get_flat</code> 随机批量读，以及 <code>test_kvengine</code> 正确性。</li>
+<li>不覆盖：PS 协议、多客户端并发、网络与 RDMA。</li>
+<li>回答的问题：某个 index/value 组合的本地读写上限是多少；PS 层的吞吐是否已经撞到这个上限。</li>
+<li>开跑前会确认：线程数、SSD 数据路径、workload、repeat、record-count、<code>read_mode</code>、<code>batch_keys</code>。</li>
+<li>产出：<code>summary.csv</code>、<code>kvengine_workload_summary.csv</code>、吞吐 SVG，以及中文 <code>summary.md</code>（Workload 说明 + Run throughput 等三张表）。</li>
+</ul>
+<h3 id="psnetwork-rs-benchmark-ps">PS/network —— <code>rs-benchmark-ps</code><a class="headerlink" href="#psnetwork-rs-benchmark-ps" title="Permanent link">&para;</a></h3>
+<ul>
+<li>覆盖：<code>ps_transport_benchmark</code> 在 GRPC / BRPC / RDMA 上的吞吐与延迟，local 与 cross-host 拓扑，以及 RDMA 模块自检。</li>
+<li>不覆盖：训练侧 forward/backward、sparse update 语义。</li>
+<li>开跑前会确认：test mode、transports、IP 列表与角色映射、workload profile（<code>smoke</code> / <code>rpc-small</code> / <code>rdma-capacity</code>）、进程与线程数、runtime、repeat。</li>
+<li>产出：生成的配置、日志、<code>summary.csv</code>、中文 <code>summary.md</code>（成功 / 跳过 / 失败行 + 实际命令）。</li>
+</ul>
+<h3 id="rs-benchmark-e2e">端到端 —— <code>rs-benchmark-e2e</code><a class="headerlink" href="#rs-benchmark-e2e" title="Permanent link">&para;</a></h3>
+<ul>
+<li>覆盖：DLRM / TorchRec 全链路（数据加载 → forward/backward → sparse update → dense optimizer），并以 TorchRec-HBM 为对照。</li>
+<li>开跑前只需给出 client 列表、PS 列表、输出目录；其余用默认口径（batch 1024、dim 128、steps 80 + warmup 5、repeat 3、prefetch depth 0、<code>DRAM_PET_HASH</code>）。</li>
+<li>产出：<code>summary_e2e.csv</code>、中文 <code>summary.md</code>（Workload 说明 + E2E throughput + latency breakdown）。</li>
+</ul>
+<h2 id="skill">怎么读 skill 的输出<a class="headerlink" href="#skill" title="Permanent link">&para;</a></h2>
+<ol>
+<li>先读 <code>summary.md</code> 里的「Workload 说明」。模型、batch、步数、prefetch、<code>read_mode</code>、PS 类型、是否开埋点都在这里；口径不同的数字不能直接比。</li>
+<li>再看表格：storage-only 与 PS/network 用吞吐（keys/s、ops/s）和 p50/p99 延迟；端到端用 samples/s 与 ms/step。</li>
+<li>最后看「跳过 / 失败」行和日志路径。被 skip 的组合等于没测，不能算通过。</li>
+<li>需要引用数字时给产物路径（<code>results/&lt;run&gt;/summary.md</code>），不要在文档里复述易过期的数字。</li>
+</ol>
+<h2 id="_3">口径纪律<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<ul>
+<li>三层数字不能跨层比较；同层也要对齐 transport、<code>read_mode</code>、<code>batch_keys</code>、线程数。</li>
+<li>小于 15% 的差异必须用同一二进制交错 A/B；跨构建对比先确认源码一致。</li>
+<li>只有对外报数才开性能埋点，并在结论里注明「开 / 关」。</li>
+</ul>
 
 
 

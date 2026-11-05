@@ -2781,34 +2781,28 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>test_initialization</code></td>
-<td style="text-align: left;"><strong>初始化与元数据注册</strong></td>
-<td style="text-align: left;"><code>DistEmbedding(...)</code> -&gt; 连接 Client -&gt; 注册 Table</td>
-<td style="text-align: left;">Client 内部元数据结构中应包含该 Table 的 Shape 和 Dtype。</td>
+<td style="text-align: left;"><code>test_initialization_and_forward</code></td>
+<td style="text-align: left;"><strong>初始化、元数据注册与 forward</strong></td>
+<td style="text-align: left;"><code>DistEmbedding(...)</code> -&gt; 连接 Client -&gt; 注册 Table -&gt; forward</td>
+<td style="text-align: left;">Client 内部元数据结构中包含该 Table 的 Shape 和 Dtype；forward 输出形状正确。</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>test_backward</code></td>
-<td style="text-align: left;"><strong>梯度追踪 (Tracing)</strong></td>
-<td style="text-align: left;"><code>loss.backward()</code> -&gt; <strong>Hook 触发</strong> -&gt; 记录 <code>{Keys, Grads}</code> 到 Trace</td>
-<td style="text-align: left;">Backward 仅记录 Trace，<strong>不更新</strong>权重。权重在此时应保持不变。</td>
+<td style="text-align: left;"><code>test_backward_and_optimizer_step</code></td>
+<td style="text-align: left;"><strong>梯度追踪与优化器更新</strong></td>
+<td style="text-align: left;"><code>loss.backward()</code> -&gt; Hook 记录 <code>{Keys, Grads}</code> -&gt; <code>SparseSGD.step()</code> -&gt; <code>client.push</code></td>
+<td style="text-align: left;">backward 只记录 Trace，不更新权重；<code>step()</code> 后权重按 SGD 公式变化。</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>test_optimizer_step</code></td>
-<td style="text-align: left;"><strong>优化器更新</strong></td>
-<td style="text-align: left;"><code>SparseSGD.step()</code> -&gt; 读取 Trace -&gt; <code>client.push</code></td>
-<td style="text-align: left;">调用 <code>step()</code> 后，权重发生变化，且符合 SGD 更新公式。</td>
+<td style="text-align: left;"><code>test_update_with_duplicate_ids</code></td>
+<td style="text-align: left;"><strong>重复 ID 的梯度聚合</strong></td>
+<td style="text-align: left;">输入 Batch: <code>[ID 1, ID 1, ID 1]</code>，backward 后 step</td>
+<td style="text-align: left;">Server 端收到的 ID 1 梯度为 3 次梯度的总和。</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>test_duplicate_ids</code></td>
-<td style="text-align: left;"><strong>梯度聚合</strong></td>
-<td style="text-align: left;">输入 Batch: <code>[ID 1, ID 1, ID 1]</code><br>Backward: <code>Wait...</code></td>
-<td style="text-align: left;">Server 端收到的 ID 1 的梯度应为 3 次梯度的<strong>总和</strong>。</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>test_persistence</code></td>
+<td style="text-align: left;"><code>test_persistence_with_same_name</code></td>
 <td style="text-align: left;"><strong>数据持久化</strong></td>
-<td style="text-align: left;"><code>Emb(name="A")</code> 退出 -&gt; <code>Emb(name="A")</code> 重启</td>
-<td style="text-align: left;">新实例应能读取到上一个实例写入的数据。</td>
+<td style="text-align: left;"><code>Emb(name="A")</code> 退出 -&gt; 重新创建 <code>Emb(name="A")</code></td>
+<td style="text-align: left;">新实例能读取到上一个实例写入的数据。</td>
 </tr>
 </tbody>
 </table>

@@ -2943,6 +2943,7 @@
 <p>Proto 模块包含 Protocol Buffer 定义文件，定义了参数服务器的通信协议。</p>
 <h2 id="psproto">ps.proto<a class="headerlink" href="#psproto" title="Permanent link">&para;</a></h2>
 <h3 id="_2">消息定义<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
+<p>下表字段名与 <code>ps.proto</code> 逐字一致，包括历史拼写（<code>PutParameterResponse.sucess</code>）。</p>
 <table>
 <thead>
 <tr>
@@ -2984,8 +2985,8 @@
 </tr>
 <tr>
 <td>PutParameterResponse</td>
-<td>success (bool)</td>
-<td>操作成功标志</td>
+<td>sucess (bool)</td>
+<td>操作成功标志；proto 里就拼作 <code>sucess</code>，改字段名会影响所有已生成的客户端，暂不修</td>
 </tr>
 <tr>
 <td>UpdateParameterRequest</td>
@@ -3018,13 +3019,38 @@
 <td>操作成功标志</td>
 </tr>
 <tr>
+<td></td>
+<td>tag (int32)</td>
+<td>建表返回的非负 tag</td>
+</tr>
+<tr>
+<td>SparseGradientCommitRequest</td>
+<td>table_name (string)</td>
+<td>表名</td>
+</tr>
+<tr>
+<td></td>
+<td>payload (bytes)</td>
+<td>编码后的 sparse gradient</td>
+</tr>
+<tr>
+<td>SparseGradientCommitResponse</td>
+<td>committed_step (int64)</td>
+<td>提交后的 step</td>
+</tr>
+<tr>
+<td></td>
+<td>error (string)</td>
+<td>失败原因，空表示成功</td>
+</tr>
+<tr>
 <td>CommandRequest</td>
 <td>command (PSCommand)</td>
 <td>控制命令</td>
 </tr>
 <tr>
 <td></td>
-<td>arg1, arg2, arg3 (bytes)</td>
+<td>arg1, arg2, arg3 (repeated bytes)</td>
 <td>参数</td>
 </tr>
 <tr>
@@ -3055,16 +3081,29 @@
 <td>LOAD_FAKE_DATA</td>
 <td>加载测试数据</td>
 </tr>
+<tr>
+<td>DUMP_FAKE_DATA</td>
+<td>导出测试数据</td>
+</tr>
+<tr>
+<td>SAVE_CHECKPOINT</td>
+<td>保存 checkpoint</td>
+</tr>
+<tr>
+<td>LOAD_CHECKPOINT</td>
+<td>加载 checkpoint</td>
+</tr>
 </tbody>
 </table>
 <h3 id="_3">服务定义<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kd">service</span><span class="w"> </span><span class="n">ParameterService</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">GetParameter</span><span class="p">(</span><span class="n">GetParameterRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">GetParameterResponse</span><span class="p">);</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">Command</span><span class="p">(</span><span class="n">CommandRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">CommandResponse</span><span class="p">);</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">PutParameter</span><span class="p">(</span><span class="n">PutParameterRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">PutParameterResponse</span><span class="p">);</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">UpdateParameter</span><span class="p">(</span><span class="n">UpdateParameterRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">UpdateParameterResponse</span><span class="p">);</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">InitEmbeddingTable</span><span class="p">(</span><span class="n">InitEmbeddingTableRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">InitEmbeddingTableResponse</span><span class="p">);</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">}</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">SparseGradientCommit</span><span class="p">(</span><span class="n">SparseGradientCommitRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">SparseGradientCommitResponse</span><span class="p">);</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">GetParameter</span><span class="p">(</span><span class="n">GetParameterRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">GetParameterResponse</span><span class="p">);</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">Command</span><span class="p">(</span><span class="n">CommandRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">CommandResponse</span><span class="p">);</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">PutParameter</span><span class="p">(</span><span class="n">PutParameterRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">PutParameterResponse</span><span class="p">);</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">UpdateParameter</span><span class="p">(</span><span class="n">UpdateParameterRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">UpdateParameterResponse</span><span class="p">);</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">InitEmbeddingTable</span><span class="p">(</span><span class="n">InitEmbeddingTableRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">InitEmbeddingTableResponse</span><span class="p">);</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">}</span>
 </code></pre></div>
 <h2 id="ps_brpcproto">ps_brpc.proto<a class="headerlink" href="#ps_brpcproto" title="Permanent link">&para;</a></h2>
 <p>bRPC 协议定义文件，结构与 ps.proto 类似，针对 bRPC 框架进行优化。</p>

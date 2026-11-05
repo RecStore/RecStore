@@ -1670,6 +1670,56 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="流程与测试点">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#test-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test 0：初始化
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test 1：同步读写
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test 2：异步预取
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test-3table-aware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test 3：Table-aware 更新
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -2738,6 +2788,56 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="流程与测试点">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#test-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test 0：初始化
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test 1：同步读写
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test 2：异步预取
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test-3table-aware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test 3：Table-aware 更新
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -2766,10 +2866,6 @@
 
 
 <h1 id="python">Python 客户端基础测试<a class="headerlink" href="#python" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">待重写</p>
-<p>更新建表参数，并将表格内的代码示例改为独立代码块。</p>
-</div>
 <p><strong>代码位置</strong>: <code>src/test/framework/pytorch/test_client.py</code></p>
 <h2 id="_1">简介<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <p>该测试验证 Client 端与 Parameter Server 的基础交互语义。它不依赖 PyTorch 的 <code>nn.Module</code>，而是直接调用 <code>RecstoreClient</code> 的底层接口。</p>
@@ -2780,7 +2876,6 @@
 <tr>
 <th style="text-align: left;">步骤</th>
 <th style="text-align: left;">测试内容</th>
-<th style="text-align: left;">关键代码逻辑</th>
 <th style="text-align: left;">预期行为</th>
 </tr>
 </thead>
@@ -2788,29 +2883,47 @@
 <tr>
 <td style="text-align: left;"><strong>Test 0</strong></td>
 <td style="text-align: left;"><strong>Embedding 表初始化</strong></td>
-<td style="text-align: left;"><code>python\nok = client.init_embedding_table("default", 10000, 128)\nassert ok\n</code></td>
-<td style="text-align: left;">只要 Server 正常运行，返回 <code>True</code> 表示建表成功。</td>
+<td style="text-align: left;">建表成功时返回 <code>True</code>。</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Test 1</strong></td>
 <td style="text-align: left;"><strong>基础同步读写</strong></td>
-<td style="text-align: left;"><code>python\n# Write [1001, 1002, 1003]\nclient.emb_write(keys_to_write, values)\n# Read back\nread_values = client.emb_read(keys_to_write, 128)\n</code></td>
-<td style="text-align: left;">写入的数据必须与读回的数据完全一致 (<code>torch.allclose</code>)。</td>
+<td style="text-align: left;">写入的数据必须与读回的数据完全一致（<code>torch.allclose</code>）。</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Test 2</strong></td>
-<td style="text-align: left;"><strong>异步预取 (Async Prefetch)</strong></td>
-<td style="text-align: left;"><code>python\npid = client.emb_prefetch(keys) # 发送请求，非阻塞\n# ... 其他计算任务 ...\nresult = client.emb_wait_result(pid, 128) # 阻塞等待结果\n</code></td>
-<td style="text-align: left;">通过 Request ID (<code>pid</code>) 能够取回正确的数据。</td>
+<td style="text-align: left;"><strong>异步预取</strong></td>
+<td style="text-align: left;">通过 Request ID（<code>pid</code>）取回正确的数据。</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Test 3</strong></td>
 <td style="text-align: left;"><strong>Table-aware 更新</strong></td>
-<td style="text-align: left;"><code>python\n# 模拟梯度更新: param = param - lr * grad\nclient.emb_update_table("default", keys, grads)\n</code></td>
-<td style="text-align: left;">Server 端应用 SGD 更新。客户端手动计算预期值进行比对，容忍微小精度误差。</td>
+<td style="text-align: left;">Server 端应用 SGD 更新；客户端手动计算预期值比对，容忍微小精度误差。</td>
 </tr>
 </tbody>
 </table>
+<h3 id="test-0">Test 0：初始化<a class="headerlink" href="#test-0" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">ok</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">init_embedding_table</span><span class="p">(</span><span class="s2">"default"</span><span class="p">,</span> <span class="mi">10000</span><span class="p">,</span> <span class="mi">128</span><span class="p">)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">assert</span> <span class="n">ok</span>
+</code></pre></div>
+<h3 id="test-1">Test 1：同步读写<a class="headerlink" href="#test-1" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Write [1001, 1002, 1003]</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">client</span><span class="o">.</span><span class="n">emb_write</span><span class="p">(</span><span class="n">keys_to_write</span><span class="p">,</span> <span class="n">values</span><span class="p">)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Read back</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">read_values</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">emb_read</span><span class="p">(</span><span class="n">keys_to_write</span><span class="p">,</span> <span class="mi">128</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="test-2">Test 2：异步预取<a class="headerlink" href="#test-2" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">pid</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">emb_prefetch</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span>  <span class="c1"># 发送请求，非阻塞</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># ... 其他计算任务 ...</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">result</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">emb_wait_result</span><span class="p">(</span><span class="n">pid</span><span class="p">,</span> <span class="mi">128</span><span class="p">)</span>  <span class="c1"># 阻塞等待结果</span>
+</code></pre></div>
+<h3 id="test-3table-aware">Test 3：Table-aware 更新<a class="headerlink" href="#test-3table-aware" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># 模拟梯度更新: param = param - lr * grad</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">client</span><span class="o">.</span><span class="n">emb_update_table</span><span class="p">(</span><span class="s2">"default"</span><span class="p">,</span> <span class="n">keys</span><span class="p">,</span> <span class="n">grads</span><span class="p">)</span>
+</code></pre></div>
 
 
 

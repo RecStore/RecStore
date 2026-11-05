@@ -2893,14 +2893,15 @@
 </details>
 <h2 id="runtime-errors">Runtime Errors<a class="headerlink" href="#runtime-errors" title="Permanent link">&para;</a></h2>
 <details class="failure">
-<summary>shm malloc failed (OOM?), key: ... size: ...</summary>
-<p>通常是 <code>cache_ps.base_kv_config</code> 的容量预算过小导致。优先检查并调大以下字段之一：</p>
+<summary>ConcurrentSlabMemoryPool OOM / Persist Memory Pool OOM</summary>
+<p>通常是 <code>cache_ps.base_kv_config</code> 的容量预算过小导致。按 value store 调大：</p>
 <ul>
-<li><code>ENTRY_CAPACITY</code></li>
-<li><code>DRAM_SIZE</code></li>
-<li><code>SSD_SIZE</code></li>
+<li><code>cache_ps.base_kv_config.capacity</code>：条目数</li>
+<li><code>cache_ps.base_kv_config.value.dram_allocator.capacity_bytes</code>：DRAM value 容量</li>
+<li><code>cache_ps.base_kv_config.value.ssd_allocator.capacity_bytes</code>：SSD value 容量</li>
 </ul>
-<p>如果仍在使用旧配置字段，则对应为 <code>capacity</code>、<code>shmcapacity</code>、<code>ssdcapacity</code>。</p>
+<p>日志原文分别为 <code>ConcurrentSlabMemoryPool OOM, slab_size=...</code> 和
+<code>Persist Memory Pool OOM, total_malloc=...</code>。</p>
 </details>
 <details class="failure">
 <summary>Fail to listen 127.0.0.1:xxxxx/xxxxx</summary>

@@ -682,6 +682,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DLRM / TorchRec 集成
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -698,6 +716,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-python" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 引入 Python 包
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 最小可用示例
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-embedding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 替换模型里的 Embedding
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 接入顺序
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 示例
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -2650,6 +2742,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-python" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 引入 Python 包
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 最小可用示例
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-embedding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 替换模型里的 Embedding
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 接入顺序
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 示例
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -2674,15 +2829,49 @@
 
 
 <h1 id="dlrm-torchrec">DLRM / TorchRec 集成<a class="headerlink" href="#dlrm-torchrec" title="Permanent link">&para;</a></h1>
+<p>本页给出用编译好的 <code>recstore</code> Python 包接入模型的最小路径；完整训练参考 <code>model_zoo/rs_demo</code>。</p>
+<h2 id="1-python">1. 引入 Python 包<a class="headerlink" href="#1-python" title="Permanent link">&para;</a></h2>
+<p>从源码安装（<code>pip install .</code> 走 scikit-build-core，默认在 <code>build/</code> 里编译 <code>recstore_torch_ops</code> 扩展）：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>.
+</code></pre></div>
+<p>开发时也可以不安装，直接把包目录挂进 <code>PYTHONPATH</code>：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/src/python/pytorch:</span><span class="si">${</span><span class="nv">PYTHONPATH</span><span class="k">:-</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">"from recstore.KVClient import RecStoreClient; print(RecStoreClient)"</span>
+</code></pre></div>
+<p><code>import recstore</code> 会自动加载 <code>_recstore_ops.so</code>，查找顺序见 <a href="../../api/python/">RecStoreClient</a>。</p>
+<h2 id="2">2. 最小可用示例<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
+<p>先按<a href="../../quickrun/">快速运行</a>起一个参数服务器，然后：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">recstore.KVClient</span><span class="w"> </span><span class="kn">import</span> <span class="n">RecStoreClient</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">client</span> <span class="o">=</span> <span class="n">RecStoreClient</span><span class="p">(</span><span class="n">role</span><span class="o">=</span><span class="s2">"trainer"</span><span class="p">)</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">client</span><span class="o">.</span><span class="n">set_ps_config</span><span class="p">(</span><span class="s2">"127.0.0.1"</span><span class="p">,</span> <span class="mi">15000</span><span class="p">)</span>  <span class="c1"># 与配置里 cache_ps.servers 的第一项一致</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">name</span><span class="p">,</span> <span class="n">dim</span> <span class="o">=</span> <span class="s2">"emb_table"</span><span class="p">,</span> <span class="mi">128</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">client</span><span class="o">.</span><span class="n">init_data</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="mi">200_000</span><span class="p">,</span> <span class="n">dim</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">ids</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">42</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">values</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">pull</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ids</span><span class="p">)</span>                       <span class="c1"># [3, dim]</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="n">client</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ids</span><span class="p">,</span> <span class="n">values</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span>                  <span class="c1"># 写回</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="n">client</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ids</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.01</span><span class="p">)</span>  <span class="c1"># sparse gradient</span>
+</code></pre></div>
+<p>多分片时不要逐个手填服务端，直接按<a href="../../dev/distributed/">分布式训练</a>用同一份 <code>distributed_client</code> 配置启动。</p>
+<h2 id="3-embedding">3. 替换模型里的 Embedding<a class="headerlink" href="#3-embedding" title="Permanent link">&para;</a></h2>
 <ul>
-<li><a href="../../quickrun/">运行 DLRM</a></li>
-<li><a href="../../api/embedding/">Embedding 模块</a></li>
-<li><a href="../../dev/distributed/">分布式训练与 TorchRec 对齐</a></li>
+<li>EmbeddingBag：<code>RecStoreEmbeddingBagCollection</code>（当前推荐）。</li>
+<li>EmbeddingCollection：<code>RecStoreEmbeddingCollection</code>，需要注意 fused 键空间。</li>
+<li>单表实验：<code>DistEmbedding</code>。</li>
 </ul>
-<div class="admonition note">
-<p class="admonition-title">待补充</p>
-<p>补充现有模型接入 RecStore 的最小示例。</p>
-</div>
+<p>构造参数与融合开关见 <a href="../../api/embedding/">Embedding 模块</a>；sparse update 的语义与 CALC 接口见 <a href="../../calc/interfaces/">CALC 接口</a>。</p>
+<h2 id="4">4. 接入顺序<a class="headerlink" href="#4" title="Permanent link">&para;</a></h2>
+<ol>
+<li>按<a href="../../quickrun/">快速运行</a>跑通 DLRM / rs_demo。</li>
+<li>把模型里的 Embedding 换成上面三个模块之一。</li>
+<li>多机场景按<a href="../../dev/distributed/">分布式训练</a>对齐 <code>distributed_client</code>。</li>
+<li>需要改 sparse update 语义时再看 <a href="../../calc/interfaces/">CALC 接口</a>。</li>
+</ol>
+<h2 id="5">5. 示例<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
+<p>仓库暂时没有独立的集成 demo，<code>model_zoo/rs_demo</code> 与 <code>model_zoo/torchrec_dlrm</code> 是当前可运行的参考实现。后续会补一个只依赖 <code>recstore</code> 包的最小训练循环，放在 <code>examples/</code> 下。</p>
 
 
 

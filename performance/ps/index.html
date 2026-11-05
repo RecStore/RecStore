@@ -2674,11 +2674,16 @@
 
 
 <h1 id="_1">参数服务器与传输基准<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">待补充</p>
-<p>整理 GRPC、BRPC、RDMA 的基准运行步骤与拓扑配置。</p>
-</div>
-<p><a href="../#benchmark-entry">现有基准入口</a>。</p>
+<p>PS/network 层只测参数服务器与客户端之间的传输，不含模型训练：</p>
+<ul>
+<li>支持 GRPC、BRPC、RDMA 三种传输；</li>
+<li>可本机运行，也可用显式 IP 列表跑跨机拓扑；</li>
+<li>指标是 keys/s 与 p50/p99 延迟，读写分别统计。</li>
+</ul>
+<p>入口：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python3<span class="w"> </span>tools/benchmarks/run_benchmark_ps.py<span class="w"> </span>--help
+</code></pre></div>
+<p>RDMA 的设备、GID、QP 与 lane 参数见<a href="../../parameter_server/rdma/">RDMA 实现</a>；拓扑配置见<a href="../../dev/distributed/">分布式训练</a>。三层指标口径见<a href="../methodology/">测试范围与指标</a>。</p>
 
 
 

@@ -2851,11 +2851,7 @@
 
 
 <h1 id="_1">从源码构建<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">待重写</p>
-<p>与 Docker 开发镜像页面合并重复的环境准备步骤。</p>
-</div>
-<p>本指南将帮助你搭建 RecStore 的开发和运行环境，相关步骤出现错误可以查看 <a href="../faq/">常见问题</a>。</p>
+<p>本指南将帮助你搭建 RecStore 的开发和运行环境，相关步骤出现错误可以查看 <a href="../faq/">常见问题</a>。暂时不想编译时，可以先拉 CPU 版开发镜像跑通流程，见 <a href="../dev/zero_config_run/">Docker 开发镜像</a>；GPU 版镜像还在完善，训练与性能测试仍按本页从源码构建。</p>
 <h2 id="0">0. 环境准备<a class="headerlink" href="#0" title="Permanent link">&para;</a></h2>
 <p>RecStore 推荐使用 Docker 进行环境配置。在开始之前，请确保你的系统已安装以下工具：</p>
 <ul>
@@ -2898,7 +2894,7 @@
 <h2 id="1-docker">1. 构建 Docker 镜像<a class="headerlink" href="#1-docker" title="Permanent link">&para;</a></h2>
 <p>进入 <code>dockerfiles</code> 目录并构建镜像：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span>dockerfiles
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>sudo<span class="w"> </span>docker<span class="w"> </span>build<span class="w"> </span>-f<span class="w"> </span>Dockerfile.recstore<span class="w"> </span>--build-arg<span class="w"> </span><span class="nv">uid</span><span class="o">=</span><span class="nv">$UID</span><span class="w">  </span>-t<span class="w"> </span>recstore<span class="w"> </span>.
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>sudo<span class="w"> </span>docker<span class="w"> </span>build<span class="w"> </span>-f<span class="w"> </span>Dockerfile.recstore<span class="w"> </span>-t<span class="w"> </span>recstore:env<span class="w"> </span>.
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nb">cd</span><span class="w"> </span>-
 </code></pre></div>
 <h2 id="2">2. 启动容器<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
@@ -2931,7 +2927,7 @@
 </span><a id="__codelineno-5-7" name="__codelineno-5-7"></a><span class="hll"><span class="w">    </span>-v<span class="w"> </span>/dev/hugepages:/dev/hugepages<span class="w"> </span><span class="se">\</span>
 </span><a id="__codelineno-5-8" name="__codelineno-5-8"></a><span class="hll"><span class="w">    </span>-v<span class="w"> </span>/dev:/dev<span class="w"> </span><span class="se">\</span>
 </span><a id="__codelineno-5-9" name="__codelineno-5-9"></a><span class="w">    </span>-w<span class="w"> </span><span class="si">${</span><span class="nv">RECSTORE_PATH</span><span class="si">}</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10"></a><span class="w">    </span>--rm<span class="w"> </span>-it<span class="w"> </span>--gpus<span class="w"> </span>all<span class="w"> </span>-d<span class="w"> </span>recstore
+<a id="__codelineno-5-10" name="__codelineno-5-10"></a><span class="w">    </span>--rm<span class="w"> </span>-it<span class="w"> </span>--gpus<span class="w"> </span>all<span class="w"> </span>-d<span class="w"> </span>recstore:env
 </code></pre></div></td></tr></table></div>
 </div>
 </div>
@@ -2956,7 +2952,7 @@
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>build
 </code></pre></div>
 <div class="highlight"><span class="filename">编译 RecStore</span><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># in RecStore/build directory</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span>-DCMAKE_POLICY_VERSION_MINIMUM<span class="o">=</span><span class="m">3</span>.10<span class="w"> </span>..
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span>-DCMAKE_POLICY_VERSION_MINIMUM<span class="o">=</span><span class="m">3</span>.5<span class="w"> </span>..
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>make<span class="w"> </span>-j
 </code></pre></div>
 <p>Release 默认构建测试，关闭性能上报和第三方存储引擎。启用 FASTERKV 和 HPS 时，增加：</p>

@@ -2709,10 +2709,49 @@
 <h2 id="_2">开发入门<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>环境准备见 <a href="zero_config_run/">Docker 开发镜像</a>与<a href="../quickstart/">从源码构建</a>，测试入口见<a href="testing/">测试概览</a>。</p>
 <h2 id="_3">代码地图<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<div class="admonition note">
-<p class="admonition-title">待补充</p>
-<p>整理主要代码目录与开发入口。</p>
-</div>
+<table>
+<thead>
+<tr>
+<th>目录</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>src/framework/</code></td>
+<td><code>CommonOp</code> / <code>KVClientOp</code> 与 PyTorch binding（<code>pytorch/</code>）</td>
+</tr>
+<tr>
+<td><code>src/ps/</code></td>
+<td>参数服务器：<code>base/</code>、<code>grpc/</code>、<code>brpc/</code>、<code>rdma/</code>、<code>proto/</code></td>
+</tr>
+<tr>
+<td><code>src/storage/</code></td>
+<td>KVEngine、index、value store、allocator、IO backend</td>
+</tr>
+<tr>
+<td><code>src/memory/</code></td>
+<td>持久化与并发 slab allocator</td>
+</tr>
+<tr>
+<td><code>src/python/</code></td>
+<td>Python 客户端与 TorchRec 兼容层</td>
+</tr>
+<tr>
+<td><code>src/test/</code></td>
+<td>单测、集成测试与测试脚本</td>
+</tr>
+<tr>
+<td><code>tools/benchmarks/</code></td>
+<td>storage-only / PS / E2E 基准 runner</td>
+</tr>
+<tr>
+<td><code>model_zoo/</code></td>
+<td>DLRM 与 rs_demo 示例</td>
+</tr>
+</tbody>
+</table>
+<p>修改前先看<a href="testing/">测试概览</a>，文档约定见<a href="documentation/">文档维护</a>。</p>
 
 
 

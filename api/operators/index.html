@@ -2672,11 +2672,7 @@
 
 
 <h1 id="pytorch-operators">PyTorch Operators<a class="headerlink" href="#pytorch-operators" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">待重写</p>
-<p>按当前算子签名更新参数表；init_embedding_table 示例仍是旧的三参数形式。</p>
-</div>
-<p>文件：<code>src/framework/pytorch/op_torch.cc</code></p>
+<p>算子注册分散在多个 binding 文件：<code>src/framework/pytorch/op_base.cc</code>（建表/读写）、<code>op_flat.cc</code>（<code>local_*</code> 快路径）、<code>op_prefetch.cc</code>（预取）、<code>cache/cache_bindings.cc</code>（embedding cache）。</p>
 <table>
 <thead>
 <tr>
@@ -2698,8 +2694,8 @@
 <td>带表名更新。</td>
 </tr>
 <tr>
-<td><code>init_embedding_table(name, num_embeddings, embedding_dim)</code></td>
-<td>创建后端表。</td>
+<td><code>init_embedding_table(name, num_embeddings, embedding_dim, table_id)</code></td>
+<td>创建后端表，返回非负 tag。</td>
 </tr>
 <tr>
 <td><code>emb_prefetch(keys)</code> / <code>emb_wait_result(handle, embedding_dim)</code></td>
