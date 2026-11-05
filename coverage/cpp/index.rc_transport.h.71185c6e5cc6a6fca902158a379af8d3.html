@@ -1746,45 +1746,59 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// Fence observability: incremented by WriteResponsePayloadSg() when it</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Local MR addresses survive QP rebuilds and are fixed until destruction.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L233" href="#L233">233</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// refuses to post into a rebuilt lane.</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">*&gt;</span><span class="w"> </span><span class="n">request_slots_</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L234" href="#L234">234</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">response_rejected_epoch_count_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Fence observability: incremented by WriteResponsePayloadSg() when it</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L235" href="#L235">235</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">};</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// refuses to post into a rebuilt lane.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L236" href="#L236">236</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">response_rejected_epoch_count_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L237" href="#L237">237</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace petps</span></td>
+        <td class="src"><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L238" href="#L238">238</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L239" href="#L239">239</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace petps</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L240" href="#L240">240</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
@@ -1797,7 +1811,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
-          at 2026-11-05 07:18:57+00:00
+          at 2026-11-05 08:10:38+00:00
         </footer>
       </div>
     </div>
