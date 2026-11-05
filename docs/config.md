@@ -2,7 +2,9 @@
 
 ## 配置文件结构
 
-RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含以下顶层配置块：`cache_ps`、`distributed_client`、`client`、`report_API`，以及按需启用的 `hugectr`、`hierkv`。
+RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含以下顶层配置块：`cache_ps`、`distributed_client`、`client`；`report_API`、`hugectr`、`hierkv` 按需添加。
+
+本页只列字段。配置文件放哪、读取优先级、单机 / 多机 / RDMA / 换存储的改法见[配置指南](usage/configuration.md)。
 
 ## 1. cache_ps 配置
 
@@ -276,7 +278,7 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
     }
     ```
 
-    推导引擎类型：`KVEngineCCEH`
+    推导引擎类型：`KVEngineComposite`
 
 ??? example "HYBRID 混合模式配置"
 
@@ -312,7 +314,7 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
     }
     ```
 
-    推导引擎类型：`KVEngineHybrid`
+    推导引擎类型：`KVEngineComposite`
 
 ??? example "在 CI 中的配置"
 
