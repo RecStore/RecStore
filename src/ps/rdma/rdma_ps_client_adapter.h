@@ -3,6 +3,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <stdexcept>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -95,8 +96,6 @@ private:
 
   json config_;
   std::mutex init_mu_;
-  // GET windows and BagPipe submissions share finite RC slots. Serialize
-  // window ownership, while GPU work and PS rank aggregation remain async.
   std::mutex io_mu_;
   std::mutex thread_init_mu_;
   mutable std::mutex state_mu_;

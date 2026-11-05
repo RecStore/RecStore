@@ -36,6 +36,7 @@
 #include "ps/rdma/rc_transport.h"
 #include "ps/rdma/rdma_protocol.h"
 #include "ps/rdma/rdma_status.h"
+#include "ps/rdma/shard_routing.h"
 
 DEFINE_string(config_path, "", "config file path");
 DEFINE_int32(thread_num, 1, "RC write poll thread count");
@@ -1218,10 +1219,6 @@ private:
   }
 
   bool ProcessSlot(int slot, int thread_id, bool profile_enabled) {
-    int client_id  = -1;
-    int qp_index   = -1;
-    int slot_in_qp = -1;
-    transport_->DecodeSlotIndex(slot, &client_id, &qp_index, &slot_in_qp);
     auto* commit = transport_->RequestCommitAt(slot);
     if (commit->state.load(std::memory_order_acquire) != petps::kRcSlotReady) {
       if (profile_enabled) {
@@ -1259,6 +1256,10 @@ private:
       profile_.ready_slots.fetch_add(1, std::memory_order_relaxed);
     }
 
+    int client_id  = -1;
+    int qp_index   = -1;
+    int slot_in_qp = -1;
+    transport_->DecodeSlotIndex(slot, &client_id, &qp_index, &slot_in_qp);
     auto* descriptor = transport_->RequestDescriptorAt(slot);
     std::string error;
     if (!petps::ValidateRequestDescriptor(
@@ -1420,10 +1421,35 @@ private:
         if (descriptor->response_bytes != sizeof(int64_t)) {
           throw std::invalid_argument("Invalid gradient commit response size");
         }
+        const std::string table(petps::DescriptorTableName(*descriptor));
+        std::string packet(payload, descriptor->payload_bytes);
+        int exact_owner = -1;
+        try {
+          recstore::SparseGradientCommitHeader header;
+          if (packet.size() >= sizeof(header))
+            std::memcpy(&header, packet.data(), sizeof(header));
+          if (header.version == 4) {
+            header = recstore::DecodeSparseGradientCommit(packet);
+            if (deployment_.num_shards != 2 ||
+                deployment_.hash_method != "city_hash")
+              throw std::invalid_argument(
+                  "Owner replacement requires two city_hash shards");
+            exact_owner = shard_id_;
+            for (size_t row = 0; row < header.rows; ++row) {
+              uint64_t key;
+              std::memcpy(&key, packet.data() + sizeof(header) + row * 8, 8);
+              if (recstore::shard_routing::PartitionKey(
+                      key, 2, deployment_.hash_method) != shard_id_)
+                throw std::invalid_argument(
+                    "Owner replacement key routed to wrong shard");
+            }
+          }
+        } catch (...) {
+          cache_ps_->FailSparseGradientSession(table, packet);
+          throw;
+        }
         const int64_t committed = cache_ps_->SparseGradientCommit(
-            std::string(petps::DescriptorTableName(*descriptor)),
-            std::string(payload, descriptor->payload_bytes),
-            thread_id);
+            table, std::move(packet), thread_id, exact_owner);
         std::memcpy(response.payload, &committed, sizeof(committed));
         response.status->status = static_cast<int32_t>(petps::RpcStatus::kOk);
         response.status->response_bytes = sizeof(committed);

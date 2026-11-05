@@ -12,6 +12,21 @@ torch::Tensor emb_read_torch(const torch::Tensor& keys, int64_t embedding_dim) {
   return std::get<0>(CachedReadTorch(keys, embedding_dim));
 }
 
+void emb_read_into_torch(const torch::Tensor& keys,
+                         const torch::Tensor& values) {
+  CheckRows(keys, values);
+  TORCH_CHECK(keys.device().is_cpu() && values.device().is_cpu(),
+              "emb_read_into requires CPU keys and destination");
+  TORCH_CHECK(values.size(1) > 0 && !values.requires_grad(),
+              "emb_read_into requires positive dimension and no autograd");
+  if (!keys.numel())
+    return;
+  auto k = ToRecTensor(keys, base::DataType::UINT64);
+  auto v = ToRecTensor(values, base::DataType::FLOAT32);
+  // Synchronous transport completion lets the caller own pinned staging.
+  GetConcreteKVClientOp()->EmbRead(k, v);
+}
+
 void emb_update_torch(const torch::Tensor& keys, const torch::Tensor& grads) {
   throw std::runtime_error(
       "emb_update_torch is deprecated. Use the Python-based sparse "
@@ -130,6 +145,8 @@ std::string current_ps_backend_torch() {
 
 void RegisterBaseOps(torch::Library& m) {
   m.def("emb_read", emb_read_torch);
+  m.def("emb_read_into(Tensor keys, Tensor(a!) values) -> ()",
+        emb_read_into_torch);
   m.def("emb_update", emb_update_torch);
   m.def("emb_update_table", emb_update_table_torch);
   m.def("emb_update_async", emb_update_async_torch);
