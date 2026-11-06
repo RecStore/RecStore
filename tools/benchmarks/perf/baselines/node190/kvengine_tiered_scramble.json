@@ -1,0 +1,46 @@
+{
+  "binaries": {
+    "build/bin/benchmark_kv_engine": "e49e9a8a7c2a75d7e3dcce90b71463bcad8459a8a777cb38b7ed45cfd1be5e57"
+  },
+  "case": "kvengine_tiered_scramble",
+  "cmake_cache": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "ENABLE_CUDA": "ON",
+    "RECSTORE_ENABLE_THIRD_PARTY_ENGINES": "OFF",
+    "USE_BRPC_CPU_PROFILER": "OFF",
+    "USE_PERF_REPORT": "ON"
+  },
+  "commit": "982876e8b09600da9bf742f84aaddfdf57fd2b34",
+  "cpu_mhz_max": 2667.9,
+  "created": "2026-11-06T02:20:31",
+  "env_id": "node190",
+  "metrics": {
+    "throughput_ops_sec": {
+      "max": 515334.237872,
+      "median": 504758.312133,
+      "min": 391740.618668,
+      "samples": 3,
+      "spread_pct": 24.486
+    }
+  },
+  "repeats": 3,
+  "resolution_hint": {
+    "batch_keys": 64,
+    "distribution": "zipfian",
+    "index_type": "DRAM_PET_HASH",
+    "read_mode": "batch_get_flat",
+    "record_count": 1000000,
+    "report_latency": false,
+    "running_seconds": 5,
+    "ssd_io_backend": "IOURING",
+    "ssd_path": "{work_dir}/ssd",
+    "ssd_queue_depth": 512,
+    "thread_num": 16,
+    "value_size": 128,
+    "value_store_type": "TIERED_VALUE_STORE",
+    "workload": "c",
+    "zipfian_alpha": 0.9,
+    "zipfian_scramble": true
+  },
+  "schema": 1
+}

@@ -264,7 +264,7 @@ jobs:
             ctest --output-on-failure --progress \
               --timeout 300 \
               -E "${CTEST_EXCLUDE_REGEX}" \
-              -LE "python|rdma_integration" \
+              -LE "python|rdma_integration|^perf$" \
               2>&1 | tee -a /workspace/runner/logs/ctest.log
             exit ${PIPESTATUS[0]}
           '

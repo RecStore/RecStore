@@ -1,0 +1,256 @@
+{
+  "schema": 1,
+  "notes": [
+    "Registered performance cases. Exactly one place defines the parameters,",
+    "metrics and noise floor for every case. perf_suite.py executes this file.",
+    "Labels: perf_smoke runs in the normal ctest lanes (tiny, CPU only, no",
+    "RDMA, asserts that the metric parses but never compares numbers).",
+    "perf runs only on owned hardware and is excluded from CI.",
+    "Baselines live in baselines/<env-id>/<case-id>.json and are per machine."
+  ],
+  "cases": [
+    {
+      "id": "kvengine_c_read",
+      "layer": "storage",
+      "runner": "kvengine",
+      "labels": [
+        "perf_smoke"
+      ],
+      "repeats": 1,
+      "noise_floor_pct": 5.0,
+      "description": "batch_get_flat read path (YCSB C) on DRAM PET hash, tiny scale.",
+      "params": {
+        "index_type": "DRAM_PET_HASH",
+        "value_store_type": "DRAM_VALUE_STORE",
+        "workload": "c",
+        "read_mode": "batch_get_flat",
+        "distribution": "uniform",
+        "record_count": 20000,
+        "batch_keys": 64,
+        "thread_num": 4,
+        "running_seconds": 1,
+        "value_size": 128,
+        "report_latency": true,
+        "dram_capacity_bytes": 8388608
+      },
+      "metrics": [
+        {
+          "key": "throughput_ops_sec",
+          "unit": "ops/s",
+          "direction": "higher"
+        },
+        {
+          "key": "p99_us",
+          "unit": "us",
+          "direction": "lower"
+        }
+      ]
+    },
+    {
+      "id": "kvengine_a_mixed",
+      "layer": "storage",
+      "runner": "kvengine",
+      "labels": [
+        "perf_smoke"
+      ],
+      "repeats": 1,
+      "noise_floor_pct": 5.0,
+      "description": "Read+update path (YCSB A) on DRAM PET hash, tiny scale.",
+      "params": {
+        "index_type": "DRAM_PET_HASH",
+        "value_store_type": "DRAM_VALUE_STORE",
+        "workload": "a",
+        "read_mode": "get",
+        "distribution": "uniform",
+        "record_count": 20000,
+        "batch_keys": 1,
+        "thread_num": 4,
+        "running_seconds": 1,
+        "value_size": 128,
+        "report_latency": false,
+        "dram_capacity_bytes": 8388608
+      },
+      "metrics": [
+        {
+          "key": "throughput_ops_sec",
+          "unit": "ops/s",
+          "direction": "higher"
+        }
+      ]
+    },
+    {
+      "id": "ps_local_shm_fetch",
+      "layer": "ps_transport",
+      "runner": "ps_local_shm",
+      "labels": [
+        "perf_smoke"
+      ],
+      "repeats": 1,
+      "noise_floor_pct": 10.0,
+      "description": "LOCAL_SHM GET through ps_transport_benchmark; no RDMA or GPU needed.",
+      "params": {
+        "record_count": 2000,
+        "batch_keys": 8,
+        "thread_num": 1,
+        "running_seconds": 1,
+        "value_size": 128,
+        "capacity": 8192,
+        "slot_count": 16,
+        "slot_buffer_bytes": 1048576,
+        "startup_timeout_s": 10.0
+      },
+      "metrics": [
+        {
+          "key": "throughput_keys_sec",
+          "unit": "keys/s",
+          "direction": "higher"
+        },
+        {
+          "key": "request_total_us",
+          "unit": "us",
+          "direction": "lower"
+        }
+      ]
+    },
+    {
+      "id": "kvengine_c_read_full",
+      "layer": "storage",
+      "runner": "kvengine",
+      "labels": [
+        "perf"
+      ],
+      "repeats": 3,
+      "noise_floor_pct": 5.0,
+      "description": "Batch read baseline for owned hardware (5 s, 1 M records).",
+      "params": {
+        "index_type": "DRAM_PET_HASH",
+        "value_store_type": "DRAM_VALUE_STORE",
+        "workload": "c",
+        "read_mode": "batch_get_flat",
+        "distribution": "uniform",
+        "record_count": 1000000,
+        "batch_keys": 500,
+        "thread_num": 8,
+        "running_seconds": 5,
+        "value_size": 128,
+        "report_latency": true,
+        "dram_capacity_bytes": 268435456
+      },
+      "metrics": [
+        {
+          "key": "throughput_ops_sec",
+          "unit": "ops/s",
+          "direction": "higher"
+        },
+        {
+          "key": "p99_us",
+          "unit": "us",
+          "direction": "lower"
+        }
+      ]
+    },
+    {
+      "id": "kvengine_a_mixed_full",
+      "layer": "storage",
+      "runner": "kvengine",
+      "labels": [
+        "perf"
+      ],
+      "repeats": 3,
+      "noise_floor_pct": 5.0,
+      "description": "Update/alloc/free path (YCSB A) on a cache-resident working set; single thread so the number reflects the code path, not DRAM placement.",
+      "params": {
+        "index_type": "DRAM_PET_HASH",
+        "value_store_type": "DRAM_VALUE_STORE",
+        "workload": "a",
+        "read_mode": "get",
+        "distribution": "zipfian",
+        "record_count": 50000,
+        "batch_keys": 1,
+        "thread_num": 1,
+        "running_seconds": 5,
+        "value_size": 128,
+        "report_latency": false,
+        "dram_capacity_bytes": 16777216
+      },
+      "metrics": [
+        {
+          "key": "throughput_ops_sec",
+          "unit": "ops/s",
+          "direction": "higher"
+        }
+      ]
+    },
+    {
+      "id": "kvengine_tiered_scramble",
+      "layer": "storage",
+      "runner": "kvengine",
+      "labels": [
+        "perf"
+      ],
+      "repeats": 3,
+      "noise_floor_pct": 5.0,
+      "description": "Tiered value store (10% DRAM, SSD slab on {work_dir}) under a zipfian workload. --zipfian_scramble is required: without it the load order writes hot low ranks into DRAM first and hides the placement problem. The read cache is off here so the row tracks placement alone; measure the cache with `ab --a-param tiering_cache_policy=none --b-param tiering_cache_policy=lru`.",
+      "params": {
+        "index_type": "DRAM_PET_HASH",
+        "value_store_type": "TIERED_VALUE_STORE",
+        "workload": "c",
+        "read_mode": "batch_get_flat",
+        "distribution": "zipfian",
+        "zipfian_alpha": 0.9,
+        "zipfian_scramble": true,
+        "record_count": 1000000,
+        "value_size": 128,
+        "thread_num": 16,
+        "batch_keys": 64,
+        "running_seconds": 5,
+        "report_latency": false,
+        "ssd_path": "{work_dir}/ssd",
+        "ssd_io_backend": "IOURING",
+        "ssd_queue_depth": 512,
+        "tiering_cache_policy": "none"
+      },
+      "metrics": [
+        {
+          "key": "throughput_ops_sec",
+          "unit": "ops/s",
+          "direction": "higher"
+        }
+      ]
+    },
+    {
+      "id": "ps_local_shm_fetch_full",
+      "layer": "ps_transport",
+      "runner": "ps_local_shm",
+      "labels": [
+        "perf"
+      ],
+      "repeats": 3,
+      "noise_floor_pct": 10.0,
+      "description": "LOCAL_SHM GET baseline for owned hardware (200k records, 16 threads).",
+      "params": {
+        "record_count": 200000,
+        "batch_keys": 32,
+        "thread_num": 16,
+        "running_seconds": 5,
+        "value_size": 128,
+        "capacity": 262144,
+        "slot_count": 64,
+        "slot_buffer_bytes": 1048576,
+        "startup_timeout_s": 10.0
+      },
+      "metrics": [
+        {
+          "key": "throughput_keys_sec",
+          "unit": "keys/s",
+          "direction": "higher"
+        },
+        {
+          "key": "request_total_us",
+          "unit": "us",
+          "direction": "lower"
+        }
+      ]
+    }
+  ]
+}

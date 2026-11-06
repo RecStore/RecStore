@@ -59,6 +59,19 @@ DEFINE_string(ssd_io_backend, "IOURING", "SSD IO backend");
 DEFINE_int32(ssd_queue_depth, 512, "SSD IO queue depth");
 DEFINE_int64(dram_capacity_bytes, 0, "override DRAM allocator capacity bytes");
 DEFINE_int64(ssd_capacity_bytes, 0, "override SSD allocator capacity bytes");
+DEFINE_string(tiering_cache_policy,
+              "none",
+              "value.tiering.cache_policy for TIERED_VALUE_STORE: none|lru");
+DEFINE_double(tiering_cache_budget_ratio,
+              0.05,
+              "read cache budget as a share of the tiered DRAM layer; measured "
+              "on e2e, 0.05 leaves primary placement almost intact, 0.5 halves "
+              "it and loses 47%");
+DEFINE_int32(tiering_cache_shards, 16, "read cache shard count");
+DEFINE_int32(tiering_promote_min_misses,
+             2,
+             "misses before a value is admitted into the read cache; 2 filters "
+             "one-shot misses out (measured +21% on zipfian, flat on uniform)");
 
 DEFINE_int64(record_count, 100000000, "YCSB record count");
 DEFINE_string(workload,
@@ -412,7 +425,11 @@ BaseKVConfig BuildConfig() {
          {{"type", FLAGS_ssd_io_backend},
           {"queue_depth", FLAGS_ssd_queue_depth},
           {"base_offset_bytes", 4096}}}};
-    config.json_config_["value"]["tiering"] = {{"cache_policy", "LRU"}};
+    config.json_config_["value"]["tiering"] = {
+        {"cache_policy", FLAGS_tiering_cache_policy},
+        {"cache_budget_ratio", FLAGS_tiering_cache_budget_ratio},
+        {"cache_shards", FLAGS_tiering_cache_shards},
+        {"promote_min_misses", FLAGS_tiering_promote_min_misses}};
   }
   if (!FLAGS_ssd_layout_strategy.empty() &&
       FLAGS_ssd_layout_strategy != "plain") {
@@ -826,7 +843,7 @@ int RunBenchmark(int argc, char* argv[]) {
     std::printf(
         "YCSB_RESULT workload=%s distribution=%s zipfian_alpha=%.6f "
         "read_mode=%s threads=%d records=%ld runtime_s=%.6f ops=%lu "
-        "throughput_ops_sec=%.6f read_ops=%lu update_ops=%lu\n",
+        "throughput_ops_sec=%.6f read_ops=%lu update_ops=%lu%s\n",
         workload.c_str(),
         FLAGS_distribution.c_str(),
         FLAGS_zipfian_alpha,
@@ -837,7 +854,8 @@ int RunBenchmark(int argc, char* argv[]) {
         run_stats.total_ops,
         throughput,
         run_stats.read_ops,
-        run_stats.update_ops);
+        run_stats.update_ops,
+        kv->ExtraResultFields().c_str());
     if (FLAGS_report_latency) {
       PrintLatencyPercentiles(run_stats);
     }
