@@ -315,6 +315,48 @@ class EvaluationTest(unittest.TestCase):
         self.assertEqual(row["status"], "unstable")
         self.assertIsNone(row["ratio"])
 
+    def test_baseline_mismatch_is_not_gated(self) -> None:
+        row = perf_suite.evaluate(
+            case=None, metric=metric("throughput", "higher"),
+            observed=self.observed(50.0),
+            baseline={"median": 100.0}, floor_pct=5.0,
+            baseline_mismatch="workload parameters changed",
+        )
+        self.assertEqual(row["status"], "baseline-mismatch")
+        self.assertIsNone(row["ratio"])
+        self.assertIsNone(row["baseline"])
+
+    def test_baseline_mismatch_detects_workload_change(self) -> None:
+        case = perf_suite.Case(
+            id="case-cmd", layer="storage", runner="kvengine", labels=("perf",),
+            repeats=1, noise_floor_pct=5.0, params={"thread_num": 4},
+            metrics=(metric("throughput"),),
+        )
+        env = {"cmake_cache": {"CMAKE_BUILD_TYPE": "Release"}}
+        matching = {"resolution_hint": {"thread_num": 4}, "cmake_cache": env["cmake_cache"]}
+        self.assertIsNone(perf_suite.baseline_mismatch(matching, case, env))
+        changed_params = {"resolution_hint": {"thread_num": 64}, "cmake_cache": env["cmake_cache"]}
+        self.assertEqual(
+            perf_suite.baseline_mismatch(changed_params, case, env),
+            "workload parameters changed",
+        )
+        changed_build = {"resolution_hint": {"thread_num": 4}, "cmake_cache": {}}
+        self.assertEqual(
+            perf_suite.baseline_mismatch(changed_build, case, env),
+            "cmake cache changed",
+        )
+
+    def test_reset_failure_marker_clears_a_stale_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            marker = output_dir / "failures.txt"
+            marker.write_text("old failure\n", encoding="utf-8")
+            perf_suite._reset_failure_marker(output_dir)
+            self.assertFalse(marker.exists())
+            # Idempotent on a clean directory.
+            perf_suite._reset_failure_marker(output_dir)
+            self.assertFalse(marker.exists())
+
 
 class AbTest(unittest.TestCase):
     def test_param_overrides_parse_json_and_keep_the_rest(self) -> None:

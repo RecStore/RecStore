@@ -834,6 +834,7 @@ foreach(_perf_smoke_case
                 run
                 --case ${_perf_smoke_case}
                 --repeats 1
+                --build-dir ${CMAKE_BINARY_DIR}
                 --output-dir ${CMAKE_CURRENT_BINARY_DIR}/perf/${_perf_smoke_case}
     )
     set_tests_properties(

@@ -613,6 +613,7 @@ def evaluate(
     floor_pct: float,
     env: dict | None = None,
     clock_tolerance: float = 0.15,
+    baseline_mismatch: str | None = None,
 ) -> dict:
     row = dict(observed)
     row["unit"] = metric.unit
@@ -622,6 +623,14 @@ def evaluate(
         float(observed.get("spread_pct") or 0.0) > floor_pct
         and int(observed.get("samples") or 0) > 1
     )
+    if baseline_mismatch is not None:
+        # The recorded numbers were measured under other conditions; gating on
+        # them would report a config change as a code regression.
+        row["baseline"] = None
+        row["ratio"] = None
+        row["status"] = "baseline-mismatch"
+        row["mismatch"] = baseline_mismatch
+        return row
     if baseline is None:
         row["baseline"] = None
         row["ratio"] = None
@@ -659,6 +668,21 @@ def evaluate(
 
 def baseline_dir(root: Path | None = None) -> Path:
     return root if root is not None else BASELINE_ROOT
+
+
+def baseline_mismatch(baseline: dict, case: Case, env: dict) -> str | None:
+    """Why ``baseline`` cannot be compared with this run, or None if it can.
+
+    Values are only comparable under the same workload and the same build
+    knobs. Re-registering a case under the same id with other parameters, or
+    rebuilding with a different cmake cache, would otherwise surface as a code
+    regression.
+    """
+    if (baseline.get("resolution_hint") or {}) != case.params:
+        return "workload parameters changed"
+    if (baseline.get("cmake_cache") or {}) != (env.get("cmake_cache") or {}):
+        return "cmake cache changed"
+    return None
 
 
 def load_baseline(
@@ -780,6 +804,17 @@ def render_summary(
             lines.append(f"- `{row['case']}` {row['metric']}")
         lines.append("")
     unstable = [row for row in rows if row.get("status") == "unstable"]
+    stale_baselines = [row for row in rows if row.get("status") == "baseline-mismatch"]
+    if stale_baselines:
+        lines.append(
+            "## Baseline mismatch (not compared)\n"
+            "The stored baseline was recorded with other workload parameters or "
+            "build knobs, so it is not a reference for this run. Re-record it with "
+            "`--write-baseline` after confirming the new settings."
+        )
+        for row in stale_baselines:
+            lines.append(f"- `{row['case']}` {row['metric']}: {row.get('mismatch', '')}")
+        lines.append("")
     if unstable:
         lines.append(
             "## Unstable (not gated)\n"
@@ -853,6 +888,18 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _reset_failure_marker(output_dir: Path) -> None:
+    """Forget a previous run's failures so a fixed rerun exits clean.
+
+    The exit status of ``run`` is derived from the presence of this file, and
+    CTest reuses one output directory per smoke case, so a stale marker turns
+    every later successful run into a failure.
+    """
+    marker = output_dir / "failures.txt"
+    if marker.exists():
+        marker.unlink()
+
+
 def run_cases(
     cases: list[Case],
     build_dir: Path,
@@ -862,6 +909,7 @@ def run_cases(
     label: str,
 ) -> tuple[list[dict], dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    _reset_failure_marker(output_dir)
     binaries = sorted({path for case in cases for path in _case_binaries(case, build_dir)})
     env = collect_env(build_dir, binaries)
     env["label"] = label
@@ -949,6 +997,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             if args.check
             else None
         )
+        mismatch = (
+            baseline_mismatch(baseline, case, env) if baseline is not None else None
+        )
         if args.check and baseline is None:
             missing_baselines.append(case.id)
         baseline_metrics = (baseline or {}).get("metrics")
@@ -966,7 +1017,15 @@ def cmd_run(args: argparse.Namespace) -> int:
             if base_entry is not None and baseline.get("cpu_mhz_max"):
                 base_entry = dict(base_entry, cpu_mhz_max=baseline["cpu_mhz_max"])
             evaluated.append(
-                evaluate(case, metric, item, base_entry, floor, env=env)
+                evaluate(
+                    case,
+                    metric,
+                    item,
+                    base_entry,
+                    floor,
+                    env=env,
+                    baseline_mismatch=mismatch,
+                )
             )
     summary = evaluated
 
@@ -1058,6 +1117,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
     runner = RUNNERS[base_case.runner]
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    _reset_failure_marker(output_dir)
     env = collect_env(
         b_dir, sorted(set(_case_binaries(base_case, a_dir) + _case_binaries(base_case, b_dir)))
     )
