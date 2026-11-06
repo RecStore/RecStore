@@ -124,18 +124,25 @@ public:
       return 0;
     }
     if (IsOnSSD(handle)) {
-      const uint64_t raw = SsdRawHandle(handle);
+      const uint64_t raw    = SsdRawHandle(handle);
+      const size_t capacity = ssd_store_->SlotCapacity(raw);
+      uint64_t barrier      = 0;
       if (cache_) {
         size_t copied = 0;
         if (cache_->CopyOut(raw, out_buf, buf_size, &copied)) {
           return copied;
         }
+        barrier = cache_->WriteBarrier(raw);
       }
       const size_t actual = ssd_store_->Read(raw, out_buf, buf_size);
       // Only cache a value that was read in full; a truncated read would put a
-      // short value in the cache and every later hit would return it.
-      if (cache_ && actual > 0 && actual == ssd_store_->SlotCapacity(raw)) {
-        cache_->Promote(raw, out_buf, actual);
+      // short value in the cache and every later hit would return it. The
+      // stored length is not exposed, so a complete read is inferred from a
+      // short read or from a buffer that could hold the whole slot: comparing
+      // `actual` with `SlotCapacity` would be a length-vs-capacity comparison
+      // and would reject every value smaller than its slab or buddy slot.
+      if (cache_ && ReadCompleted(actual, buf_size, capacity)) {
+        cache_->Promote(raw, out_buf, actual, barrier);
       }
       return actual;
     }
@@ -237,8 +244,10 @@ public:
 
     std::vector<uint64_t> ssd_handles;
     std::vector<size_t> ssd_indices;
+    std::vector<uint64_t> ssd_barriers;
     ssd_handles.reserve(handles.size());
     ssd_indices.reserve(handles.size());
+    ssd_barriers.reserve(handles.size());
 
     for (size_t i = 0; i < handles.size(); ++i) {
       const uint64_t handle = handles[i];
@@ -255,6 +264,10 @@ public:
           out_results[i].data.resize(copied);
           continue;
         }
+        // Captured before the batch read reaches SSD, checked again by
+        // Promote(): a write racing the read must not leave the old value
+        // cached.
+        ssd_barriers.push_back(cache_ ? cache_->WriteBarrier(raw) : 0);
         ssd_handles.push_back(raw);
         ssd_indices.push_back(i);
         continue;
@@ -281,7 +294,8 @@ public:
       if (cache_ && !ssd_results[i].data.empty()) {
         cache_->Promote(ssd_handles[i],
                         ssd_results[i].data.data(),
-                        ssd_results[i].data.size());
+                        ssd_results[i].data.size(),
+                        ssd_barriers[i]);
       }
       out_results[ssd_indices[i]] = std::move(ssd_results[i]);
     }
@@ -349,7 +363,8 @@ public:
          << " tiered_cache_promotions=" << cache_->Promotions()
          << " tiered_cache_evictions=" << cache_->Evictions()
          << " tiered_cache_alloc_failures=" << cache_->AllocFailures()
-         << " tiered_cache_admission_rejects=" << cache_->AdmissionRejects();
+         << " tiered_cache_admission_rejects=" << cache_->AdmissionRejects()
+         << " tiered_cache_stale_promotions=" << cache_->StalePromotions();
     } else {
       os << " tiered_cache_policy=none";
     }
@@ -372,6 +387,17 @@ private:
   static uint64_t DramRawHandle(uint64_t handle) { return handle; }
 
   static uint64_t SsdRawHandle(uint64_t handle) { return handle & ~kSsdFlag; }
+
+  // True when a read of `actual` bytes into a `buf_size` buffer returned the
+  // whole stored value. A short read is conclusive; a full buffer is only
+  // conclusive when it could hold the slot's capacity.
+  static bool
+  ReadCompleted(size_t actual, size_t buf_size, size_t slot_capacity) {
+    if (actual == 0) {
+      return false;
+    }
+    return actual < buf_size || buf_size >= slot_capacity;
+  }
 
   static BaseKVConfig BuildDramConfig(const BaseKVConfig& config) {
     BaseKVConfig out = config;

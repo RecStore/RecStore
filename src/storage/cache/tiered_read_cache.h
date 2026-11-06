@@ -35,6 +35,13 @@
 // otherwise each cost a DRAM slot and evict a genuinely hot entry, which is
 // what keeps the hit rate far below what the workload's frequency skew allows.
 //
+// Promotion is guarded by a write barrier. A reader captures a per-key token
+// before it reads SSD and only inserts its copy if no Write, BatchWrite or Free
+// bumped that key in the meantime. Without it, this interleaving leaves a stale
+// value cached forever: reader fetches the old value, writer overwrites the
+// slot (WriteThrough finds no entry, so it only bumps the token), reader
+// inserts the old copy.
+//
 // Deliberately not built on `storage/cache/lru/lru_cache.h`: that module tracks
 // keys only (no values, no byte budget, no atomic lookup-and-copy), so it
 // cannot serve a read path.
@@ -54,6 +61,7 @@ public:
         promote_min_misses_(std::max<uint32_t>(1, promote_min_misses)) {
     for (Shard& shard : shards_) {
       shard.admission.assign(kAdmissionSlots, AdmissionSlot{});
+      shard.barriers.assign(kBarrierSlots, BarrierSlot{});
     }
   }
 
@@ -77,15 +85,37 @@ public:
     return true;
   }
 
+  // Token for the promotion barrier, captured before reading the SSD slot. Pass
+  // it to Promote(); a copy is only admitted if nothing wrote to `key` since.
+  uint64_t WriteBarrier(uint64_t key) {
+    Shard& shard = ShardOf(key);
+    std::lock_guard<std::mutex> lock(shard.mutex);
+    BarrierSlot& slot = BarrierSlotOf(shard, key);
+    if (slot.key != key) {
+      // Materialise the record so that a later collision cannot make an older
+      // token look current again: every (re)assignment takes a fresh global
+      // sequence number.
+      slot.key = key;
+      slot.seq = NextBarrierSeq();
+    }
+    return slot.seq;
+  }
+
   // Caches a copy of an SSD value, evicting this shard's LRU entry when the
   // cache is already full. Silently does nothing when the value cannot fit in
-  // one shard or when DRAM has no room left for the cache.
-  void Promote(uint64_t key, const void* data, size_t size) {
+  // one shard, when DRAM has no room left for the cache, or when `barrier` is
+  // no longer the key's current write token (a write raced the SSD read).
+  void Promote(uint64_t key, const void* data, size_t size, uint64_t barrier) {
     if (size == 0) {
       return;
     }
     Shard& shard = ShardOf(key);
     std::lock_guard<std::mutex> lock(shard.mutex);
+    const BarrierSlot& barrier_slot = BarrierSlotOf(shard, key);
+    if (barrier_slot.key != key || barrier_slot.seq != barrier) {
+      stale_promotions_.fetch_add(1, std::memory_order_relaxed);
+      return;
+    }
     auto existing = shard.map.find(key);
     if (existing != shard.map.end()) {
       // Another thread promoted this key first; keep its copy, refresh recency.
@@ -146,6 +176,9 @@ public:
   void Invalidate(uint64_t key) {
     Shard& shard = ShardOf(key);
     std::lock_guard<std::mutex> lock(shard.mutex);
+    // A reader that already fetched this slot must not reinsert its copy after
+    // the slot is handed out again.
+    BumpBarrierLocked(shard, key);
     // Also forget the miss count: the SSD slot gets reused, and a leftover
     // count would let a cold value inherit another value's history.
     AdmissionSlot& slot = AdmissionSlotOf(shard, key);
@@ -155,12 +188,16 @@ public:
     EraseLocked(shard, shard.map.find(key));
   }
 
-  // Keeps a cached copy consistent with an in-place write. The entry keeps the
-  // byte count it was promoted with, so a cached read returns exactly what the
-  // SSD read would have returned for the same slot.
+  // Keeps a cached copy consistent with an in-place write. The entry tracks the
+  // byte count it now holds, so a cached read returns exactly what the SSD read
+  // would have returned for the same slot (a shrunken value must not expose the
+  // tail of the previous one).
   void WriteThrough(uint64_t key, const void* data, size_t size) {
     Shard& shard = ShardOf(key);
     std::lock_guard<std::mutex> lock(shard.mutex);
+    // Bump before touching the entry: the write may be visible in the SSD store
+    // while a concurrent reader is still holding the old copy.
+    BumpBarrierLocked(shard, key);
     auto it = shard.map.find(key);
     if (it == shard.map.end()) {
       return;
@@ -172,6 +209,7 @@ public:
       return;
     }
     store_->Write(it->second.dram_raw, data, size);
+    it->second.size = size;
     shard.order.splice(shard.order.begin(), shard.order, it->second.pos);
   }
 
@@ -192,6 +230,11 @@ public:
   // times.
   uint64_t AdmissionRejects() const {
     return admission_rejects_.load(std::memory_order_relaxed);
+  }
+  // Copies discarded because a write or free touched the key while they were
+  // being read from SSD.
+  uint64_t StalePromotions() const {
+    return stale_promotions_.load(std::memory_order_relaxed);
   }
   uint32_t PromoteMinMisses() const { return promote_min_misses_; }
   uint64_t BudgetBytes() const { return budget_bytes_; }
@@ -237,6 +280,11 @@ private:
     uint32_t count = 0;
   };
 
+  struct BarrierSlot {
+    uint64_t key = 0;
+    uint64_t seq = 0;
+  };
+
   struct Shard {
     std::mutex mutex;
     std::list<uint64_t> order;
@@ -245,6 +293,10 @@ private:
     // allocation on the miss path. Collisions overwrite, which only costs
     // accuracy for keys that would not have repeated anyway.
     std::vector<AdmissionSlot> admission;
+    // Direct-mapped write tokens for promotion, same trade-off as `admission`:
+    // a collision only causes a missed promotion (conservative), never a stale
+    // one, because every assignment takes a fresh monotonically increasing seq.
+    std::vector<BarrierSlot> barriers;
     size_t bytes = 0;
   };
 
@@ -255,6 +307,21 @@ private:
   AdmissionSlot& AdmissionSlotOf(Shard& shard, uint64_t key) {
     const size_t stride = (key * 0x9E3779B97F4A7C15ULL) >> 32;
     return shard.admission[stride % shard.admission.size()];
+  }
+
+  BarrierSlot& BarrierSlotOf(Shard& shard, uint64_t key) {
+    const size_t stride = (key * 0x9E3779B97F4A7C15ULL) >> 32;
+    return shard.barriers[stride % shard.barriers.size()];
+  }
+
+  uint64_t NextBarrierSeq() {
+    return next_barrier_.fetch_add(1, std::memory_order_relaxed) + 1;
+  }
+
+  void BumpBarrierLocked(Shard& shard, uint64_t key) {
+    BarrierSlot& slot = BarrierSlotOf(shard, key);
+    slot.key          = key;
+    slot.seq          = NextBarrierSeq();
   }
 
   // Evicts this shard's LRU entries until it fits its share of the budget.
@@ -284,6 +351,8 @@ private:
   // number of entries a shard can hold, so a resident value's history is rarely
   // overwritten by a colliding key.
   static constexpr size_t kAdmissionSlots = 1024;
+  // Same sizing rule for the promotion write barriers.
+  static constexpr size_t kBarrierSlots = 1024;
 
   DramValueStore* store_;
   std::vector<Shard> shards_;
@@ -291,6 +360,7 @@ private:
   const uint64_t dram_limit_bytes_;
   const std::atomic<uint64_t>* reserved_bytes_;
   const uint32_t promote_min_misses_;
+  std::atomic<uint64_t> next_barrier_{0};
   std::atomic<uint64_t> bytes_{0};
   std::atomic<uint64_t> entries_{0};
   std::atomic<uint64_t> hits_{0};
@@ -299,4 +369,5 @@ private:
   std::atomic<uint64_t> evictions_{0};
   std::atomic<uint64_t> alloc_failures_{0};
   std::atomic<uint64_t> admission_rejects_{0};
+  std::atomic<uint64_t> stale_promotions_{0};
 };

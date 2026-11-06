@@ -539,6 +539,14 @@ json LruTieringConfig(
           {"promote_min_misses", promote_min_misses}};
 }
 
+// Promotes with the write token that is current right now, which is what a
+// read-path caller captures before it starts the SSD read.
+void PromoteNow(TieredReadCache& cache,
+                uint64_t key,
+                const std::string& value) {
+  cache.Promote(key, value.data(), value.size(), cache.WriteBarrier(key));
+}
+
 TEST_F(StaticLayoutValueTest, TieredReadCachePromotesOnFirstRead) {
   HybridValueStore store(
       TieredStoreConfig(root_, "promote", LruTieringConfig(0.5, 4)));
@@ -610,6 +618,115 @@ TEST_F(StaticLayoutValueTest, TieredReadCacheInvalidatesOnFree) {
   EXPECT_EQ(out, fresh);
 }
 
+TEST_F(StaticLayoutValueTest, TieredReadCachePromotesValuesSmallerThanSlot) {
+  HybridValueStore store(
+      TieredStoreConfig(root_, "smaller", LruTieringConfig(0.5, 4)));
+  const std::string payload(300, 'S');
+  uint64_t handle = kValueHandleNone;
+  for (uint64_t i = 0; i < 100000 && handle == kValueHandleNone; ++i) {
+    const uint64_t candidate =
+        store.AllocAndWrite(payload.data(), payload.size());
+    ASSERT_NE(candidate, kValueHandleNone);
+    if ((candidate & (1ULL << 63)) != 0) {
+      handle = candidate;
+    }
+  }
+  ASSERT_NE(handle, kValueHandleNone);
+  // A 300-byte value lives in a 512-byte slab slot, so its length differs from
+  // the slot capacity: that must not block promotion.
+  ASSERT_NE(store.SlotCapacity(handle), payload.size());
+
+  std::string out(512, '\0');
+  ASSERT_EQ(store.Read(handle, out.data(), out.size()), payload.size());
+  EXPECT_EQ(out.substr(0, payload.size()), payload);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_cache_promotions"),
+            1.0);
+
+  ASSERT_EQ(store.Read(handle, out.data(), out.size()), payload.size());
+  EXPECT_EQ(out.substr(0, payload.size()), payload);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_cache_hits"), 1.0);
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheWriteThroughTracksShrunkValue) {
+  BaseKVConfig config;
+  config.json_config_ = {
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", (root_ / "shrink-dram").string()},
+        {"dram_allocator",
+         {{"type", "PERSIST_LOOP_SLAB"},
+          {"capacity_bytes", kCacheDramBytes},
+          {"path", (root_ / "shrink-dram").string()}}}}}};
+  DramValueStore dram(config);
+  const uint64_t probe = dram.Alloc(kCachedValueSize);
+  ASSERT_NE(probe, kValueHandleNone);
+  const size_t slot = dram.SlotCapacity(probe);
+  dram.Free(probe);
+
+  TieredReadCache cache(
+      &dram, 1, 4 * slot, UINT64_MAX, nullptr, /*promote_min_misses=*/1);
+  const std::string wide(kCachedValueSize, 'w');
+  PromoteNow(cache, 5, wide);
+
+  const std::string narrow(128, 'n');
+  cache.WriteThrough(5, narrow.data(), narrow.size());
+
+  std::string out(kCachedValueSize, '\0');
+  size_t copied = 0;
+  ASSERT_TRUE(cache.CopyOut(5, out.data(), out.size(), &copied));
+  // Must report the new length, not the promoted one, and leave no tail of the
+  // previous value.
+  EXPECT_EQ(copied, narrow.size());
+  EXPECT_EQ(out.substr(0, copied), narrow);
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheRejectsPromotionRacingWrite) {
+  BaseKVConfig config;
+  config.json_config_ = {
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", (root_ / "race-dram").string()},
+        {"dram_allocator",
+         {{"type", "PERSIST_LOOP_SLAB"},
+          {"capacity_bytes", kCacheDramBytes},
+          {"path", (root_ / "race-dram").string()}}}}}};
+  DramValueStore dram(config);
+  const uint64_t probe = dram.Alloc(kCachedValueSize);
+  ASSERT_NE(probe, kValueHandleNone);
+  const size_t slot = dram.SlotCapacity(probe);
+  dram.Free(probe);
+
+  TieredReadCache cache(
+      &dram, 1, 4 * slot, UINT64_MAX, nullptr, /*promote_min_misses=*/1);
+  const std::string old_value(kCachedValueSize, 'o');
+  const std::string new_value(kCachedValueSize, 'n');
+
+  // Reader captures the token, writer overwrites the slot (no entry yet, so
+  // WriteThrough only bumps), then the reader tries to insert its old copy.
+  const uint64_t stale = cache.WriteBarrier(11);
+  cache.WriteThrough(11, new_value.data(), new_value.size());
+  cache.Promote(11, old_value.data(), old_value.size(), stale);
+  EXPECT_EQ(cache.Entries(), 0U);
+  EXPECT_EQ(cache.StalePromotions(), 1U);
+
+  std::string out(kCachedValueSize, '\0');
+  size_t copied = 0;
+  EXPECT_FALSE(cache.CopyOut(11, out.data(), out.size(), &copied));
+
+  // A read that starts after the write is admitted normally.
+  PromoteNow(cache, 11, new_value);
+  ASSERT_TRUE(cache.CopyOut(11, out.data(), out.size(), &copied));
+  EXPECT_EQ(out, new_value);
+
+  // The same guard covers a freed slot: an in-flight read must not resurrect a
+  // copy under a handle that has been recycled.
+  const uint64_t freed = cache.WriteBarrier(12);
+  cache.Invalidate(12);
+  cache.Promote(12, old_value.data(), old_value.size(), freed);
+  EXPECT_EQ(cache.Entries(), 1U);
+  EXPECT_EQ(cache.StalePromotions(), 2U);
+}
+
 TEST_F(StaticLayoutValueTest, TieredReadCacheStaysWithinBudget) {
   const double ratio = 0.5;
   HybridValueStore store(
@@ -673,16 +790,16 @@ TEST_F(StaticLayoutValueTest, TieredReadCacheEvictsLeastRecentlyUsed) {
   const std::string b(kCachedValueSize, 'b');
   const std::string c(kCachedValueSize, 'c');
   const std::string d(kCachedValueSize, 'd');
-  cache.Promote(1, a.data(), a.size());
-  cache.Promote(2, b.data(), b.size());
-  cache.Promote(3, c.data(), c.size());
+  PromoteNow(cache, 1, a);
+  PromoteNow(cache, 2, b);
+  PromoteNow(cache, 3, c);
 
   std::string out(kCachedValueSize, '\0');
   size_t copied = 0;
   ASSERT_TRUE(cache.CopyOut(1, out.data(), out.size(), &copied));
   ASSERT_EQ(out, a);
 
-  cache.Promote(4, d.data(), d.size());
+  PromoteNow(cache, 4, d);
   EXPECT_EQ(cache.Evictions(), 1U);
   EXPECT_FALSE(cache.CopyOut(2, out.data(), out.size(), &copied));
   EXPECT_TRUE(cache.CopyOut(1, out.data(), out.size(), &copied));
@@ -718,7 +835,7 @@ TEST_F(StaticLayoutValueTest, TieredReadCacheSkipsOversizedValues) {
       nullptr,
       /*promote_min_misses=*/1);
   const std::string big(4 * slot, 'x');
-  cache.Promote(7, big.data(), big.size());
+  PromoteNow(cache, 7, big);
   EXPECT_EQ(cache.Entries(), 0U);
   EXPECT_EQ(cache.Bytes(), 0U);
 }
@@ -750,11 +867,11 @@ TEST_F(StaticLayoutValueTest, TieredReadCacheRespectsTotalDramLimit) {
       2 * slot,
       &reserved,
       /*promote_min_misses=*/1);
-  cache.Promote(1, value.data(), value.size());
-  cache.Promote(2, value.data(), value.size());
+  PromoteNow(cache, 1, value);
+  PromoteNow(cache, 2, value);
   EXPECT_EQ(cache.Entries(), 2U);
 
-  cache.Promote(3, value.data(), value.size());
+  PromoteNow(cache, 3, value);
   EXPECT_EQ(cache.Entries(), 2U);
   EXPECT_EQ(cache.Evictions(), 1U);
   EXPECT_EQ(cache.AllocFailures(), 0U);
@@ -768,7 +885,7 @@ TEST_F(StaticLayoutValueTest, TieredReadCacheRespectsTotalDramLimit) {
   // promotion is refused instead of evicting into an allocator that is full.
   reserved.store(2 * slot);
   EXPECT_EQ(cache.EffectiveBudgetBytes(), 0U);
-  cache.Promote(4, value.data(), value.size());
+  PromoteNow(cache, 4, value);
   EXPECT_EQ(cache.Entries(), 2U);
   EXPECT_EQ(cache.AllocFailures(), 1U);
 }
@@ -826,7 +943,7 @@ TEST_F(StaticLayoutValueTest, TieredReadCacheAdmissionSampleStaysBounded) {
   // the miss sample is the only structure that can grow.
   TieredReadCache cache(&dram, 1, slot, UINT64_MAX, nullptr, 2);
   for (uint64_t key = 0; key < 5000; ++key) {
-    cache.Promote(key, value.data(), value.size());
+    PromoteNow(cache, key, value);
   }
   EXPECT_EQ(cache.Entries(), 0U);
   EXPECT_EQ(cache.Promotions(), 0U);
