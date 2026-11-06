@@ -817,6 +817,43 @@ target_link_libraries(test_ps_transport_benchmark PUBLIC
 )
 add_test(NAME test_ps_transport_benchmark COMMAND test_ps_transport_benchmark)
 
+# Performance smoke cases (label perf_smoke).
+#
+# Canaries, not gates: they run the real benchmark binaries at tiny scale and
+# assert that the expected metric lines parse. They never compare numbers, so
+# they are safe on shared CI runners without RDMA. Cases labelled `perf` need
+# owned hardware and are excluded from CI (`-LE "^perf$"`).
+foreach(_perf_smoke_case
+        kvengine_c_read
+        kvengine_a_mixed
+        ps_local_shm_fetch)
+    add_test(
+        NAME perf_smoke_${_perf_smoke_case}
+        COMMAND ${Python3_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/tools/benchmarks/perf_suite.py
+                run
+                --case ${_perf_smoke_case}
+                --repeats 1
+                --output-dir ${CMAKE_CURRENT_BINARY_DIR}/perf/${_perf_smoke_case}
+    )
+    set_tests_properties(
+        perf_smoke_${_perf_smoke_case}
+        PROPERTIES
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        LABELS "perf_smoke"
+        RESOURCE_LOCK perf_smoke
+        TIMEOUT 120
+        ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
+    )
+endforeach()
+
+# Logic-level unit tests for the perf driver (no benchmark binaries required).
+add_python_unittest(
+    perf_suite_unit_py
+    tools.benchmarks.perf.test_perf_suite
+)
+set_tests_properties(perf_suite_unit_py PROPERTIES LABELS "python")
+
 add_executable(test_raw_verbs_allocator test_raw_verbs_allocator.cpp)
 target_link_libraries(test_raw_verbs_allocator PUBLIC
     base
