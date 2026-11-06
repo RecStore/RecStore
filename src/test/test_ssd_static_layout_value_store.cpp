@@ -17,8 +17,10 @@
 #include "storage/index/utils/hash.h"
 #include "storage/io_backend/force_link.h"
 #include "storage/io_backend/io_backend.h"
+#include "storage/cache/tiered_read_cache.h"
 #include "storage/kv_engine/engine_composite.h"
 #include "storage/ssd_layout/ssd_layout.h"
+#include "storage/value_store/dram_value_store.h"
 #include "storage/value_store/hybrid_value_store.h"
 #include "storage/value_store/ssd_static_layout_value_store.h"
 #include "storage/value_store/ssd_value_store.h"
@@ -457,6 +459,463 @@ TEST_F(StaticLayoutValueTest, CheckpointIdentityRoundTripAndMismatch) {
   EXPECT_FALSE(rejected->LoadCheckpoint(legacy.string(), metadata));
   rejected->Get(0, actual, 0);
   EXPECT_TRUE(actual.empty());
+}
+
+// ── Tiered read cache ───────────────────────────────────────────────────────
+//
+// The cache is opt-in through `value.tiering.cache_policy`, so these tests turn
+// it on explicitly. They drive HybridValueStore/TieredReadCache directly: no
+// KVEngine, no real disk (the SSD store uses the in-memory IO backend above).
+
+constexpr size_t kCachedValueSize  = 512;
+constexpr uint64_t kCacheDramBytes = 1 << 20;
+
+BaseKVConfig TieredStoreConfig(const std::filesystem::path& root,
+                               const std::string& name,
+                               const json& tiering) {
+  BaseKVConfig config;
+  config.num_threads_ = 2;
+  config.json_config_ = {
+      {"engine_type", "KVEngineComposite"},
+      {"capacity", 16},
+      {"index", {{"type", "DRAM_UNORDERED_MAP"}}},
+      {"value",
+       {{"type", "TIERED_VALUE_STORE"},
+        {"path", (root / (name + "-value.db")).string()},
+        {"default_value_size_hint", kCachedValueSize},
+        {"dram_allocator",
+         {{"type", "PERSIST_LOOP_SLAB"},
+          {"capacity_bytes", kCacheDramBytes},
+          {"path", (root / (name + "-dram")).string()}}},
+        {"ssd_allocator",
+         {{"type", "SSD_SLAB"},
+          {"capacity_bytes", 64ULL << 20},
+          {"path", (root / (name + "-ssd.db")).string()},
+          {"io",
+           {{"type", "INMEMORY"},
+            {"queue_depth", 4},
+            {"base_offset_bytes", 0}}}}},
+        {"tiering", tiering}}}};
+  return config;
+}
+
+struct SsdValue {
+  uint64_t handle = 0;
+  std::string payload;
+};
+
+// Allocates values until `want` of them landed on SSD. Primary placement stops
+// at high_watermark * (capacity - cache budget), so this needs a few hundred
+// iterations; everything stays allocated, which is what fills the DRAM layer.
+std::vector<SsdValue> FillUntilSsd(HybridValueStore& store, size_t want) {
+  std::vector<SsdValue> out;
+  for (uint64_t i = 0; i < 100000 && out.size() < want; ++i) {
+    const std::string payload(
+        kCachedValueSize, static_cast<char>('A' + (i % 26)));
+    const uint64_t handle = store.AllocAndWrite(payload.data(), payload.size());
+    if (handle == kValueHandleNone) {
+      break;
+    }
+    if ((handle & (1ULL << 63)) != 0) {
+      out.push_back({handle, payload});
+    }
+  }
+  return out;
+}
+
+double TieredField(const std::string& info, const std::string& key) {
+  const auto pos = info.find(key + "=");
+  if (pos == std::string::npos) {
+    return -1.0;
+  }
+  return std::stod(info.substr(pos + key.size() + 1));
+}
+
+json LruTieringConfig(
+    double budget_ratio, int shards, int promote_min_misses = 1) {
+  return {{"cache_policy", "lru"},
+          {"cache_budget_ratio", budget_ratio},
+          {"cache_shards", shards},
+          {"promote_min_misses", promote_min_misses}};
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCachePromotesOnFirstRead) {
+  HybridValueStore store(
+      TieredStoreConfig(root_, "promote", LruTieringConfig(0.5, 4)));
+  const auto ssd = FillUntilSsd(store, 1);
+  ASSERT_EQ(ssd.size(), 1U);
+  const uint64_t handle = ssd.front().handle;
+
+  std::string out(kCachedValueSize, '\0');
+  EXPECT_EQ(store.Read(handle, out.data(), out.size()), kCachedValueSize);
+  EXPECT_EQ(out, ssd.front().payload);
+
+  std::string info = store.ExtraResultFields();
+  EXPECT_NE(info.find("tiered_cache_policy=lru"), std::string::npos);
+  EXPECT_EQ(TieredField(info, "tiered_cache_misses"), 1.0);
+  EXPECT_EQ(TieredField(info, "tiered_cache_promotions"), 1.0);
+  EXPECT_EQ(TieredField(info, "tiered_cache_entries"), 1.0);
+
+  EXPECT_EQ(store.Read(handle, out.data(), out.size()), kCachedValueSize);
+  EXPECT_EQ(out, ssd.front().payload);
+  info = store.ExtraResultFields();
+  EXPECT_EQ(TieredField(info, "tiered_cache_hits"), 1.0);
+  EXPECT_DOUBLE_EQ(TieredField(info, "tiered_cache_hit_rate"), 0.5);
+  EXPECT_EQ(TieredField(info, "tiered_cache_promotions"), 1.0);
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheWriteThroughKeepsHitsCoherent) {
+  HybridValueStore store(
+      TieredStoreConfig(root_, "writethrough", LruTieringConfig(0.5, 4)));
+  const auto ssd = FillUntilSsd(store, 1);
+  ASSERT_EQ(ssd.size(), 1U);
+  const uint64_t handle = ssd.front().handle;
+
+  std::string out(kCachedValueSize, '\0');
+  ASSERT_EQ(store.Read(handle, out.data(), out.size()), kCachedValueSize);
+  ASSERT_EQ(out, ssd.front().payload);
+
+  const std::string updated(kCachedValueSize, 'Z');
+  store.Write(handle, updated.data(), updated.size());
+  EXPECT_EQ(store.Read(handle, out.data(), out.size()), kCachedValueSize);
+  EXPECT_EQ(out, updated);
+
+  const std::string info = store.ExtraResultFields();
+  EXPECT_EQ(TieredField(info, "tiered_cache_hits"), 1.0);
+  EXPECT_EQ(TieredField(info, "tiered_cache_promotions"), 1.0);
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheInvalidatesOnFree) {
+  HybridValueStore store(
+      TieredStoreConfig(root_, "invalidate", LruTieringConfig(0.5, 4)));
+  const auto ssd = FillUntilSsd(store, 1);
+  ASSERT_EQ(ssd.size(), 1U);
+  const uint64_t handle = ssd.front().handle;
+
+  std::string out(kCachedValueSize, '\0');
+  ASSERT_EQ(store.Read(handle, out.data(), out.size()), kCachedValueSize);
+  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_cache_entries"),
+            1.0);
+
+  store.Free(handle);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_cache_entries"),
+            0.0);
+
+  // The freed SSD slot can be handed out again; a stale cached copy must not
+  // resurface through the new handle.
+  const std::string fresh(kCachedValueSize, 'Q');
+  const uint64_t reused = store.AllocAndWrite(fresh.data(), fresh.size());
+  ASSERT_NE(reused, kValueHandleNone);
+  EXPECT_EQ(store.Read(reused, out.data(), out.size()), kCachedValueSize);
+  EXPECT_EQ(out, fresh);
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheStaysWithinBudget) {
+  const double ratio = 0.5;
+  HybridValueStore store(
+      TieredStoreConfig(root_, "budget", LruTieringConfig(ratio, 4)));
+  const auto ssd = FillUntilSsd(store, 1200);
+  ASSERT_EQ(ssd.size(), 1200U);
+
+  std::string out(kCachedValueSize, '\0');
+  for (const auto& value : ssd) {
+    ASSERT_EQ(store.Read(value.handle, out.data(), out.size()),
+              kCachedValueSize);
+    ASSERT_EQ(out, value.payload);
+  }
+
+  const std::string info = store.ExtraResultFields();
+  const double budget    = TieredField(info, "tiered_cache_budget_bytes");
+  const double bytes     = TieredField(info, "tiered_cache_bytes");
+  EXPECT_DOUBLE_EQ(budget, ratio * static_cast<double>(kCacheDramBytes));
+  EXPECT_LE(bytes, budget);
+  EXPECT_GT(TieredField(info, "tiered_cache_evictions"), 0.0);
+
+  // The most recently promoted values are still resident, so re-reading them
+  // must hit even though the working set is larger than the budget.
+  for (size_t i = ssd.size() - 100; i < ssd.size(); ++i) {
+    ASSERT_EQ(store.Read(ssd[i].handle, out.data(), out.size()),
+              kCachedValueSize);
+    ASSERT_EQ(out, ssd[i].payload);
+  }
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_cache_hits"), 100.0);
+  EXPECT_LE(TieredField(store.ExtraResultFields(), "tiered_cache_bytes"),
+            budget);
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheEvictsLeastRecentlyUsed) {
+  BaseKVConfig config;
+  config.json_config_ = {
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", (root_ / "lru-dram").string()},
+        {"dram_allocator",
+         {{"type", "PERSIST_LOOP_SLAB"},
+          {"capacity_bytes", kCacheDramBytes},
+          {"path", (root_ / "lru-dram").string()}}}}}};
+  DramValueStore dram(config);
+
+  const uint64_t probe = dram.Alloc(kCachedValueSize);
+  ASSERT_NE(probe, kValueHandleNone);
+  const size_t slot = dram.SlotCapacity(probe);
+  dram.Free(probe);
+  ASSERT_GE(slot, kCachedValueSize);
+
+  // One shard and a three-slot budget makes the eviction order observable.
+  TieredReadCache cache(
+      &dram,
+      1,
+      3 * slot,
+      UINT64_MAX,
+      nullptr,
+      /*promote_min_misses=*/1);
+  const std::string a(kCachedValueSize, 'a');
+  const std::string b(kCachedValueSize, 'b');
+  const std::string c(kCachedValueSize, 'c');
+  const std::string d(kCachedValueSize, 'd');
+  cache.Promote(1, a.data(), a.size());
+  cache.Promote(2, b.data(), b.size());
+  cache.Promote(3, c.data(), c.size());
+
+  std::string out(kCachedValueSize, '\0');
+  size_t copied = 0;
+  ASSERT_TRUE(cache.CopyOut(1, out.data(), out.size(), &copied));
+  ASSERT_EQ(out, a);
+
+  cache.Promote(4, d.data(), d.size());
+  EXPECT_EQ(cache.Evictions(), 1U);
+  EXPECT_FALSE(cache.CopyOut(2, out.data(), out.size(), &copied));
+  EXPECT_TRUE(cache.CopyOut(1, out.data(), out.size(), &copied));
+  EXPECT_EQ(out, a);
+  EXPECT_TRUE(cache.CopyOut(3, out.data(), out.size(), &copied));
+  EXPECT_EQ(out, c);
+  EXPECT_TRUE(cache.CopyOut(4, out.data(), out.size(), &copied));
+  EXPECT_EQ(out, d);
+  EXPECT_LE(cache.Bytes(), cache.BudgetBytes());
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheSkipsOversizedValues) {
+  BaseKVConfig config;
+  config.json_config_ = {
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", (root_ / "oversize-dram").string()},
+        {"dram_allocator",
+         {{"type", "PERSIST_LOOP_SLAB"},
+          {"capacity_bytes", kCacheDramBytes},
+          {"path", (root_ / "oversize-dram").string()}}}}}};
+  DramValueStore dram(config);
+  const uint64_t probe = dram.Alloc(kCachedValueSize);
+  ASSERT_NE(probe, kValueHandleNone);
+  const size_t slot = dram.SlotCapacity(probe);
+  dram.Free(probe);
+
+  TieredReadCache cache(
+      &dram,
+      1,
+      slot,
+      UINT64_MAX,
+      nullptr,
+      /*promote_min_misses=*/1);
+  const std::string big(4 * slot, 'x');
+  cache.Promote(7, big.data(), big.size());
+  EXPECT_EQ(cache.Entries(), 0U);
+  EXPECT_EQ(cache.Bytes(), 0U);
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheRespectsTotalDramLimit) {
+  BaseKVConfig config;
+  config.json_config_ = {
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", (root_ / "limit-dram").string()},
+        {"dram_allocator",
+         {{"type", "PERSIST_LOOP_SLAB"},
+          {"capacity_bytes", kCacheDramBytes},
+          {"path", (root_ / "limit-dram").string()}}}}}};
+  DramValueStore dram(config);
+  const uint64_t probe = dram.Alloc(kCachedValueSize);
+  ASSERT_NE(probe, kValueHandleNone);
+  const size_t slot = dram.SlotCapacity(probe);
+  dram.Free(probe);
+
+  std::atomic<uint64_t> reserved{0};
+  const std::string value(kCachedValueSize, 'v');
+  // Budget is generous; the shared watermark is what caps the cache at two
+  // entries, so the third promotion has to evict rather than refuse.
+  TieredReadCache cache(
+      &dram,
+      1,
+      16 * slot,
+      2 * slot,
+      &reserved,
+      /*promote_min_misses=*/1);
+  cache.Promote(1, value.data(), value.size());
+  cache.Promote(2, value.data(), value.size());
+  EXPECT_EQ(cache.Entries(), 2U);
+
+  cache.Promote(3, value.data(), value.size());
+  EXPECT_EQ(cache.Entries(), 2U);
+  EXPECT_EQ(cache.Evictions(), 1U);
+  EXPECT_EQ(cache.AllocFailures(), 0U);
+  EXPECT_LE(cache.Bytes(), 2 * slot);
+  size_t copied = 0;
+  std::string out(kCachedValueSize, '\0');
+  EXPECT_FALSE(cache.CopyOut(1, out.data(), out.size(), &copied));
+  EXPECT_TRUE(cache.CopyOut(3, out.data(), out.size(), &copied));
+
+  // Primary placement holding all the room leaves the cache no capacity, so a
+  // promotion is refused instead of evicting into an allocator that is full.
+  reserved.store(2 * slot);
+  EXPECT_EQ(cache.EffectiveBudgetBytes(), 0U);
+  cache.Promote(4, value.data(), value.size());
+  EXPECT_EQ(cache.Entries(), 2U);
+  EXPECT_EQ(cache.AllocFailures(), 1U);
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheAdmitsOnSecondMiss) {
+  // `promote_min_misses=2` is the admission filter: a key that is missed once
+  // (a scan, a cold tail) must not take a DRAM slot away from a hot entry.
+  HybridValueStore store(TieredStoreConfig(
+      root_, "admit", LruTieringConfig(0.5, 4, /*promote_min_misses=*/2)));
+  const auto ssd = FillUntilSsd(store, 1);
+  ASSERT_EQ(ssd.size(), 1U);
+  const uint64_t handle = ssd.front().handle;
+
+  std::string out(kCachedValueSize, '\0');
+  ASSERT_EQ(store.Read(handle, out.data(), out.size()), kCachedValueSize);
+  ASSERT_EQ(out, ssd.front().payload);
+  std::string info = store.ExtraResultFields();
+  EXPECT_EQ(TieredField(info, "tiered_cache_promotions"), 0.0);
+  EXPECT_EQ(TieredField(info, "tiered_cache_entries"), 0.0);
+  EXPECT_EQ(TieredField(info, "tiered_cache_admission_rejects"), 1.0);
+
+  // Second miss: the key proved it repeats, so it is admitted.
+  ASSERT_EQ(store.Read(handle, out.data(), out.size()), kCachedValueSize);
+  ASSERT_EQ(out, ssd.front().payload);
+  info = store.ExtraResultFields();
+  EXPECT_EQ(TieredField(info, "tiered_cache_promotions"), 1.0);
+  EXPECT_EQ(TieredField(info, "tiered_cache_entries"), 1.0);
+  EXPECT_EQ(TieredField(info, "tiered_cache_admission_rejects"), 1.0);
+
+  // Third read hits, and no further admission work happens.
+  ASSERT_EQ(store.Read(handle, out.data(), out.size()), kCachedValueSize);
+  info = store.ExtraResultFields();
+  EXPECT_EQ(TieredField(info, "tiered_cache_hits"), 1.0);
+  EXPECT_EQ(TieredField(info, "tiered_cache_promotions"), 1.0);
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheAdmissionSampleStaysBounded) {
+  BaseKVConfig config;
+  config.json_config_ = {
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", (root_ / "bounded-dram").string()},
+        {"dram_allocator",
+         {{"type", "PERSIST_LOOP_SLAB"},
+          {"capacity_bytes", kCacheDramBytes},
+          {"path", (root_ / "bounded-dram").string()}}}}}};
+  DramValueStore dram(config);
+  const uint64_t probe = dram.Alloc(kCachedValueSize);
+  ASSERT_NE(probe, kValueHandleNone);
+  const size_t slot = dram.SlotCapacity(probe);
+  dram.Free(probe);
+
+  const std::string value(kCachedValueSize, 'v');
+  // Room for one entry, admission needs two hits: nothing is ever resident, so
+  // the miss sample is the only structure that can grow.
+  TieredReadCache cache(&dram, 1, slot, UINT64_MAX, nullptr, 2);
+  for (uint64_t key = 0; key < 5000; ++key) {
+    cache.Promote(key, value.data(), value.size());
+  }
+  EXPECT_EQ(cache.Entries(), 0U);
+  EXPECT_EQ(cache.Promotions(), 0U);
+  EXPECT_EQ(cache.AdmissionRejects(), 5000U);
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheBatchReadPromotesAndHits) {
+  HybridValueStore store(
+      TieredStoreConfig(root_, "batch", LruTieringConfig(0.5, 4)));
+  const auto ssd = FillUntilSsd(store, 2);
+  ASSERT_EQ(ssd.size(), 2U);
+
+  const std::vector<uint64_t> handles = {
+      ssd[0].handle, ssd[1].handle, ssd[0].handle};
+  std::vector<ValueStore::ReadResult> results;
+  store.BatchRead(handles, results);
+  ASSERT_EQ(results.size(), handles.size());
+  EXPECT_EQ(std::string(results[0].data.begin(), results[0].data.end()),
+            ssd[0].payload);
+  EXPECT_EQ(std::string(results[1].data.begin(), results[1].data.end()),
+            ssd[1].payload);
+  EXPECT_EQ(std::string(results[2].data.begin(), results[2].data.end()),
+            ssd[0].payload);
+
+  std::string info = store.ExtraResultFields();
+  EXPECT_EQ(TieredField(info, "tiered_cache_promotions"), 2.0);
+  EXPECT_EQ(TieredField(info, "tiered_cache_entries"), 2.0);
+
+  store.BatchRead(handles, results);
+  ASSERT_EQ(results.size(), handles.size());
+  EXPECT_EQ(std::string(results[0].data.begin(), results[0].data.end()),
+            ssd[0].payload);
+  info = store.ExtraResultFields();
+  EXPECT_EQ(TieredField(info, "tiered_cache_hits"), 3.0);
+  EXPECT_EQ(TieredField(info, "tiered_cache_promotions"), 2.0);
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheIsOffUnlessConfigured) {
+  HybridValueStore store(TieredStoreConfig(root_, "nocache", json::object()));
+  const auto ssd = FillUntilSsd(store, 1);
+  ASSERT_EQ(ssd.size(), 1U);
+
+  std::string out(kCachedValueSize, '\0');
+  EXPECT_EQ(store.Read(ssd.front().handle, out.data(), out.size()),
+            kCachedValueSize);
+  EXPECT_EQ(out, ssd.front().payload);
+
+  const std::string info = store.ExtraResultFields();
+  EXPECT_NE(info.find("tiered_cache_policy=none"), std::string::npos);
+  EXPECT_EQ(info.find("tiered_cache_hits"), std::string::npos);
+  // Without a cache the whole DRAM layer stays available to primary placement.
+  EXPECT_EQ(TieredField(info, "tiered_dram_placement_bytes"),
+            static_cast<double>(kCacheDramBytes));
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheConcurrentReadsStayCoherent) {
+  HybridValueStore store(
+      TieredStoreConfig(root_, "concurrent", LruTieringConfig(0.5, 8)));
+  const auto ssd = FillUntilSsd(store, 4);
+  ASSERT_EQ(ssd.size(), 4U);
+
+  std::atomic<int> mismatches{0};
+  std::vector<std::thread> threads;
+  constexpr int kThreads = 4;
+  constexpr int kReads   = 200;
+  for (int t = 0; t < kThreads; ++t) {
+    threads.emplace_back([&store, &ssd, &mismatches, t] {
+      std::string out(kCachedValueSize, '\0');
+      for (int i = 0; i < kReads; ++i) {
+        const auto& value = ssd[static_cast<size_t>(t + i) % ssd.size()];
+        if (store.Read(value.handle, out.data(), out.size()) !=
+                kCachedValueSize ||
+            out != value.payload) {
+          mismatches.fetch_add(1, std::memory_order_relaxed);
+        }
+      }
+    });
+  }
+  for (auto& thread : threads) {
+    thread.join();
+  }
+  EXPECT_EQ(mismatches.load(), 0);
+
+  const std::string info = store.ExtraResultFields();
+  EXPECT_EQ(TieredField(info, "tiered_cache_hits") +
+                TieredField(info, "tiered_cache_misses"),
+            static_cast<double>(kThreads * kReads));
+  EXPECT_LE(TieredField(info, "tiered_cache_bytes"),
+            TieredField(info, "tiered_cache_budget_bytes"));
 }
 
 } // namespace
