@@ -26,6 +26,9 @@
 #include "storage/kv_engine/engine_selector.h"
 #include "storage/ssd_layout/ssd_layout.h"
 
+// Defined in kv_engine_register.cc; see the call site for why it exists.
+extern "C" void RecStoreForceLinkKVEngineRegistrations();
+
 DEFINE_string(
     dram_path,
     "",
@@ -740,6 +743,9 @@ void ReplayQueryLog(BaseKV* kv) {
 } // namespace
 
 int RunBenchmark(int argc, char* argv[]) {
+  // Static builds drop the registration translation unit unless it is
+  // referenced; shared builds get it through --no-as-needed.
+  RecStoreForceLinkKVEngineRegistrations();
   ForceLinkIOBackends();
   base::Init(&argc, &argv);
 
