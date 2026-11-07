@@ -88,30 +88,6 @@ base_kv_.reset(base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
 
 `BatchPut` 对同一批次内重复 key 会退回逐条 `Put`，避免覆盖顺序不确定。其他引擎的语义以各自实现为准，见 [basekv.md](./basekv.md)。
 
-## 数据生命周期与容量语义
-
-RecStore 的存储层不是持久化数据库。当前实现的 backing 分两类：
-
-| 组件 | 实际 backing | 跨进程共享 | 进程退出后保留 |
-|------|--------------|:----------:|:--------------:|
-| `DRAM_VALUE_STORE`、`KVEnginePetKV`、所有 DRAM allocator | `mmap(MAP_PRIVATE \| MAP_ANONYMOUS)`（`AnonyDramShmFile`） | 否 | 否 |
-| `SSD_VALUE_STORE`、SSD 索引、`SSD_SLAB` / `SSD_BUDDY` | 打开或创建普通文件（`O_RDWR \| O_CREAT \| O_DIRECT`） | 是 | 文件保留，但无一致性保证 |
-| `TIERED_VALUE_STORE` | DRAM 部分同第一行；SSD 部分同第二行 | 部分 | 仅 SSD 文件 |
-
-- 配置里的 `value.path` / `dram_allocator.path` 只是 mmap 的名字，**不会创建文件**，不要把它当持久化路径。
-- SSD 文件不会自动删除，但写入没有 checkpoint/fsync 语义；把文件内容当成可恢复状态不受支持。
-- PetKV 的 `path` 下同样是匿名 DRAM mmap（medium 固定为 `DRAM`）。`Persistence=true` 会调用
-  `clflushopt_range`，但 `clflushopt()` 当前第一行就是 `return;`，所以 **flush 是空操作**，
-  PetKV 不能当持久内存使用。
-- 槽位只做分配和释放，没有在介质之间迁移 key 的后台任务。
-
-容量方面：
-
-- 覆盖写先分配新 slot，再 `Index::Put`，旧 handle 交给 `Retire`；瞬时容量需求是旧值 + 新值。
-- `TIERED_VALUE_STORE` 在 DRAM 超过 `high_watermark_ratio` 后写 SSD；写入后不再迁移。
-- 目标介质分配失败时，`KVEngineComposite` 的 `Put` / `BatchPut` / `BulkLoad` 走 `LOG(FATAL)`，
-  进程终止；没有淘汰、降级或返回错误的路径。
-
 ## 文档索引
 
 | 文档 | 内容 |

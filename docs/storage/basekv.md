@@ -31,7 +31,6 @@ class BaseKV {
 | `Put` / `BatchPut` | `KVEngineComposite` 支持变长 value；FasterKV / HPS 等常为固定 `value_size` |
 | `BulkLoad` | 需配置固定 value 字节数（Composite 用 `value.default_value_size_hint`） |
 | `tid` | 保留给调用方；Composite 主要依赖组件内部同步，勿假设 `tid` 全局唯一 |
-| `clear` | 各引擎自行实现；不支持时只打印错误。PetKV 明确不支持，需要重建参数服务器 |
 
 ## 配置与创建
 
@@ -101,15 +100,6 @@ base_kv_.reset(base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
 ```
 
 `BatchGet` 行为受 gflag `prefetch_method` 控制：`0` 逐 key `Get`，`1` 走 `PetMultiKV::BatchGet`。
-
-PetKV 的三点限制：
-
-- backing 是匿名 DRAM mmap（`ShmFile` 的 medium 固定为 `DRAM`），不跨进程、进程退出后不保留；
-  `path` 只是 mmap 的名字。
-- `Persistence=true` 会触发 `clflushopt_range`，但 `clflushopt()` 当前第一行就是 `return;`，
-  因此 flush 实际是空操作。
-- 不支持 checkpoint：`SaveCheckpoint` / `LoadCheckpoint` 返回 `false` 并打印
-  `KVEnginePetKV does not support ...`；`clear()` 同样只打印错误，需要重建参数服务器才能清空。
 
 ---
 
