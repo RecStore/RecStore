@@ -1064,7 +1064,10 @@ private:
     }
 
     const bool ok = cache_ps_->UpdateParameter(
-        std::string(table_name), reader, static_cast<unsigned>(thread_id));
+        std::string(table_name),
+        reader,
+        static_cast<unsigned>(thread_id),
+        descriptor.learning_rate);
     response->status->status = static_cast<std::int32_t>(
         ok ? petps::RpcStatus::kOk : petps::RpcStatus::kInvalidPayload);
     response->status->response_bytes = 0;
@@ -1095,7 +1098,8 @@ private:
         grads,
         descriptor.key_count,
         descriptor.embedding_dim,
-        static_cast<unsigned>(thread_id));
+        static_cast<unsigned>(thread_id),
+        descriptor.learning_rate);
     response->status->status = static_cast<std::int32_t>(
         ok ? petps::RpcStatus::kOk : petps::RpcStatus::kInvalidPayload);
     response->status->response_bytes = 0;

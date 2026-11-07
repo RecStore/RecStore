@@ -17,7 +17,7 @@ class RecordingKVClient:
     def current_ps_backend(self):
         return self.backend
 
-    def update_async(self, name, ids, grads):
+    def update_async(self, name, ids, grads, learning_rate=0.0):
         self.calls.append((name, ids.detach().clone(), grads.detach().clone()))
         return len(self.calls)
 

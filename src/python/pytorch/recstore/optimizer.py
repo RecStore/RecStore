@@ -226,7 +226,9 @@ def _process_generic_module_with_trace(
         trace_done = perf_counter()
         _record_table_update_mode(module_kv_client, name, _SERVER_UPDATE_MODE)
         # Backend sparse optimizers own learning-rate application for these modules.
-        handle = module_kv_client.update_async(name=name, ids=update_ids, grads=update_grads)
+        handle = module_kv_client.update_async(
+            name=name, ids=update_ids, grads=update_grads, learning_rate=float(lr)
+        )
         update_done = perf_counter()
         if hasattr(module_kv_client, "_perf_add"):
             module_kv_client._perf_add(
@@ -457,6 +459,7 @@ def _process_generic_module_with_trace_single_node_distributed(
             name=name,
             ids=owner_unique_ids,
             grads=owner_summed_grads,
+            learning_rate=float(lr),
         )
         payloads.append(
             {
@@ -519,6 +522,7 @@ def _process_generic_module_with_trace_shared_local_shm_single_table(
             name=name,
             ids=local_unique_ids,
             grads=local_summed_grads,
+            learning_rate=float(lr),
         )
         update_done = perf_counter()
         if hasattr(module_kv_client, "_perf_add"):

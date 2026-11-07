@@ -881,7 +881,13 @@ class ShardedRecstoreClient:
             "lookup_values_h2d_enqueue_ms": float(values[6]),
         }
 
-    def local_update_flat(self, name: str, ids: torch.Tensor, grads: torch.Tensor) -> None:
+    def local_update_flat(
+        self,
+        name: str,
+        ids: torch.Tensor,
+        grads: torch.Tensor,
+        learning_rate: float = 0.0,
+    ) -> None:
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
         self._require_active_shard("local_update_flat")
@@ -898,7 +904,9 @@ class ShardedRecstoreClient:
             raise ValueError(
                 f"grads second dimension must match embedding dim {embedding_dim} for tensor '{name}'"
             )
-        self._client.ops.local_update_flat(name, normalized_ids, normalized_grads)
+        self._client.ops.local_update_flat(
+            name, normalized_ids, normalized_grads, float(learning_rate)
+        )
         if normalized_ids.device.type == "cpu":
             self._clear_gpu_cache_if_available()
 
@@ -943,7 +951,13 @@ class ShardedRecstoreClient:
     def sparse_gradient_commit_close(self, name, **kwargs):
         self._client.sparse_gradient_commit_close(name, **kwargs)
 
-    def emb_update_table(self, table_name: str, keys: torch.Tensor, grads: torch.Tensor) -> None:
+    def emb_update_table(
+        self,
+        table_name: str,
+        keys: torch.Tensor,
+        grads: torch.Tensor,
+        learning_rate: float = 0.0,
+    ) -> None:
         if keys.numel() == 0:
             return
         if self._uses_native_distributed_backend():
@@ -951,13 +965,16 @@ class ShardedRecstoreClient:
                 table_name,
                 self._normalize_ids(keys),
                 self._normalize_grads(grads),
+                float(learning_rate),
             )
             return
         for shard, index_tensor in self._group_indices(keys):
             self._activate_shard(shard)
             shard_keys = keys.index_select(0, index_tensor).contiguous()
             shard_grads = grads.index_select(0, index_tensor).contiguous()
-            self._client.emb_update_table(table_name, shard_keys, shard_grads)
+            self._client.emb_update_table(
+                table_name, shard_keys, shard_grads, float(learning_rate)
+            )
 
     def emb_write_values(self, name: str, ids: torch.Tensor, values: torch.Tensor) -> None:
         """Write (set) embedding values directly to the PS for a subset of
@@ -1159,7 +1176,13 @@ class ShardedRecstoreClient:
             out = out.to(device)
         return out
 
-    def update_async(self, name: str, ids: torch.Tensor, grads: torch.Tensor) -> int:
+    def update_async(
+        self,
+        name: str,
+        ids: torch.Tensor,
+        grads: torch.Tensor,
+        learning_rate: float = 0.0,
+    ) -> int:
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor {name} has not been initialized.")
         normalized_ids = self._normalize_ids(ids, keep_device=True)
@@ -1168,14 +1191,19 @@ class ShardedRecstoreClient:
             raise RuntimeError("ids and grads must have the same number of rows for update_async")
         handle = self._next_async_handle
         self._next_async_handle += 1
-        self._pending_async_ops[handle] = (name, normalized_ids, normalized_grads)
+        self._pending_async_ops[handle] = (
+            name,
+            normalized_ids,
+            normalized_grads,
+            float(learning_rate),
+        )
         return handle
 
     def wait(self, handle: int) -> None:
         pending = self._pending_async_ops.pop(int(handle), None)
         if pending is None:
             return
-        name, ids, grads = pending
+        name, ids, grads, learning_rate = pending
         if ids.numel() == 0:
             return
         updated_on_cpu = ids.device.type == "cpu"
@@ -1184,13 +1212,14 @@ class ShardedRecstoreClient:
                 name,
                 self._normalize_ids(ids),
                 self._normalize_grads(grads),
+                learning_rate,
             )
             if updated_on_cpu and self._clear_gpu_cache_after_cpu_update:
                 self._clear_gpu_cache_if_available()
             return
         for shard, index_tensor, shard_keys in self._group_ids_by_shard(
             ids,
-            keep_key_device=True,
+            keep_device=True,
         ):
             if grads.device.type != "cpu":
                 grad_index = index_tensor.to(grads.device)
@@ -1198,6 +1227,8 @@ class ShardedRecstoreClient:
                 grad_index = index_tensor
             shard_grads = grads.index_select(0, grad_index).contiguous()
             self._activate_shard(shard)
-            self._client.emb_update_table(name, shard_keys, shard_grads)
+            self._client.emb_update_table(
+                name, shard_keys, shard_grads, learning_rate
+            )
         if updated_on_cpu and self._clear_gpu_cache_after_cpu_update:
             self._clear_gpu_cache_if_available()

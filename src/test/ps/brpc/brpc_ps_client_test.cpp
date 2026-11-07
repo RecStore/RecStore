@@ -194,6 +194,24 @@ void TestAsyncReadWriteConcurrency() {
   CHECK(client.ClearPS());
 }
 
+void TestLearningRateGuard() {
+  std::cout << "\n=== Testing bRPC Learning Rate Guard ===" << std::endl;
+
+  BRPCParameterClient client("127.0.0.1", kBrpcTestPort0, 1);
+  CHECK(client.InitEmbeddingTable("lr_guard", {128, 4}) >= 0);
+
+  std::vector<uint64_t> keys = {1, 2};
+  std::vector<float> flat(8, 0.1f);
+  base::RecTensor grads(flat.data(), {2, 4});
+  base::ConstArray<uint64_t> keys_array(keys);
+
+  // The test server uses the default SGD learning rate (0.01).
+  CHECK(client.UpdateParameter("lr_guard", keys_array, grads, 0.01f) == 0);
+  CHECK(client.UpdateParameter("lr_guard", keys_array, grads, 0.02f) == -1);
+  // 0 means "not advertised" and keeps the legacy behaviour.
+  CHECK(client.UpdateParameter("lr_guard", keys_array, grads) == 0);
+}
+
 void TestCheckpointUnsupported() {
   std::cout << "\n=== Testing bRPC Checkpoint Unsupported ===" << std::endl;
 
@@ -223,6 +241,7 @@ int main(int argc, char** argv) {
     TestPrefetch();
     TestAsyncReadWriteConcurrency();
     TestCheckpointUnsupported();
+    TestLearningRateGuard();
 
     std::cout << "\nAll bRPC tests passed." << std::endl;
   } catch (const std::exception& e) {
