@@ -334,14 +334,35 @@ class EvaluationTest(unittest.TestCase):
             metrics=(metric("throughput"),),
         )
         env = {"cmake_cache": {"CMAKE_BUILD_TYPE": "Release"}}
-        matching = {"resolution_hint": {"thread_num": 4}, "cmake_cache": env["cmake_cache"]}
+        matching = {
+            "resolution_hint": {"thread_num": 4},
+            "repeats": 1,
+            "cmake_cache": env["cmake_cache"],
+        }
         self.assertIsNone(perf_suite.baseline_mismatch(matching, case, env))
-        changed_params = {"resolution_hint": {"thread_num": 64}, "cmake_cache": env["cmake_cache"]}
+        changed_params = {
+            "resolution_hint": {"thread_num": 64},
+            "repeats": 1,
+            "cmake_cache": env["cmake_cache"],
+        }
         self.assertEqual(
             perf_suite.baseline_mismatch(changed_params, case, env),
             "workload parameters changed",
         )
-        changed_build = {"resolution_hint": {"thread_num": 4}, "cmake_cache": {}}
+        changed_repeats = {
+            "resolution_hint": {"thread_num": 4},
+            "repeats": 3,
+            "cmake_cache": env["cmake_cache"],
+        }
+        self.assertEqual(
+            perf_suite.baseline_mismatch(changed_repeats, case, env),
+            "repeat count changed",
+        )
+        changed_build = {
+            "resolution_hint": {"thread_num": 4},
+            "repeats": 1,
+            "cmake_cache": {},
+        }
         self.assertEqual(
             perf_suite.baseline_mismatch(changed_build, case, env),
             "cmake cache changed",
