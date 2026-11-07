@@ -194,6 +194,16 @@ void TestAsyncReadWriteConcurrency() {
   CHECK(client.ClearPS());
 }
 
+void TestCheckpointUnsupported() {
+  std::cout << "\n=== Testing bRPC Checkpoint Unsupported ===" << std::endl;
+
+  BRPCParameterClient client("127.0.0.1", kBrpcTestPort0, 1);
+  CHECK(!client.SaveCheckpoint("/tmp/recstore-brpc-checkpoint", "{}"));
+  CHECK(!client.LoadCheckpoint("/tmp/recstore-brpc-checkpoint", "{}"));
+
+  std::cout << "Checkpoint unsupported path reported as expected." << std::endl;
+}
+
 int main(int argc, char** argv) {
   base::Init(&argc, &argv);
   xmh::Reporter::StartReportThread(2000);
@@ -212,6 +222,7 @@ int main(int argc, char** argv) {
     TestDirectClient();
     TestPrefetch();
     TestAsyncReadWriteConcurrency();
+    TestCheckpointUnsupported();
 
     std::cout << "\nAll bRPC tests passed." << std::endl;
   } catch (const std::exception& e) {
