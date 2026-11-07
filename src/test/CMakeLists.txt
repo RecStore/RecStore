@@ -739,24 +739,46 @@ set_tests_properties(
 add_recstore_unittest(
     test_recstore_client_py
     recstore.unittest.test_bagpipe_cache
-    recstore.unittest.test_bagpipe_planned
     recstore.unittest.test_dist_emb
     recstore.unittest.test_embedding_collection
     recstore.unittest.test_embedding_read_path
     recstore.unittest.test_embeddingbag_prefetch_state
-    recstore.unittest.test_fused_prefetch
     recstore.unittest.test_kvclient_native_distributed
     recstore.unittest.test_logical_shard_router
     recstore.unittest.test_prefetch_strict_mode
-    recstore.unittest.test_shared_fused_namespace
     recstore.unittest.test_single_node_exchange
-    recstore.unittest.test_sparse_optimizer_staging
-    recstore.unittest.test_step_consistency
 )
 set_tests_properties(test_recstore_client_py PROPERTIES
     LABELS "python;sparse;bagpipe"
     TIMEOUT 300
 )
+
+# These modules import torchrec or its KJT types at module/test scope. The CI
+# image does not install torchrec, so register them only where it is available.
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} -c "import torchrec"
+    RESULT_VARIABLE RECSTORE_TORCHREC_IMPORT_RESULT
+    OUTPUT_QUIET
+    ERROR_QUIET
+)
+if(RECSTORE_TORCHREC_IMPORT_RESULT EQUAL 0)
+    add_recstore_unittest(
+        test_recstore_torchrec_py
+        recstore.unittest.test_bagpipe_planned
+        recstore.unittest.test_fused_prefetch
+        recstore.unittest.test_shared_fused_namespace
+        recstore.unittest.test_sparse_optimizer_staging
+        recstore.unittest.test_step_consistency
+    )
+    set_tests_properties(test_recstore_torchrec_py PROPERTIES
+        LABELS "python;sparse;torchrec"
+        TIMEOUT 300
+    )
+else()
+    message(STATUS
+        "Skipping test_recstore_torchrec_py: torchrec is unavailable."
+    )
+endif()
 
 # Multi-round EBC precision harness; pure Python with fake ops.
 add_recstore_unittest(
