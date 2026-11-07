@@ -115,7 +115,7 @@ SSD 索引创建 `IOBackend` 前的配置映射：
 | `SSD_VALUE_STORE` | `ssd_allocator` 必填；不接受 `dram_allocator`；文件路径为 `value.path` |
 | `TIERED_VALUE_STORE` | 两者必填；SSD 路径在 `ssd_allocator.path`；DRAM 路径可选 `dram_allocator.path`（常为 `/dev/shm/...`） |
 
-**Tiering**：`HybridValueStore` 在 `dram_bytes_reserved + size <= capacity * high_watermark_ratio`（默认 `0.85`）时优先 DRAM，否则 SSD；handle 最高位标记介质。**无后台冷热迁移**。
+**Tiering**：`HybridValueStore` 在 `dram_bytes_reserved + size <= capacity * high_watermark_ratio`（默认 `0.85`）时优先 DRAM，否则 SSD；handle 最高位标记介质。**没有后台冷热迁移线程**；可选的读缓存（`tiering.cache_policy`）只把读到的 SSD value 在同步路径上提升进 DRAM，见下文。
 
 ---
 
@@ -186,7 +186,17 @@ SSD 索引创建 `IOBackend` 前的配置映射：
 
 Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 checkpoint 只能恢复到 plain engine；identity 不一致时拒绝加载，不会静默退回 plain。
 
-`TIERED_VALUE_STORE` 可以把静态 store 当作 SSD 子 store。DRAM 选择仍是现有高水位：`dram_bytes_reserved + size <= capacity * high_watermark_ratio`。这里没有 LRU，也没有 SSD miss 后的 promotion。
+`TIERED_VALUE_STORE` 可以把静态 store 当作 SSD 子 store。DRAM 选择仍是现有高水位：`dram_bytes_reserved + size <= capacity * high_watermark_ratio`。
+
+读缓存通过 `tiering.cache_policy` 打开，默认 `none`（关闭）。设为 `lru`（大小写不敏感）后：
+
+| 字段 | 默认 | 含义 |
+|------|------|------|
+| `cache_budget_ratio` | `0.05` | 预留为读缓存的 DRAM 比例，范围 `(0, 1]` |
+| `promote_min_misses` | `2` | 同一 key 连续 miss 多少次后，读完成时把 SSD value 提升进缓存 |
+| `cache_shards` | `16` | 缓存分片数，按 key 散列 |
+
+缓存预算是**预扣**的：打开后主放置上限变成 `high_watermark * (capacity - budget)`，主放置与缓存共享同一份 DRAM 水位，不是额外内存。提升发生在读完成后（同步），只缓存从 SSD 读到的 value；写会同步更新缓存里的值（`WriteThrough`），`Free` 会让该 key 的缓存失效。`Statistics` 输出 `tiered_cache_*` 计数，其中 `tiered_cache_stale_promotions` 表示因并发写而被拒绝的提升次数。
 
 ---
 
@@ -247,7 +257,13 @@ Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 c
         "base_offset_bytes": 4096
       }
     },
-    "tiering": { "high_watermark_ratio": 0.85 }
+    "tiering": {
+      "high_watermark_ratio": 0.85,
+      "cache_policy": "none",
+      "cache_budget_ratio": 0.05,
+      "promote_min_misses": 2,
+      "cache_shards": 16
+    }
   }
 }
 ```
