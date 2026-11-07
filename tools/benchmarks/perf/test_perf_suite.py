@@ -499,6 +499,7 @@ class RegistryTest(unittest.TestCase):
                     # Re-registering a case with other params must be visible here,
                     # not silently reported as a mismatch at runtime.
                     self.assertEqual(payload["resolution_hint"], case.params)
+                    self.assertEqual(payload["repeats"], case.repeats)
 
     def test_selection_rejects_unknown_id(self) -> None:
         with self.assertRaises(perf_suite.SuiteError):
