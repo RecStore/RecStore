@@ -157,6 +157,11 @@ add_executable(test_bagpipe_metadata test_bagpipe_metadata.cpp)
 target_link_libraries(test_bagpipe_metadata PRIVATE gtest gtest_main)
 add_test(NAME test_bagpipe_metadata COMMAND test_bagpipe_metadata)
 
+# Single-shard listen-address selection shared by the gRPC and bRPC servers.
+add_executable(test_shard_endpoint test_shard_endpoint.cpp)
+target_link_libraries(test_shard_endpoint PRIVATE base gtest gtest_main pthread)
+add_test(NAME test_shard_endpoint COMMAND test_shard_endpoint)
+
 add_executable(test_optimizer test_optimizer.cpp)
 target_link_libraries(test_optimizer PUBLIC
     sparse_tensor
