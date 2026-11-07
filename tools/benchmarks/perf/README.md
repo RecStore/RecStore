@@ -93,7 +93,9 @@ pinned cores, load average and binary hash it should not be quoted.
 ## Baselines
 
 Baselines live in `baselines/<env-id>/<case-id>.json`, one bucket per machine
-(`env-id` defaults to `<hostname>-<cpu-model>`). Rules:
+(`env-id` defaults to `<hostname>-<cpu-model>`; the committed reference bucket is
+`node190-intel-r-xeon-r-gold-5420`). Pass `--env-id` only to use a different
+alias deliberately. Rules:
 
 - A new machine means a new bucket; never edit an old machine's baseline.
 - Baselines are only updated by an explicit `--write-baseline` run whose diff is
