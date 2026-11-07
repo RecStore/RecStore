@@ -42,7 +42,7 @@ RECSTORE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../s
 if RECSTORE_PATH not in sys.path:
     sys.path.insert(0, RECSTORE_PATH)
 
-from python.pytorch.torchrec.EmbeddingBag import RecStoreEmbeddingBagCollection
+from python.pytorch.torchrec_kv.EmbeddingBag import RecStoreEmbeddingBagCollection
 
 # OSS import
 try:
