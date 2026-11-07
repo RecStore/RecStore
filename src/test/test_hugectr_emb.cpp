@@ -159,7 +159,6 @@ static void maybe_test_hierkv_selection() {
 {
   "cache_ps": {
     "ps_type": "BRPC",
-    "max_batch_keys_size": 65536,
     "num_threads": 32,
     "num_shards": 1,
     "servers": [{"host": "127.0.0.1", "port": 15123, "shard": 0}],
