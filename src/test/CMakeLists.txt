@@ -277,6 +277,18 @@ target_link_libraries(test_kvengine_checkpoint PUBLIC
 )
 add_test(NAME test_kvengine_checkpoint COMMAND test_kvengine_checkpoint)
 
+add_executable(test_petkv_unsupported test_petkv_unsupported.cpp)
+target_link_libraries(test_petkv_unsupported PUBLIC
+    kv_engine
+    base
+    base_memory
+    gtest
+    gtest_main
+    pthread
+)
+add_test(NAME test_petkv_unsupported COMMAND test_petkv_unsupported)
+set_tests_properties(test_petkv_unsupported PROPERTIES TIMEOUT 60)
+
 if(TARGET hps_backend_support)
     add_executable(test_hps_recstore_backend
         test_hps_recstore_backend.cpp
