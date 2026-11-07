@@ -3280,7 +3280,7 @@
 </tr>
 </tbody>
 </table>
-<p><strong>Tiering</strong>：<code>HybridValueStore</code> 在 <code>dram_bytes_reserved + size &lt;= capacity * high_watermark_ratio</code>（默认 <code>0.85</code>）时优先 DRAM，否则 SSD；handle 最高位标记介质。<strong>无后台冷热迁移</strong>。</p>
+<p><strong>Tiering</strong>：<code>HybridValueStore</code> 在 <code>dram_bytes_reserved + size &lt;= capacity * high_watermark_ratio</code>（默认 <code>0.85</code>）时优先 DRAM，否则 SSD；handle 最高位标记介质。<strong>没有后台冷热迁移线程</strong>；可选的读缓存（<code>tiering.cache_policy</code>）只把读到的 SSD value 在同步路径上提升进 DRAM，见下文。</p>
 <hr />
 <h2 id="iobackendiotype">IOBackend（<code>*.io.type</code>）<a class="headerlink" href="#iobackendiotype" title="Permanent link">&para;</a></h2>
 <table>
@@ -3417,7 +3417,35 @@
 <p>离线命令是 <code>recstore_ssd_layout partition|replicate|shrink|inspect</code>。<code>bandana</code> 只跑 partition；<code>maxembed</code> 在 partition 之后跑 replicate，需要更低副本率时再 shrink。运行时加载 artifact，并要求 <code>strategy</code> 和 <code>default_value_size_hint</code> 与文件一致。输入和 artifact 字节布局见 <a href="https://github.com/RecStore/RecStore/blob/main/src/storage/ssd_layout/ssd_layout.md">ssd_layout.md</a>。</p>
 <p>固定槽位不会 <code>Alloc</code> 或 <code>Free</code>。更新覆盖该 key 的全部副本；mapping 中没有的 key、变长 value 会直接失败。换 strategy 或 artifact 不能热切换，必须用空 engine 重新 <code>BulkLoad</code> 或 <code>LoadCheckpoint</code>。</p>
 <p>Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 checkpoint 只能恢复到 plain engine；identity 不一致时拒绝加载，不会静默退回 plain。</p>
-<p><code>TIERED_VALUE_STORE</code> 可以把静态 store 当作 SSD 子 store。DRAM 选择仍是现有高水位：<code>dram_bytes_reserved + size &lt;= capacity * high_watermark_ratio</code>。这里没有 LRU，也没有 SSD miss 后的 promotion。</p>
+<p><code>TIERED_VALUE_STORE</code> 可以把静态 store 当作 SSD 子 store。DRAM 选择仍是现有高水位：<code>dram_bytes_reserved + size &lt;= capacity * high_watermark_ratio</code>。</p>
+<p>读缓存通过 <code>tiering.cache_policy</code> 打开，默认 <code>none</code>（关闭）。设为 <code>lru</code>（大小写不敏感）后：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>默认</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cache_budget_ratio</code></td>
+<td><code>0.05</code></td>
+<td>预留为读缓存的 DRAM 比例，范围 <code>(0, 1]</code></td>
+</tr>
+<tr>
+<td><code>promote_min_misses</code></td>
+<td><code>2</code></td>
+<td>同一 key 连续 miss 多少次后，读完成时把 SSD value 提升进缓存</td>
+</tr>
+<tr>
+<td><code>cache_shards</code></td>
+<td><code>16</code></td>
+<td>缓存分片数，按 key 散列</td>
+</tr>
+</tbody>
+</table>
+<p>缓存预算是<strong>预扣</strong>的：打开后主放置上限变成 <code>high_watermark * (capacity - budget)</code>，主放置与缓存共享同一份 DRAM 水位，不是额外内存。提升发生在读完成后（同步），只缓存从 SSD 读到的 value；写会同步更新缓存里的值（<code>WriteThrough</code>），<code>Free</code> 会让该 key 的缓存失效。<code>Statistics</code> 输出 <code>tiered_cache_*</code> 计数，其中 <code>tiered_cache_stale_promotions</code> 表示因并发写而被拒绝的提升次数。</p>
 <hr />
 <h2 id="_6">配置样例<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <p><strong>DRAM + DRAM（仓库默认组合）</strong></p>
@@ -3468,9 +3496,15 @@
 <a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="w">        </span><span class="nt">"base_offset_bytes"</span><span class="p">:</span><span class="w"> </span><span class="mi">4096</span>
 <a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="w">      </span><span class="p">}</span>
 <a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="w">    </span><span class="p">},</span>
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="w">    </span><span class="nt">"tiering"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"high_watermark_ratio"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.85</span><span class="w"> </span><span class="p">}</span>
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a><span class="p">}</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="w">    </span><span class="nt">"tiering"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="w">      </span><span class="nt">"high_watermark_ratio"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.85</span><span class="p">,</span>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a><span class="w">      </span><span class="nt">"cache_policy"</span><span class="p">:</span><span class="w"> </span><span class="s2">"none"</span><span class="p">,</span>
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="w">      </span><span class="nt">"cache_budget_ratio"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.05</span><span class="p">,</span>
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a><span class="w">      </span><span class="nt">"promote_min_misses"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="w">      </span><span class="nt">"cache_shards"</span><span class="p">:</span><span class="w"> </span><span class="mi">16</span>
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a><span class="p">}</span>
 </code></pre></div>
 <p><strong>SSD index + SSD value</strong></p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
