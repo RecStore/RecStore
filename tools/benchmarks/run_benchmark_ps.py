@@ -358,7 +358,6 @@ def build_runtime_config(
     config = {
         "cache_ps": {
             "ps_type": ps_type,
-            "max_batch_keys_size": max_keys_per_request,
             "num_threads": num_threads,
             "num_shards": len(topology.server_plan),
             "servers": servers,

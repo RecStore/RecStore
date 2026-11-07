@@ -4,6 +4,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <future>
@@ -42,9 +43,48 @@ using recstoreps::UpdateParameterResponse;
 
 namespace {
 
-void SetRpcDeadline(grpc::ClientContext* context, int timeout_ms = 15000) {
+constexpr int kDefaultRpcDeadlineMs   = 15000;
+constexpr int kPrefetchPollIntervalMs = 200;
+constexpr int kPrefetchMaxIdleRounds  = 150; // 200 ms * 150 = 30 s
+
+void SetRpcDeadline(grpc::ClientContext* context,
+                    int timeout_ms = kDefaultRpcDeadlineMs) {
   context->set_deadline(
       std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms));
+}
+
+// Records the first failure of a prefetch batch. Later errors are ignored so
+// the reported cause stays the one that actually invalidated the responses.
+void MarkPrefetchFailed(PrefetchBatch* batch, const std::string& message) {
+  if (!batch->failed_) {
+    batch->failed_ = true;
+    batch->error_  = message;
+  }
+  LOG(ERROR) << "Prefetch failed: " << message;
+}
+
+// Consumes one completion event from a prefetch batch. Both transport
+// failures (ok == false) and non-OK RPC statuses invalidate the batch.
+void ConsumePrefetchCompletion(PrefetchBatch* batch, void* tag, bool ok) {
+  const auto index = reinterpret_cast<intptr_t>(tag);
+  if (index < 0 || index >= batch->batch_size_) {
+    MarkPrefetchFailed(
+        batch, fmt::format("unexpected completion tag {}", index));
+    return;
+  }
+  if (!ok) {
+    MarkPrefetchFailed(
+        batch, fmt::format("RPC for request {} did not complete", index));
+  } else if (!batch->status_[index].ok()) {
+    const grpc::Status& status = batch->status_[index];
+    MarkPrefetchFailed(
+        batch,
+        fmt::format("RPC for request {} failed: {} {}",
+                    index,
+                    static_cast<int>(status.error_code()),
+                    status.error_message()));
+  }
+  batch->completed_count_++;
 }
 
 } // namespace
@@ -164,22 +204,47 @@ int GRPCParameterClient::GetParameter(const base::ConstArray<uint64_t>& keys,
     if (!get_param_contexts_[index]) {
       get_param_contexts_[index] = std::make_unique<grpc::ClientContext>();
     }
+    SetRpcDeadline(get_param_contexts_[index].get());
     get_param_resonse_readers_.emplace_back(stubs_[0]->AsyncGetParameter(
         get_param_contexts_[index].get(), request, cq_.get()));
     auto& rpc = get_param_resonse_readers_.back();
     // GetParameter(&context, request, &response);
-    rpc->Finish(&response, &status, reinterpret_cast<void*>(index));
+    rpc->Finish(&response,
+                &status,
+                reinterpret_cast<void*>(static_cast<intptr_t>(index)));
   }
 
-  int get = 0;
-  while (get != request_num) {
-    void* got_tag;
-    bool ok = false;
-    cq_->Next(&got_tag, &ok);
-    if (unlikely(!ok)) {
-      LOG(ERROR) << "error";
+  bool transport_ok = true;
+  for (int completed = 0; completed < request_num; ++completed) {
+    void* got_tag = nullptr;
+    bool ok       = false;
+    if (!cq_->Next(&got_tag, &ok)) {
+      LOG(ERROR) << "GetParameter completion queue shut down after "
+                 << completed << "/" << request_num << " responses";
+      return -1;
     }
-    get++;
+    const auto index = reinterpret_cast<intptr_t>(got_tag);
+    if (index < 0 || index >= request_num) {
+      LOG(ERROR) << "GetParameter unexpected completion tag " << index;
+      return -1;
+    }
+    if (!ok) {
+      LOG(ERROR) << "GetParameter RPC did not complete for request " << index
+                 << ": " << get_param_status_[index].error_code() << " "
+                 << get_param_status_[index].error_message();
+      transport_ok = false;
+    }
+  }
+  if (!transport_ok) {
+    return -1;
+  }
+  for (int i = 0; i < request_num; ++i) {
+    if (!get_param_status_[i].ok()) {
+      LOG(ERROR) << "GetParameter RPC failed for request " << i << ": "
+                 << get_param_status_[i].error_code() << " "
+                 << get_param_status_[i].error_message();
+      return -1;
+    }
   }
 
 #ifdef ENABLE_PERF_REPORT
@@ -203,17 +268,23 @@ int GRPCParameterClient::GetParameter(const base::ConstArray<uint64_t>& keys,
 
   size_t row_offset = 0;
   for (int i = 0; i < get_param_responses_.size(); ++i) {
-    auto& response = get_param_responses_[i];
-    int key_size   = get_param_key_sizes_[i];
-    if (response.parameter_value().empty()) {
-      row_offset += static_cast<size_t>(key_size);
-      continue;
+    auto& response             = get_param_responses_[i];
+    int key_size               = get_param_key_sizes_[i];
+    const std::string& payload = response.parameter_value();
+    // The server emits one compressed item per requested key (missing rows
+    // carry dim == 0), so an empty payload for a non-empty request means the
+    // response is truncated or the peer is not the expected PS.
+    if (payload.empty()) {
+      LOG(ERROR) << "GetParameter empty payload for request " << i << " ("
+                 << key_size << " keys)";
+      return -1;
     }
-    auto parameters = reinterpret_cast<const ParameterCompressReader*>(
-        response.parameter_value().data());
-    if (parameters == nullptr || parameters->size == 0) {
-      row_offset += static_cast<size_t>(key_size);
-      continue;
+    auto parameters =
+        reinterpret_cast<const ParameterCompressReader*>(payload.data());
+    if (!parameters->Valid(static_cast<int>(payload.size()))) {
+      LOG(ERROR) << "GetParameter invalid payload for request " << i << ": "
+                 << payload.size() << " bytes";
+      return -1;
     }
     if (unlikely(parameters->size != key_size)) {
       LOG(ERROR) << "GetParameter error: " << parameters->size << " vs "
@@ -286,6 +357,7 @@ GRPCParameterClient::PrefetchParameter(const base::ConstArray<uint64_t>& keys) {
     if (!pb.contexts_[index]) {
       pb.contexts_[index] = std::make_unique<grpc::ClientContext>();
     }
+    SetRpcDeadline(pb.contexts_[index].get());
     auto& request  = pb.requests_[index];
     auto& response = pb.responses_[index];
     request.set_keys(reinterpret_cast<const char*>(&keys[start]),
@@ -315,38 +387,31 @@ bool GRPCParameterClient::IsPrefetchDone(uint64_t prefetch_id) {
     LOG(ERROR) << "Invalid prefetch_id: " << prefetch_id;
     return false;
   }
-  auto& pb        = it->second;
-  int request_num = pb.batch_size_;
-  int get         = 0;
-
-  if (pb.completed_count_ == pb.batch_size_) {
+  auto& pb = it->second;
+  if (pb.completed_count_ >= pb.batch_size_) {
     return true;
   }
 
-  void* got_tag = nullptr;
-  bool ok       = false;
-  auto deadline =
-      std::chrono::system_clock::now() + std::chrono::milliseconds(0);
   for (;;) {
-    auto status = pb.cqs_->AsyncNext(&got_tag, &ok, deadline);
+    void* got_tag = nullptr;
+    bool ok       = false;
+    auto deadline = std::chrono::system_clock::now();
+    auto status   = pb.cqs_->AsyncNext(&got_tag, &ok, deadline);
     if (status == grpc::CompletionQueue::NextStatus::GOT_EVENT) {
-      if (unlikely(!ok)) {
-        LOG(ERROR) << "CompletionQueue returned not ok for prefetch";
-      }
-      pb.completed_count_++;
-      if (pb.completed_count_ == pb.batch_size_)
+      ConsumePrefetchCompletion(&pb, got_tag, ok);
+      if (pb.completed_count_ >= pb.batch_size_) {
         break;
-      deadline =
-          std::chrono::system_clock::now() + std::chrono::milliseconds(0);
+      }
       continue;
-    } else if (status == grpc::CompletionQueue::NextStatus::TIMEOUT) {
-      break;
-    } else {
-      LOG(ERROR) << "CompletionQueue shutdown during prefetch";
-      break;
     }
+    if (status == grpc::CompletionQueue::NextStatus::SHUTDOWN) {
+      MarkPrefetchFailed(&pb, "completion queue shut down during prefetch");
+    }
+    break;
   }
-  return (pb.completed_count_ == pb.batch_size_);
+  // A failed batch is terminal as well. Otherwise callers polling for
+  // completion would spin forever on a batch that can never succeed.
+  return pb.failed_ || pb.completed_count_ >= pb.batch_size_;
 }
 
 void GRPCParameterClient::WaitForPrefetch(uint64_t prefetch_id) {
@@ -356,42 +421,45 @@ void GRPCParameterClient::WaitForPrefetch(uint64_t prefetch_id) {
     LOG(ERROR) << "Invalid prefetch_id: " << prefetch_id;
     return;
   }
-  auto& pb                     = it->second;
-  void* got_tag                = nullptr;
-  bool ok                      = false;
-  int idle_rounds              = 0;
-  constexpr auto kPollInterval = std::chrono::milliseconds(200);
-  constexpr int kMaxIdleRounds = 150; // 30s
+  auto& pb        = it->second;
+  int idle_rounds = 0;
   while (pb.completed_count_ < pb.batch_size_) {
-    auto deadline = std::chrono::system_clock::now() + kPollInterval;
-    auto status   = pb.cqs_->AsyncNext(&got_tag, &ok, deadline);
+    void* got_tag = nullptr;
+    bool ok       = false;
+    auto deadline = std::chrono::system_clock::now() +
+                    std::chrono::milliseconds(kPrefetchPollIntervalMs);
+    auto status = pb.cqs_->AsyncNext(&got_tag, &ok, deadline);
     if (status == grpc::CompletionQueue::NextStatus::GOT_EVENT) {
       idle_rounds = 0;
-      if (unlikely(!ok)) {
-        LOG(ERROR) << "CompletionQueue returned not ok for prefetch";
-      }
-      pb.completed_count_++;
+      ConsumePrefetchCompletion(&pb, got_tag, ok);
       continue;
     }
     if (status == grpc::CompletionQueue::NextStatus::TIMEOUT) {
-      idle_rounds++;
-      if (idle_rounds >= kMaxIdleRounds) {
-        LOG(ERROR) << "WaitForPrefetch timed out for prefetch_id "
-                   << prefetch_id << ", completed " << pb.completed_count_
-                   << "/" << pb.batch_size_;
+      if (++idle_rounds >= kPrefetchMaxIdleRounds) {
+        MarkPrefetchFailed(
+            &pb,
+            fmt::format("wait timed out for prefetch_id {} "
+                        "({}/{} responses)",
+                        prefetch_id,
+                        pb.completed_count_,
+                        pb.batch_size_));
         break;
       }
       continue;
     }
-    if (status == grpc::CompletionQueue::NextStatus::SHUTDOWN) {
-      LOG(ERROR) << "CompletionQueue shutdown while waiting prefetch";
-      break;
-    }
+    MarkPrefetchFailed(
+        &pb, "completion queue shut down while waiting prefetch");
+    break;
   }
 }
 
 bool GRPCParameterClient::GetPrefetchResult(uint64_t prefetch_id,
                                             base::RecTensor& values) {
+  // Callers of the single-shard API are not required to call
+  // WaitForPrefetch first; make sure every response has been consumed before
+  // inspecting statuses and payloads.
+  WaitForPrefetch(prefetch_id);
+
   std::lock_guard<std::mutex> lk(prefetch_mu_);
   auto it = prefetch_batches_.find(prefetch_id);
   if (it == prefetch_batches_.end()) {
@@ -400,6 +468,12 @@ bool GRPCParameterClient::GetPrefetchResult(uint64_t prefetch_id,
   }
   auto& pb        = it->second;
   int request_num = pb.batch_size_;
+
+  if (pb.failed_) {
+    LOG(ERROR) << "GetPrefetchResult failed for prefetch_id " << prefetch_id
+               << ": " << pb.error_;
+    return false;
+  }
 
   int keys_size = 0;
   for (const auto& size : pb.key_sizes_) {
@@ -421,18 +495,20 @@ bool GRPCParameterClient::GetPrefetchResult(uint64_t prefetch_id,
   size_t row_offset = 0;
 
   for (int i = 0; i < request_num; ++i) {
-    auto& response = pb.responses_[i];
-    int key_size   = pb.key_sizes_[i];
-    if (response.parameter_value().empty()) {
-      row_offset += static_cast<size_t>(key_size);
-      continue;
+    auto& response             = pb.responses_[i];
+    int key_size               = pb.key_sizes_[i];
+    const std::string& payload = response.parameter_value();
+    if (payload.empty()) {
+      LOG(ERROR) << "Prefetch empty payload for request " << i << " ("
+                 << key_size << " keys)";
+      return false;
     }
-    auto parameters = reinterpret_cast<const ParameterCompressReader*>(
-        response.parameter_value().data());
-
-    if (parameters == nullptr || parameters->size == 0) {
-      row_offset += static_cast<size_t>(key_size);
-      continue;
+    auto parameters =
+        reinterpret_cast<const ParameterCompressReader*>(payload.data());
+    if (!parameters->Valid(static_cast<int>(payload.size()))) {
+      LOG(ERROR) << "Prefetch invalid payload for request " << i << ": "
+                 << payload.size() << " bytes";
+      return false;
     }
     if (unlikely(parameters->size != key_size)) {
       LOG(ERROR) << "GetParameter error: " << parameters->size << " vs "

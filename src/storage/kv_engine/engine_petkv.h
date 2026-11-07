@@ -63,6 +63,32 @@ public:
 
   void DebugInfo() const override { shm_kv->GetInfo(); }
 
+  // PetKV lives in POSIX shared memory with no durable backing file, so it
+  // cannot produce or consume checkpoints. Say so explicitly instead of
+  // inheriting BaseKV's silent false.
+  bool SaveCheckpoint(const std::string& file,
+                      const std::string& metadata) override {
+    (void)file;
+    (void)metadata;
+    LOG(ERROR) << "KVEnginePetKV does not support SaveCheckpoint: shared "
+                  "memory is not durable; use a checkpoint-capable engine";
+    return false;
+  }
+
+  bool LoadCheckpoint(const std::string& file,
+                      const std::string& metadata) override {
+    (void)file;
+    (void)metadata;
+    LOG(ERROR) << "KVEnginePetKV does not support LoadCheckpoint: shared "
+                  "memory is not durable; use a checkpoint-capable engine";
+    return false;
+  }
+
+  void clear() override {
+    LOG(ERROR) << "KVEnginePetKV does not support clear(): recreate the "
+                  "parameter server to reset the store";
+  }
+
 private:
   base::ScopedTempDir dir;
   std::unique_ptr<base::PetMultiKV> shm_kv;

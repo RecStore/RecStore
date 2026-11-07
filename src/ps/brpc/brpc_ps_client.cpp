@@ -611,6 +611,22 @@ bool BRPCParameterClient::LoadCkpt(
   return true;
 }
 
+bool BRPCParameterClient::SaveCheckpoint(const std::string& path,
+                                         const std::string& metadata) {
+  (void)metadata;
+  LOG(ERROR) << "bRPC backend does not support checkpoint save: path=\"" << path
+             << "\"";
+  return false;
+}
+
+bool BRPCParameterClient::LoadCheckpoint(const std::string& path,
+                                         const std::string& metadata) {
+  (void)metadata;
+  LOG(ERROR) << "bRPC backend does not support checkpoint load: path=\"" << path
+             << "\"";
+  return false;
+}
+
 bool BRPCParameterClient::PutParameter(const std::vector<uint64_t>& keys,
                                        const base::RecTensor& values) {
 #ifdef ENABLE_PERF_REPORT
@@ -683,6 +699,10 @@ void BRPCParameterClient::Command(recstore::PSCommand command) {
   case recstore::PSCommand::DUMP_FAKE_DATA: {
     DumpFakeData(4096);
   } break;
+  case recstore::PSCommand::SAVE_CHECKPOINT:
+  case recstore::PSCommand::LOAD_CHECKPOINT:
+    LOG(ERROR) << "bRPC backend does not support checkpoint commands";
+    break;
   default:
     LOG(ERROR) << "Unknown PS command: " << static_cast<int>(command);
     break;

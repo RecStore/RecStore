@@ -87,6 +87,13 @@ public:
   bool LoadCkpt(const std::vector<std::string>& model_config_path,
                 const std::vector<std::string>& emb_file_path);
 
+  // The bRPC protocol has no checkpoint command yet. Override the silent
+  // ShardClient defaults so callers get an explicit unsupported error.
+  bool
+  SaveCheckpoint(const std::string& path, const std::string& metadata) override;
+  bool
+  LoadCheckpoint(const std::string& path, const std::string& metadata) override;
+
   bool PutParameter(const std::vector<uint64_t>& keys,
                     const base::RecTensor& values);
 

@@ -262,6 +262,37 @@ void TestPrefetchConcurrency(const std::vector<int>& ports) {
   }
 }
 
+// An unreachable shard must make the fan-out fail instead of returning
+// zero-filled rows to the caller.
+void TestShardFailurePropagation() {
+  std::cout << "=== Testing Distributed gRPC Failure Propagation ==="
+            << std::endl;
+
+  // Port 1 on loopback is not served, so connection attempts are refused.
+  json config = {
+      {"distributed_client",
+       {{"servers",
+         {{{"host", "127.0.0.1"}, {"port", 1}, {"shard", 0}},
+          {{"host", "127.0.0.1"}, {"port", 1}, {"shard", 1}}}},
+        {"num_shards", 2},
+        {"hash_method", "simple_mod"}}}};
+
+  DistributedGRPCParameterClient client(config);
+
+  std::vector<uint64_t> keys = {0, 1, 2, 3};
+  base::ConstArray<uint64_t> keys_array(keys);
+  auto values = OwnedEmbedding(4, 2, std::vector<float>(8, -1.0f));
+  CHECK(client.GetParameter(keys_array, values) == -1);
+
+  const uint64_t prefetch_id = client.PrefetchParameter(keys_array);
+  CHECK(prefetch_id != 0);
+  client.WaitForPrefetch(prefetch_id);
+  base::RecTensor fetched({0, 2}, base::DataType::FLOAT32);
+  CHECK(!client.GetPrefetchResult(prefetch_id, fetched));
+
+  std::cout << "Failure propagation test passed!" << std::endl;
+}
+
 int main(int argc, char** argv) {
   DisableGrpcTracingEnv();
   base::Init(&argc, &argv);
@@ -291,6 +322,9 @@ int main(int argc, char** argv) {
   std::cout << std::endl;
 
   TestPrefetchConcurrency(ports);
+  std::cout << std::endl;
+
+  TestShardFailurePropagation();
   std::cout << std::endl;
 
   std::cout << "All tests completed!" << std::endl;

@@ -84,7 +84,6 @@ def build_runtime_config(cfg: BenchmarkConfig, *, transport: str, value_path: Pa
     config = {
         "cache_ps": {
             "ps_type": transport_upper,
-            "max_batch_keys_size": 65536,
             "num_threads": 32,
             "num_shards": len(servers),
             "servers": servers,
