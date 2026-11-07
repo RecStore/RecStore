@@ -594,7 +594,8 @@ void BRPCParameterServiceImpl::UpdateParameter(
 #ifdef ENABLE_PERF_REPORT
     before_cache_update_time = std::chrono::high_resolution_clock::now();
 #endif
-    success = cache_ps_->UpdateParameter(table_name, reader, 0);
+    success = cache_ps_->UpdateParameter(
+        table_name, reader, 0, request->learning_rate());
 
     RECSTORE_LOG_EVERY_MS(INFO, 2000)
         << "UpdateParameter: table=" << table_name << ", keys=" << size;

@@ -135,6 +135,26 @@ void TestAsyncReadWriteConcurrency(int grpc_port) {
   CHECK(client.ClearPS());
 }
 
+// The server keeps ownership of the learning rate; a client that advertises a
+// different rate must get a failure instead of a silent server-side update.
+void TestLearningRateGuard(int grpc_port) {
+  std::cout << "\n=== Testing gRPC Learning Rate Guard ===" << std::endl;
+
+  GRPCParameterClient client("127.0.0.1", grpc_port, 0);
+  CHECK(client.InitEmbeddingTable("lr_guard", {128, 4}) >= 0);
+
+  std::vector<uint64_t> keys = {1, 2};
+  std::vector<float> flat(8, 0.1f);
+  base::RecTensor grads(flat.data(), {2, 4});
+  base::ConstArray<uint64_t> keys_array(keys);
+
+  // The test server uses the default SGD learning rate (0.01).
+  CHECK(client.UpdateParameter("lr_guard", keys_array, grads, 0.01f) == 0);
+  CHECK(client.UpdateParameter("lr_guard", keys_array, grads, 0.02f) == -1);
+  // 0 means "not advertised" and keeps the legacy behaviour.
+  CHECK(client.UpdateParameter("lr_guard", keys_array, grads) == 0);
+}
+
 int main(int argc, char** argv) {
   base::Init(&argc, &argv);
   xmh::Reporter::StartReportThread(2000);
@@ -147,5 +167,6 @@ int main(int argc, char** argv) {
 
   TestFactoryClient(kGrpcTestPort0);
   TestAsyncReadWriteConcurrency(kGrpcTestPort0);
+  TestLearningRateGuard(kGrpcTestPort0);
   return 0;
 }

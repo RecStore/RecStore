@@ -689,9 +689,11 @@ void BRPCParameterClient::Command(recstore::PSCommand command) {
   }
 }
 
-int BRPCParameterClient::UpdateParameter(const std::string& table_name,
-                                         const base::ConstArray<uint64_t>& keys,
-                                         const base::RecTensor& grads) {
+int BRPCParameterClient::UpdateParameter(
+    const std::string& table_name,
+    const base::ConstArray<uint64_t>& keys,
+    const base::RecTensor& grads,
+    float learning_rate) {
 #ifdef ENABLE_PERF_REPORT
   auto start_time         = std::chrono::high_resolution_clock::now();
   const uint64_t trace_id = recstore::g_trace_id;
@@ -722,6 +724,7 @@ int BRPCParameterClient::UpdateParameter(const std::string& table_name,
   UpdateParameterRequest request;
   UpdateParameterResponse response;
   request.set_table_name(table_name);
+  request.set_learning_rate(learning_rate);
 
   brpc::Controller cntl;
 #ifdef ENABLE_PERF_REPORT

@@ -29,7 +29,11 @@ class _FakeDistributedOps:
         return ids.to(torch.float32).unsqueeze(1).repeat(1, embedding_dim)
 
     def emb_update_table(
-        self, table_name: str, ids: torch.Tensor, grads: torch.Tensor
+        self,
+        table_name: str,
+        ids: torch.Tensor,
+        grads: torch.Tensor,
+        learning_rate: float = 0.0,
     ) -> None:
         self.update_calls.append((table_name, ids.clone(), grads.clone()))
 

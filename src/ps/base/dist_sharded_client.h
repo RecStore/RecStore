@@ -386,7 +386,8 @@ public:
 
   int UpdateParameter(const std::string& table_name,
                       const base::ConstArray<uint64_t>& keys,
-                      const base::RecTensor& grads) override {
+                      const base::RecTensor& grads,
+                      float learning_rate = 0.0f) override {
     if (!IsFloatEmbeddingValues(grads, static_cast<int64_t>(keys.Size()))) {
       LOG(ERROR) << "UpdateParameter keys/grads size mismatch: " << keys.Size();
       return -1;
@@ -439,7 +440,8 @@ public:
                   shard_src + start * static_cast<size_t>(D),
                   {static_cast<int64_t>(end - start), D});
               if (client->UpdateParameter(
-                      table_name, shard_chunk, grad_chunk) != 0) {
+                      table_name, shard_chunk, grad_chunk, learning_rate) !=
+                  0) {
                 return -1;
               }
             }

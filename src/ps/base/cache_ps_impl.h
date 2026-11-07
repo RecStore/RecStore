@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <boost/coroutine2/all.hpp>
+#include <cmath>
 #include <cstring>
 #include <cstdint>
 #include <exception>
@@ -604,9 +605,13 @@ public:
 
   bool UpdateParameter(const std::string& table_name,
                        const ParameterCompressReader* reader,
-                       unsigned tid) {
+                       unsigned tid,
+                       float learning_rate = 0.0f) {
     if (!optimizer_) {
       LOG(ERROR) << "Optimizer not initialized. Please call InitTable first.";
+      return false;
+    }
+    if (!CheckLearningRate(table_name, learning_rate)) {
       return false;
     }
 
@@ -621,7 +626,8 @@ public:
       const float* grads,
       int64_t num_rows,
       int64_t embedding_dim,
-      unsigned tid) {
+      unsigned tid,
+      float learning_rate = 0.0f) {
     if (grads == nullptr) {
       LOG(ERROR) << "UpdateParameterFlat grads pointer is null";
       return false;
@@ -640,6 +646,9 @@ public:
       LOG(ERROR) << "Optimizer not initialized. Please call InitTable first.";
       return false;
     }
+    if (!CheckLearningRate(table_name, learning_rate)) {
+      return false;
+    }
     optimizer_->UpdateFlat(
         table_name, keys, grads, num_rows, embedding_dim, tid);
     MarkCheckpointDirty();
@@ -647,6 +656,26 @@ public:
   }
 
 private:
+  // The server optimizer owns the learning rate. A client that advertises a
+  // different rate must fail instead of being silently ignored.
+  bool CheckLearningRate(const std::string& table_name, float client_lr) const {
+    if (client_lr <= 0.0f) {
+      return true;
+    }
+    const float server_lr = optimizer_->LearningRate();
+    if (server_lr <= 0.0f) {
+      return true;
+    }
+    const float scale = std::max(1.0f, std::abs(server_lr));
+    if (std::abs(client_lr - server_lr) <= 1e-6f * scale) {
+      return true;
+    }
+    LOG(ERROR) << "UpdateParameter learning rate mismatch for table "
+               << table_name << ": client=" << client_lr
+               << " server=" << server_lr;
+    return false;
+  }
+
   recstore::SparseGradientCommitCoordinator sparse_gradient_commits_;
   void MarkCheckpointDirty() {
     if (!checkpoint_dirty_.load(std::memory_order_relaxed)) {
