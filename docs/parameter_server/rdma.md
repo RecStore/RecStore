@@ -91,7 +91,7 @@ server 通过它交换 `RawVerbsNodeMeta` 并等待 ready。控制面额外承�
 | 阶段 | 做什么 | 失败后果 |
 | --- | --- | --- |
 | 配置解析 | 解析 `ResolvedRdmaDeployment`（deployment id / epoch / digests）与本机 fabric（设备、port、GID、IB 或 RoCE v1/v2） | 进程启动失败 |
-| 资源创建 | **每条 lane 独立**：设备 → PD → CQ（深度 4096）→ 注册内存（默认 128 MiB）→ RC QP（`max_send_wr=1024`） | 进程启动失败 |
+| 资源创建 | **每条 lane 独立**：设备 → PD → CQ（深度 4096）→ 注册内存（client 每 lane `slots_per_qp × (request_slot_bytes + response_slot_bytes)`，默认 1 × (1 MiB + 1 MiB) = 2 MiB；server 每 lane 为 `num_clients × slots_per_qp × request_slot_bytes`）→ RC QP（`max_send_wr=1024`） | 进程启动失败 |
 | 元数据交换 | `Publish()` 发布本端每个 QP 的 QPN 与 `lane_generation`；`Connect()` 拉取对端元数据并校验 | 启动失败（默认 30 s deadline） |
 | QP 建连 | `RESET → INIT → RTR → RTS`，并挂满 1024 个 receive WR | 启动失败 |
 | 稳态 | slot 提交、服务端扫描、响应回写 | 见 3.2 |
@@ -201,8 +201,11 @@ CQE；**等到接近等待超时**说明收割与慢路径都被关了（对应 
   `ibv_create_qp failed` 或 `no idle RC write slot available`。
 - `slots-per-qp` 默认是 `1`，增加它主要提高在途深度，不增加 QP 数。
 - `read` 和 `push` 是不同的 PUT-v2 payload 路径，结果不能直接混合比较。
-- `rdma-get-response-mode=auto` 会按 index/value layout 选择 GET response path；
-  当前 `DRAM_PET_HASH` 使用 `staging_copy`，其他 index 默认使用 `direct_sg`。
+- `auto` 只是 `tools/benchmarks/run_benchmark_ps.py` 的解析层：它在启动前按
+  index/value layout 选成 `staging_copy` 或 `direct_sg`（当前 `DRAM_PET_HASH` →
+  `staging_copy`，其他 index → `direct_sg`）。C++ flag 和
+  `RECSTORE_RDMA_GET_RESPONSE_MODE` 只接受 `direct_sg` 或 `staging_copy`，
+  直接传 `auto` 会 fatal。
 - 调试使用 Debug/O0 构建，吞吐基准使用 Release 构建。
 - 修改源码后，重新编译对应的 `petps_server`、benchmark、integration 或 op-layer target，再验证结果。
 - 热点路径零开销：正常请求（µs 级完成）既不查控制面（1 s 后才查）也不收割 CQ
@@ -235,7 +238,7 @@ CQE；**等到接近等待超时**说明收割与慢路径都被关了（对应 
 | `--rdma-lane-rebuild-poll-max-ms` | 空闲退避上限：每轮未重建则间隔翻倍，最高到此值；默认 `500` |
 | `--rdma-lane-rebuild-poll-timeout-ms` | server 侧重建轮询里 `GetMeta` 的超时；默认 `100`，避免控制面拖住数据面线程 |
 | `--rdma-lane-rebuild-cooldown-ms` | 同一 lane 两次重建尝试的最小间隔；默认 `1000` |
-| `--rdma-get-response-mode` | GET response 路径：`auto`、`direct_sg` 或 `staging_copy` |
+| `--rdma-get-response-mode` | GET response 路径：`direct_sg` 或 `staging_copy`（`auto` 只由 `run_benchmark_ps.py` 解析；C++ 直接传 `auto` 会 fatal） |
 | `--server-rdma-threads` | generic PS runner 的 server polling thread 数 |
 | `--rdma-rc-server-get-workers` | GET payload worker 数；`0` 表示 poller 同步处理 |
 | `--rdma-rc-server-coroutines-per-thread` | 每个 polling thread 的 scanner coroutine 数 |
