@@ -750,7 +750,13 @@ private:
       LOG(ERROR) << "Checkpoint path and metadata must be non-empty";
       return false;
     }
+    const char* action = save ? "save" : "load";
+    std::vector<int> shards;
+    std::vector<std::string> files;
     std::vector<std::future<bool>> futures;
+    shards.reserve(server_configs_.size());
+    files.reserve(server_configs_.size());
+    futures.reserve(server_configs_.size());
     for (const auto& server : server_configs_) {
       const auto it = shard_to_client_index_.find(server.shard);
       if (it == shard_to_client_index_.end()) {
@@ -759,17 +765,29 @@ private:
       }
       ClientT* client        = clients_[it->second].get();
       const std::string file = ShardCheckpointPath(path, server.shard);
+      shards.push_back(server.shard);
+      files.push_back(file);
       futures.push_back(
           std::async(std::launch::async, [client, file, metadata, save]() {
             return save ? client->SaveCheckpoint(file, metadata)
                         : client->LoadCheckpoint(file, metadata);
           }));
     }
-    bool all_success = true;
-    for (auto& future : futures) {
-      all_success = future.get() && all_success;
+
+    int failed = 0;
+    for (size_t i = 0; i < futures.size(); ++i) {
+      if (futures[i].get()) {
+        continue;
+      }
+      ++failed;
+      LOG(ERROR) << "Checkpoint " << action << " failed for shard " << shards[i]
+                 << " (file " << files[i] << ")";
     }
-    return all_success;
+    if (failed != 0) {
+      LOG(ERROR) << "Checkpoint " << action << " failed on " << failed << "/"
+                 << futures.size() << " shards";
+    }
+    return failed == 0;
   }
 
   void InitializeClients() {
