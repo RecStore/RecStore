@@ -41,11 +41,14 @@ public:
       throw std::invalid_argument(
           "tiering.cache_budget_ratio must be in (0, 1]");
     }
-    const size_t shard_count =
-        static_cast<size_t>(tiering.value("cache_shards", 16));
-    const uint32_t promote_min_misses =
-        static_cast<uint32_t>(tiering.value("promote_min_misses", 2));
-    if (promote_min_misses == 0) {
+    const int64_t shard_count =
+        tiering.value("cache_shards", static_cast<int64_t>(16));
+    if (shard_count < 1 || shard_count > 4096) {
+      throw std::invalid_argument("tiering.cache_shards must be in [1, 4096]");
+    }
+    const int64_t promote_min_misses =
+        tiering.value("promote_min_misses", static_cast<int64_t>(2));
+    if (promote_min_misses < 1) {
       throw std::invalid_argument("tiering.promote_min_misses must be >= 1");
     }
     const uint64_t budget_bytes = static_cast<uint64_t>(
@@ -57,12 +60,12 @@ public:
     dram_placement_bytes_ = dram_capacity_bytes_ - budget_bytes;
     cache_                = std::make_unique<TieredReadCache>(
         &dram_store_,
-        shard_count,
+        static_cast<size_t>(shard_count),
         budget_bytes,
         static_cast<uint64_t>(
             high_watermark_ratio_ * static_cast<double>(dram_capacity_bytes_)),
         &dram_bytes_reserved_,
-        promote_min_misses);
+        static_cast<uint32_t>(promote_min_misses));
   }
 
   uint64_t Alloc(size_t size) override {
@@ -485,8 +488,9 @@ private:
 
   DramValueStore dram_store_;
   std::unique_ptr<ValueStore> ssd_store_;
-  // Optional DRAM read cache for SSD-resident values. Declared after
-  // dram_store_ so its slots are released while the allocator is still alive.
+  // Optional DRAM read cache for SSD-resident values. There is no destructor:
+  // the cached slots belong to dram_store_, which is destroyed with this
+  // object, so they are released with the allocator rather than one by one.
   std::unique_ptr<TieredReadCache> cache_;
   bool ssd_static_              = false;
   uint64_t dram_capacity_bytes_ = 0;

@@ -999,6 +999,29 @@ TEST_F(StaticLayoutValueTest, TieredReadCacheIsOffUnlessConfigured) {
             static_cast<double>(kCacheDramBytes));
 }
 
+TEST_F(StaticLayoutValueTest, TieredReadCacheRejectsOutOfRangeKnobs) {
+  // A negative count used to wrap through the integer cast: -1 shards became
+  // ~SIZE_MAX (std::length_error at construction) and -1 promote_min_misses
+  // became ~4.29e9, i.e. a cache that silently never admits anything.
+  const json negative_shards = {{"cache_policy", "lru"}, {"cache_shards", -1}};
+  EXPECT_THROW(
+      HybridValueStore(TieredStoreConfig(root_, "badshards", negative_shards)),
+      std::invalid_argument);
+  const json zero_shards = {{"cache_policy", "lru"}, {"cache_shards", 0}};
+  EXPECT_THROW(
+      HybridValueStore(TieredStoreConfig(root_, "zeroshards", zero_shards)),
+      std::invalid_argument);
+  const json negative_misses = {
+      {"cache_policy", "lru"}, {"promote_min_misses", -1}};
+  EXPECT_THROW(
+      HybridValueStore(TieredStoreConfig(root_, "badmisses", negative_misses)),
+      std::invalid_argument);
+  const json zero_misses = {{"cache_policy", "lru"}, {"promote_min_misses", 0}};
+  EXPECT_THROW(
+      HybridValueStore(TieredStoreConfig(root_, "zeromisses", zero_misses)),
+      std::invalid_argument);
+}
+
 TEST_F(StaticLayoutValueTest, TieredReadCacheConcurrentReadsStayCoherent) {
   HybridValueStore store(
       TieredStoreConfig(root_, "concurrent", LruTieringConfig(0.5, 8)));
