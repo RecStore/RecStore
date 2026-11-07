@@ -1525,3 +1525,680 @@ TEST(KVEngineCompositeConfigTest, DramValueStoreAcceptsDevShmPath) {
 
   EXPECT_NO_THROW(CreateCompositeEngine(cfg));
 }
+
+TEST(KVEngineFlatReadTest, DramRowsReportMissingPositions) {
+  constexpr int64_t kDim            = 16;
+  constexpr int64_t kMetadataFloats = sizeof(int64_t) / sizeof(float);
+  constexpr int64_t kStoredDim      = kMetadataFloats + kDim;
+
+  const std::string value_path =
+      "/dev/shm/test_kv_engine_flat_missing_" + std::to_string(getpid());
+  std::filesystem::create_directories(value_path);
+
+  struct BackendGuard {
+    base::PMMmapRegisterCenter::Backend previous =
+        base::PMMmapRegisterCenter::GetConfig().backend;
+    ~BackendGuard() {
+      base::PMMmapRegisterCenter::GetConfig().backend = previous;
+    }
+  } backend_guard;
+  base::PMMmapRegisterCenter::GetConfig().backend =
+      base::PMMmapRegisterCenter::Backend::kAnonymousDram;
+
+  BaseKVConfig config;
+  config.num_threads_ = 1;
+  config.json_config_ = {
+      {"engine_type", "KVEngineComposite"},
+      {"capacity", 128},
+      {"index", {{"type", "DRAM_PET_HASH"}}},
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", value_path},
+        {"default_value_size_hint", kStoredDim * sizeof(float)},
+        {"dram_allocator",
+         {{"type", "CONCURRENT_SLAB_MEMORY_POOL"},
+          {"capacity_bytes", 64ULL << 20}}}}}};
+  auto resolved = base::ResolveEngine(config);
+  std::unique_ptr<BaseKV> engine(
+      base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
+          resolved.engine, resolved.cfg));
+  ASSERT_NE(engine, nullptr);
+
+  // Store metadata followed by the embedding slice.
+  const std::vector<uint64_t> put_keys = {101, 202};
+  std::vector<float> first(kStoredDim);
+  std::vector<float> second(kStoredDim);
+  const int64_t first_index  = 17;
+  const int64_t second_index = 29;
+  std::memcpy(first.data(), &first_index, sizeof(first_index));
+  std::memcpy(second.data(), &second_index, sizeof(second_index));
+  for (int64_t column = 0; column < kDim; ++column) {
+    first[static_cast<size_t>(kMetadataFloats + column)] =
+        static_cast<float>(column + 1);
+    second[static_cast<size_t>(kMetadataFloats + column)] =
+        static_cast<float>(100 + column);
+  }
+  std::vector<base::ConstArray<float>> rows = {
+      base::ConstArray<float>(first.data(), static_cast<int>(first.size())),
+      base::ConstArray<float>(second.data(), static_cast<int>(second.size()))};
+  engine->BatchPut(base::ConstArray<uint64_t>(put_keys), &rows, 0);
+
+  // Key 303 is absent; output rows must retain input order.
+  const std::vector<uint64_t> get_keys = {202, 303, 101};
+  std::vector<float> output(get_keys.size() * kDim, -1.0F);
+  std::vector<uint64_t> positions(get_keys.size(), 999);
+  BaseKV::MissingPositionsOutput missing{positions.data(), positions.size(), 0};
+  BaseKV::BatchGetFlatStats stats;
+
+  ASSERT_TRUE(engine->BatchGetFlatRangeWithMissing(
+      base::ConstArray<uint64_t>(get_keys),
+      output.data(),
+      get_keys.size(),
+      kStoredDim,
+      kMetadataFloats,
+      kDim,
+      0,
+      &missing,
+      &stats,
+      false));
+
+  EXPECT_EQ(missing.count, 1U);
+  EXPECT_EQ(positions[0], 1U);
+  EXPECT_EQ(stats.missing_rows, 1U);
+
+  EXPECT_EQ(stats.index_lookup_ns, 0U);
+  EXPECT_EQ(stats.row_copy_ns, 0U);
+
+  for (int64_t i = 0; i < kDim; ++i) {
+    EXPECT_FLOAT_EQ(output[i], second[kMetadataFloats + i]);
+    EXPECT_FLOAT_EQ(output[kDim + i], 0.0F);
+    EXPECT_FLOAT_EQ(output[2 * kDim + i], first[kMetadataFloats + i]);
+  }
+
+  const auto positions_before_failure = positions;
+  // A failed query must clear the count from the previous successful query.
+  EXPECT_FALSE(engine->BatchGetFlatRangeWithMissing(
+      base::ConstArray<uint64_t>(get_keys),
+      nullptr,
+      get_keys.size(),
+      kStoredDim,
+      kMetadataFloats,
+      kDim,
+      0,
+      &missing,
+      nullptr,
+      false));
+  EXPECT_EQ(missing.count, 0U);
+  EXPECT_EQ(positions, positions_before_failure);
+
+  std::vector<uint64_t> small_positions(2, 999);
+  std::vector<float> rejected_output(get_keys.size() * kDim, -1.0F);
+  BaseKV::MissingPositionsOutput too_small{
+      small_positions.data(), small_positions.size(), 123};
+  EXPECT_FALSE(engine->BatchGetFlatRangeWithMissing(
+      base::ConstArray<uint64_t>(get_keys),
+      rejected_output.data(),
+      get_keys.size(),
+      kStoredDim,
+      kMetadataFloats,
+      kDim,
+      0,
+      &too_small,
+      nullptr,
+      false));
+  EXPECT_EQ(too_small.count, 0U);
+  EXPECT_EQ(small_positions[0], 999U);
+  EXPECT_EQ(small_positions[1], 999U);
+  EXPECT_EQ(rejected_output, std::vector<float>(get_keys.size() * kDim, -1.0F));
+
+  const std::vector<uint64_t> hit_keys = {202, 101};
+  std::vector<float> hit_output(hit_keys.size() * kDim, -1.0F);
+  std::vector<uint64_t> hit_positions(hit_keys.size(), 999);
+  BaseKV::MissingPositionsOutput hit_missing{
+      hit_positions.data(), hit_positions.size(), 123};
+
+  ASSERT_TRUE(engine->BatchGetFlatRangeWithMissing(
+      base::ConstArray<uint64_t>(hit_keys),
+      hit_output.data(),
+      hit_keys.size(),
+      kStoredDim,
+      kMetadataFloats,
+      kDim,
+      0,
+      &hit_missing,
+      nullptr,
+      false));
+  ASSERT_EQ(hit_missing.count, 0U);
+  for (int64_t i = 0; i < kDim; ++i) {
+    EXPECT_EQ(hit_output[i], second[kMetadataFloats + i]);
+    EXPECT_EQ(hit_output[i + kDim], first[kMetadataFloats + i]);
+  }
+
+  // Every row in this batch is missing.
+  const std::vector<uint64_t> all_missing_keys = {303, 404, 505};
+  std::vector<float> all_missing_output(all_missing_keys.size() * kDim, -1.0F);
+  std::vector<uint64_t> all_missing_positions(all_missing_keys.size(), 999);
+  BaseKV::MissingPositionsOutput all_missing{
+      all_missing_positions.data(), all_missing_positions.size(), 123};
+  BaseKV::BatchGetFlatStats all_missing_stats;
+
+  ASSERT_TRUE(engine->BatchGetFlatRangeWithMissing(
+      base::ConstArray<uint64_t>(all_missing_keys),
+      all_missing_output.data(),
+      all_missing_keys.size(),
+      kStoredDim,
+      kMetadataFloats,
+      kDim,
+      0,
+      &all_missing,
+      &all_missing_stats,
+      false));
+  EXPECT_EQ(all_missing.count, 3U);
+  EXPECT_EQ(all_missing_stats.missing_rows, 3U);
+  EXPECT_EQ(all_missing_positions[0], 0U);
+  EXPECT_EQ(all_missing_positions[1], 1U);
+  EXPECT_EQ(all_missing_positions[2], 2U);
+  for (float value : all_missing_output) {
+    EXPECT_FLOAT_EQ(value, 0.0F);
+  }
+
+  engine.reset();
+  std::filesystem::remove_all(value_path);
+}
+
+namespace {
+
+class MissingPositionsTestEngine {
+public:
+  explicit MissingPositionsTestEngine(int64_t dim = 16) : dim_(dim) {}
+  static constexpr int64_t kMetadataFloats    = sizeof(int64_t) / sizeof(float);
+  static constexpr uint64_t kPositionSentinel = 999;
+  static constexpr float kValueSentinel       = -1234.0F;
+
+  int64_t Dim() const { return dim_; }
+  int64_t StoredDim() const { return kMetadataFloats + Dim(); }
+
+  void SetUp() {
+    previous_backend_ = base::PMMmapRegisterCenter::GetConfig().backend;
+    base::PMMmapRegisterCenter::GetConfig().backend =
+        base::PMMmapRegisterCenter::Backend::kAnonymousDram;
+    const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    value_path_ =
+        "/dev/shm/test_kv_missing_positions_" + std::to_string(getpid()) + "_" +
+        KVEngineCartesianTest::Sanitize(info->name());
+    std::filesystem::create_directories(value_path_);
+    BaseKVConfig config;
+    config.num_threads_ = 1;
+    config.json_config_ = {
+        {"engine_type", "KVEngineComposite"},
+        {"capacity", 128},
+        {"index", {{"type", "DRAM_PET_HASH"}}},
+        {"value",
+         {{"type", "DRAM_VALUE_STORE"},
+          {"path", value_path_},
+          {"default_value_size_hint", StoredDim() * sizeof(float)},
+          {"dram_allocator",
+           {{"type", "CONCURRENT_SLAB_MEMORY_POOL"},
+            {"capacity_bytes", 64ULL << 20}}}}}};
+    engine_ = CreateCompositeEngine(config);
+    ASSERT_NE(engine_, nullptr);
+    const std::vector<uint64_t> keys = {101, 202, 404};
+    for (uint64_t key : keys) {
+      std::vector<float> row(StoredDim(), 0.0F);
+      const int64_t metadata = static_cast<int64_t>(key + 9000);
+      std::memcpy(row.data(), &metadata, sizeof(metadata));
+      for (int64_t col = 0; col < Dim(); ++col) {
+        row[kMetadataFloats + col] = ExpectedValue(key, col);
+      }
+      engine_->Put(key,
+                   std::string_view(reinterpret_cast<const char*>(row.data()),
+                                    row.size() * sizeof(float)),
+                   0);
+    }
+  }
+
+  ~MissingPositionsTestEngine() {
+    engine_.reset();
+    if (!value_path_.empty())
+      std::filesystem::remove_all(value_path_);
+    base::PMMmapRegisterCenter::GetConfig().backend = previous_backend_;
+  }
+
+  // Key 404 deliberately has a zero embedding: zero values do not imply a miss.
+  static float ExpectedValue(uint64_t key, int64_t col) {
+    if (key == 101)
+      return static_cast<float>(col + 1);
+    if (key == 202)
+      return static_cast<float>(100 + col);
+    return 0.0F;
+  }
+
+  std::vector<float> ExpectedRows(
+      const std::vector<uint64_t>& keys, int64_t offset, int64_t width) const {
+    std::vector<float> expected;
+    for (uint64_t key : keys) {
+      for (int64_t col = 0; col < width; ++col) {
+        expected.push_back(ExpectedValue(key, offset + col));
+      }
+    }
+    return expected;
+  }
+
+  bool Read(const std::vector<uint64_t>& keys,
+            float* values,
+            BaseKV::MissingPositionsOutput* missing,
+            BaseKV::BatchGetFlatStats* stats = nullptr,
+            bool profile                     = false) {
+    return engine_->BatchGetFlatRangeWithMissing(
+        base::ConstArray<uint64_t>(keys),
+        values,
+        keys.size(),
+        StoredDim(),
+        kMetadataFloats,
+        Dim(),
+        0,
+        missing,
+        stats,
+        profile);
+  }
+
+  int64_t dim_;
+  std::unique_ptr<BaseKV> engine_;
+  std::string value_path_;
+  base::PMMmapRegisterCenter::Backend previous_backend_ =
+      base::PMMmapRegisterCenter::GetConfig().backend;
+
+  void DuplicateMissesRemainOrderedAndCompact() {
+    const std::vector<uint64_t> keys = {909, 202, 808, 909, 101, 404, 808};
+    for (bool profile : {false, true}) {
+      SCOPED_TRACE(profile);
+      std::vector<float> output(keys.size() * Dim() + 2, kValueSentinel);
+      std::vector<uint64_t> positions(keys.size() + 2, kPositionSentinel);
+      BaseKV::MissingPositionsOutput missing{
+          positions.data() + 1, keys.size(), 77};
+      BaseKV::BatchGetFlatStats stats{77, 77, 77, 77};
+      ASSERT_TRUE(Read(keys, output.data() + 1, &missing, &stats, profile));
+      ASSERT_EQ(missing.count, 4U);
+      EXPECT_EQ(std::vector<uint64_t>(positions.begin() + 1,
+                                      positions.begin() + 1 + missing.count),
+                (std::vector<uint64_t>{0, 2, 3, 6}));
+      // Only the valid prefix is specified; guards lie outside capacity.
+      EXPECT_EQ(positions.front(), kPositionSentinel);
+      EXPECT_EQ(positions.back(), kPositionSentinel);
+      EXPECT_EQ(stats.missing_rows, 4U);
+      EXPECT_EQ(stats.zero_fill_ns, 0U);
+      if (!profile) {
+        EXPECT_EQ(stats.index_lookup_ns, 0U);
+        EXPECT_EQ(stats.row_copy_ns, 0U);
+      }
+      EXPECT_EQ(output.front(), kValueSentinel);
+      EXPECT_EQ(output.back(), kValueSentinel);
+      EXPECT_EQ(std::vector<float>(output.begin() + 1, output.end() - 1),
+                ExpectedRows(keys, 0, Dim()));
+    }
+  }
+
+  void MissingPositionsDoNotRequireStats() {
+    const std::vector<uint64_t> keys = {808, 404, 808};
+    for (bool profile : {false, true}) {
+      SCOPED_TRACE(profile);
+      std::vector<float> output(keys.size() * Dim(), kValueSentinel);
+      std::vector<uint64_t> positions(keys.size(), kPositionSentinel);
+      BaseKV::MissingPositionsOutput missing{
+          positions.data(), positions.size(), 77};
+      ASSERT_TRUE(Read(keys, output.data(), &missing, nullptr, profile));
+      ASSERT_EQ(missing.count, 2U);
+      EXPECT_EQ(std::vector<uint64_t>(
+                    positions.begin(), positions.begin() + missing.count),
+                (std::vector<uint64_t>{0, 2}));
+      EXPECT_EQ(output, ExpectedRows(keys, 0, Dim()));
+    }
+  }
+
+  void OptionalMissingMatchesLegacyForEveryHitPattern() {
+    const std::vector<std::vector<uint64_t>> batches = {
+        {202, 101, 202, 404}, {909, 808, 909}, {909, 202, 808, 101, 404}};
+    for (const auto& keys : batches) {
+      for (bool profile : {false, true}) {
+        for (bool with_stats : {false, true}) {
+          SCOPED_TRACE(::testing::Message()
+                       << "keys=" << ::testing::PrintToString(keys)
+                       << " profile=" << profile << " stats=" << with_stats);
+          std::vector<float> output(keys.size() * Dim(), kValueSentinel);
+          std::vector<float> legacy(output);
+          BaseKV::BatchGetFlatStats stats{77, 77, 77, 77};
+          BaseKV::BatchGetFlatStats legacy_stats{77, 77, 77, 77};
+          ASSERT_TRUE(Read(
+              keys,
+              output.data(),
+              nullptr,
+              with_stats ? &stats : nullptr,
+              profile));
+          ASSERT_TRUE(engine_->BatchGetFlatRange(
+              base::ConstArray<uint64_t>(keys),
+              legacy.data(),
+              keys.size(),
+              StoredDim(),
+              kMetadataFloats,
+              Dim(),
+              0,
+              with_stats ? &legacy_stats : nullptr,
+              profile));
+          EXPECT_EQ(output, ExpectedRows(keys, 0, Dim()));
+          EXPECT_EQ(legacy, output);
+          if (with_stats) {
+            uint64_t expected_missing = 0;
+            for (uint64_t key : keys)
+              expected_missing += key == 808 || key == 909;
+            EXPECT_EQ(stats.missing_rows, expected_missing);
+            EXPECT_EQ(legacy_stats.missing_rows, expected_missing);
+            EXPECT_EQ(stats.zero_fill_ns, 0U);
+            EXPECT_EQ(legacy_stats.zero_fill_ns, 0U);
+            if (!profile) {
+              EXPECT_EQ(stats.index_lookup_ns, 0U);
+              EXPECT_EQ(stats.row_copy_ns, 0U);
+              EXPECT_EQ(legacy_stats.index_lookup_ns, 0U);
+              EXPECT_EQ(legacy_stats.row_copy_ns, 0U);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void ReusedOutputsResetCountAcrossBatchSizes() {
+    std::vector<float> output(4 * Dim(), kValueSentinel);
+    std::vector<uint64_t> positions(8, kPositionSentinel);
+    BaseKV::MissingPositionsOutput missing{
+        positions.data() + 1, positions.size() - 2, 77};
+    BaseKV::BatchGetFlatStats stats{77, 77, 77, 77};
+    const std::vector<std::vector<uint64_t>> batches = {
+        {909, 808, 909, 808}, {101, 404}, {202, 909, 101}, {808}};
+    const std::vector<std::vector<uint64_t>> expected_positions = {
+        {0, 1, 2, 3}, {}, {1}, {0}};
+    const std::vector<size_t> counts = {4, 0, 1, 1};
+    for (size_t i = 0; i < batches.size(); ++i) {
+      SCOPED_TRACE(i);
+      const auto before = output;
+      ASSERT_TRUE(Read(batches[i], output.data(), &missing, &stats));
+      ASSERT_EQ(missing.count, counts[i]);
+      EXPECT_EQ(stats.missing_rows, counts[i]);
+      EXPECT_EQ(std::vector<uint64_t>(positions.begin() + 1,
+                                      positions.begin() + 1 + missing.count),
+                expected_positions[i]);
+      EXPECT_EQ(positions.front(), kPositionSentinel);
+      EXPECT_EQ(positions.back(), kPositionSentinel);
+      const size_t written = batches[i].size() * Dim();
+      EXPECT_EQ(std::vector<float>(output.begin(), output.begin() + written),
+                ExpectedRows(batches[i], 0, Dim()));
+      EXPECT_EQ(std::vector<float>(output.begin() + written, output.end()),
+                std::vector<float>(before.begin() + written, before.end()));
+    }
+  }
+
+  void InvalidMissingBuffersRejectBeforeWritingValues() {
+    const std::vector<std::vector<uint64_t>> batches = {{101, 202}, {909, 808}};
+    for (const auto& keys : batches) {
+      for (bool null_positions : {false, true}) {
+        SCOPED_TRACE(null_positions);
+        std::vector<float> output(keys.size() * Dim(), kValueSentinel);
+        std::vector<uint64_t> positions(keys.size(), kPositionSentinel);
+        BaseKV::MissingPositionsOutput missing{
+            null_positions ? nullptr : positions.data(),
+            null_positions ? keys.size() : keys.size() - 1,
+            77};
+        EXPECT_FALSE(Read(keys, output.data(), &missing));
+        EXPECT_EQ(missing.count, 0U);
+        EXPECT_EQ(output, std::vector<float>(output.size(), kValueSentinel));
+        EXPECT_EQ(positions,
+                  std::vector<uint64_t>(positions.size(), kPositionSentinel));
+      }
+    }
+  }
+
+  void InvalidRangeArgumentsMatchLegacyRejection() {
+    struct InvalidArgs {
+      const char* name;
+      int64_t rows, row_dim, offset, width;
+      bool null_values = false;
+    };
+    const std::vector<InvalidArgs> cases = {
+        {"null values", 2, StoredDim(), kMetadataFloats, Dim(), true},
+        {"negative rows", -1, StoredDim(), kMetadataFloats, Dim()},
+        {"key count mismatch", 1, StoredDim(), kMetadataFloats, Dim()},
+        {"zero row dimension", 2, 0, 0, 1},
+        {"negative row dimension", 2, -1, 0, 1},
+        {"negative offset", 2, StoredDim(), -1, Dim()},
+        {"zero slice dimension", 2, StoredDim(), kMetadataFloats, 0},
+        {"negative slice dimension", 2, StoredDim(), kMetadataFloats, -1},
+        {"offset past row", 2, StoredDim(), StoredDim() + 1, 1},
+        {"offset at row end", 2, StoredDim(), StoredDim(), 1},
+        {"slice past row", 2, StoredDim(), kMetadataFloats, Dim() + 1},
+        {"stored size mismatch", 2, StoredDim() + 1, kMetadataFloats, Dim()}};
+    const std::vector<uint64_t> keys = {101, 909};
+    for (const auto& args : cases) {
+      SCOPED_TRACE(args.name);
+      std::vector<float> output(keys.size() * StoredDim(), kValueSentinel);
+      std::vector<uint64_t> positions(keys.size(), kPositionSentinel);
+      BaseKV::MissingPositionsOutput missing{
+          positions.data(), positions.size(), 77};
+      float* values = args.null_values ? nullptr : output.data();
+      EXPECT_FALSE(engine_->BatchGetFlatRangeWithMissing(
+          base::ConstArray<uint64_t>(keys),
+          values,
+          args.rows,
+          args.row_dim,
+          args.offset,
+          args.width,
+          0,
+          &missing));
+      EXPECT_EQ(missing.count, 0U);
+      EXPECT_FALSE(engine_->BatchGetFlatRange(
+          base::ConstArray<uint64_t>(keys),
+          values,
+          args.rows,
+          args.row_dim,
+          args.offset,
+          args.width,
+          0));
+      EXPECT_EQ(output, std::vector<float>(output.size(), kValueSentinel));
+      EXPECT_EQ(positions,
+                std::vector<uint64_t>(positions.size(), kPositionSentinel));
+    }
+  }
+
+  void InteriorAndLastColumnSlicesUseCompactStride() {
+    const std::vector<uint64_t> keys = {202, 909, 101};
+    for (int64_t start : {int64_t{1}, Dim() - 1}) {
+      const int64_t width = Dim() - start;
+      SCOPED_TRACE(start);
+      std::vector<float> output(keys.size() * width + 2, kValueSentinel);
+      std::vector<uint64_t> positions(keys.size(), kPositionSentinel);
+      BaseKV::MissingPositionsOutput missing{
+          positions.data(), positions.size(), 77};
+      ASSERT_TRUE(engine_->BatchGetFlatRangeWithMissing(
+          base::ConstArray<uint64_t>(keys),
+          output.data() + 1,
+          keys.size(),
+          StoredDim(),
+          kMetadataFloats + start,
+          width,
+          0,
+          &missing));
+      ASSERT_EQ(missing.count, 1U);
+      EXPECT_EQ(positions[0], 1U);
+      EXPECT_EQ(output.front(), kValueSentinel);
+      EXPECT_EQ(output.back(), kValueSentinel);
+      EXPECT_EQ(std::vector<float>(output.begin() + 1, output.end() - 1),
+                ExpectedRows(keys, start, width));
+    }
+  }
+
+  void EmptyBatchSucceedsBeforeAndAfterLookup() {
+    // A fresh thread isolates the implementation's thread_local handle buffer.
+    bool cold_result     = false;
+    bool warm_result     = false;
+    bool nonempty_result = false;
+    float output         = kValueSentinel;
+    BaseKV::MissingPositionsOutput missing{nullptr, 0, 77};
+    BaseKV::BatchGetFlatStats stats{77, 77, 77, 77};
+    size_t cold_count = 77;
+    BaseKV::BatchGetFlatStats cold_stats;
+    std::thread worker([&] {
+      cold_result = Read({}, &output, &missing, &stats);
+      cold_count  = missing.count;
+      cold_stats  = stats;
+      std::vector<float> nonempty(Dim());
+      nonempty_result = Read({101}, nonempty.data(), nullptr);
+      missing.count   = 77;
+      stats           = {77, 77, 77, 77};
+      warm_result     = Read({}, &output, &missing, &stats);
+    });
+    worker.join();
+    ASSERT_TRUE(nonempty_result);
+    ::testing::Test::RecordProperty(
+        "empty_cold_result", cold_result ? "true" : "false");
+    ::testing::Test::RecordProperty(
+        "empty_warm_result", warm_result ? "true" : "false");
+    // Empty batches must succeed regardless of prior queries on this thread.
+    EXPECT_EQ(output, kValueSentinel);
+    EXPECT_EQ(cold_count, 0U);
+    EXPECT_EQ(cold_stats.missing_rows, 0U);
+    EXPECT_EQ(cold_stats.index_lookup_ns, 0U);
+    EXPECT_EQ(cold_stats.zero_fill_ns, 0U);
+    EXPECT_EQ(cold_stats.row_copy_ns, 0U);
+    EXPECT_EQ(missing.count, 0U);
+    EXPECT_EQ(stats.missing_rows, 0U);
+    EXPECT_EQ(stats.index_lookup_ns, 0U);
+    EXPECT_EQ(stats.zero_fill_ns, 0U);
+    EXPECT_EQ(stats.row_copy_ns, 0U);
+    EXPECT_TRUE(cold_result);
+    EXPECT_TRUE(warm_result);
+  }
+};
+
+} // namespace
+
+TEST(KVEngineFlatReadTest, DramRowsMissingPositionsAllHit) {
+  MissingPositionsTestEngine test;
+  test.SetUp();
+  ASSERT_NE(test.engine_, nullptr);
+  const std::vector<uint64_t> keys = {202, 404, 101};
+  std::vector<float> output(keys.size() * test.Dim(), test.kValueSentinel);
+  std::vector<uint64_t> positions(keys.size(), test.kPositionSentinel);
+  BaseKV::MissingPositionsOutput missing{
+      positions.data(), positions.size(), 77};
+  BaseKV::BatchGetFlatStats stats{77, 77, 77, 77};
+  ASSERT_TRUE(test.Read(keys, output.data(), &missing, &stats));
+  EXPECT_EQ(missing.count, 0U);
+  EXPECT_EQ(stats.missing_rows, 0U);
+  EXPECT_EQ(output, test.ExpectedRows(keys, 0, test.Dim()));
+}
+
+TEST(KVEngineFlatReadTest, DramRowsMissingPositionsAllMiss) {
+  MissingPositionsTestEngine test;
+  test.SetUp();
+  ASSERT_NE(test.engine_, nullptr);
+  const std::vector<uint64_t> keys = {303, 505, 606};
+  std::vector<float> output(keys.size() * test.Dim(), test.kValueSentinel);
+  std::vector<uint64_t> positions(keys.size(), test.kPositionSentinel);
+  BaseKV::MissingPositionsOutput missing{
+      positions.data(), positions.size(), 77};
+  BaseKV::BatchGetFlatStats stats{77, 77, 77, 77};
+  ASSERT_TRUE(test.Read(keys, output.data(), &missing, &stats));
+  EXPECT_EQ(missing.count, 3U);
+  EXPECT_EQ(stats.missing_rows, 3U);
+  EXPECT_EQ(positions, (std::vector<uint64_t>{0, 1, 2}));
+  EXPECT_EQ(output, std::vector<float>(output.size(), 0.0F));
+}
+
+TEST(KVEngineFlatReadTest, DramRowsMissingPositionsDuplicateKeys) {
+  MissingPositionsTestEngine test;
+  test.SetUp();
+  ASSERT_NE(test.engine_, nullptr);
+  const std::vector<uint64_t> keys = {101, 303, 303, 202};
+  std::vector<float> output(keys.size() * test.Dim(), test.kValueSentinel);
+  std::vector<uint64_t> positions(keys.size(), test.kPositionSentinel);
+  BaseKV::MissingPositionsOutput missing{
+      positions.data(), positions.size(), 77};
+  BaseKV::BatchGetFlatStats stats{77, 77, 77, 77};
+  ASSERT_TRUE(test.Read(keys, output.data(), &missing, &stats));
+  ASSERT_EQ(missing.count, 2U);
+  EXPECT_EQ(stats.missing_rows, 2U);
+  EXPECT_EQ(std::vector<uint64_t>(
+                positions.begin(), positions.begin() + missing.count),
+            (std::vector<uint64_t>{1, 2}));
+  EXPECT_EQ(output, test.ExpectedRows(keys, 0, test.Dim()));
+  test.DuplicateMissesRemainOrderedAndCompact();
+}
+
+TEST(KVEngineFlatReadTest, DramRowsMissingPositionsInsufficientCapacity) {
+  MissingPositionsTestEngine test;
+  test.SetUp();
+  ASSERT_NE(test.engine_, nullptr);
+  const std::vector<uint64_t> keys = {202, 303, 101};
+  std::vector<float> output(keys.size() * test.Dim(), test.kValueSentinel);
+  std::vector<uint64_t> positions(2, test.kPositionSentinel);
+  BaseKV::MissingPositionsOutput missing{
+      positions.data(), positions.size(), 77};
+  EXPECT_FALSE(test.Read(keys, output.data(), &missing));
+  EXPECT_EQ(missing.count, 0U);
+  EXPECT_EQ(positions, std::vector<uint64_t>(2, test.kPositionSentinel));
+  EXPECT_EQ(output, std::vector<float>(output.size(), test.kValueSentinel));
+  missing = {nullptr, keys.size(), 77};
+  EXPECT_FALSE(test.Read(keys, output.data(), &missing));
+  EXPECT_EQ(missing.count, 0U);
+  EXPECT_EQ(output, std::vector<float>(output.size(), test.kValueSentinel));
+  test.InvalidMissingBuffersRejectBeforeWritingValues();
+}
+
+TEST(KVEngineFlatReadTest, DramRowsMissingPositionsOptionalOutput) {
+  MissingPositionsTestEngine test;
+  test.SetUp();
+  ASSERT_NE(test.engine_, nullptr);
+  test.OptionalMissingMatchesLegacyForEveryHitPattern();
+}
+
+TEST(KVEngineFlatReadTest, DramRowsMissingPositionsWithoutProfiling) {
+  MissingPositionsTestEngine test;
+  test.SetUp();
+  ASSERT_NE(test.engine_, nullptr);
+  test.DuplicateMissesRemainOrderedAndCompact();
+  test.MissingPositionsDoNotRequireStats();
+}
+
+TEST(KVEngineFlatReadTest, DramRowsMissingPositionsNonPowerOfTwoWidth) {
+  MissingPositionsTestEngine test(15);
+  test.SetUp();
+  ASSERT_NE(test.engine_, nullptr);
+  test.DuplicateMissesRemainOrderedAndCompact();
+  test.InteriorAndLastColumnSlicesUseCompactStride();
+}
+
+TEST(KVEngineFlatReadTest, DramRowsOriginalFlatRangeRemainsCompatible) {
+  MissingPositionsTestEngine test;
+  test.SetUp();
+  ASSERT_NE(test.engine_, nullptr);
+  test.OptionalMissingMatchesLegacyForEveryHitPattern();
+}
+
+TEST(KVEngineFlatReadTest, DramRowsMissingPositionsResetAcrossQueries) {
+  MissingPositionsTestEngine test;
+  test.SetUp();
+  ASSERT_NE(test.engine_, nullptr);
+  test.ReusedOutputsResetCountAcrossBatchSizes();
+}
+
+TEST(KVEngineFlatReadTest, DramRowsMissingPositionsInvalidRanges) {
+  MissingPositionsTestEngine test;
+  test.SetUp();
+  ASSERT_NE(test.engine_, nullptr);
+  test.InvalidRangeArgumentsMatchLegacyRejection();
+}
+
+TEST(KVEngineFlatReadTest, DramRowsMissingPositionsEmptyBatchColdAndWarm) {
+  MissingPositionsTestEngine test;
+  test.SetUp();
+  ASSERT_NE(test.engine_, nullptr);
+  test.EmptyBatchSucceedsBeforeAndAfterLookup();
+}
