@@ -506,7 +506,9 @@ def default_env_id() -> str:
     return f"{_sluggify(socket.gethostname(), 24)}-{_sluggify(_cpu_model())}"
 
 
-def collect_env(build_dir: Path, binaries: list[Path]) -> dict:
+def collect_env(
+    build_dir: Path, binaries: list[Path], env_id: str | None = None
+) -> dict:
     cache: dict[str, str] = {}
     cache_path = build_dir / "CMakeCache.txt"
     if cache_path.exists():
@@ -525,7 +527,7 @@ def collect_env(build_dir: Path, binaries: list[Path]) -> dict:
     return {
         "created": datetime.now().isoformat(timespec="seconds"),
         "hostname": socket.gethostname(),
-        "env_id": default_env_id(),
+        "env_id": env_id or default_env_id(),
         "kernel": platform.release(),
         "cpu_model": _cpu_model(),
         "cpu_count": os.cpu_count(),
@@ -907,11 +909,12 @@ def run_cases(
     repeats_override: int | None,
     timeout_s: float,
     label: str,
+    env_id: str | None = None,
 ) -> tuple[list[dict], dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
     _reset_failure_marker(output_dir)
     binaries = sorted({path for case in cases for path in _case_binaries(case, build_dir)})
-    env = collect_env(build_dir, binaries)
+    env = collect_env(build_dir, binaries, env_id)
     env["label"] = label
     (output_dir / "env.json").write_text(
         json.dumps(env, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -972,8 +975,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     cases = select_cases(load_cases(), args.case, args.label)
     build_dir = _resolve_build_dir(args.build_dir)
     output_dir = _resolve_output_dir(args.output_dir)
+    env_id = args.env_id or default_env_id()
     rows, env = run_cases(
-        cases, build_dir, output_dir, args.repeats, args.timeout, args.label or "all"
+        cases,
+        build_dir,
+        output_dir,
+        args.repeats,
+        args.timeout,
+        args.label or "all",
+        env_id=env_id,
     )
     (output_dir / "metrics.json").write_text(
         json.dumps({"schema": 1, "env": env, "rows": rows}, indent=2, sort_keys=True)
@@ -984,7 +994,6 @@ def cmd_run(args: argparse.Namespace) -> int:
         print("[perf] no metrics collected; see failures.txt", file=sys.stderr)
         return 1
 
-    env_id = args.env_id or default_env_id()
     summary = summarize(rows)
     evaluated = []
     missing_baselines: list[str] = []
@@ -1221,7 +1230,7 @@ def cmd_ab(args: argparse.Namespace) -> int:
     print("\n".join(lines))
     if args.check and any(row["status"] == "regressed" for row in rows):
         return 2
-    return 0
+    return 0 if not (output_dir / "failures.txt").exists() else 1
 
 
 def cmd_aggregate(args: argparse.Namespace) -> int:

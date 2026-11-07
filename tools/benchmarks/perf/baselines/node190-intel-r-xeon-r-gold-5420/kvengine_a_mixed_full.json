@@ -4,7 +4,7 @@
     "build/bin/local_shm_ps_server": "8d66bfd14ae601e75777a295e51cbabac9f752d00166b92c1eeaa75ab6523236",
     "build/bin/ps_transport_benchmark": "2bb6afc16cbdbe7680ee7eb2da4fa2b09aad6b7cefaf943bd5a1f7ca659b2b20"
   },
-  "case": "kvengine_c_read_full",
+  "case": "kvengine_a_mixed_full",
   "cmake_cache": {
     "CMAKE_BUILD_TYPE": "Release",
     "ENABLE_CUDA": "ON",
@@ -15,37 +15,30 @@
   "commit": "982876e8b09600da9bf742f84aaddfdf57fd2b34",
   "cpu_mhz_max": 2700.0,
   "created": "2026-11-06T01:58:09",
-  "env_id": "node190",
+  "env_id": "node190-intel-r-xeon-r-gold-5420",
   "metrics": {
-    "p99_us": {
-      "max": 24.199,
-      "median": 24.099,
-      "min": 24.099,
-      "samples": 3,
-      "spread_pct": 0.415
-    },
     "throughput_ops_sec": {
-      "max": 189817367.517721,
-      "median": 189585258.789923,
-      "min": 189331544.561735,
+      "max": 5866053.55129,
+      "median": 5852055.065707,
+      "min": 5841154.651263,
       "samples": 3,
-      "spread_pct": 0.256
+      "spread_pct": 0.425
     }
   },
   "repeats": 3,
   "resolution_hint": {
-    "batch_keys": 500,
-    "distribution": "uniform",
-    "dram_capacity_bytes": 268435456,
+    "batch_keys": 1,
+    "distribution": "zipfian",
+    "dram_capacity_bytes": 16777216,
     "index_type": "DRAM_PET_HASH",
-    "read_mode": "batch_get_flat",
-    "record_count": 1000000,
-    "report_latency": true,
+    "read_mode": "get",
+    "record_count": 50000,
+    "report_latency": false,
     "running_seconds": 5,
-    "thread_num": 8,
+    "thread_num": 1,
     "value_size": 128,
     "value_store_type": "DRAM_VALUE_STORE",
-    "workload": "c"
+    "workload": "a"
   },
   "schema": 1
 }

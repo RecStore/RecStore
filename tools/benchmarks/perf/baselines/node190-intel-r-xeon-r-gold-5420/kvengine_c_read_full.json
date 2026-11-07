@@ -4,7 +4,7 @@
     "build/bin/local_shm_ps_server": "8d66bfd14ae601e75777a295e51cbabac9f752d00166b92c1eeaa75ab6523236",
     "build/bin/ps_transport_benchmark": "2bb6afc16cbdbe7680ee7eb2da4fa2b09aad6b7cefaf943bd5a1f7ca659b2b20"
   },
-  "case": "ps_local_shm_fetch_full",
+  "case": "kvengine_c_read_full",
   "cmake_cache": {
     "CMAKE_BUILD_TYPE": "Release",
     "ENABLE_CUDA": "ON",
@@ -15,34 +15,37 @@
   "commit": "982876e8b09600da9bf742f84aaddfdf57fd2b34",
   "cpu_mhz_max": 2700.0,
   "created": "2026-11-06T01:58:09",
-  "env_id": "node190",
+  "env_id": "node190-intel-r-xeon-r-gold-5420",
   "metrics": {
-    "request_total_us": {
-      "max": 104.154,
-      "median": 103.724,
-      "min": 103.421,
+    "p99_us": {
+      "max": 24.199,
+      "median": 24.099,
+      "min": 24.099,
       "samples": 3,
-      "spread_pct": 0.707
+      "spread_pct": 0.415
     },
-    "throughput_keys_sec": {
-      "max": 4871990.0,
-      "median": 4858700.0,
-      "min": 4838750.0,
+    "throughput_ops_sec": {
+      "max": 189817367.517721,
+      "median": 189585258.789923,
+      "min": 189331544.561735,
       "samples": 3,
-      "spread_pct": 0.684
+      "spread_pct": 0.256
     }
   },
   "repeats": 3,
   "resolution_hint": {
-    "batch_keys": 32,
-    "capacity": 262144,
-    "record_count": 200000,
+    "batch_keys": 500,
+    "distribution": "uniform",
+    "dram_capacity_bytes": 268435456,
+    "index_type": "DRAM_PET_HASH",
+    "read_mode": "batch_get_flat",
+    "record_count": 1000000,
+    "report_latency": true,
     "running_seconds": 5,
-    "slot_buffer_bytes": 1048576,
-    "slot_count": 64,
-    "startup_timeout_s": 10.0,
-    "thread_num": 16,
-    "value_size": 128
+    "thread_num": 8,
+    "value_size": 128,
+    "value_store_type": "DRAM_VALUE_STORE",
+    "workload": "c"
   },
   "schema": 1
 }

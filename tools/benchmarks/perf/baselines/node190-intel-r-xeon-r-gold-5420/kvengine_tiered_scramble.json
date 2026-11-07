@@ -13,7 +13,7 @@
   "commit": "982876e8b09600da9bf742f84aaddfdf57fd2b34",
   "cpu_mhz_max": 2667.9,
   "created": "2026-11-06T02:20:31",
-  "env_id": "node190",
+  "env_id": "node190-intel-r-xeon-r-gold-5420",
   "metrics": {
     "throughput_ops_sec": {
       "max": 515334.237872,
@@ -36,6 +36,7 @@
     "ssd_path": "{work_dir}/ssd",
     "ssd_queue_depth": 512,
     "thread_num": 16,
+    "tiering_cache_policy": "none",
     "value_size": 128,
     "value_store_type": "TIERED_VALUE_STORE",
     "workload": "c",

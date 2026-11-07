@@ -7,6 +7,7 @@ aggregation, baseline evaluation and the regression threshold semantics.
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import tempfile
@@ -408,6 +409,37 @@ class AbTest(unittest.TestCase):
         self.assertEqual(status, "ok")
 
 
+class AbExitTest(unittest.TestCase):
+    def test_ab_returns_nonzero_when_every_repeat_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            case = perf_suite.load_cases()[0]
+            args = argparse.Namespace(
+                case=case.id,
+                a_build=None,
+                b_build=None,
+                a_param=[],
+                b_param=[],
+                output_dir=tmp,
+                repeats=1,
+                timeout=1.0,
+                noise_floor_pct=None,
+                check=False,
+            )
+
+            def boom(*_args: object, **_kwargs: object) -> dict[str, float]:
+                raise perf_suite.SuiteError("missing binary")
+
+            original = perf_suite.RUNNERS[case.runner]
+            perf_suite.RUNNERS[case.runner] = boom
+            try:
+                status = perf_suite.cmd_ab(args)
+            finally:
+                perf_suite.RUNNERS[case.runner] = original
+
+            self.assertEqual(status, 1)
+            self.assertTrue((Path(tmp) / "failures.txt").exists())
+
+
 class RegistryTest(unittest.TestCase):
     def test_committed_registry_is_valid(self) -> None:
         cases = perf_suite.load_cases()
@@ -430,6 +462,22 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(case.params["ssd_path"], "{work_dir}/ssd")
         # Placement-only row: the cache is measured with `ab`, not baked in here.
         self.assertEqual(case.params["tiering_cache_policy"], "none")
+
+    def test_committed_baselines_match_registry_and_bucket(self) -> None:
+        cases = {case.id: case for case in perf_suite.load_cases()}
+        buckets = [path for path in perf_suite.BASELINE_ROOT.iterdir() if path.is_dir()]
+        self.assertTrue(buckets)
+        for bucket in buckets:
+            for path in sorted(bucket.glob("*.json")):
+                with self.subTest(baseline=str(path)):
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                    case = cases.get(payload["case"])
+                    self.assertIsNotNone(case)
+                    # The bucket directory is the env id the default lookup uses.
+                    self.assertEqual(payload["env_id"], bucket.name)
+                    # Re-registering a case with other params must be visible here,
+                    # not silently reported as a mismatch at runtime.
+                    self.assertEqual(payload["resolution_hint"], case.params)
 
     def test_selection_rejects_unknown_id(self) -> None:
         with self.assertRaises(perf_suite.SuiteError):
