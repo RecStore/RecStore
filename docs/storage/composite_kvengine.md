@@ -117,15 +117,6 @@ SSD 索引创建 `IOBackend` 前的配置映射：
 
 **Tiering**：`HybridValueStore` 在 `dram_bytes_reserved + size <= capacity * high_watermark_ratio`（默认 `0.85`）时优先 DRAM，否则 SSD；handle 最高位标记介质。**无后台冷热迁移**。
 
-### 放置与淘汰
-
-- 介质选择只发生在写入时：tiered 先尝试 DRAM，DRAM 分配失败则回退 SSD；写入后位置不变。
-- 没有淘汰、晋升或降级：DRAM 中的行不会因为访问频率被搬到 SSD，SSD 中的行也不会被搬回 DRAM。
-- `DRAM_VALUE_STORE` / `SSD_VALUE_STORE` 满了以后 `AllocAndWrite` 返回 `kValueHandleNone`，
-  `KVEngineComposite` 对 `Put` / `BatchPut` / `BulkLoad` 都走 `LOG(FATAL)`，进程终止。
-- 覆盖写和删除只释放旧槽位：DRAM 通过 `ThreadSafeDelayedRecycle` 延迟回收；SSD 与静态布局
-  沿用 `ValueStore::Retire` 的默认实现，立即 `Free`。
-
 ---
 
 ## IOBackend（`*.io.type`）
