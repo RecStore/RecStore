@@ -16,6 +16,22 @@ function(add_python_unittest _name)
     )
 endfunction()
 
+# Python unittests under recstore/unittest import the package as recstore.*,
+# so they need src/python/pytorch on PYTHONPATH; the working directory stays at
+# the repo root so model_zoo.* and tools.* imports keep working.
+function(add_recstore_unittest _name)
+    add_test(
+        NAME ${_name}
+        COMMAND ${Python3_EXECUTABLE} -m unittest ${ARGN}
+    )
+    set_tests_properties(
+        ${_name}
+        PROPERTIES
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/src/python/pytorch;PYTHONDONTWRITEBYTECODE=1"
+    )
+endfunction()
+
 add_subdirectory(small_tests)
 add_subdirectory(server_mgr)
 
@@ -90,6 +106,28 @@ target_link_libraries(test_ssd_layout PUBLIC
     pthread
 )
 add_test(NAME test_ssd_layout COMMAND test_ssd_layout)
+
+# CCEH has no build target of its own; compile it into this test so the
+# index implementation is exercised without changing the production build.
+add_executable(test_cceh
+    test_cceh.cpp
+    ${PROJECT_SOURCE_DIR}/src/storage/index/ssd/CCEH.cpp
+)
+target_link_libraries(test_cceh PUBLIC
+    base
+    io_backend
+    boost_context
+    boost_coroutine
+    gtest
+    gtest_main
+    pthread
+)
+add_test(NAME test_cceh COMMAND test_cceh)
+set_tests_properties(test_cceh PROPERTIES
+    LABELS "storage;slow"
+    TIMEOUT 600
+    RUN_SERIAL TRUE
+)
 
 add_executable(test_ssd_static_layout_value_store
     test_ssd_static_layout_value_store.cpp)
@@ -574,6 +612,20 @@ set_tests_properties(
     LABELS "config;python"
 )
 
+# Guard against test files that never make it into ctest. Deliberately manual
+# or pytest-only files live in the script's exemption list with a reason.
+add_test(
+    NAME test_registration_consistency
+    COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/src/test/scripts/check_test_registration.py
+)
+set_tests_properties(
+    test_registration_consistency
+    PROPERTIES
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    LABELS "meta;python"
+)
+
 add_python_unittest(
     test_run_ssd_layout_microbench_py
     src/test/scripts/test_run_ssd_layout_microbench.py
@@ -670,6 +722,63 @@ set_tests_properties(
     test_torchrec_kv_fused_preload_py
     PROPERTIES
     LABELS "python;torchrec_kv"
+)
+
+add_python_unittest(
+    test_torchrec_dlrm_imports_py
+    src/test/scripts/test_torchrec_dlrm_imports.py
+)
+set_tests_properties(
+    test_torchrec_dlrm_imports_py
+    PROPERTIES
+    LABELS "python;torchrec_kv"
+)
+
+# Sparse client, BagPipe, prefetch and optimizer coverage that previously had no
+# ctest entry. These are CPU-only fake-transport tests.
+add_recstore_unittest(
+    test_recstore_client_py
+    recstore.unittest.test_bagpipe_cache
+    recstore.unittest.test_bagpipe_planned
+    recstore.unittest.test_dist_emb
+    recstore.unittest.test_embedding_collection
+    recstore.unittest.test_embedding_read_path
+    recstore.unittest.test_embeddingbag_prefetch_state
+    recstore.unittest.test_fused_prefetch
+    recstore.unittest.test_kvclient_native_distributed
+    recstore.unittest.test_logical_shard_router
+    recstore.unittest.test_prefetch_strict_mode
+    recstore.unittest.test_shared_fused_namespace
+    recstore.unittest.test_single_node_exchange
+    recstore.unittest.test_sparse_optimizer_staging
+    recstore.unittest.test_step_consistency
+)
+set_tests_properties(test_recstore_client_py PROPERTIES
+    LABELS "python;sparse;bagpipe"
+    TIMEOUT 300
+)
+
+# Multi-round EBC precision harness; pure Python with fake ops.
+add_recstore_unittest(
+    test_ebc_precision_py
+    recstore.unittest.test_ebc_baseline_harness
+    recstore.unittest.test_ebc_precision_wrapper
+    recstore.unittest.test_ebc_precision_wrapper_config
+)
+set_tests_properties(test_ebc_precision_py PROPERTIES
+    LABELS "python;ebc"
+    TIMEOUT 300
+)
+
+# GPU-cache client helpers. They skip when CUDA or lib_recstore_ops is missing.
+add_recstore_unittest(
+    test_gpu_cache_py
+    recstore.unittest.test_gpu_cache_hit_only
+)
+set_tests_properties(test_gpu_cache_py PROPERTIES
+    LABELS "python;gpu"
+    RESOURCE_LOCK gpu_tests
+    TIMEOUT 300
 )
 
 set(HUGECTR_TENSOR2_HEADER
