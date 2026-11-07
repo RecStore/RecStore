@@ -10,6 +10,31 @@ from .single_node_exchange import SparseGradPayload, exchange_sparse_grads
 from .gradient_compression import select_topk_rows
 _LOCAL_FAST_PATH_BACKENDS = {"local_shm", "hierkv"}
 
+# A table may be updated either by the client (DistEmbedding pull-modify-push)
+# or by the server optimizer (update_async / local_update_flat). Mixing the two
+# on one table applies the learning rate twice or not at all, so the first mode
+# is recorded per (client, table) and a conflicting mode fails loudly.
+_TABLE_UPDATE_MODES: Dict[Tuple[Any, str], str] = {}
+
+_CLIENT_PUSH_MODE = "client pull-modify-push"
+_SERVER_UPDATE_MODE = "server-side gradient update"
+
+
+def _record_table_update_mode(kv_client: Any, table: str, mode: str) -> None:
+    if kv_client is None:
+        return
+    key = (kv_client, table)
+    previous = _TABLE_UPDATE_MODES.get(key)
+    if previous is None:
+        _TABLE_UPDATE_MODES[key] = mode
+        return
+    if previous != mode:
+        raise RuntimeError(
+            f"Sparse table '{table}' is already updated with {previous}; "
+            f"mixing {previous} and {mode} on the same table would apply the "
+            "learning rate inconsistently. Use one update mode per table."
+        )
+
 
 def _server_sparse_optimizer_config() -> Dict[str, Any]:
     config_path = os.environ.get("RECSTORE_CONFIG")
@@ -115,10 +140,13 @@ def _get_sparse_backend_name(kv_client: Any, *, strict: bool = False) -> Optiona
         return None
 
 
-def _process_dist_embedding_module(mod: DistEmbedding, lr: float):
+def _process_dist_embedding_module(
+    mod: DistEmbedding, lr: float, kv_client: Any = None
+):
     """Handles the optimization step for a DistEmbedding module using gradient accumulation."""
     if not mod._trace:
         return
+    _record_table_update_mode(kv_client, mod.name, _CLIENT_PUSH_MODE)
 
     all_ids = torch.cat([ids for ids, _ in mod._trace])
     all_grads = torch.cat([grads for _, grads in mod._trace])
@@ -196,6 +224,7 @@ def _process_generic_module_with_trace(
                     update_ids, update_grads, keep_ratio
                 )
         trace_done = perf_counter()
+        _record_table_update_mode(module_kv_client, name, _SERVER_UPDATE_MODE)
         # Backend sparse optimizers own learning-rate application for these modules.
         handle = module_kv_client.update_async(name=name, ids=update_ids, grads=update_grads)
         update_done = perf_counter()
@@ -423,6 +452,7 @@ def _process_generic_module_with_trace_single_node_distributed(
             owner_ids_tensor,
             owner_grads_tensor,
         )
+        _record_table_update_mode(module_kv_client, name, _SERVER_UPDATE_MODE)
         module_kv_client.local_update_flat(
             name=name,
             ids=owner_unique_ids,
@@ -484,6 +514,7 @@ def _process_generic_module_with_trace_shared_local_shm_single_table(
                 local_unique_ids, local_summed_grads, keep_ratio
             )
         trace_done = perf_counter()
+        _record_table_update_mode(module_kv_client, name, _SERVER_UPDATE_MODE)
         module_kv_client.local_update_flat(
             name=name,
             ids=local_unique_ids,
@@ -621,7 +652,7 @@ class SparseSGD(SparseOptimizer):
                 lr = group["lr"]
                 for mod in group["params"]:
                     if isinstance(mod, DistEmbedding):
-                        _process_dist_embedding_module(mod, lr)
+                        _process_dist_embedding_module(mod, lr, self.kv_client)
                     elif hasattr(mod, '_config_names') and hasattr(mod, '_trace'):
                         if _can_use_shared_local_shm_direct_fast_path(mod):
                             self._last_update_payloads.extend(

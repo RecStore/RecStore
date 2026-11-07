@@ -704,6 +704,16 @@ set_tests_properties(
     LABELS "optimizer;python"
 )
 
+add_python_unittest(
+    test_sparse_update_mode_guard_py
+    src.python.pytorch.recstore.unittest.test_sparse_update_mode_guard
+)
+set_tests_properties(
+    test_sparse_update_mode_guard_py
+    PROPERTIES
+    LABELS "optimizer;python"
+)
+
 if(TARGET recstore_torch_ops)
     add_python_unittest(
         test_hierkv_python_ops_with_torch_ops_py
