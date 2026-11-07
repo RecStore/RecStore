@@ -131,6 +131,12 @@ cache-resident single-thread variant (50k records) whose repeats stay within
 `perf_smoke` cases are one second long and can legitimately differ by 30% even
 between two identical builds; they are canaries, not comparisons.
 
+`kvengine_a_mixed_full` is recorded as a snapshot too: on 2026-11-06 the same
+binary and params produced 5.85M / 7.21M / 11.15M ops/s across invocations, with
+<1% spread inside each run. A later check matched the baseline within 0.3%, so
+the floor is only trustworthy when several invocations agree; otherwise use
+interleaved `ab`.
+
 ### `kvengine_tiered_scramble` (issue #266)
 
 This case is not stable yet and its recorded baseline is a snapshot, not a
