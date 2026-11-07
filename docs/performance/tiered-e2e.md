@@ -2,6 +2,7 @@
 
 本页给出 `TIERED_VALUE_STORE` 在双机 RDMA、`ps_pipeline` 读路径下的 SSD 比例扫描结果。
 数值只对应当前机器与拓扑，用于同层对比；层级定义与口径纪律见[测试范围与指标](methodology.md)。
+所有 lane 都使用 `tiering.cache_policy=none`（#343 的读缓存默认关闭），读缓存的单独对比见「读缓存」。
 
 ## 结论摘要
 
@@ -11,8 +12,9 @@
   49% 以后 commit 的增量大于 pull。
 - **“行占比”不等于“访问占比”**：每个特征每个样本各查一次，小表行少但访问量与 200K 大表相同；
   当前“先到先得”的放置让小表先占 DRAM，所以 32% 的行在 SSD 时只有 21.9% 的访问走 SSD。
-- **`tiering.cache_policy` 没有迁移语义**：`HybridValueStore` 只在首次 `Alloc` 时决定行落在 DRAM 还是 SSD，
-  之后不会因为读而提升；它是放置策略，不是 read-through 缓存。
+- **`tiering.cache_policy` 默认 `none`，本页为 cache-off 口径**：`HybridValueStore` 在首次 `Alloc` 时
+  决定行落在 DRAM 还是 SSD；#343 起可选 LRU 读缓存，把读到的 SSD 行提升到预留的 DRAM 预算里。
+  本页扫描未开启缓存，开启后的对比见「读缓存」一节。
 - **启动成本线性增长**：全表 zero-init 使 `embedding_init` 从 3.1 s 涨到 58.7 s（约 0.57 s / 1% 行在 SSD）。
 
 ## 测试环境
@@ -23,7 +25,7 @@
 | PS | node190，`build_release`，Release，`USE_PERF_REPORT=ON` |
 | Client | node191，A100-PCIE-40GB，同一棵树的 Python + `lib_recstore_ops.so` |
 | 传输 | RDMA，200G HDR IB（190 `ibp139s0` / 191 `mlx5_0`），`staging_copy` |
-| 读路径 | `ps_pipeline`（cache-free，读排在全局 SGD commit 之后） |
+| 读路径 | `ps_pipeline`（无客户端读缓存，读排在全局 SGD commit 之后） |
 | Workload | DLRM，batch 1024，embedding dim 128，26 张表，`num_embeddings=200000` |
 | 数据 | `model_zoo/torchrec_dlrm/processed_day_0_data`，训练集 65,536 样本 |
 | 轮次 | 64 steps（= 一个 epoch），warmup 5，重复 3 次 |
@@ -66,6 +68,19 @@ usable DRAM rows = floor(0.85 * DRAM tier bytes / 512)
 | 91.5% | 97.2% | 6.3K | 17% | 162.5 | 114.4 | 42.5 | 55.9 |
 | 96.6% | 98.9% | 6.3K | 17% | 164.2 | 116.5 | 41.9 | 58.7 |
 
+### 读缓存（#343 之后）
+
+#343 的读缓存不在本页扫描范围内。同机 loopback、同样 15% 行在 SSD（16.3% 访问走 SSD）的
+交错复测（`results/e2e_cache_recheck_11062048/`、`results/e2e_cache_recheck_11071449/`）：
+
+| lane | step ms | samples/s |
+| --- | ---: | ---: |
+| `none` | 56.8–59.5 | 18.3–19.2K |
+| `lru`, budget 0.05, min 2 | 50.5–51.5 | 21.6–22.1K |
+
+两轮分别 −13.4% / −11.1% step、+18.1% / +14.8% samples/s，区间不重叠。双机拓扑的 cache-on
+比例扫描尚未重跑，上面双机数字仍是 cache-off 结果。
+
 ### 拆分
 
 `step` 的增量几乎全部被 `ps_pipeline_read_wait` 吸收（占 step 从 76% 升到 95%），
@@ -104,9 +119,11 @@ dense / backward / sparse 基本不变。
 小表整体挤到 SSD，访问占比从 21.9% 跳到 54.1%，step 从 74.8 ms 跳到 105.7 ms。能控制放置时，
 应优先保住小表和热点表，而不是简单按行数比例切。
 
-**`tiering.cache_policy: LRU` 目前没有迁移语义。** `HybridValueStore::Alloc` 只用
-`ShouldUseDram()` 做一次性选择，之后 `Read/Write` 直接去对应 tier；代码里没有命中提升、淘汰、回填。
-字段被接受但未被使用。训练中反复访问的 SSD 行不会自动变热到 DRAM，反向也不能指望冷行自动下沉。
+**读缓存默认关闭，本页数据不受影响。** #343 给 `HybridValueStore` 加了可选的 LRU 读缓存：
+`tiering.cache_policy=lru` 时先从 `cache_budget_ratio`（默认 0.05）预留 DRAM，SSD 行在读完成且
+连续 miss 达到 `promote_min_misses`（默认 2）后提升；`Write` 写穿、`Free` 失效，没有后台线程。
+它不改变首次 `Alloc` 的放置，也不做后台冷热迁移。本页所有 lane 都用默认 `none`，上表的放置结论
+仍是"先到先得"。
 
 **写回路径比读路径更早成为瓶颈。** 49% 以后 commit 增量持续大于 pull 增量；SSD 行的更新走
 `SsdValueStore` 的 `Write`/`BatchWrite`，在 server 线程里同步完成。批量、异步写回，
@@ -151,7 +168,7 @@ PS 使用 `PetPSClusterRunner` 启动单 shard `petps_server`；关键配置：
           "path": "<run>/ssd.db",
           "io": {"type": "IOURING", "queue_depth": 512, "base_offset_bytes": 4096}
         },
-        "tiering": {"cache_policy": "LRU"}
+        "tiering": {"cache_policy": "none"}
       }
     }
   },
