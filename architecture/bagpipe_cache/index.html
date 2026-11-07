@@ -1106,34 +1106,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Module layout">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#production-planned-controller-read-mode-bagpipe" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Production planned controller (--read-mode bagpipe)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#legacy-gpu-cache-controller-controllerpy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Legacy GPU-cache controller (controller.py)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -2832,34 +2804,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Module layout">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#production-planned-controller-read-mode-bagpipe" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Production planned controller (--read-mode bagpipe)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#legacy-gpu-cache-controller-controllerpy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Legacy GPU-cache controller (controller.py)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -2982,17 +2926,7 @@ the adapter materializes outstanding prefetch results in CPU buffers while
 preserving their handles. Slot ownership is serialized within the adapter;
 GPU computation and PS aggregation remain asynchronous.</p>
 <h2 id="module-layout">Module layout<a class="headerlink" href="#module-layout" title="Permanent link">&para;</a></h2>
-<p>Paths below are relative to <code>src/</code>. There are two distinct implementations:
-the planned controller used by <code>--read-mode bagpipe</code>, and the older C++ GPU
-cache controller kept for the <code>enable_bagpipe_cache</code> / local-ShM path.</p>
-<p>PyTorch adapters supply buffer operations to the common execution layer.
-<code>emb_read</code> and <code>local_lookup_flat</code> are used by the planned path;
-<code>gpu_cache_lookup_flat</code> belongs to the legacy GPU cache. Adapters retain
-source/staging buffers through commit completion and borrowed local-read
-storage through H2D completion.</p>
-<h3 id="production-planned-controller-read-mode-bagpipe">Production planned controller (<code>--read-mode bagpipe</code>)<a class="headerlink" href="#production-planned-controller-read-mode-bagpipe" title="Permanent link">&para;</a></h3>
-<p><code>--read-mode bagpipe</code> (or <code>--optimization-plugin bagpipe</code>) resolves through the
-optimization plugin registry and runs Python-side planning with PS-owned SGD:</p>
+<p>Paths below are relative to <code>src/</code>.</p>
 <table>
 <thead>
 <tr>
@@ -3002,36 +2936,28 @@ optimization plugin registry and runs Python-side planning with PS-owned SGD:</p
 </thead>
 <tbody>
 <tr>
-<td><code>python/pytorch/recstore/optim/plugin.py</code>, <code>.../optim/registry.py</code></td>
-<td>Plugin lifecycle hooks (<code>on_prepare</code>, <code>on_consume</code>, <code>on_step_end</code>, <code>shutdown</code>) and optimizer creation</td>
-</tr>
-<tr>
-<td><code>python/pytorch/recstore/bagpipe_cache/plugin.py</code></td>
-<td><code>BagPipePlugin</code>: binds the planned controller and <code>BagPipeSparseSGD</code> to the training loop</td>
-</tr>
-<tr>
-<td><code>python/pytorch/recstore/bagpipe_cache/planned.py</code></td>
-<td><code>BagPipeCacheController</code> used in production: CPU access plans, admission, prefetch scheduling, and sparse-gradient commit coordination for online and prescan modes</td>
-</tr>
-<tr>
-<td><code>python/pytorch/recstore/bagpipe_cache/optimizer.py</code></td>
-<td><code>BagPipeSparseSGD</code>: routes gradients through <code>controller.update_grads()</code> and the PS commit protocol</td>
-</tr>
-<tr>
 <td><code>optimization/bagpipe/cache_metadata.h</code></td>
 <td><code>CacheMetadata</code>: batched LRU queries, admission, invalidation, and previous-update tracking using the C++ standard library</td>
 </tr>
 <tr>
 <td><code>framework/op.{h,cc}</code></td>
-<td>Sparse commit submission/wait/close through <code>RecTensor</code>; cache clearing after successful table initialization or checkpoint restore</td>
+<td>Sparse commit submission/wait/close and cached updates/writes through <code>RecTensor</code>; cache clearing after successful table initialization or checkpoint restore</td>
 </tr>
 <tr>
 <td><code>framework/common/sparse_gradient_commit_runtime.h</code></td>
 <td>Input readiness, asynchronous handles, committed-step polling, timeout, and peer abort</td>
 </tr>
 <tr>
+<td><code>framework/cache/cache_aware_op.h</code></td>
+<td>Query/read-misses/fill/scatter sequence, low-hit bypass, fallback, and invalidation after transport completion</td>
+</tr>
+<tr>
+<td><code>framework/cache/gpu_embedding_cache.{h,cu}</code></td>
+<td>GPU cache lifecycle, cross-stream ordering, generation, residency, and cache SGD; device-buffer API independent of Torch</td>
+</tr>
+<tr>
 <td><code>framework/pytorch/cache/</code></td>
-<td>Tensor allocation, dtype/shape/device conversion, result wrapping, and metadata bindings</td>
+<td>Tensor allocation, dtype/shape/device conversion, result wrapping, and cache/metadata bindings</td>
 </tr>
 <tr>
 <td><code>framework/gpu/host_memory.cu</code></td>
@@ -3041,42 +2967,12 @@ optimization plugin registry and runs Python-side planning with PS-owned SGD:</p
 </table>
 <p><code>CacheMetadata</code> borrows input arrays for each call and returns vectors. Its
 PyTorch binding, <code>BagPipeCacheMetadata</code>, exchanges compact position and slot
-tensors with <code>planned.py</code>, which handles planning, gathers, autograd, and
-communication scheduling.</p>
-<h3 id="legacy-gpu-cache-controller-controllerpy">Legacy GPU-cache controller (<code>controller.py</code>)<a class="headerlink" href="#legacy-gpu-cache-controller-controllerpy" title="Permanent link">&para;</a></h3>
-<p><code>python/pytorch/recstore/bagpipe_cache/controller.py</code> is the older
-<code>enable_bagpipe_cache</code> path for the local-ShM fast path with the C++ GPU cache
-enabled. It combines the <code>comm</code>, <code>prefetch</code>, <code>eviction</code>, and <code>grads</code> mixins
-and implements BagPipe-style TTL eviction and writeback; it was a drop-in
-replacement for <code>LookaheadPrefetcher</code>.</p>
-<p>This class is <strong>not</strong> the <code>read_mode=bagpipe</code> implementation. The package
-<code>__init__.py</code> exports the planned controller, and no production entry point
-imports <code>controller.py</code>; only
-<code>python/pytorch/recstore/unittest/test_bagpipe_cache.py</code> does so directly. The
-<code>prefetch.py</code>, <code>comm.py</code>, <code>grads.py</code>, and <code>eviction.py</code> modules belong to this
-legacy path.</p>
-<table>
-<thead>
-<tr>
-<th>Module</th>
-<th>Responsibility</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>python/pytorch/recstore/bagpipe_cache/controller.py</code> + mixins</td>
-<td>Orchestration: TTL eviction/writeback, prefetch, gradient flush, and comm scheduling for the legacy path</td>
-</tr>
-<tr>
-<td><code>framework/cache/cache_aware_op.h</code></td>
-<td>Query/read-misses/fill/scatter sequence, low-hit bypass, fallback, and invalidation around cached updates/writes (<code>EmbUpdateCached</code>, <code>EmbWriteCached</code>)</td>
-</tr>
-<tr>
-<td><code>framework/cache/gpu_embedding_cache.{h,cu}</code></td>
-<td>Device-buffer GPU cache: lifecycle, cross-stream ordering, generation, residency, and cache SGD; API independent of Torch</td>
-</tr>
-</tbody>
-</table>
+tensors with the Python controller, which handles planning, gathers, autograd,
+and communication scheduling.</p>
+<p>PyTorch adapters supply buffer operations to the common execution layer.
+<code>emb_read</code>, <code>local_lookup_flat</code>, and <code>gpu_cache_lookup_flat</code> share that layer.
+Adapters retain source/staging buffers through commit completion and borrowed
+local-read storage through H2D completion.</p>
 <p>GPU cache callers supply device pointers, sizes, a device ordinal, and a CUDA
 stream, retaining buffers until completion. Query waits for the miss count;
 hit-only reads and ordinary mutations enqueue work. Clear/disable wait before
@@ -3086,13 +2982,8 @@ bypass state; internal clearing preserves it.</p>
 each row once. A missing key causes invalidation of the requested keys and a
 <code>false</code> result. Best-effort SGD updates resident rows asynchronously and skips
 missing keys.</p>
-<p>Tests: <code>test_bagpipe_metadata</code> covers <code>CacheMetadata</code>;
-<code>test_framework_op_runtime</code> covers the commit/op runtime;
-<code>test_framework_gpu_cache</code> covers the C++ GPU cache used by the legacy path.
-The planned Python controller is covered by
-<code>python/pytorch/recstore/unittest/test_bagpipe_planned.py</code> and the legacy
-controller by <code>test_bagpipe_cache.py</code>, but neither Python module is registered
-with ctest yet.</p>
+<p>Tests: <code>test_bagpipe_metadata</code>, <code>test_framework_op_runtime</code>, and
+<code>test_framework_gpu_cache</code>.</p>
 <h2 id="sparse-gradient-commits">Sparse gradient commits<a class="headerlink" href="#sparse-gradient-commits" title="Permanent link">&para;</a></h2>
 <p><code>SparseGradientCommit</code> aggregates sparse gradients and commits ordered updates.
 Its header, client, and coordinator live in <code>src/ps/base/sparse_gradient_commit.h</code>.
