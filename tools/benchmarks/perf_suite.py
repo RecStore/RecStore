@@ -682,6 +682,8 @@ def baseline_mismatch(baseline: dict, case: Case, env: dict) -> str | None:
     """
     if (baseline.get("resolution_hint") or {}) != case.params:
         return "workload parameters changed"
+    if baseline.get("repeats") != case.repeats:
+        return "repeat count changed"
     if (baseline.get("cmake_cache") or {}) != (env.get("cmake_cache") or {}):
         return "cmake cache changed"
     return None
