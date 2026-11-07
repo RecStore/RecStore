@@ -49,6 +49,7 @@ class TestKVClientNativeDistributed(unittest.TestCase):
         self.client._gpu_cache_table_name = None
         self.client._gpu_cache_clear_count = 0
         self.client._next_table_id = 0
+        self.client._perf_stats = {}
         self.client._initialized = True
 
     def test_init_data_registers_metadata_and_writes_once(self) -> None:

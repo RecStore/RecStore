@@ -223,9 +223,13 @@ def _process_generic_module_with_trace(
 
 
 def _uses_shared_local_shm_single_table(mod: Any) -> bool:
-    if mod.fast_path_mode == "off" or not mod._enable_fusion:
+    # Modules without the fused fast-path attributes (for example a plain
+    # EmbeddingCollection adapter) are simply not eligible.
+    if getattr(mod, "fast_path_mode", None) == "off":
         return False
-    if mod._master_config is None:
+    if not getattr(mod, "_enable_fusion", False):
+        return False
+    if getattr(mod, "_master_config", None) is None:
         return False
     try:
         return bool(mod.kv_client.is_shared_local_shm_table())
@@ -626,7 +630,8 @@ class SparseSGD(SparseOptimizer):
                                 )
                             )
                         else:
-                            fast_path_backend = mod.resolve_fast_path_backend()
+                            resolver = getattr(mod, "resolve_fast_path_backend", None)
+                            fast_path_backend = resolver() if callable(resolver) else None
                             if fast_path_backend is not None:
                                 self._last_update_payloads.extend(
                                     _process_generic_module_with_trace_single_node_distributed(
