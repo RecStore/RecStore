@@ -2699,7 +2699,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        文档索引
+        数据生命周期与容量语义
       
     </span>
   </a>
@@ -2708,6 +2708,17 @@
       
         <li class="md-nav__item">
   <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        文档索引
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         验证与基准
@@ -2880,7 +2891,54 @@
 <li>否则 <code>Read</code> / <code>BatchRead</code>（SSD 或 tiered 的 SSD 部分）拷贝到线程局部 buffer。</li>
 </ol>
 <p><code>BatchPut</code> 对同一批次内重复 key 会退回逐条 <code>Put</code>，避免覆盖顺序不确定。其他引擎的语义以各自实现为准，见 <a href="basekv/">basekv.md</a>。</p>
-<h2 id="_3">文档索引<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<h2 id="_3">数据生命周期与容量语义<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>RecStore 的存储层不是持久化数据库。当前实现的 backing 分两类：</p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>实际 backing</th>
+<th style="text-align: center;">跨进程共享</th>
+<th style="text-align: center;">进程退出后保留</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DRAM_VALUE_STORE</code>、<code>KVEnginePetKV</code>、所有 DRAM allocator</td>
+<td><code>mmap(MAP_PRIVATE \| MAP_ANONYMOUS)</code>（<code>AnonyDramShmFile</code>）</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">否</td>
+</tr>
+<tr>
+<td><code>SSD_VALUE_STORE</code>、SSD 索引、<code>SSD_SLAB</code> / <code>SSD_BUDDY</code></td>
+<td>打开或创建普通文件（<code>O_RDWR \| O_CREAT \| O_DIRECT</code>）</td>
+<td style="text-align: center;">是</td>
+<td style="text-align: center;">文件保留，但无一致性保证</td>
+</tr>
+<tr>
+<td><code>TIERED_VALUE_STORE</code></td>
+<td>DRAM 部分同第一行；SSD 部分同第二行</td>
+<td style="text-align: center;">部分</td>
+<td style="text-align: center;">仅 SSD 文件</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>配置里的 <code>value.path</code> / <code>dram_allocator.path</code> 只是 mmap 的名字，<strong>不会创建文件</strong>，不要把它当持久化路径。</li>
+<li>SSD 文件不会自动删除，但写入没有 checkpoint/fsync 语义；把文件内容当成可恢复状态不受支持。</li>
+<li>PetKV 的 <code>path</code> 下同样是匿名 DRAM mmap（medium 固定为 <code>DRAM</code>）。<code>Persistence=true</code> 会调用
+  <code>clflushopt_range</code>，但 <code>clflushopt()</code> 当前第一行就是 <code>return;</code>，所以 <strong>flush 是空操作</strong>，
+  PetKV 不能当持久内存使用。</li>
+<li>槽位只做分配和释放，没有在介质之间迁移 key 的后台任务。</li>
+</ul>
+<p>容量方面：</p>
+<ul>
+<li>覆盖写先分配新 slot，再 <code>Index::Put</code>，旧 handle 交给 <code>Retire</code>；瞬时容量需求是旧值 + 新值。</li>
+<li><code>TIERED_VALUE_STORE</code> 在 DRAM 超过 <code>high_watermark_ratio</code> 后写 SSD；写入后不再迁移。</li>
+<li>目标介质分配失败时，<code>KVEngineComposite</code> 的 <code>Put</code> / <code>BatchPut</code> / <code>BulkLoad</code> 走 <code>LOG(FATAL)</code>，
+  进程终止；没有淘汰、降级或返回错误的路径。</li>
+</ul>
+<h2 id="_4">文档索引<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -2907,7 +2965,7 @@
 </tr>
 </tbody>
 </table>
-<h2 id="_4">验证与基准<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<h2 id="_5">验证与基准<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>

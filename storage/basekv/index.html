@@ -2932,6 +2932,10 @@
 <td><code>tid</code></td>
 <td>保留给调用方；Composite 主要依赖组件内部同步，勿假设 <code>tid</code> 全局唯一</td>
 </tr>
+<tr>
+<td><code>clear</code></td>
+<td>各引擎自行实现；不支持时只打印错误。PetKV 明确不支持，需要重建参数服务器</td>
+</tr>
 </tbody>
 </table>
 <h2 id="_2">配置与创建<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
@@ -3065,6 +3069,15 @@
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">}</span>
 </code></pre></div>
 <p><code>BatchGet</code> 行为受 gflag <code>prefetch_method</code> 控制：<code>0</code> 逐 key <code>Get</code>，<code>1</code> 走 <code>PetMultiKV::BatchGet</code>。</p>
+<p>PetKV 的三点限制：</p>
+<ul>
+<li>backing 是匿名 DRAM mmap（<code>ShmFile</code> 的 medium 固定为 <code>DRAM</code>），不跨进程、进程退出后不保留；
+  <code>path</code> 只是 mmap 的名字。</li>
+<li><code>Persistence=true</code> 会触发 <code>clflushopt_range</code>，但 <code>clflushopt()</code> 当前第一行就是 <code>return;</code>，
+  因此 flush 实际是空操作。</li>
+<li>不支持 checkpoint：<code>SaveCheckpoint</code> / <code>LoadCheckpoint</code> 返回 <code>false</code> 并打印
+  <code>KVEnginePetKV does not support ...</code>；<code>clear()</code> 同样只打印错误，需要重建参数服务器才能清空。</li>
+</ul>
 <hr />
 <h2 id="kvenginefasterkv">KVEngineFasterKV<a class="headerlink" href="#kvenginefasterkv" title="Permanent link">&para;</a></h2>
 <p>Microsoft FASTER 单表适配；由 FASTER 内部管理。</p>

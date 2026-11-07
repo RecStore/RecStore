@@ -1412,6 +1412,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        放置与淘汰
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1462,7 +1473,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         配置样例
@@ -1473,7 +1484,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         扩展指南
@@ -2937,6 +2948,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        放置与淘汰
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2987,7 +3009,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         配置样例
@@ -2998,7 +3020,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         扩展指南
@@ -3281,6 +3303,15 @@
 </tbody>
 </table>
 <p><strong>Tiering</strong>：<code>HybridValueStore</code> 在 <code>dram_bytes_reserved + size &lt;= capacity * high_watermark_ratio</code>（默认 <code>0.85</code>）时优先 DRAM，否则 SSD；handle 最高位标记介质。<strong>无后台冷热迁移</strong>。</p>
+<h3 id="_6">放置与淘汰<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li>介质选择只发生在写入时：tiered 先尝试 DRAM，DRAM 分配失败则回退 SSD；写入后位置不变。</li>
+<li>没有淘汰、晋升或降级：DRAM 中的行不会因为访问频率被搬到 SSD，SSD 中的行也不会被搬回 DRAM。</li>
+<li><code>DRAM_VALUE_STORE</code> / <code>SSD_VALUE_STORE</code> 满了以后 <code>AllocAndWrite</code> 返回 <code>kValueHandleNone</code>，
+  <code>KVEngineComposite</code> 对 <code>Put</code> / <code>BatchPut</code> / <code>BulkLoad</code> 都走 <code>LOG(FATAL)</code>，进程终止。</li>
+<li>覆盖写和删除只释放旧槽位：DRAM 通过 <code>ThreadSafeDelayedRecycle</code> 延迟回收；SSD 与静态布局
+  沿用 <code>ValueStore::Retire</code> 的默认实现，立即 <code>Free</code>。</li>
+</ul>
 <hr />
 <h2 id="iobackendiotype">IOBackend（<code>*.io.type</code>）<a class="headerlink" href="#iobackendiotype" title="Permanent link">&para;</a></h2>
 <table>
@@ -3419,7 +3450,7 @@
 <p>Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 checkpoint 只能恢复到 plain engine；identity 不一致时拒绝加载，不会静默退回 plain。</p>
 <p><code>TIERED_VALUE_STORE</code> 可以把静态 store 当作 SSD 子 store。DRAM 选择仍是现有高水位：<code>dram_bytes_reserved + size &lt;= capacity * high_watermark_ratio</code>。这里没有 LRU，也没有 SSD miss 后的 promotion。</p>
 <hr />
-<h2 id="_6">配置样例<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h2 id="_7">配置样例<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
 <p><strong>DRAM + DRAM（仓库默认组合）</strong></p>
 <p>与上面的配置骨架相同。</p>
 <p><strong>DRAM + SSD</strong></p>
@@ -3502,7 +3533,7 @@
 <a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a><span class="p">}</span>
 </code></pre></div>
 <hr />
-<h2 id="_7">扩展指南<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
+<h2 id="_8">扩展指南<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
 <p><a href="../../dev/feature/storage/">新增 Index、ValueStore 与 IOBackend</a>。</p>
 
 
