@@ -6,13 +6,14 @@
 #include <list>
 #include <mutex>
 #include <sstream>
+#include <thread>
 #include <unordered_map>
 
 #include "storage/value_store/dram_value_store.h"
 
 // Handles contain a slot index and generation. Metadata slots have stable
 // addresses and are recycled; readers never need a hash lookup or a shard lock.
-class TieredClockValueStore : public ValueStore {
+class TieredClockValueStore final : public ValueStore {
 public:
   TieredClockValueStore(DramValueStore* dram,
                         ValueStore* ssd,
@@ -25,14 +26,14 @@ public:
         shards_(shards),
         min_misses_(min_misses),
         fixed_(!ssd->GetLayoutId().plain()),
-        chunks_(new std::atomic<Entry*>[kChunkCount]) {
+        chunks_(new std::atomic<Chunk*>[kChunkCount]) {
     for (size_t i = 0; i < kChunkCount; ++i)
       chunks_[i].store(nullptr);
   }
 
   ~TieredClockValueStore() override {
     for (size_t i = 0; i < kChunkCount; ++i)
-      delete[] chunks_[i].load();
+      delete chunks_[i].load();
   }
 
   uint64_t Alloc(size_t size) override {
@@ -117,21 +118,44 @@ public:
   }
 
   size_t Read(uint64_t handle, void* out, size_t capacity) override {
-    Entry* entry = Locate(handle);
-    if (!entry || !out)
+    Fast* fast = LocateFast(handle);
+    if (!fast || !out)
       return 0;
+    {
+      ReadGuard guard(GetReader(), fast);
+      if (fast->readable.load() == handle) {
+        const size_t size = std::min(capacity, fast->size);
+        std::memcpy(out, fast->direct, size);
+        RecordHit(*fast, guard.reader);
+        return size;
+      }
+    }
+    Entry* entry = Locate(handle);
     std::lock_guard<std::mutex> lock(entry->mutex);
     return Matches(*entry, handle) ? ReadLocked(*entry, out, capacity) : 0;
   }
 
   void ReadValue(uint64_t handle, std::string& out) override {
-    out.clear();
+    Fast* fast = LocateFast(handle);
+    if (!fast) {
+      out.clear();
+      return;
+    }
+    {
+      ReadGuard guard(GetReader(), fast);
+      if (fast->readable.load() == handle) {
+        out.resize(fast->size);
+        std::memcpy(out.data(), fast->direct, out.size());
+        RecordHit(*fast, guard.reader);
+        return;
+      }
+    }
     Entry* entry = Locate(handle);
-    if (!entry)
-      return;
     std::lock_guard<std::mutex> lock(entry->mutex);
-    if (!Matches(*entry, handle))
+    if (!Matches(*entry, handle)) {
+      out.clear();
       return;
+    }
     out.resize(entry->size);
     out.resize(ReadLocked(*entry, out.data(), out.size()));
   }
@@ -211,7 +235,7 @@ public:
   LayoutId GetLayoutId() const override { return ssd_->GetLayoutId(); }
 
   std::string ExtraResultFields() const override {
-    uint64_t dram = 0, ssd = 0;
+    uint64_t dram = 0, ssd = 0, backed = 0;
     Counters stats;
     const uint64_t count = std::min<uint64_t>(next_slot_.load(), UINT32_MAX);
     for (uint64_t i = 0; i < count; ++i) {
@@ -219,14 +243,24 @@ public:
       if (!entry)
         continue;
       std::lock_guard<std::mutex> lock(entry->mutex);
-      if (entry->alive)
+      if (entry->alive) {
         entry->ssd ? ++ssd : ++dram;
+        if (entry->backing != kValueHandleNone)
+          ++backed;
+      }
       stats.hits += entry->stats.hits;
       stats.misses += entry->stats.misses;
       stats.promotions += entry->stats.promotions;
       stats.demotions += entry->stats.demotions;
       stats.failures += entry->stats.failures;
       stats.rejects += entry->stats.rejects;
+      stats.clean_evictions += entry->stats.clean_evictions;
+      stats.writebacks += entry->stats.writebacks;
+    }
+    {
+      std::lock_guard<std::mutex> lock(readers_mutex_);
+      for (const auto& reader : readers_)
+        stats.hits += reader->hits.load(std::memory_order_relaxed);
     }
     std::ostringstream out;
     out << " tiered_cache_policy=clock tiered_dram_live_allocs=" << dram
@@ -235,31 +269,116 @@ public:
         << (dram + ssd ? double(ssd) / (dram + ssd) : 0)
         << " tiered_dram_bytes=" << dram_bytes_.load(std::memory_order_relaxed)
         << " tiered_dram_limit_bytes=" << limit_
+        << " tiered_clock_backed_values=" << backed
         << " tiered_clock_metadata_slots=" << count << " tiered_clock_hits="
         << stats.hits << " tiered_clock_misses=" << stats.misses
         << " tiered_clock_promotions=" << stats.promotions
         << " tiered_clock_demotions=" << stats.demotions
         << " tiered_clock_failures=" << stats.failures
-        << " tiered_clock_admission_rejects=" << stats.rejects;
+        << " tiered_clock_admission_rejects=" << stats.rejects
+        << " tiered_clock_clean_evictions=" << stats.clean_evictions
+        << " tiered_clock_writebacks=" << stats.writebacks;
     return out.str();
   }
 
 private:
   struct Counters {
     uint64_t hits = 0, misses = 0, promotions = 0, demotions = 0, failures = 0,
-             rejects = 0;
+             rejects = 0, clean_evictions = 0, writebacks = 0;
   };
+  struct Fast {
+    std::atomic<uint64_t> readable{0};
+    const char* direct = nullptr;
+    size_t size        = 0;
+    std::atomic<bool> referenced{false};
+    std::atomic<uint8_t> heat{0};
+  };
+  static_assert(sizeof(Fast) == 32, "compact resident snapshot");
   struct Entry {
     std::mutex mutex;
-    uint64_t handle = 0, raw = 0, key = 0, version = 0;
+    Fast* fast         = nullptr;
     const char* direct = nullptr;
-    size_t size = 0, capacity = 0, shard = 0;
-    bool alive = false, ssd = false, keyed = false, initialized = false,
-         referenced = false;
+    size_t size        = 0;
+    uint64_t backing   = kValueHandleNone;
+    bool dirty         = false;
+    uint64_t handle = 0, raw = 0, key = 0, version = 0;
+    size_t capacity = 0, shard = 0;
+    bool alive = false, ssd = false, keyed = false, initialized = false;
     uint32_t misses = 0;
-    uint8_t heat    = 0;
     std::list<uint64_t>::iterator position;
     Counters stats; // Lifetime counters survive metadata-slot reuse.
+  };
+  // Readers publish a hazard before checking readable. Writers revoke
+  // readable, then wait for existing hazards before changing the DRAM bytes
+  // or metadata. Sequential consistency closes the publication/check race.
+  // No shared read-side lock or reference-count RMW touches a hot value.
+  struct alignas(64) Reader {
+    std::atomic<Fast*> active{nullptr};
+    std::atomic<uint64_t> hits{0};
+    const std::thread::id owner = std::this_thread::get_id();
+  };
+  struct ReadGuard {
+    Reader& reader;
+    ReadGuard(Reader& state, Fast* entry) : reader(state) {
+      reader.active.store(entry);
+    }
+    ~ReadGuard() { reader.active.store(nullptr, std::memory_order_release); }
+  };
+  Reader& GetReader() const {
+    struct Local {
+      uint64_t owner = 0;
+      Reader* reader = nullptr;
+    };
+    static thread_local Local local;
+    if (local.owner != instance_) {
+      std::lock_guard<std::mutex> lock(readers_mutex_);
+      for (const auto& reader : readers_) {
+        if (reader->owner == std::this_thread::get_id()) {
+          local = {instance_, reader.get()};
+          return *local.reader;
+        }
+      }
+      readers_.push_back(std::make_unique<Reader>());
+      local = {instance_, readers_.back().get()};
+    }
+    return *local.reader;
+  }
+  static void Touch(Fast& entry, uint8_t credit = 1) {
+    const auto heat = entry.heat.load(std::memory_order_relaxed);
+    if (heat != UINT8_MAX)
+      entry.heat.store(std::min<unsigned>(UINT8_MAX, heat + credit),
+                       std::memory_order_relaxed);
+    if (!entry.referenced.load(std::memory_order_relaxed))
+      entry.referenced.store(true, std::memory_order_relaxed);
+  }
+  static void RecordHit(Fast& entry, Reader& reader) {
+    const uint64_t hits = reader.hits.load(std::memory_order_relaxed) + 1;
+    reader.hits.store(hits, std::memory_order_relaxed);
+    // Sample resident hits to avoid a shared cache-line write on every read.
+    // SSD misses are counted individually for prompt admission.
+    if ((hits & 15) == 1)
+      Touch(entry, 16);
+  }
+  void SuspendReads(Entry& entry) {
+    if (entry.fast->readable.exchange(0) == 0)
+      return;
+    std::lock_guard<std::mutex> lock(readers_mutex_);
+    for (const auto& reader : readers_)
+      while (reader->active.load() == entry.fast)
+        std::this_thread::yield();
+  }
+  struct ReadPublication {
+    Entry& entry;
+    ReadPublication(TieredClockValueStore& store, Entry& value) : entry(value) {
+      store.SuspendReads(entry);
+    }
+    ~ReadPublication() {
+      if (entry.alive && entry.initialized && !entry.ssd) {
+        entry.fast->direct = entry.direct;
+        entry.fast->size   = entry.size;
+        entry.fast->readable.store(entry.handle);
+      }
+    }
   };
   struct alignas(64) Shard {
     std::mutex mutex;
@@ -269,14 +388,26 @@ private:
   };
   static constexpr uint64_t kChunkSize  = 1ULL << 16;
   static constexpr uint64_t kChunkCount = 1ULL << 16;
+  struct Chunk {
+    Fast fast[kChunkSize];
+    Entry entries[kChunkSize];
+  };
 
+  Fast* LocateFast(uint64_t handle) const {
+    const uint32_t slot = static_cast<uint32_t>(handle);
+    if (slot == 0)
+      return nullptr;
+    Chunk* chunk =
+        chunks_[(slot - 1) / kChunkSize].load(std::memory_order_acquire);
+    return chunk ? chunk->fast + (slot - 1) % kChunkSize : nullptr;
+  }
   Entry* Locate(uint64_t handle) const {
     const uint32_t slot = static_cast<uint32_t>(handle);
     if (slot == 0)
       return nullptr;
-    Entry* chunk =
+    Chunk* chunk =
         chunks_[(slot - 1) / kChunkSize].load(std::memory_order_acquire);
-    return chunk ? chunk + (slot - 1) % kChunkSize : nullptr;
+    return chunk ? chunk->entries + (slot - 1) % kChunkSize : nullptr;
   }
   static bool Matches(const Entry& entry, uint64_t handle) {
     return entry.alive && entry.handle == handle;
@@ -288,16 +419,18 @@ private:
       throw std::overflow_error("CLOCK metadata slots exhausted");
     slot                  = static_cast<uint32_t>(id + 1);
     const size_t chunk_id = id / kChunkSize;
-    Entry* chunk          = chunks_[chunk_id].load(std::memory_order_acquire);
+    Chunk* chunk          = chunks_[chunk_id].load(std::memory_order_acquire);
     if (!chunk) {
       std::lock_guard<std::mutex> lock(directory_mutex_);
       chunk = chunks_[chunk_id].load(std::memory_order_relaxed);
       if (!chunk) {
-        chunk = new Entry[kChunkSize];
+        chunk = new Chunk;
         chunks_[chunk_id].store(chunk, std::memory_order_release);
       }
     }
-    return chunk + id % kChunkSize;
+    Entry* entry = chunk->entries + id % kChunkSize;
+    entry->fast  = chunk->fast + id % kChunkSize;
+    return entry;
   }
 
   void ValidateSize(uint64_t key, size_t size) const {
@@ -354,10 +487,12 @@ private:
     entry->keyed              = keyed;
     entry->size               = size;
     entry->shard              = shard_id;
+    entry->backing            = kValueHandleNone;
+    entry->dirty              = true;
     entry->initialized        = false;
-    entry->referenced         = false;
+    entry->fast->referenced   = false;
     entry->misses             = 0;
-    entry->heat               = 0;
+    entry->fast->heat         = 0;
     entry->raw                = TryDram(size);
     entry->ssd                = entry->raw == kValueHandleNone;
     if (entry->ssd)
@@ -367,6 +502,8 @@ private:
         shard.free_slots.push_back(slot);
       return nullptr;
     }
+    if (entry->ssd)
+      entry->backing = entry->raw;
     entry->capacity = (entry->ssd ? ssd_ : dram_)->SlotCapacity(entry->raw);
     entry->direct   = entry->ssd ? nullptr : dram_->DirectPtr(entry->raw);
     bool linked     = false;
@@ -396,10 +533,13 @@ private:
     else {
       dram_->Free(entry.raw);
       dram_bytes_.fetch_sub(entry.capacity, std::memory_order_relaxed);
+      if (entry.backing != kValueHandleNone)
+        ssd_->Free(entry.backing);
     }
   }
 
   void FreeLocked(Entry& entry) {
+    ReadPublication publication(*this, entry);
     Shard& shard = shards_[entry.shard];
     std::lock_guard<std::mutex> lock(shard.mutex);
     Release(entry);
@@ -414,6 +554,7 @@ private:
   }
 
   void WriteLocked(Entry& entry, const void* data, size_t size) {
+    ReadPublication publication(*this, entry);
     if (size <= entry.capacity)
       (entry.ssd ? ssd_ : dram_)->Write(entry.raw, data, size);
     else {
@@ -431,13 +572,16 @@ private:
       if (!entry.ssd)
         shards_[entry.shard].clock.erase(entry.position);
       entry.raw      = raw;
+      entry.backing  = raw;
+      entry.direct   = nullptr;
       entry.capacity = ssd_->SlotCapacity(raw);
       entry.ssd      = true;
     }
-    entry.size        = size;
-    entry.referenced  = entry.initialized;
-    entry.initialized = true;
-    entry.misses      = 0;
+    entry.dirty            = !entry.ssd;
+    entry.size             = size;
+    entry.fast->referenced = entry.initialized;
+    entry.initialized      = true;
+    entry.misses           = 0;
     ++entry.version;
   }
 
@@ -447,9 +591,7 @@ private:
     const size_t bytes = std::min(capacity, entry.size);
     if (!entry.ssd) {
       ++entry.stats.hits;
-      if (entry.heat < UINT8_MAX)
-        ++entry.heat;
-      entry.referenced = true;
+      Touch(*entry.fast);
       std::memcpy(out, entry.direct, bytes);
       return bytes;
     }
@@ -460,8 +602,7 @@ private:
   }
 
   void FinishRead(Entry& entry, const void* data, size_t size) {
-    if (entry.heat < UINT8_MAX)
-      ++entry.heat;
+    Touch(*entry.fast);
     if (entry.misses < min_misses_)
       ++entry.misses;
     if (entry.misses < min_misses_)
@@ -472,6 +613,7 @@ private:
 
   void Promote(Entry& hot, const void* data) {
     Shard& shard = shards_[hot.shard];
+    ReadPublication publication(*this, hot);
     try {
       const uint64_t free_dram = TryDram(hot.size);
       if (free_dram != kValueHandleNone) {
@@ -485,14 +627,13 @@ private:
           throw;
         }
         dram_->Write(free_dram, data, hot.size);
-        ssd_->Free(hot.raw);
-        hot.direct     = dram_->DirectPtr(free_dram);
-        hot.raw        = free_dram;
-        hot.capacity   = dram_->SlotCapacity(free_dram);
-        hot.position   = std::prev(shard.clock.end());
-        hot.ssd        = false;
-        hot.referenced = true;
-        hot.misses     = 0;
+        hot.direct           = dram_->DirectPtr(free_dram);
+        hot.raw              = free_dram;
+        hot.capacity         = dram_->SlotCapacity(free_dram);
+        hot.position         = std::prev(shard.clock.end());
+        hot.ssd              = false;
+        hot.fast->referenced = true;
+        hot.misses           = 0;
         ++hot.stats.promotions;
         return;
       }
@@ -507,50 +648,70 @@ private:
         std::unique_lock<std::mutex> cold_lock(cold.mutex, std::try_to_lock);
         if (!cold_lock || !cold.initialized || cold.capacity < hot.size)
           continue;
-        if (cold.referenced) {
-          cold.referenced = false;
-          cold.heat /= 2;
+        if (cold.fast->referenced) {
+          cold.fast->referenced = false;
+          cold.fast->heat.store(
+              cold.fast->heat.load(std::memory_order_relaxed) / 2,
+              std::memory_order_relaxed);
           continue;
         }
-        if (cold.heat >= hot.heat) {
-          cold.heat /= 2;
+        if (cold.fast->heat.load(std::memory_order_relaxed) >=
+            hot.fast->heat.load(std::memory_order_relaxed)) {
+          cold.fast->heat.store(
+              cold.fast->heat.load(std::memory_order_relaxed) / 2,
+              std::memory_order_relaxed);
           continue;
         }
         // Keep only the two value locks during I/O. Other residents in this
         // shard remain readable/writable while the cold value is written.
         shard_lock.unlock();
-        std::vector<char> value(cold.size);
-        dram_->Read(cold.raw, value.data(), value.size());
-        const uint64_t dest = fixed_ ? cold.key + 1 : ssd_->Alloc(cold.size);
-        if (dest == kValueHandleNone) {
-          ++hot.stats.failures;
-          return;
+        uint64_t dest        = cold.backing;
+        const bool writeback = cold.dirty || dest == kValueHandleNone;
+        const bool allocated =
+            writeback && !fixed_ &&
+            (dest == kValueHandleNone || ssd_->SlotCapacity(dest) < cold.size);
+        if (writeback) {
+          if (fixed_)
+            dest = cold.key + 1;
+          else if (allocated)
+            dest = ssd_->Alloc(cold.size);
+          if (dest == kValueHandleNone) {
+            ++hot.stats.failures;
+            return;
+          }
+          try {
+            ssd_->Write(dest, cold.direct, cold.size);
+          } catch (...) {
+            if (allocated)
+              ssd_->Free(dest);
+            throw;
+          }
+          if (allocated && cold.backing != kValueHandleNone)
+            ssd_->Free(cold.backing);
+          cold.backing = dest;
+          cold.dirty   = false;
+          ++cold.stats.writebacks;
+        } else {
+          ++cold.stats.clean_evictions;
         }
-        try {
-          ssd_->Write(dest, value.data(), value.size());
-        } catch (...) {
-          if (!fixed_)
-            ssd_->Free(dest);
-          throw;
-        }
+        ReadPublication cold_publication(*this, cold);
         shard_lock.lock();
         const uint64_t raw    = cold.raw;
         const size_t capacity = cold.capacity;
         dram_->Write(raw, data, hot.size);
-        ssd_->Free(hot.raw);
-        cold.raw       = dest;
-        cold.capacity  = ssd_->SlotCapacity(dest);
-        cold.ssd       = true;
-        cold.misses    = 0;
-        hot.direct     = cold.direct;
-        cold.direct    = nullptr;
-        hot.raw        = raw;
-        hot.capacity   = capacity;
-        hot.ssd        = false;
-        hot.referenced = true;
-        hot.misses     = 0;
-        hot.position   = position;
-        *position      = hot.handle;
+        cold.raw             = dest;
+        cold.capacity        = ssd_->SlotCapacity(dest);
+        cold.ssd             = true;
+        cold.misses          = 0;
+        hot.direct           = cold.direct;
+        cold.direct          = nullptr;
+        hot.raw              = raw;
+        hot.capacity         = capacity;
+        hot.ssd              = false;
+        hot.fast->referenced = true;
+        hot.misses           = 0;
+        hot.position         = position;
+        *position            = hot.handle;
         ++cold.stats.demotions;
         ++hot.stats.promotions;
         return;
@@ -566,7 +727,11 @@ private:
   std::vector<Shard> shards_;
   const uint32_t min_misses_;
   const bool fixed_;
-  std::unique_ptr<std::atomic<Entry*>[]> chunks_;
+  std::unique_ptr<std::atomic<Chunk*>[]> chunks_;
   std::mutex directory_mutex_;
   std::atomic<uint64_t> next_slot_{0}, allocation_shard_{0}, dram_bytes_{0};
+  inline static std::atomic<uint64_t> next_instance_{1};
+  const uint64_t instance_ = next_instance_.fetch_add(1);
+  mutable std::mutex readers_mutex_;
+  mutable std::vector<std::unique_ptr<Reader>> readers_;
 };

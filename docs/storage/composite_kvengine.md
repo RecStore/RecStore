@@ -233,40 +233,68 @@ Set `value.tiering.cache_policy` to `clock` to enable actual placement changes:
 
 CLOCK shares the whole DRAM watermark with initial placement. It does not
 reserve `cache_budget_ratio`, and `expected_dram_bytes` does not disable it.
-An SSD value becomes eligible after `promote_min_misses` reads. If no DRAM
-space is available, CLOCK selects an unreferenced resident in the same shard,
-writes its current value to SSD, and reuses its DRAM slot for the hot value.
-DRAM reads and updates give residents a second chance. Saturating access
-credits protect frequently read residents from less frequent SSD candidates;
-CLOCK scans age those credits so changing hot sets can replace old ones. At most 64 candidates
-are examined per promotion; a candidate must have a slot large enough for the
-incoming value. Failed allocation or demotion leaves the original placements
-intact and the successful foreground read usable. Plain SSD allocators need a
-spare slot for the cold value until the hot value's old SSD slot is released.
+An SSD value becomes eligible after `promote_min_misses` reads. If DRAM is
+full, CLOCK selects a colder resident in the same shard and reuses its DRAM
+slot. This is demand-driven eviction: there is no proactive demotion thread.
+A promoted value retains its SSD backing copy. Evicting an unchanged copy
+issues no SSD write; the first eviction of an initial DRAM value, or eviction
+after a DRAM update, writes the current value before reusing the slot.
+Failed writeback leaves the original placements intact and the foreground
+SSD read usable. SSD capacity must accommodate retained backing copies; a
+plain allocator also needs space for a victim with no backing copy yet.
 
-Logical handles stay stable across exchange and keyed updates. A segmented
-metadata directory resolves handles directly; generation checks reject stale
-handles after slot reuse. Per-value locks protect copies, writes, frees and
-migration. SSD I/O does not hold the CLOCK/key-directory shard lock; direct pointers and direct
-RDMA rows are unavailable in this mode, so readers use copied/staging paths.
-Single-key reads snapshot size and contents under the same lock. Batch reads
-lock distinct records in address order and retain grouped SSD reads; write
-versions prevent stale promotion after a batch snapshot. Static Bandana/MaxEmbed layouts retain
-key-addressed SSD slots and update all replicas on demotion. DRAM-resident
-updates are written to SSD when demoted, rather than synchronously maintaining
-an SSD copy on every update. Use checkpoints for the existing recovery flow.
+Sampled DRAM hits and individual SSD misses accumulate saturating access
+credits. CLOCK scans age credits so new hot sets can replace old ones. At most
+64 candidates are examined per promotion; the victim's slot must fit the
+incoming value. Logical handles remain stable across exchange and keyed
+updates, with generation checks rejecting stale handles after metadata reuse.
+
+DRAM hits use a compact snapshot and a per-thread reader hazard rather than
+a per-value mutex. Updates, frees and eviction revoke that snapshot and wait
+for existing readers before changing bytes or reusing the DRAM slot. SSD I/O
+holds only the involved value locks, leaving unrelated DRAM values readable.
+Direct pointers and direct RDMA rows are unavailable in CLOCK mode; callers
+use copied/staging paths. Batch reads preserve grouped SSD I/O, and write
+versions prevent stale promotion after a batch snapshot. Static Bandana and
+MaxEmbed layouts update all replicas when a dirty resident is evicted. Use
+checkpoints for the existing recovery flow.
 
 `tiered_clock_hits`, `tiered_clock_misses`, `tiered_clock_promotions`,
 `tiered_clock_demotions`, `tiered_clock_failures` and
-`tiered_clock_admission_rejects` expose policy activity. Resident counts describe
-current authoritative placement; `tiered_dram_bytes` includes allocator slot
-rounding and must not exceed `tiered_dram_limit_bytes`. Index, key-to-handle maps and CLOCK metadata are additional memory, outside
-the value budget. Metadata is allocated in segments of 65,536 records and
+`tiered_clock_admission_rejects` expose policy activity.
+`tiered_clock_clean_evictions` counts evictions that issue no write, and
+`tiered_clock_writebacks` counts successful first/dirty backing writes.
+Resident counts describe current authoritative placement, not the number of
+SSD backing copies. `tiered_dram_bytes` includes allocator slot rounding and
+must not exceed `tiered_dram_limit_bytes`. Index, key-to-handle maps and CLOCK
+metadata are additional memory outside the value budget. Metadata slots are
 recycled with generations; the directory supports up to 2^32 - 1 slots.
-CLOCK is opt-in: `none` and the existing `lru` read cache remain available.
-Measure workload throughput before selecting it; synchronization and metadata
-access add work to DRAM hits, and shard-local replacement can leave usable
-victims in other shards untouched.
+
+### Adaptive selection for nearly fitting working sets
+
+Use `value.tiering.cache_policy=adaptive` with `expected_dram_bytes` set to
+the full working set's allocator-rounded value bytes. A fitting estimate
+uses the existing direct DRAM path. If the estimate exceeds the watermark
+by at most 0.1% of the working set, adaptive mode selects the LRU read cache,
+with an effective DRAM reservation equal to the estimated overflow instead
+of the default 5%. Original DRAM residents stay directly readable; SSD hot
+values compete within this small cache. This branch does not evict original
+DRAM residents dynamically. Its live statistics report `tiered_cache_policy=lru`.
+
+Larger overflow, or an unknown estimate (`expected_dram_bytes=0`), selects
+CLOCK and allows eviction from all DRAM residents. Adaptive selection happens
+at construction, not by consulting a future request trace. For growing or
+unknown working sets, omit the estimate to retain full replacement behavior.
+Both branches count cached values against the same value DRAM watermark;
+neither fixes process RSS, since policy/index metadata is additional.
+
+The native benchmark also supports `--distribution=trace --access_trace=PATH`
+for a flat binary stream of native uint64 keys in `[0, record_count)`.
+`--warmup_access_trace=PATH` optionally supplies a separate warmup window.
+Trace loading/validation occurs outside the timed phase. Each worker replays
+its contiguous trace segment in order and cycles it for the requested runtime;
+report both the dataset's total parameter rows and observed keys, the split,
+key mapping, and warmup/runtime durations when interpreting these results.
 
 The io_uring batch path submits only pending SQEs, drains ready completions,
 and waits after `ssd_allocator.io.completion_poll_spins` unsuccessful polls

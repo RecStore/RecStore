@@ -37,7 +37,7 @@ def write_summary(out, rows, options):
     loads = []
     for key, group in sorted(groups.items()):
         ok = [r for r in group if r["exit_code"] == 0 and r["verified"]]
-        budget = "共享高水位" if key[3] == "clock" else f"{key[4]:.0%}"
+        budget = {"clock": "共享高水位", "adaptive": "按溢出量选择"}.get(key[3], f"{key[4]:.0%}")
         prefix = f"| {key[0]} | {key[1]:.2%} | {key[2]} | {key[3]} | {budget} |"
         if not ok:
             lines.append(prefix + f" 0/{len(group)} | 失败 | — | — |")
@@ -61,7 +61,7 @@ def main():
     parser.add_argument("--baseline-binary", type=Path)
     parser.add_argument("--ssd-ratios", type=float, nargs="+", default=[.7, .9])
     parser.add_argument("--cache-budget-ratios", type=float, nargs="+", default=[.05, .15, .3, .5, 1.0])
-    parser.add_argument("--policies", choices=["none", "lru", "clock"], nargs="+", default=["lru"])
+    parser.add_argument("--policies", choices=["none", "lru", "clock", "adaptive"], nargs="+", default=["lru"])
     parser.add_argument("--distributions", choices=["uniform", "zipfian"], nargs="+", default=["zipfian"])
     parser.add_argument("--record-count", type=int, default=1000000)
     parser.add_argument("--value-size", type=int, default=128)
@@ -125,7 +125,7 @@ def main():
                    configured_dram_bytes=args.dram_capacity_bytes,
                    verified="YCSB_VERIFY samples=1024 ok=1" in raw,
                    cache_enabled=after.get("tiered_cache_policy") in {"lru", "clock"})
-        prefix = "tiered_clock" if policy == "clock" else "tiered_cache"
+        prefix = "tiered_clock" if after.get("tiered_cache_policy") == "clock" else "tiered_cache"
         for label, field in {"hits": prefix + "_hits", "misses": prefix + "_misses",
                              "pages": "layout_page_reads", "bytes": "layout_bytes_read"}.items():
             row["measured_" + label] = int(after.get(field, 0)) - int(before.get(field, 0))

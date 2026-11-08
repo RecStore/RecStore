@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <numeric>
@@ -59,7 +60,9 @@ DEFINE_string(ssd_io_backend, "IOURING", "SSD IO backend");
 DEFINE_int32(ssd_queue_depth, 512, "SSD IO queue depth");
 DEFINE_int64(dram_capacity_bytes, 0, "override DRAM allocator capacity bytes");
 DEFINE_int64(ssd_capacity_bytes, 0, "override SSD allocator capacity bytes");
-DEFINE_string(tiered_cache_policy, "none", "tiered policy: none/lru/clock (cold DRAM exchange)");
+DEFINE_string(tiered_cache_policy,
+              "none",
+              "tiered policy: none/lru/clock/adaptive (cold DRAM exchange)");
 DEFINE_double(tiered_cache_budget_ratio, 0.05, "fraction of DRAM reserved for cache");
 DEFINE_int64(tiered_cache_expected_dram_bytes, 0,
              "load-time working set in DRAM slot bytes; 0 means unknown");
@@ -71,7 +74,11 @@ DEFINE_int64(record_count, 100000000, "YCSB record count");
 DEFINE_string(workload,
               "c",
               "YCSB workload: a/b/c or workloada/workloadb/workloadc");
-DEFINE_string(distribution, "uniform", "key distribution: uniform/zipfian");
+DEFINE_string(distribution,
+              "uniform",
+              "key distribution: uniform/zipfian/trace");
+DEFINE_string(access_trace, "", "binary uint64 key trace for timed replay");
+DEFINE_string(warmup_access_trace, "", "optional separate warmup trace");
 DEFINE_double(zipfian_alpha, 0.9, "Zipfian alpha");
 DEFINE_bool(
     zipfian_scramble,
@@ -158,8 +165,15 @@ public:
                uint64_t record_count,
                double zipfian_alpha,
                uint64_t seed,
-               bool scramble = false)
-      : distribution_(std::move(distribution)),
+               bool scramble                      = false,
+               const std::vector<uint64_t>* trace = nullptr,
+               size_t trace_begin                 = 0,
+               size_t trace_end                   = 0)
+      : trace_(trace),
+        trace_begin_(trace_begin),
+        trace_end_(trace_end),
+        trace_pos_(trace_begin),
+        distribution_(std::move(distribution)),
         record_count_(record_count),
         alpha_(zipfian_alpha),
         rng_(seed) {
@@ -178,12 +192,22 @@ public:
       if (scramble) {
         scramble_stride_ = ChooseCoprimeStride(record_count_);
       }
+    } else if (distribution_ == "trace") {
+      if (!trace_ || trace_begin_ >= trace_end_ || trace_end_ > trace_->size())
+        throw std::invalid_argument("each trace reader needs at least one key");
     } else if (distribution_ != "uniform") {
-      throw std::invalid_argument("distribution must be uniform or zipfian");
+      throw std::invalid_argument(
+          "distribution must be uniform, zipfian or trace");
     }
   }
 
   uint64_t NextKey() {
+    if (trace_) {
+      const uint64_t key = (*trace_)[trace_pos_++];
+      if (trace_pos_ == trace_end_)
+        trace_pos_ = trace_begin_;
+      return key;
+    }
     if (distribution_ == "uniform") {
       return rng_.Uniform(record_count_);
     }
@@ -227,6 +251,8 @@ private:
     return 0;
   }
 
+  const std::vector<uint64_t>* trace_;
+  size_t trace_begin_, trace_end_, trace_pos_;
   std::string distribution_;
   uint64_t record_count_;
   double alpha_;
@@ -487,7 +513,8 @@ PhaseStats RunTransactions(
     int threads_num,
     uint64_t record_count,
     int seconds,
-    uint64_t seed_offset = 0) {
+    uint64_t seed_offset               = 0,
+    const std::vector<uint64_t>* trace = nullptr) {
   const WorkloadMix mix         = GetWorkloadMix(workload);
   const bool use_exists         = FLAGS_read_mode == "exists";
   const bool use_batch_get_flat = FLAGS_read_mode == "batch_get_flat";
@@ -520,7 +547,10 @@ PhaseStats RunTransactions(
             record_count,
             FLAGS_zipfian_alpha,
             0x9e3779b97f4a7c15ULL + static_cast<uint64_t>(tid) + seed_offset,
-            FLAGS_zipfian_scramble);
+            FLAGS_zipfian_scramble,
+            trace,
+            trace ? trace->size() * tid / threads_num : 0,
+            trace ? trace->size() * (tid + 1) / threads_num : 0);
         std::string value(
             FLAGS_value_size, static_cast<char>('A' + (tid % 26)));
         std::string read_value;
@@ -779,6 +809,40 @@ int RunBenchmark(int argc, char* argv[]) {
                   "KVEngineFasterKV fasterkv_storage=ssd";
   }
 
+  auto read_trace = [](const std::string& path) {
+    std::vector<uint64_t> keys;
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    const auto bytes = input.tellg();
+    if (!input || bytes <= 0 || bytes % sizeof(uint64_t) != 0)
+      throw std::invalid_argument("invalid uint64 access trace: " + path);
+    keys.resize(static_cast<size_t>(bytes) / sizeof(uint64_t));
+    input.seekg(0);
+    if (!input.read(reinterpret_cast<char*>(keys.data()), bytes))
+      throw std::runtime_error("failed to read access trace: " + path);
+    for (uint64_t key : keys)
+      if (key >= static_cast<uint64_t>(FLAGS_record_count))
+        throw std::invalid_argument("trace key exceeds record_count");
+    return keys;
+  };
+  std::vector<uint64_t> trace, warmup_trace;
+  if (FLAGS_distribution == "trace") {
+    trace        = read_trace(FLAGS_access_trace);
+    warmup_trace = FLAGS_warmup_access_trace.empty()
+                     ? trace
+                     : read_trace(FLAGS_warmup_access_trace);
+    if (std::min(trace.size(), warmup_trace.size()) <
+        static_cast<size_t>(FLAGS_thread_num))
+      throw std::invalid_argument("trace is shorter than thread count");
+    std::printf("YCSB_TRACE keys=%zu warmup_keys=%zu path=%s warmup_path=%s\n",
+                trace.size(),
+                warmup_trace.size(),
+                FLAGS_access_trace.c_str(),
+                FLAGS_warmup_access_trace.c_str());
+  } else if (!FLAGS_access_trace.empty() ||
+             !FLAGS_warmup_access_trace.empty()) {
+    throw std::invalid_argument("access_trace requires distribution=trace");
+  }
+
   const std::string workload = NormalizeWorkload(FLAGS_workload);
   (void)GetWorkloadMix(workload);
   const int load_threads =
@@ -825,20 +889,20 @@ int RunBenchmark(int argc, char* argv[]) {
     }
   }
 
+  auto verify_value = [&](uint64_t key) {
+    std::string value;
+    kv->Get(key, value, 0);
+    const uint64_t per_thread =
+        (FLAGS_record_count + load_threads - 1) / load_threads;
+    const std::string expected(
+        FLAGS_value_size, static_cast<char>('a' + ((key / per_thread) % 26)));
+    if (value != expected)
+      throw std::runtime_error(
+          "loaded value mismatch at key " + std::to_string(key));
+  };
   auto verify_values = [&]() {
-    // Check evenly spaced loaded values outside the measured interval.
-    for (uint64_t sample = 0; sample < 1024; ++sample) {
-      const uint64_t key = sample * FLAGS_record_count / 1024;
-      std::string value;
-      kv->Get(key, value, 0);
-      const uint64_t per_thread =
-          (FLAGS_record_count + load_threads - 1) / load_threads;
-      const std::string expected(FLAGS_value_size,
-                                static_cast<char>('a' + ((key / per_thread) % 26)));
-      if (value != expected) {
-        throw std::runtime_error("loaded value mismatch at key " + std::to_string(key));
-      }
-    }
+    for (uint64_t sample = 0; sample < 1024; ++sample)
+      verify_value(sample * FLAGS_record_count / 1024);
   };
   if (FLAGS_run && FLAGS_load) {
     verify_values();
@@ -848,8 +912,15 @@ int RunBenchmark(int argc, char* argv[]) {
 
   if (FLAGS_run) {
     if (FLAGS_warmup_seconds > 0) {
-      RunTransactions(kv.get(), workload, FLAGS_distribution, FLAGS_thread_num,
-                      FLAGS_record_count, FLAGS_warmup_seconds, 0x100000000ULL);
+      RunTransactions(
+          kv.get(),
+          workload,
+          FLAGS_distribution,
+          FLAGS_thread_num,
+          FLAGS_record_count,
+          FLAGS_warmup_seconds,
+          0x100000000ULL,
+          warmup_trace.empty() ? nullptr : &warmup_trace);
     }
     std::printf("YCSB_BEFORE_RUN%s\n", kv->ExtraResultFields().c_str());
     const auto begin     = std::chrono::steady_clock::now();
@@ -859,7 +930,9 @@ int RunBenchmark(int argc, char* argv[]) {
         FLAGS_distribution,
         FLAGS_thread_num,
         static_cast<uint64_t>(FLAGS_record_count),
-        FLAGS_running_seconds);
+        FLAGS_running_seconds,
+        0,
+        trace.empty() ? nullptr : &trace);
     const auto end       = std::chrono::steady_clock::now();
     const double seconds = SecondsSince(begin, end);
     const double throughput =
@@ -884,6 +957,16 @@ int RunBenchmark(int argc, char* argv[]) {
     if (FLAGS_load && workload == "c") {
       verify_values();
       std::printf("YCSB_VERIFY_AFTER_RUN samples=1024 ok=1\n");
+      if (!trace.empty()) {
+        // Validate every replayed key only after timing, so validation cannot
+        // prewarm future trace keys or affect the reported throughput.
+        auto unique = trace;
+        std::sort(unique.begin(), unique.end());
+        unique.erase(std::unique(unique.begin(), unique.end()), unique.end());
+        for (uint64_t key : unique)
+          verify_value(key);
+        std::printf("YCSB_VERIFY_TRACE keys=%zu ok=1\n", unique.size());
+      }
     }
     if (FLAGS_report_latency) {
       PrintLatencyPercentiles(run_stats);

@@ -792,7 +792,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--distributions",
         nargs="+",
-        choices=["uniform", "zipfian"],
+        choices=["uniform", "zipfian", "trace"],
         default=["uniform"],
         help="Run one or more distributions in one command.",
     )

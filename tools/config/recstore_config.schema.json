@@ -475,8 +475,8 @@
               "properties": {
                 "cache_policy": {
                   "type": "string",
-                  "enum": ["none", "lru", "LRU", "clock", "CLOCK"],
-                  "description": "lru reserves an SSD read cache; clock exchanges cold DRAM and hot SSD values within the full DRAM watermark."
+                  "enum": ["none", "lru", "LRU", "clock", "CLOCK", "adaptive", "ADAPTIVE"],
+                  "description": "lru reserves an SSD read cache; clock exchanges cold DRAM and hot SSD values within the full DRAM watermark; adaptive selects an overflow-sized LRU for nearly fitting known working sets, otherwise CLOCK."
                 },
                 "expected_dram_bytes": {
                   "type": "integer",

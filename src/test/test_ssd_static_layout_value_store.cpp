@@ -1279,7 +1279,13 @@ TEST_F(StaticLayoutValueTest, ClockFailedDemotionLeavesBothValuesIntact) {
             0);
   store.ReadValue(hc, out);
   EXPECT_EQ(out, cold);
-  store.ReadValue(hh, out);
+  // Reading the resident also heats it; retry until the SSD value wins
+  // admission.
+  for (int i = 0;
+       i < 16 &&
+       TieredField(store.ExtraResultFields(), "tiered_clock_demotions") == 0;
+       ++i)
+    store.ReadValue(hh, out);
   EXPECT_EQ(out, hot);
   EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_demotions"),
             1);
@@ -1562,4 +1568,180 @@ TEST_F(StaticLayoutValueTest, ClockConcurrentBatchesSurviveWritesAndSlotReuse) {
   for (auto& thread : threads) thread.join();
   EXPECT_FALSE(failed.load());
   EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_live_allocs"), 16);
+}
+
+TEST_F(StaticLayoutValueTest,
+       ClockCleanEvictionsSkipWritesAndDirtyValuesWriteBack) {
+  HybridValueStore store(ClockConfig(root_, "clock-clean", 1));
+  const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b');
+  const auto ha = store.AllocAndWrite(0, a.data(), a.size());
+  const auto hb = store.AllocAndWrite(1, b.data(), b.size());
+  std::string out;
+  auto promote = [&](uint64_t handle) {
+    const auto before =
+        TieredField(store.ExtraResultFields(), "tiered_clock_promotions");
+    for (int i = 0; i < 32 && TieredField(store.ExtraResultFields(),
+                                          "tiered_clock_promotions") == before;
+         ++i)
+      store.ReadValue(handle, out);
+    EXPECT_GT(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+              before);
+  };
+  promote(hb); // The initial DRAM value needs its first SSD backing copy.
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_writebacks"),
+            1);
+  g_fail_next_write.store(true);
+  promote(ha); // B already has an unchanged SSD copy: no write is issued.
+  EXPECT_EQ(out, a);
+  EXPECT_TRUE(g_fail_next_write.exchange(false));
+  EXPECT_EQ(
+      TieredField(store.ExtraResultFields(), "tiered_clock_clean_evictions"),
+      1);
+  const std::string updated(kCachedValueSize, 'z');
+  store.Write(ha, updated.data(), updated.size());
+  promote(hb);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_writebacks"),
+            2);
+  store.ReadValue(ha, out);
+  EXPECT_EQ(out, updated);
+  store.Free(ha);
+  store.Free(hb);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_live_allocs"), 0);
+}
+
+TEST_F(StaticLayoutValueTest,
+       ClockFastReadersSurviveInPlaceWritesAndMetadataReuse) {
+  HybridValueStore store(ClockConfig(root_, "clock-hazards", 1));
+  const std::string initial(512, 'a');
+  std::atomic<uint64_t> current{
+      store.AllocAndWrite(0, initial.data(), initial.size())};
+  std::atomic<bool> start{false}, done{false}, failed{false};
+  std::vector<std::thread> readers;
+  for (int i = 0; i < 8; ++i)
+    readers.emplace_back([&] {
+      std::string out;
+      while (!start.load())
+        std::this_thread::yield();
+      while (!done.load()) {
+        store.ReadValue(current.load(), out);
+        if (!out.empty() &&
+            (out.size() != 512 ||
+             out.find_first_not_of(out[0]) != std::string::npos))
+          failed.store(true);
+      }
+    });
+  start.store(true);
+  for (int i = 0; i < 1000; ++i) {
+    const std::string value(512, i % 2 ? 'b' : 'c');
+    if (i % 10 == 0) {
+      store.Free(current.load());
+      current.store(store.AllocAndWrite(0, value.data(), value.size()));
+    } else
+      store.Write(current.load(), value.data(), value.size());
+  }
+  done.store(true);
+  for (auto& thread : readers)
+    thread.join();
+  EXPECT_FALSE(failed.load());
+}
+
+TEST_F(StaticLayoutValueTest, ClockFastReadersSeeWholeVariableSizeValues) {
+  HybridValueStore store(ClockConfig(root_, "clock-short-snapshots", 1));
+  const std::string initial(512, 'a');
+  const auto handle = store.AllocAndWrite(0, initial.data(), initial.size());
+  const std::array<size_t, 9> sizes{1, 7, 8, 9, 17, 31, 127, 511, 512};
+  std::atomic<bool> start{false}, done{false}, failed{false};
+  std::vector<std::thread> readers;
+  for (int i = 0; i < 8; ++i)
+    readers.emplace_back([&] {
+      std::string out;
+      while (!start.load())
+        std::this_thread::yield();
+      while (!done.load()) {
+        store.ReadValue(handle, out);
+        if (std::find(sizes.begin(), sizes.end(), out.size()) == sizes.end() ||
+            out.find_first_not_of(out[0]) != std::string::npos)
+          failed.store(true);
+      }
+    });
+  start.store(true);
+  for (int i = 0; i < 5000; ++i) {
+    const std::string value(sizes[i % sizes.size()], 'b' + i % 10);
+    store.Write(handle, value.data(), value.size());
+  }
+  done.store(true);
+  for (auto& thread : readers)
+    thread.join();
+  EXPECT_FALSE(failed.load());
+  EXPECT_LE(TieredField(store.ExtraResultFields(), "tiered_dram_bytes"),
+            TieredField(store.ExtraResultFields(), "tiered_dram_limit_bytes"));
+}
+
+TEST_F(StaticLayoutValueTest, AdaptiveSizesSmallCacheToKnownOverflow) {
+  auto config = TieredStoreConfig(
+      root_,
+      "adaptive-small",
+      {{"cache_policy", "adaptive"},
+       {"cache_budget_ratio", 0.0},
+       {"cache_shards", 1},
+       {"expected_dram_bytes",
+        static_cast<int64_t>(kCacheDramBytes * 0.85) + kCachedValueSize}});
+  HybridValueStore store(config);
+  const std::string value(kCachedValueSize, 's');
+  const auto handle = store.AllocAndWrite(0, value.data(), value.size());
+  EXPECT_NE(store.DirectPtr(handle), nullptr);
+  const auto info = store.ExtraResultFields();
+  EXPECT_NE(info.find("tiered_cache_policy=lru"), std::string::npos);
+  EXPECT_GT(TieredField(info, "tiered_cache_budget_bytes"), 0);
+  EXPECT_LT(TieredField(info, "tiered_cache_budget_bytes"),
+            kCacheDramBytes / 100);
+}
+
+TEST_F(StaticLayoutValueTest, AdaptiveUsesClockForLargeOrUnknownWorkingSets) {
+  for (int64_t expected : {int64_t(0), int64_t(kCacheDramBytes * 2)}) {
+    auto config = TieredStoreConfig(
+        root_,
+        "adaptive-" + std::to_string(expected),
+        {{"cache_policy", "adaptive"}, {"expected_dram_bytes", expected}});
+    HybridValueStore store(config);
+    EXPECT_NE(store.ExtraResultFields().find("tiered_cache_policy=clock"),
+              std::string::npos);
+  }
+  auto config = TieredStoreConfig(
+      root_,
+      "adaptive-fits",
+      {{"cache_policy", "adaptive"},
+       {"expected_dram_bytes", kCachedValueSize}});
+  HybridValueStore store(config);
+  EXPECT_NE(store.ExtraResultFields().find("tiered_cache_policy=none"),
+            std::string::npos);
+}
+
+TEST_F(StaticLayoutValueTest,
+       ClockFailedDirtyWritebackKeepsNewestResidentValue) {
+  HybridValueStore store(ClockConfig(root_, "clock-dirty-failure", 1));
+  const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b'),
+      updated(kCachedValueSize, 'u');
+  const auto ha = store.AllocAndWrite(0, a.data(), a.size());
+  const auto hb = store.AllocAndWrite(1, b.data(), b.size());
+  std::string out;
+  store.ReadValue(hb, out);
+  store.ReadValue(hb, out);
+  store.Write(hb, updated.data(), updated.size());
+  store.ReadValue(ha, out);
+  g_fail_next_write.store(true);
+  store.ReadValue(ha, out);
+  EXPECT_EQ(out, a);
+  EXPECT_FALSE(g_fail_next_write.load());
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_failures"), 1);
+  store.ReadValue(hb, out);
+  EXPECT_EQ(out, updated);
+  for (int i = 0; i < 16; ++i)
+    store.ReadValue(ha, out);
+  store.ReadValue(hb, out);
+  EXPECT_EQ(out, updated);
+  store.Free(ha);
+  store.Free(hb);
+  EXPECT_EQ(
+      TieredField(store.ExtraResultFields(), "tiered_clock_backed_values"), 0);
 }
