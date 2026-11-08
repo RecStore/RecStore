@@ -136,7 +136,7 @@
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L38">recstore::IsFloatEmbeddingValues(base::RecTensor const&amp;, long) (src/ps/base/base_client.h:38)</a>    </div>
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="63774">called 63774 times</div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="88490">called 88490 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">85.7%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">66.7%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">88.0%</div>
@@ -464,7 +464,7 @@
         <td class="text-right src linenos"><a class="normal" id="L38" href="#L38">38</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">63774</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">88490</td>
         <td class="src coveredLine show_coveredLine"><span class="nf">IsFloatEmbeddingValues</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">RecTensor</span><span class="o">&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">,</span><span class="w"> </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">num_keys</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
@@ -474,11 +474,11 @@
             <summary>1/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
               <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
-              <div class="color-taken-branch">&check; Branch 2 taken 63774 times.</div>
+              <div class="color-taken-branch">&check; Branch 2 taken 88490 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">63774</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">88490</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">values</span><span class="p">.</span><span class="n">dtype</span><span class="p">()</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">DataType</span><span class="o">::</span><span class="n">FLOAT32</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
@@ -502,11 +502,11 @@
             <summary>2/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
               <div class="color-taken-branch">&check; Branch 0 taken 2 times.</div>
-              <div class="color-taken-branch">&check; Branch 1 taken 63772 times.</div>
+              <div class="color-taken-branch">&check; Branch 1 taken 88488 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">63774</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">88490</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">num_keys</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
@@ -529,12 +529,12 @@
           <details class="normal details-overlay">
             <summary>2/2</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 2 taken 63770 times.</div>
+              <div class="color-taken-branch">&check; Branch 2 taken 88486 times.</div>
               <div class="color-taken-branch">&check; Branch 3 taken 2 times.</div>
             </div>
           </details>
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">127544</td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">176976</td>
         <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">dim</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">shape</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">num_keys</span><span class="w"> </span><span class="o">&amp;&amp;</span></td>
       </tr>
       <tr>
@@ -543,16 +543,16 @@
           <details class="normal details-overlay">
             <summary>3/6</summary>
             <div class="text-left position-absolute color-bg-subtle p-3 mt-2" style="z-index: 1;">
-              <div class="color-taken-branch">&check; Branch 0 taken 63772 times.</div>
+              <div class="color-taken-branch">&check; Branch 0 taken 88488 times.</div>
               <div class="color-fg-danger">&cross; Branch 1 not taken.</div>
-              <div class="color-taken-branch">&check; Branch 3 taken 63770 times.</div>
+              <div class="color-taken-branch">&check; Branch 3 taken 88486 times.</div>
               <div class="color-fg-danger">&cross; Branch 4 not taken.</div>
-              <div class="color-taken-branch">&check; Branch 6 taken 63770 times.</div>
+              <div class="color-taken-branch">&check; Branch 6 taken 88486 times.</div>
               <div class="color-fg-danger">&cross; Branch 7 not taken.</div>
             </div>
           </details>
         </td>
-        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">127544</td>
+        <td class="linecount partialCoveredLine show_partialCoveredLine pr-2 pl-2 color-fg-muted text-right">176976</td>
         <td class="src partialCoveredLine show_partialCoveredLine"><span class="w">         </span><span class="n">values</span><span class="p">.</span><span class="n">shape</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">values</span><span class="p">.</span><span class="n">data</span><span class="p">()</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">;</span></td>
       </tr>
       <tr>
@@ -1348,7 +1348,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
-          at 2026-11-08 18:50:53+00:00
+          at 2026-11-08 18:52:15+00:00
         </footer>
       </div>
     </div>
