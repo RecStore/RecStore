@@ -3570,8 +3570,8 @@ CQE；<strong>等到接近等待超时</strong>说明收割与慢路径都被关
   <code>ibv_create_qp failed</code> 或 <code>no idle RC write slot available</code>。</li>
 <li><code>slots-per-qp</code> 默认是 <code>1</code>，增加它主要提高在途深度，不增加 QP 数。</li>
 <li><code>read</code> 和 <code>push</code> 是不同的 PUT-v2 payload 路径，结果不能直接混合比较。</li>
-<li><code>rdma-get-response-mode=auto</code> 会按 index/value layout 选择 GET response path；
-  当前 <code>DRAM_PET_HASH</code> 使用 <code>staging_copy</code>，其他 index 默认使用 <code>direct_sg</code>。</li>
+<li><code>rdma-get-response-mode</code> 只接受 <code>direct_sg</code> 或 <code>staging_copy</code>，其它值启动即失败；
+  runner 里的 <code>auto</code> 只是解析层：<code>DRAM_PET_HASH</code> 解析成 <code>staging_copy</code>，其余解析成 <code>direct_sg</code>。</li>
 <li>调试使用 Debug/O0 构建，吞吐基准使用 Release 构建。</li>
 <li>修改源码后，重新编译对应的 <code>petps_server</code>、benchmark、integration 或 op-layer target，再验证结果。</li>
 <li>热点路径零开销：正常请求（µs 级完成）既不查控制面（1 s 后才查）也不收割 CQ
