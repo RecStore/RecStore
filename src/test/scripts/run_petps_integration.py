@@ -2,6 +2,7 @@
 
 import argparse
 import contextlib
+import os
 import re
 import tempfile
 import time
@@ -92,6 +93,16 @@ def main():
     parser.add_argument("--value-size", type=int, default=16)
     parser.add_argument("--max-kv-num-per-request", type=int, default=64)
     parser.add_argument("--client-count", type=int, default=1)
+    parser.add_argument(
+        "--logical-clients-per-process",
+        type=int,
+        help="logical RC lanes per client process (default: 1)",
+    )
+    parser.add_argument(
+        "--rdma-qps-per-client-per-shard",
+        type=int,
+        help="RC write QPs per client per shard (default: binary default)",
+    )
     parser.add_argument("--client-timeout", type=int, default=15)
     parser.add_argument("--cluster-timeout", type=int, default=15)
     parser.add_argument("--status-refresh-interval", type=float, default=2.0)
@@ -196,7 +207,11 @@ def main():
 
     with runtime_context as runtime_dir:
         config_path = materialize_rdma_config(
-            source_config_path, args.server_count, args.client_count, runtime_dir
+            source_config_path,
+            args.server_count,
+            args.client_count,
+            runtime_dir,
+            device=os.environ.get("RECSTORE_RDMA_TEST_DEVICE"),
         )
         runner = PetPSClusterRunner(
             config_path=config_path,
@@ -206,6 +221,8 @@ def main():
             value_size=args.value_size,
             max_kv_num_per_request=args.max_kv_num_per_request,
             timeout=cluster_timeout,
+            logical_clients_per_process=args.logical_clients_per_process or 1,
+            rdma_qps_per_client_per_shard=args.rdma_qps_per_client_per_shard,
             verbose=args.show_runner_logs,
             status_refresh_interval=args.status_refresh_interval,
             show_status_logs=args.show_runner_logs,

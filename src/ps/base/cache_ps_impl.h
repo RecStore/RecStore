@@ -67,6 +67,11 @@ public:
 
   CachePS(json config) {
     LOG(INFO) << "cache ps config: " << config.dump(2);
+    if (config.contains("max_batch_keys_size")) {
+      LOG(WARNING)
+          << "cache_ps.max_batch_keys_size is deprecated and ignored; use "
+             "distributed_client.max_keys_per_request for client batching";
+    }
     BaseKVConfig kv_config;
     kv_config.num_threads_ = config["num_threads"].get<int>();
     kv_config.json_config_ = config["base_kv_config"];

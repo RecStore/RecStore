@@ -1,5 +1,6 @@
 #pragma once
 #include <boost/coroutine2/all.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <tuple>
@@ -107,6 +108,23 @@ public:
     std::uint64_t missing_rows     = 0;
   };
 
+  // positions points to a caller-owned buffer for compact missing-row
+  // positions. Entries are zero-based row indices into the original keys, not
+  // key values. Positions are returned in ascending input order, including
+  // every occurrence of a missing key.
+  //
+  // capacity is measured in uint64_t elements, not bytes. KVEngineComposite
+  // requires capacity >= num_rows when this output is requested.
+  //
+  // On success, count is the number of positions written. Only
+  // positions[0, count) is valid; remaining elements need not be modified or
+  // cleared.
+  struct MissingPositionsOutput {
+    std::uint64_t* positions = nullptr;
+    size_t capacity          = 0;
+    size_t count             = 0;
+  };
+
   struct BulkLoadStats {
     std::uint64_t prepare_ns         = 0;
     std::uint64_t value_alloc_ns     = 0;
@@ -145,6 +163,20 @@ public:
       int64_t value_offset,
       int64_t value_dim,
       unsigned tid,
+      BatchGetFlatStats* stats = nullptr,
+      bool collect_profile     = true) {
+    return false;
+  }
+
+  virtual bool BatchGetFlatRangeWithMissing(
+      base::ConstArray<uint64_t> keys,
+      float* values,
+      int64_t num_rows,
+      int64_t row_dim,
+      int64_t value_offset,
+      int64_t value_dim,
+      unsigned tid,
+      MissingPositionsOutput* missing_positions,
       BatchGetFlatStats* stats = nullptr,
       bool collect_profile     = true) {
     return false;

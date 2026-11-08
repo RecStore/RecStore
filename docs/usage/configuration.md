@@ -26,7 +26,7 @@ RecStore 只用一个 JSON 配置文件。本页回答"配置放哪、怎么被�
 
 | 块 | 谁读 | 内容 |
 | --- | --- | --- |
-| `cache_ps` | 参数服务器、框架客户端 | `ps_type`、`num_threads`、`max_batch_keys_size`、`num_shards`、`servers`、`base_kv_config` |
+| `cache_ps` | 参数服务器、框架客户端 | `ps_type`、`num_threads`、`num_shards`、`servers`、`base_kv_config`（`max_batch_keys_size` 已废弃，仅保留兼容） |
 | `distributed_client` | 计算层客户端 | `num_shards`、`hash_method`、`max_keys_per_request`、`servers` |
 | `client` | 单机客户端 | 单分片的 `host` / `port` / `shard` |
 | `report_API` | 可选 | 性能上报接收端 |

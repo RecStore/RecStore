@@ -1,3 +1,8 @@
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -45,6 +50,23 @@ bool TensorEq(const base::RecTensor& a, const std::vector<float>& b) {
     }
   }
   return true;
+}
+
+// Binds an ephemeral loopback port and releases it, so the client can be
+// pointed at an address that refuses connections.
+int FindUnusedTcpPort() {
+  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  CHECK(fd >= 0);
+  sockaddr_in addr{};
+  addr.sin_family      = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  addr.sin_port        = 0;
+  CHECK(::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+  socklen_t len = sizeof(addr);
+  CHECK(::getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &len) == 0);
+  const int port = ntohs(addr.sin_port);
+  ::close(fd);
+  return port;
 }
 } // namespace
 
@@ -135,6 +157,53 @@ void TestAsyncReadWriteConcurrency(int grpc_port) {
   CHECK(client.ClearPS());
 }
 
+void TestMultiBatchGet(int grpc_port) {
+  std::cout << "\n=== Testing gRPC Multi-Batch Get ===" << std::endl;
+
+  GRPCParameterClient client("127.0.0.1", grpc_port, 0);
+  CHECK(client.ClearPS());
+
+  constexpr int kRows = MAX_PARAMETER_BATCH + 1;
+  constexpr int kDim  = 2;
+  std::vector<uint64_t> keys(kRows);
+  std::vector<float> flat(static_cast<size_t>(kRows) * kDim);
+  for (int i = 0; i < kRows; ++i) {
+    keys[i]            = 200000 + static_cast<uint64_t>(i);
+    flat[i * kDim]     = static_cast<float>(i);
+    flat[i * kDim + 1] = static_cast<float>(i) + 0.5f;
+  }
+
+  auto values = OwnedEmbedding(kRows, kDim, flat);
+  CHECK(client.PutParameter(keys, values));
+
+  auto fetched =
+      OwnedEmbedding(kRows, kDim, std::vector<float>(flat.size(), -1.0f));
+  base::ConstArray<uint64_t> keys_array(keys);
+  CHECK(client.GetParameter(keys_array, fetched) == 0);
+  CHECK(TensorEq(fetched, flat));
+
+  CHECK(client.ClearPS());
+}
+
+// A dead peer must surface as an error instead of zero-filled embeddings.
+void TestRpcFailureReporting() {
+  std::cout << "\n=== Testing gRPC Failure Reporting ===" << std::endl;
+
+  GRPCParameterClient client("127.0.0.1", FindUnusedTcpPort(), 0);
+
+  std::vector<uint64_t> keys = {1, 2, 3};
+  base::ConstArray<uint64_t> keys_array(keys);
+  auto values = OwnedEmbedding(3, 4, std::vector<float>(12, -1.0f));
+  CHECK(client.GetParameter(keys_array, values) == -1);
+
+  const uint64_t prefetch_id = client.PrefetchParameter(keys_array);
+  CHECK(prefetch_id != 0);
+  client.WaitForPrefetch(prefetch_id);
+  CHECK(client.IsPrefetchDone(prefetch_id));
+  base::RecTensor fetched({0, 4}, base::DataType::FLOAT32);
+  CHECK(!client.GetPrefetchResult(prefetch_id, fetched));
+}
+
 int main(int argc, char** argv) {
   base::Init(&argc, &argv);
   xmh::Reporter::StartReportThread(2000);
@@ -147,5 +216,7 @@ int main(int argc, char** argv) {
 
   TestFactoryClient(kGrpcTestPort0);
   TestAsyncReadWriteConcurrency(kGrpcTestPort0);
+  TestMultiBatchGet(kGrpcTestPort0);
+  TestRpcFailureReporting();
   return 0;
 }

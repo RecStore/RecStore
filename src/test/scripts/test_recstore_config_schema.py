@@ -14,11 +14,15 @@ class TestRecstoreConfigSchema(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-    def validate_config(self, base_kv_config: dict, optimizer: dict | None = None) -> None:
+    def validate_config(
+        self,
+        base_kv_config: dict,
+        optimizer: dict | None = None,
+        include_deprecated_max_batch_keys: bool = True,
+    ) -> None:
         config = {
             "cache_ps": {
                 "ps_type": "GRPC",
-                "max_batch_keys_size": 1024,
                 "num_threads": 4,
                 "num_shards": 1,
                 "servers": [
@@ -35,6 +39,8 @@ class TestRecstoreConfigSchema(unittest.TestCase):
             },
             "client": {"host": "127.0.0.1", "port": 15000, "shard": 0},
         }
+        if include_deprecated_max_batch_keys:
+            config["cache_ps"]["max_batch_keys_size"] = 1024
         if optimizer is not None:
             config["cache_ps"]["optimizer"] = optimizer
         jsonschema.Draft202012Validator(self.schema).validate(config)
@@ -62,6 +68,23 @@ class TestRecstoreConfigSchema(unittest.TestCase):
         }
         with self.assertRaises(jsonschema.ValidationError):
             jsonschema.Draft202012Validator(self.schema).validate(config)
+
+    def test_accepts_config_without_deprecated_max_batch_keys_size(self) -> None:
+        self.validate_config(
+            {
+                "capacity": 1024,
+                "index": {"type": "DRAM_EXTENDIBLE_HASH"},
+                "value": {
+                    "type": "DRAM_VALUE_STORE",
+                    "default_value_size_hint": 128,
+                    "dram_allocator": {
+                        "type": "PERSIST_LOOP_SLAB",
+                        "capacity_bytes": 1024 * 128,
+                    },
+                },
+            },
+            include_deprecated_max_batch_keys=False,
+        )
 
     def test_accepts_nested_local_kv_config_without_engine_type(self) -> None:
         self.validate_config(

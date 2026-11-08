@@ -15,7 +15,7 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `ps_type` | string | 是 | 参数服务器类型，可选 `"GRPC"` 或 `"BRPC"` |
-| `max_batch_keys_size` | integer | 是 | 单次批量请求的最大键数量 |
+| `max_batch_keys_size` | integer | 否（已废弃） | 保留兼容但 C++ 不读取；批量由 `distributed_client.max_keys_per_request` 控制 |
 | `num_threads` | integer | 是 | 服务器工作线程数 |
 | `num_shards` | integer | 是 | 分片数量，应等于 `servers` 数组长度 |
 | `servers` | array | 是 | 服务器节点配置数组 |
@@ -156,7 +156,6 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
     {
         "cache_ps": {
             "ps_type": "GRPC",
-            "max_batch_keys_size": 65536,
             "num_threads": 32,
             "num_shards": 2,
             "servers": [
@@ -322,7 +321,6 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
 
     ```shell
     jq '.cache_ps.base_kv_config.capacity = 512
-        | .cache_ps.max_batch_keys_size = 128
         | .cache_ps.num_threads = 4
         | .distributed_client.max_keys_per_request = 32
         | .cache_ps.base_kv_config.index = {"type": "DRAM_EXTENDIBLE_HASH"}

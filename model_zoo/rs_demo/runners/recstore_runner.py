@@ -579,7 +579,11 @@ class RecStoreRunner(BenchmarkRunner):
                 lifecycle["embedding_namespace"] = embedding_module.fused_backend_identity()
                 lifecycle["owned_read_native"] = callable(getattr(client.ops, "emb_read_into", None))
                 lifecycle["ps_pipeline_dependency_split"] = cfg.ps_pipeline_dependency_split
-                lifecycle["ps_pipeline_canonical_types"] = list(read_path.table_types)
+                # Only the GPU-owner pipeline carries canonical table types; the
+                # plain PS pipeline never did after the canonical protocol was
+                # removed. Keep the lifecycle field present but empty there.
+                lifecycle["ps_pipeline_canonical_types"] = list(
+                    getattr(read_path, "table_types", ()))
                 if cfg.ps_pipeline_dependency_split:
                     lifecycle["ps_pipeline_metadata_group_init_ms"] = read_path.metadata_group_init_ms
                     lifecycle["ps_pipeline_metadata_byte_semantics"] = "padded tensor payload per peer; excludes transport framing"
