@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 #include "storage/allocator/ssd/ssd_block_allocator.h"
@@ -200,12 +202,23 @@ public:
     std::vector<uint64_t> pages;
     pending.reserve(entries.size());
     pages.reserve(entries.size() * 2);
+    std::unique_lock<std::mutex> slab_lock;
+    uint16_t locked_slab = UINT16_MAX;
     for (const auto& entry : entries) {
       uint16_t slab_idx;
       uint64_t local_slot_id;
       Decode(entry.handle, slab_idx, local_slot_id);
-      const auto& slab        = *slabs_.at(slab_idx);
-      const uint64_t byte_off = ResolveSlotByteOffset(slab_idx, local_slot_id);
+      const auto& slab = *slabs_.at(slab_idx);
+      // Fixed-width batches share one size class. Resolve their offsets under
+      // one metadata lock, releasing it before acquiring any page locks.
+      if (!slab_lock.owns_lock() || locked_slab != slab_idx) {
+        if (slab_lock.owns_lock())
+          slab_lock.unlock();
+        slab_lock   = std::unique_lock<std::mutex>(slab.mu);
+        locked_slab = slab_idx;
+      }
+      const uint64_t byte_off =
+          ResolveSlotByteOffsetLocked(slab, local_slot_id);
       pending.push_back(
           {byte_off,
            entry.out_buf == nullptr ? 0 : slab.slot_size - kHeaderSize});
@@ -215,7 +228,40 @@ public:
         pages.push_back(page);
       }
     }
+    slab_lock.unlock();
     SortUnique(pages);
+    // Small batches rarely overlap enough to amortize the shared lookup.
+    if (pages.size() >= 512) {
+      std::vector<std::shared_lock<std::shared_mutex>> locks;
+      LockStripes(pages, locks);
+      const auto buffers = ReadSharedPages(pages);
+      for (size_t i = 0; i < pending.size(); ++i) {
+        const auto& item = pending[i];
+        const size_t first =
+            std::lower_bound(
+                pages.begin(), pages.end(), item.byte_offset / PAGE_SIZE) -
+            pages.begin();
+        auto copy = [&](size_t skip, void* out, size_t bytes) {
+          size_t offset = item.byte_offset % PAGE_SIZE + skip;
+          size_t page   = first + offset / PAGE_SIZE;
+          offset %= PAGE_SIZE;
+          auto* dst = static_cast<char*>(out);
+          while (bytes) {
+            const size_t count = std::min(bytes, PAGE_SIZE - offset);
+            std::memcpy(dst, buffers[page].get() + offset, count);
+            dst += count;
+            bytes -= count;
+            offset = 0;
+            ++page;
+          }
+        };
+        uint32_t size = 0;
+        copy(0, &size, sizeof(size));
+        out_sizes[i] = std::min(item.capacity, static_cast<size_t>(size));
+        copy(kHeaderSize, entries[i].out_buf, out_sizes[i]);
+      }
+      return;
+    }
     auto free_buffer = [this](char* ptr) { backend_->FreeBuffer(ptr); };
     std::unique_ptr<char, decltype(free_buffer)> buffer(
         backend_->AllocateBuffer(pages.size()), free_buffer);
@@ -257,20 +303,37 @@ public:
   BatchAllocAndWrite(const std::vector<WriteEntry>& entries) override {
     std::vector<uint64_t> handles;
     handles.reserve(entries.size());
-    // Length headers stay addressable for the whole batch: page patches hold
-    // pointers into this storage until the write completes.
+    try {
+      for (const auto& entry : entries)
+        handles.push_back(Alloc(entry.data_size));
+      BatchWrite(handles, entries);
+    } catch (...) {
+      for (uint64_t handle : handles)
+        if (handle != kInvalidHandle)
+          Free(handle);
+      throw;
+    }
+    return handles;
+  }
+
+  void BatchWrite(const std::vector<uint64_t>& handles,
+                  const std::vector<WriteEntry>& entries) override {
+    if (handles.size() != entries.size())
+      throw std::invalid_argument("SSD slab batch write size mismatch");
+    // Length headers must outlive the page patches until I/O completes.
     std::vector<uint32_t> lengths(entries.size(), 0);
     std::vector<PagePatch> patches;
     patches.reserve(entries.size() * 2);
     for (size_t i = 0; i < entries.size(); ++i) {
-      const uint64_t handle = Alloc(entries[i].data_size);
-      handles.push_back(handle);
+      const uint64_t handle = handles[i];
       if (handle == kInvalidHandle) {
         continue;
       }
       uint16_t slab_idx;
       uint64_t local_slot_id;
       Decode(handle, slab_idx, local_slot_id);
+      if (entries[i].data_size > SlotCapacity(handle))
+        throw std::invalid_argument("SSD slab batch write exceeds slot size");
       const uint64_t byte_off = ResolveSlotByteOffset(slab_idx, local_slot_id);
       lengths[i]              = static_cast<uint32_t>(entries[i].data_size);
       AddPagePatch(patches, byte_off, &lengths[i], sizeof(lengths[i]));
@@ -280,7 +343,6 @@ public:
                    entries[i].data_size);
     }
     WritePages(patches);
-    return handles;
   }
 
   size_t SlotCapacity(uint64_t handle) const override {
@@ -294,7 +356,92 @@ public:
   /// For unit tests: physical chunk size when carving the backing store.
   static constexpr uint64_t kBlockSize = 1ULL << 26;
 
+  uint64_t JoinedReadPages() const { return joined_pages_.load(); }
+  size_t InflightReadPages() const {
+    std::lock_guard<std::mutex> lock(reads_mutex_);
+    return reading_.size();
+  }
+
 private:
+  struct PendingRead {
+    std::shared_ptr<char> buffer;
+    std::promise<void> complete;
+    std::shared_future<void> ready = complete.get_future().share();
+  };
+  struct PendingPage {
+    std::shared_ptr<PendingRead> read;
+    size_t offset = 0;
+  };
+
+  std::vector<std::shared_ptr<char>>
+  ReadSharedPages(const std::vector<uint64_t>& pages) {
+    auto read = std::make_shared<PendingRead>();
+    std::vector<PendingPage> pending(pages.size());
+    std::vector<size_t> owned;
+    owned.reserve(pages.size());
+    auto erase_owned = [&] {
+      std::lock_guard<std::mutex> lock(reads_mutex_);
+      for (size_t i : owned) {
+        auto found = reading_.find(pages[i]);
+        if (found != reading_.end() && found->second.read == read)
+          reading_.erase(found);
+      }
+    };
+    try {
+      {
+        std::lock_guard<std::mutex> lock(reads_mutex_);
+        for (size_t i = 0; i < pages.size(); ++i) {
+          auto found = reading_.find(pages[i]);
+          if (found != reading_.end()) {
+            pending[i] = found->second;
+          } else {
+            pending[i] = {read, owned.size() * PAGE_SIZE};
+            reading_.emplace(pages[i], pending[i]);
+            owned.push_back(i);
+          }
+        }
+      }
+      joined_pages_.fetch_add(
+          pages.size() - owned.size(), std::memory_order_relaxed);
+      if (!owned.empty()) {
+        read->buffer = std::shared_ptr<char>(
+            backend_->AllocateBuffer(owned.size()),
+            [this](char* ptr) { backend_->FreeBuffer(ptr); });
+        std::vector<IOBackend::IOEntry> entries;
+        for (size_t begin = 0; begin < owned.size();) {
+          size_t end = begin + 1;
+          while (end < owned.size() &&
+                 pages[owned[end]] == pages[owned[end - 1]] + 1)
+            ++end;
+          entries.push_back({pages[owned[begin]],
+                             read->buffer.get() + begin * PAGE_SIZE,
+                             end - begin});
+          begin = end;
+        }
+        // Issue owned reads before waiting for other owners, avoiding cycles
+        // between batches that each own some pages needed by the other.
+        backend_->BatchReadPages(entries);
+        // Share only in-flight I/O. Completed pages are never retained as an
+        // extra value cache outside the configured DRAM budget.
+        erase_owned();
+        read->complete.set_value();
+      }
+    } catch (...) {
+      const auto error = std::current_exception();
+      erase_owned();
+      read->complete.set_exception(error);
+      std::rethrow_exception(error);
+    }
+    std::vector<std::shared_ptr<char>> buffers;
+    buffers.reserve(pages.size());
+    for (const auto& page : pending) {
+      page.read->ready.get();
+      buffers.emplace_back(
+          page.read->buffer, page.read->buffer.get() + page.offset);
+    }
+    return buffers;
+  }
+
   struct alignas(64) PageStripe {
     std::shared_mutex mu;
   };
@@ -380,6 +527,11 @@ private:
   ResolveSlotByteOffset(uint16_t slab_idx, uint64_t local_slot_id) const {
     auto& slab = *slabs_.at(slab_idx);
     std::lock_guard<std::mutex> lock(slab.mu);
+    return ResolveSlotByteOffsetLocked(slab, local_slot_id);
+  }
+
+  static uint64_t
+  ResolveSlotByteOffsetLocked(const SlabPool& slab, uint64_t local_slot_id) {
     const uint64_t block_idx     = local_slot_id / slab.slots_per_block;
     const uint64_t slot_in_block = local_slot_id % slab.slots_per_block;
     if (block_idx >= slab.blocks.size()) {
@@ -483,9 +635,17 @@ private:
     // A single contiguous run is the common case (one slot, or one packed
     // batch): reuse the thread-local buffer instead of allocating per write.
     const bool thread_buffer = runs.size() == 1;
+    auto free_buffer         = [this](char* ptr) { backend_->FreeBuffer(ptr); };
+    std::vector<std::unique_ptr<char, decltype(free_buffer)>> buffers;
+    buffers.reserve(thread_buffer ? 0 : runs.size());
     for (auto& run : runs) {
-      run.buf = thread_buffer ? AcquireThreadBuffer(run.page_count)
-                              : backend_->AllocateBuffer(run.page_count);
+      if (thread_buffer) {
+        run.buf = AcquireThreadBuffer(run.page_count);
+      } else {
+        buffers.emplace_back(
+            backend_->AllocateBuffer(run.page_count), free_buffer);
+        run.buf = buffers.back().get();
+      }
       io_entries.push_back({run.first_page, run.buf, run.page_count});
     }
     backend_->BatchReadPages(io_entries);
@@ -499,11 +659,6 @@ private:
       std::memcpy(dst, patch.src, patch.size);
     }
     backend_->BatchWritePages(io_entries);
-    if (!thread_buffer) {
-      for (auto& run : runs) {
-        backend_->FreeBuffer(run.buf);
-      }
-    }
   }
 
   uint16_t SelectSlab(size_t data_size) const {
@@ -551,6 +706,9 @@ private:
   static constexpr uint64_t kHeaderSize      = 4;
   static constexpr uint64_t kPageLockStripes = 2048;
   IOBackend* backend_;
+  mutable std::mutex reads_mutex_;
+  std::unordered_map<uint64_t, PendingPage> reading_;
+  std::atomic<uint64_t> joined_pages_{0};
   std::vector<int> size_classes_;
   std::vector<std::unique_ptr<SlabPool>> slabs_;
 

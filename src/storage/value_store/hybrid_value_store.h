@@ -90,7 +90,8 @@ public:
       clock_ = std::make_unique<TieredClockValueStore>(
           &dram_store_, ssd_store_.get(),
           static_cast<uint64_t>(high_watermark_ratio_ * dram_capacity_bytes_),
-          static_cast<size_t>(shard_count), static_cast<uint32_t>(promote_min_misses));
+          static_cast<size_t>(shard_count), static_cast<uint32_t>(promote_min_misses),
+          tiering.value("retain_backing_copies", true));
       return;
     }
     // This optional load-time estimate includes allocator size-class rounding.
@@ -191,6 +192,48 @@ public:
     if (clock_) clock_->ReadValue(handle, value);
     else if (IsOnSSD(handle)) ValueStore::ReadValue(handle, value);
     else dram_store_.ReadValue(DramRawHandle(handle), value);
+  }
+
+  bool ReadFlatFixedRows(const uint64_t* handles,
+                         size_t num_rows,
+                         void* out_buf,
+                         size_t row_bytes,
+                         uint64_t* missing_rows) const override {
+    if (clock_)
+      return clock_->ReadFlatFixedRows(
+          handles, num_rows, out_buf, row_bytes, missing_rows);
+    if (ssd_static_ || !handles || !out_buf || row_bytes == 0)
+      return false;
+    auto* out = static_cast<char*>(out_buf);
+    uint64_t missing = 0;
+    std::vector<uint64_t> pending;
+    std::vector<size_t> rows;
+    for (size_t i = 0; i < num_rows; ++i) {
+      if (handles[i] == kValueHandleNone) {
+        std::memset(out + i * row_bytes, 0, row_bytes);
+        ++missing;
+      } else if (!IsOnSSD(handles[i])) {
+        // Legacy placement never migrates DRAM rows. As in DramValueStore,
+        // the caller's fixed-width hint permits copying directly to output.
+        std::memcpy(out + i * row_bytes,
+                    dram_store_.DirectPtr(DramRawHandle(handles[i])), row_bytes);
+      } else {
+        pending.push_back(handles[i]);
+        rows.push_back(i);
+      }
+    }
+    if (!pending.empty()) {
+      std::vector<ReadResult> fetched;
+      const_cast<HybridValueStore*>(this)->BatchRead(pending, fetched);
+      for (size_t i = 0; i < rows.size(); ++i) {
+        if (fetched[i].data.size() != row_bytes)
+          return false;
+        std::memcpy(out + rows[i] * row_bytes, fetched[i].data.data(), row_bytes);
+      }
+    }
+    if (missing_rows)
+      *missing_rows = missing;
+    return true;
   }
 
   size_t Read(uint64_t handle, void* out_buf, size_t buf_size) override {

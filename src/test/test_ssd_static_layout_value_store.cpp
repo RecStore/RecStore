@@ -30,8 +30,12 @@
 namespace {
 
 std::atomic<uint64_t> g_read_entries{0};
+std::atomic<uint64_t> g_buffer_allocations{0}, g_buffer_frees{0};
 std::atomic<bool> g_fail_next_write{false};
+std::atomic<bool> g_fail_next_read{false};
 std::atomic<bool> g_pause_next_write{false}, g_write_paused{false}, g_release_write{false};
+std::atomic<bool> g_pause_next_read{false}, g_read_paused{false},
+    g_release_read{false};
 
 class CountingIOBackend : public IOBackend {
 public:
@@ -61,13 +65,26 @@ public:
   }
   char* AllocateBuffer() override { return AllocateBuffer(1); }
   char* AllocateBuffer(uint64_t page_count) override {
-    return new char[page_count * PAGE_SIZE]();
+    auto* buffer = new char[page_count * PAGE_SIZE]();
+    ++g_buffer_allocations;
+    return buffer;
   }
-  void FreeBuffer(char* buf) override { delete[] buf; }
+  void FreeBuffer(char* buf) override {
+    ++g_buffer_frees;
+    delete[] buf;
+  }
   void submit() override {}
   void PollCompletion() override {}
   void BatchReadPages(const std::vector<IOEntry>& entries) override {
+    const bool fail = g_fail_next_read.exchange(false);
+    if (g_pause_next_read.exchange(false)) {
+      g_read_paused.store(true);
+      while (!g_release_read.load())
+        std::this_thread::yield();
+    }
     g_read_entries.fetch_add(entries.size(), std::memory_order_relaxed);
+    if (fail)
+      throw std::runtime_error("injected read failure");
     IOBackend::BatchReadPages(entries);
   }
 
@@ -125,9 +142,13 @@ protected:
         base::PMMmapRegisterCenter::Backend::kAnonymousDram;
     g_read_entries.store(0);
     g_fail_next_write.store(false);
+    g_fail_next_read.store(false);
     g_pause_next_write.store(false);
     g_write_paused.store(false);
     g_release_write.store(false);
+    g_pause_next_read.store(false);
+    g_read_paused.store(false);
+    g_release_read.store(false);
   }
   void TearDown() override { std::filesystem::remove_all(root_); }
 
@@ -1301,9 +1322,14 @@ TEST_F(StaticLayoutValueTest, ClockConcurrentEngineReadsUpdatesAndExchanges) {
   for (uint64_t key = 0; key < 8; ++key)
     engine.Put(key, std::string(512, 'a'), 0);
   std::atomic<bool> start{false}, failed{false};
+  std::atomic<bool> ready_for_updates{false};
   std::vector<std::thread> threads;
   threads.emplace_back([&] {
     while (!start.load())
+      std::this_thread::yield();
+    // Readers first exercise replacement at the original fixed size. Growth
+    // can otherwise remove all residents before any reader is scheduled.
+    while (!ready_for_updates.load())
       std::this_thread::yield();
     for (int i = 0; i < 300; ++i) {
       const std::string value(i % 2 ? 128 : 1024, i % 2 ? 'b' : 'c');
@@ -1316,6 +1342,8 @@ TEST_F(StaticLayoutValueTest, ClockConcurrentEngineReadsUpdatesAndExchanges) {
         std::this_thread::yield();
       std::string out;
       for (int i = 0; i < 500; ++i) {
+        if (i == 100)
+          ready_for_updates.store(true);
         engine.Get((i + tid) % 8, out, tid);
         if (out.empty() ||
             (out.size() != 128 && out.size() != 512 && out.size() != 1024) ||
@@ -1340,6 +1368,9 @@ TEST_F(StaticLayoutValueTest, ClockStaticRowsExchangeAndUpdateReplicas) {
   auto config = ClockConfig(root_, "clock-static", 1, 4);
   config.json_config_["value"]["ssd_layout"] = {
       {"strategy", "maxembed"}, {"mapping_path", Save(MaxEmbed()).string()}};
+  auto invalid = config;
+  invalid.json_config_["value"]["tiering"]["retain_backing_copies"] = false;
+  EXPECT_THROW(HybridValueStore rejected(invalid), std::invalid_argument);
   HybridValueStore store(config);
   const std::string a = "aaaa", b = "bbbb", updated = "zzzz";
   auto ha = store.AllocAndWrite(0, a.data(), a.size());
@@ -1570,6 +1601,285 @@ TEST_F(StaticLayoutValueTest, ClockConcurrentBatchesSurviveWritesAndSlotReuse) {
   EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_live_allocs"), 16);
 }
 
+TEST_F(StaticLayoutValueTest, ClockFlatReadsMixTiersAndRejectStaleOrWrongSize) {
+  HybridValueStore store(ClockConfig(root_, "clock-flat", 8));
+  std::vector<uint64_t> handles;
+  std::vector<std::string> values;
+  for (uint64_t key = 0; key < 32; ++key) {
+    values.emplace_back(512, 'A' + key);
+    handles.push_back(store.AllocAndWrite(key, values.back().data(), 512));
+  }
+  handles.push_back(handles[0]);
+  values.push_back(values[0]);
+  handles.push_back(kValueHandleNone);
+  values.emplace_back(512, '\0');
+  std::vector<char> output(handles.size() * 512);
+  uint64_t missing = 0;
+  for (int repeat = 0; repeat < 5; ++repeat) {
+    ASSERT_TRUE(store.ReadFlatFixedRows(handles.data(), handles.size(), output.data(), 512, &missing));
+    EXPECT_EQ(missing, 1);
+    for (size_t i = 0; i < handles.size(); ++i)
+      EXPECT_EQ(std::string(output.data() + i * 512, 512), values[i]);
+  }
+  EXPECT_FALSE(store.ReadFlatFixedRows(handles.data(), handles.size(), output.data(), 128, &missing));
+  store.Free(handles[0]);
+  store.AllocAndWrite(0, values[0].data(), 512);
+  EXPECT_FALSE(store.ReadFlatFixedRows(handles.data(), handles.size(), output.data(), 512, &missing));
+}
+
+TEST_F(StaticLayoutValueTest, ClockBatchSsdWaitDoesNotBlockResidentUpdate) {
+  HybridValueStore store(ClockConfig(root_, "clock-batch-resident", 1));
+  const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b');
+  const auto resident = store.AllocAndWrite(0, a.data(), a.size());
+  const auto ssd      = store.AllocAndWrite(1, a.data(), a.size());
+  g_pause_next_read.store(true);
+  auto read = std::async(std::launch::async, [&] {
+    std::vector<ValueStore::ReadResult> results;
+    store.BatchRead({resident, ssd}, results);
+    return results;
+  });
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!g_read_paused.load() && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::yield();
+  EXPECT_TRUE(g_read_paused.load());
+  auto write       = std::async(std::launch::async, [&] {
+    store.Write(resident, b.data(), b.size());
+  });
+  const auto state = write.wait_for(std::chrono::milliseconds(200));
+  g_release_read.store(true);
+  EXPECT_EQ(state, std::future_status::ready);
+  write.get();
+  const auto results = read.get();
+  ASSERT_EQ(results.size(), 2);
+  for (const auto& result : results)
+    EXPECT_EQ(std::string(result.data.begin(), result.data.end()), a);
+  std::string current;
+  store.ReadValue(resident, current);
+  EXPECT_EQ(current, b);
+}
+
+TEST_F(StaticLayoutValueTest, ClockBatchCoalescesDemandWriteback) {
+  auto config = ClockConfig(root_, "clock-batch-writeback", 32);
+  config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
+  HybridValueStore store(config);
+  std::vector<uint64_t> handles;
+  for (int i = 0; i < 64; ++i) {
+    const std::string value(kCachedValueSize, 'A' + i);
+    handles.push_back(store.AllocAndWrite(i, value.data(), value.size()));
+  }
+  const std::vector<uint64_t> hot(handles.begin() + 32, handles.end());
+  const auto before = g_read_entries.load();
+  std::vector<ValueStore::ReadResult> results;
+  store.BatchRead(hot, results);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_writebacks"),
+            32);
+  // One grouped miss read plus one grouped read-modify-write of packed slots.
+  EXPECT_LE(g_read_entries.load() - before, 4);
+  ASSERT_EQ(results.size(), hot.size());
+  for (size_t i = 0; i < results.size(); ++i)
+    EXPECT_EQ(std::string(results[i].data.begin(), results[i].data.end()),
+              std::string(kCachedValueSize, 'A' + i + 32));
+  for (size_t i = 0; i < handles.size(); ++i) {
+    std::string value;
+    store.ReadValue(handles[i], value);
+    EXPECT_EQ(value, std::string(kCachedValueSize, 'A' + i));
+  }
+}
+
+TEST_F(StaticLayoutValueTest, ClockBatchReadersShareSsdValues) {
+  HybridValueStore store(ClockConfig(root_, "clock-shared-read", 0));
+  const std::string value(kCachedValueSize, 's');
+  const auto handle = store.AllocAndWrite(0, value.data(), value.size());
+  auto read         = [&] {
+    std::vector<ValueStore::ReadResult> results;
+    store.BatchRead({handle}, results);
+    return std::string(results[0].data.begin(), results[0].data.end());
+  };
+  g_pause_next_read.store(true);
+  auto first = std::async(std::launch::async, read);
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!g_read_paused.load() && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::yield();
+  EXPECT_TRUE(g_read_paused.load());
+  auto second      = std::async(std::launch::async, read);
+  const auto state = second.wait_for(std::chrono::milliseconds(200));
+  g_release_read.store(true);
+  EXPECT_EQ(state, std::future_status::ready);
+  EXPECT_EQ(first.get(), value);
+  EXPECT_EQ(second.get(), value);
+}
+
+TEST_F(StaticLayoutValueTest, SsdBatchWriteReleasesBuffersOnIoFailure) {
+  SsdValueStore store(TieredStoreConfig(root_, "batch-write-failure", {{"cache_policy", "none"}}));
+  const std::string value(512, 'a');
+  std::vector<ValueStore::WriteSpec> specs(40, {value.data(), value.size()});
+  const auto handles = store.BatchAllocAndWrite(specs);
+  for (bool read_failure : {true, false}) {
+    const auto allocated = g_buffer_allocations.load();
+    const auto freed = g_buffer_frees.load();
+    g_fail_next_read.store(read_failure);
+    g_fail_next_write.store(!read_failure);
+    EXPECT_THROW(store.BatchWrite({handles.front(), handles.back()}, {specs.front(), specs.back()}), std::runtime_error);
+    EXPECT_EQ(g_buffer_allocations.load() - allocated, 2);
+    EXPECT_EQ(g_buffer_frees.load() - freed, 2);
+  }
+}
+
+TEST_F(StaticLayoutValueTest, SsdLargeBatchesShareOnlyInflightReadsAndErrors) {
+  for (bool fail : {false, true}) {
+    SsdValueStore store(TieredStoreConfig(
+        root_,
+        fail ? "join-failure" : "join-success",
+        {{"cache_policy", "none"}}));
+    std::vector<std::string> values;
+    std::vector<ValueStore::WriteSpec> specs;
+    values.reserve(10000);
+    for (int i = 0; i < 10000; ++i) {
+      values.emplace_back(kCachedValueSize, 'A' + i % 26);
+      specs.push_back({values.back().data(), values.back().size()});
+    }
+    const auto handles = store.BatchAllocAndWrite(specs);
+    auto read          = [&](size_t start, size_t count) {
+      std::vector<ValueStore::ReadResult> results;
+      store.BatchRead({handles.begin() + start, handles.begin() + start + count}, results);
+      return results;
+    };
+    auto verify = [&](const std::vector<ValueStore::ReadResult>& results, size_t start, size_t count) {
+      ASSERT_EQ(results.size(), count);
+      for (size_t i = 0; i < results.size(); ++i)
+        EXPECT_EQ(std::string(results[i].data.begin(), results[i].data.end()),
+                  values[start + i]);
+    };
+    g_read_paused.store(false);
+    g_release_read.store(false);
+    g_pause_next_read.store(true);
+    g_fail_next_read.store(fail);
+    const auto before = g_read_entries.load();
+    auto first        = std::async(std::launch::async, read, 0, 7500);
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!g_read_paused.load() && std::chrono::steady_clock::now() < deadline)
+      std::this_thread::yield();
+    EXPECT_TRUE(g_read_paused.load());
+    auto second = std::async(std::launch::async, read, 2500, 7500);
+    deadline    = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    uint64_t joined = 0;
+    while ((joined = TieredField(
+                store.ExtraResultFields(), "ssd_joined_read_pages")) == 0 &&
+           std::chrono::steady_clock::now() < deadline)
+      std::this_thread::yield();
+    g_release_read.store(true);
+    EXPECT_GE(joined, 512);
+    if (fail) {
+      EXPECT_THROW(first.get(), std::runtime_error);
+      EXPECT_THROW(second.get(), std::runtime_error);
+    } else {
+      verify(first.get(), 0, 7500);
+      verify(second.get(), 2500, 7500);
+    }
+    EXPECT_EQ(g_read_entries.load() - before, 2);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "ssd_inflight_read_pages"),
+              0);
+    const auto completed = g_read_entries.load();
+    verify(read(0, handles.size()), 0, handles.size());
+    EXPECT_EQ(g_read_entries.load() - completed, 1);
+  }
+}
+
+TEST_F(StaticLayoutValueTest, ClockFailedBatchWritebackKeepsBothTiersIntact) {
+  auto config = ClockConfig(root_, "clock-batch-write-failure", 32);
+  config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
+  HybridValueStore store(config);
+  std::vector<uint64_t> handles;
+  for (int i = 0; i < 64; ++i) {
+    const std::string value(kCachedValueSize, 'A' + i);
+    handles.push_back(store.AllocAndWrite(i, value.data(), value.size()));
+  }
+  const std::vector<uint64_t> hot(handles.begin() + 32, handles.end());
+  std::vector<ValueStore::ReadResult> results;
+  g_fail_next_write.store(true);
+  EXPECT_NO_THROW(store.BatchRead(hot, results));
+  EXPECT_FALSE(g_fail_next_write.load());
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            0);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_failures"),
+            32);
+  ASSERT_EQ(results.size(), hot.size());
+  for (size_t i = 0; i < results.size(); ++i)
+    EXPECT_EQ(std::string(results[i].data.begin(), results[i].data.end()),
+              std::string(kCachedValueSize, 'A' + i + 32));
+  for (size_t i = 0; i < handles.size(); ++i) {
+    std::string value;
+    store.ReadValue(handles[i], value);
+    EXPECT_EQ(value, std::string(kCachedValueSize, 'A' + i));
+  }
+  for (auto handle : handles)
+    store.Free(handle);
+  EXPECT_EQ(
+      TieredField(store.ExtraResultFields(), "tiered_clock_backed_values"), 0);
+}
+
+TEST_F(StaticLayoutValueTest, ClockCanReleasePromotedBackingCopies) {
+  auto config = ClockConfig(root_, "clock-exclusive", 4);
+  config.json_config_["value"]["tiering"]["retain_backing_copies"] = false;
+  config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
+  HybridValueStore store(config);
+  std::vector<uint64_t> handles;
+  std::vector<std::string> values;
+  for (uint64_t key = 0; key < 24; ++key) {
+    values.emplace_back(kCachedValueSize, 'A' + key);
+    handles.push_back(store.AllocAndWrite(key, values.back().data(), values.back().size()));
+  }
+  for (int repeat = 0; repeat < 8; ++repeat) {
+    std::vector<ValueStore::ReadResult> results;
+    store.BatchRead(handles, results);
+    ASSERT_EQ(results.size(), values.size());
+    for (size_t i = 0; i < values.size(); ++i)
+      EXPECT_EQ(std::string(results[i].data.begin(), results[i].data.end()), values[i]);
+    const auto info = store.ExtraResultFields();
+    EXPECT_EQ(TieredField(info, "tiered_clock_backed_values"), 20);
+    EXPECT_EQ(TieredField(info, "tiered_clock_clean_evictions"), 0);
+    EXPECT_EQ(TieredField(info, "tiered_clock_failures"), 0);
+    EXPECT_LE(TieredField(info, "tiered_dram_bytes"), TieredField(info, "tiered_dram_limit_bytes"));
+    values[repeat] = std::string(kCachedValueSize, 'z');
+    store.Write(handles[repeat], values[repeat].data(), values[repeat].size());
+  }
+  EXPECT_GT(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  for (size_t i = 0; i < values.size(); ++i) {
+    std::string value;
+    store.ReadValue(handles[i], value);
+    EXPECT_EQ(value, values[i]);
+    store.Free(handles[i]);
+  }
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_live_allocs"), 0);
+}
+
+TEST_F(StaticLayoutValueTest, ClockReleasedBackingSurvivesFailedEviction) {
+  auto config = ClockConfig(root_, "clock-exclusive-failure", 1);
+  config.json_config_["value"]["tiering"]["retain_backing_copies"] = false;
+  config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
+  HybridValueStore store(config);
+  const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b');
+  const auto ha = store.AllocAndWrite(a.data(), a.size());
+  const auto hb = store.AllocAndWrite(b.data(), b.size());
+  std::string value;
+  store.ReadValue(hb, value);
+  ASSERT_EQ(value, b);
+  g_fail_next_write.store(true);
+  store.ReadValue(ha, value);
+  EXPECT_EQ(value, a);
+  EXPECT_FALSE(g_fail_next_write.load());
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_failures"), 1);
+  store.ReadValue(hb, value);
+  EXPECT_EQ(value, b);
+  for (int retry = 0; retry < 16; ++retry)
+    store.ReadValue(ha, value);
+  EXPECT_EQ(value, a);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 2);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_backed_values"), 1);
+}
+
 TEST_F(StaticLayoutValueTest,
        ClockCleanEvictionsSkipWritesAndDirtyValuesWriteBack) {
   HybridValueStore store(ClockConfig(root_, "clock-clean", 1));
@@ -1618,11 +1928,22 @@ TEST_F(StaticLayoutValueTest,
   std::atomic<bool> start{false}, done{false}, failed{false};
   std::vector<std::thread> readers;
   for (int i = 0; i < 8; ++i)
-    readers.emplace_back([&] {
+    readers.emplace_back([&, i] {
       std::string out;
+      std::array<uint64_t, 128> handles;
+      std::array<char, 128 * 512> flat;
       while (!start.load())
         std::this_thread::yield();
       while (!done.load()) {
+        if (i & 1) {
+          handles.fill(current.load());
+          if (store.ReadFlatFixedRows(handles.data(), handles.size(), flat.data(), 512, nullptr))
+            for (size_t row = 0; row < handles.size(); ++row)
+              if (!std::all_of(flat.begin() + row * 512, flat.begin() + (row + 1) * 512,
+                               [&](char c) { return c == flat[row * 512]; }))
+                failed.store(true);
+          continue;
+        }
         store.ReadValue(current.load(), out);
         if (!out.empty() &&
             (out.size() != 512 ||
@@ -1695,6 +2016,37 @@ TEST_F(StaticLayoutValueTest, AdaptiveSizesSmallCacheToKnownOverflow) {
   EXPECT_GT(TieredField(info, "tiered_cache_budget_bytes"), 0);
   EXPECT_LT(TieredField(info, "tiered_cache_budget_bytes"),
             kCacheDramBytes / 100);
+}
+
+TEST_F(StaticLayoutValueTest, AdaptiveFlatReadsMixDramCachedSsdAndMissingRows) {
+  auto config = TieredStoreConfig(
+      root_, "adaptive-flat",
+      {{"cache_policy", "adaptive"}, {"cache_shards", 1},
+       {"expected_dram_bytes", static_cast<int64_t>(kCacheDramBytes * 0.85) + kCachedValueSize}});
+  HybridValueStore store(config);
+  const std::string resident(kCachedValueSize, 'r');
+  const auto dram = store.AllocAndWrite(resident.data(), resident.size());
+  const auto ssd = FillUntilSsd(store, 2);
+  ASSERT_EQ(ssd.size(), 2);
+  const std::array<uint64_t, 5> handles{dram, ssd[0].handle, kValueHandleNone, ssd[1].handle, ssd[0].handle};
+  std::vector<std::string> expected{resident, ssd[0].payload, std::string(kCachedValueSize, '\0'), ssd[1].payload, ssd[0].payload};
+  std::array<char, 5 * kCachedValueSize> output;
+  auto verify = [&] {
+    uint64_t missing = 0;
+    ASSERT_TRUE(store.ReadFlatFixedRows(handles.data(), handles.size(), output.data(), kCachedValueSize, &missing));
+    EXPECT_EQ(missing, 1);
+    for (size_t i = 0; i < handles.size(); ++i)
+      EXPECT_EQ(std::string(output.data() + i * kCachedValueSize, kCachedValueSize), expected[i]);
+  };
+  for (int repeat = 0; repeat < 3; ++repeat)
+    verify();
+  EXPECT_GT(TieredField(store.ExtraResultFields(), "tiered_cache_hits"), 0);
+  expected[1] = expected[4] = std::string(kCachedValueSize, 'z');
+  store.Write(ssd[0].handle, expected[1].data(), expected[1].size());
+  verify();
+  const std::string short_value(128, 's');
+  store.Write(ssd[0].handle, short_value.data(), short_value.size());
+  EXPECT_FALSE(store.ReadFlatFixedRows(handles.data(), handles.size(), output.data(), kCachedValueSize, nullptr));
 }
 
 TEST_F(StaticLayoutValueTest, AdaptiveUsesClockForLargeOrUnknownWorkingSets) {

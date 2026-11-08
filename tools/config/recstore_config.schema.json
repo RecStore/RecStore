@@ -478,6 +478,10 @@
                   "enum": ["none", "lru", "LRU", "clock", "CLOCK", "adaptive", "ADAPTIVE"],
                   "description": "lru reserves an SSD read cache; clock exchanges cold DRAM and hot SSD values within the full DRAM watermark; adaptive selects an overflow-sized LRU for nearly fitting known working sets, otherwise CLOCK."
                 },
+                "retain_backing_copies": {
+                  "type": "boolean",
+                  "description": "CLOCK defaults to retaining promoted values' SSD copies. False requires a plain SSD layout and releases those copies after promotion; subsequent evictions write the values again."
+                },
                 "expected_dram_bytes": {
                   "type": "integer",
                   "minimum": 0,

@@ -243,21 +243,51 @@ Failed writeback leaves the original placements intact and the foreground
 SSD read usable. SSD capacity must accommodate retained backing copies; a
 plain allocator also needs space for a victim with no backing copy yet.
 
+For plain SSD layouts, `tiering.retain_backing_copies=false` instead frees a
+hot value's SSD slot after its DRAM promotion commits. Every later eviction
+writes the resident value again. This keeps the cold set in fewer allocated
+SSD slots, which can reduce page amplification in large read batches, but
+increases write traffic. The default remains `true`; static layouts require
+it. The benchmark flag is `--tiered_retain_backing_copies=false`, and
+`tiered_clock_retain_backing_copies` reports the effective setting. Failed
+writeback never releases the source SSD copy.
+
 Sampled DRAM hits and individual SSD misses accumulate saturating access
 credits. CLOCK scans age credits so new hot sets can replace old ones. At most
 64 candidates are examined per promotion; the victim's slot must fit the
 incoming value. Logical handles remain stable across exchange and keyed
 updates, with generation checks rejecting stale handles after metadata reuse.
 
+`tiering.promote_min_misses` (default 2) controls admission. Raising it reduces
+replacement work but delays adaptation to a new hot set. The storage benchmark
+exposes it as `--tiered_cache_promote_min_misses`; compare throughput and SSD
+misses on the intended trace before choosing a larger value.
+
 DRAM hits use a compact snapshot and a per-thread reader hazard rather than
 a per-value mutex. Updates, frees and eviction revoke that snapshot and wait
 for existing readers before changing bytes or reusing the DRAM slot. SSD I/O
 holds only the involved value locks, leaving unrelated DRAM values readable.
 Direct pointers and direct RDMA rows are unavailable in CLOCK mode; callers
-use copied/staging paths. Batch reads preserve grouped SSD I/O, and write
-versions prevent stale promotion after a batch snapshot. Static Bandana and
+use copied/staging paths. Fixed-width batch reads copy DRAM hits directly to
+the output buffer and publish one reader epoch per 64 rows. Writers wait for
+the observed epoch to finish before changing a resident. Batch reads share
+value locks for SSD I/O, then recheck
+versions under exclusive locks before promotion. They combine the cold
+writebacks triggered by those misses; plain slab writes patch shared pages
+once per batch. Failed writeback keeps the original placements
+authoritative and releases newly allocated SSD slots. Static Bandana and
 MaxEmbed layouts update all replicas when a dirty resident is evicted. Use
 checkpoints for the existing recovery flow.
+
+Plain slab batches spanning at least 512 pages share reads already in flight
+with other batches. Completed pages are removed immediately, so this is not
+an additional value cache. `ssd_joined_read_pages` counts reused in-flight
+reads; `ssd_inflight_read_pages` returns to zero when reads finish. Output
+buffers and temporary I/O buffers are outside the resident-value budget.
+Large batches can improve page sharing while substantially increasing latency
+and peak memory. With `--report_latency`, `avg_us` and `max_us` cover the full
+batch; `overflow_samples` counts latencies beyond the histogram's 102.3 us
+range. Saturated percentile buckets are lower bounds, not measured percentiles.
 
 `tiered_clock_hits`, `tiered_clock_misses`, `tiered_clock_promotions`,
 `tiered_clock_demotions`, `tiered_clock_failures` and
@@ -280,6 +310,8 @@ with an effective DRAM reservation equal to the estimated overflow instead
 of the default 5%. Original DRAM residents stay directly readable; SSD hot
 values compete within this small cache. This branch does not evict original
 DRAM residents dynamically. Its live statistics report `tiered_cache_policy=lru`.
+For plain fixed-width batches, DRAM rows copy directly to the output; only SSD
+rows enter the batched cache lookup and read path.
 
 Larger overflow, or an unknown estimate (`expected_dram_bytes=0`), selects
 CLOCK and allows eviction from all DRAM residents. Adaptive selection happens
