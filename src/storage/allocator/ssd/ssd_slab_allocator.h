@@ -189,55 +189,67 @@ public:
   void BatchRead(const std::vector<ReadEntry>& entries,
                  std::vector<size_t>& out_sizes) override {
     out_sizes.assign(entries.size(), 0);
+    if (entries.empty()) {
+      return;
+    }
     struct PendingRead {
-      size_t index      = 0;
-      uint64_t page_off = 0;
-      size_t buf_size   = 0;
+      uint64_t byte_offset;
+      size_t capacity;
     };
-    std::vector<IOBackend::IOEntry> io_entries;
     std::vector<PendingRead> pending;
     std::vector<uint64_t> pages;
-    io_entries.reserve(entries.size());
     pending.reserve(entries.size());
     pages.reserve(entries.size() * 2);
-    for (size_t i = 0; i < entries.size(); ++i) {
+    for (const auto& entry : entries) {
       uint16_t slab_idx;
       uint64_t local_slot_id;
-      Decode(entries[i].handle, slab_idx, local_slot_id);
+      Decode(entry.handle, slab_idx, local_slot_id);
       const auto& slab        = *slabs_.at(slab_idx);
       const uint64_t byte_off = ResolveSlotByteOffset(slab_idx, local_slot_id);
-      const PageID_t start    = byte_off / PAGE_SIZE;
-      const uint64_t page_off = byte_off % PAGE_SIZE;
-      const uint64_t total    = page_off + slab.slot_size;
-      const uint64_t spans    = (total + PAGE_SIZE - 1) / PAGE_SIZE;
-      char* buf               = backend_->AllocateBuffer(spans);
-      io_entries.push_back({start, buf, spans});
-      pending.push_back(PendingRead{
-          i,
-          page_off,
-          entries[i].out_buf == nullptr ? 0 : slab.slot_size - kHeaderSize});
-      for (uint64_t page = 0; page < spans; ++page) {
-        pages.push_back(start + page);
+      pending.push_back(
+          {byte_off,
+           entry.out_buf == nullptr ? 0 : slab.slot_size - kHeaderSize});
+      const uint64_t first = byte_off / PAGE_SIZE;
+      const uint64_t last  = (byte_off + slab.slot_size - 1) / PAGE_SIZE;
+      for (uint64_t page = first; page <= last; ++page) {
+        pages.push_back(page);
       }
     }
-    // Readers share the page stripes with writers so a read cannot observe a
-    // half written slot while its page is being read-modify-written.
+    SortUnique(pages);
+    auto free_buffer = [this](char* ptr) { backend_->FreeBuffer(ptr); };
+    std::unique_ptr<char, decltype(free_buffer)> buffer(
+        backend_->AllocateBuffer(pages.size()), free_buffer);
+    std::vector<IOBackend::IOEntry> io_entries;
+    io_entries.reserve(pages.size());
+    for (size_t begin = 0; begin < pages.size();) {
+      size_t end = begin + 1;
+      while (end < pages.size() && pages[end] == pages[end - 1] + 1) {
+        ++end;
+      }
+      io_entries.push_back(
+          {pages[begin], buffer.get() + begin * PAGE_SIZE, end - begin});
+      begin = end;
+    }
+    // Read each page once and keep the shared page locks through scatter-copy.
+    // Crossing slots have adjacent pages in the compact buffer as well.
     std::vector<std::shared_lock<std::shared_mutex>> locks;
     LockStripes(pages, locks);
     backend_->BatchReadPages(io_entries);
     for (size_t i = 0; i < pending.size(); ++i) {
       const auto& item = pending[i];
-      const auto& io   = io_entries[i];
-      uint32_t n       = 0;
-      std::memcpy(&n, io.buffer + item.page_off, sizeof(n));
-      const size_t actual = std::min(item.buf_size, static_cast<size_t>(n));
+      const size_t page_index =
+          std::lower_bound(
+              pages.begin(), pages.end(), item.byte_offset / PAGE_SIZE) -
+          pages.begin();
+      const char* src =
+          buffer.get() + page_index * PAGE_SIZE + item.byte_offset % PAGE_SIZE;
+      uint32_t n = 0;
+      std::memcpy(&n, src, sizeof(n));
+      const size_t actual = std::min(item.capacity, static_cast<size_t>(n));
       if (actual > 0) {
-        std::memcpy(entries[item.index].out_buf,
-                    io.buffer + item.page_off + kHeaderSize,
-                    actual);
+        std::memcpy(entries[i].out_buf, src + kHeaderSize, actual);
       }
-      out_sizes[item.index] = actual;
-      backend_->FreeBuffer(io.buffer);
+      out_sizes[i] = actual;
     }
   }
 

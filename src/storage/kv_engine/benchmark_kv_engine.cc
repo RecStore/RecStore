@@ -59,6 +59,13 @@ DEFINE_string(ssd_io_backend, "IOURING", "SSD IO backend");
 DEFINE_int32(ssd_queue_depth, 512, "SSD IO queue depth");
 DEFINE_int64(dram_capacity_bytes, 0, "override DRAM allocator capacity bytes");
 DEFINE_int64(ssd_capacity_bytes, 0, "override SSD allocator capacity bytes");
+DEFINE_string(tiered_cache_policy, "none", "tiered policy: none/lru/clock (cold DRAM exchange)");
+DEFINE_double(tiered_cache_budget_ratio, 0.05, "fraction of DRAM reserved for cache");
+DEFINE_int64(tiered_cache_expected_dram_bytes, 0,
+             "load-time working set in DRAM slot bytes; 0 means unknown");
+DEFINE_int32(ssd_completion_poll_spins, 8192,
+             "SSD value I/O CQ polls before blocking; 0 waits immediately");
+DEFINE_int32(warmup_seconds, 0, "unmeasured transaction warmup seconds");
 
 DEFINE_int64(record_count, 100000000, "YCSB record count");
 DEFINE_string(workload,
@@ -393,10 +400,13 @@ BaseKVConfig BuildConfig() {
         {"io",
          {{"type", FLAGS_ssd_io_backend},
           {"queue_depth", FLAGS_ssd_queue_depth},
+          {"completion_poll_spins", FLAGS_ssd_completion_poll_spins},
           {"base_offset_bytes", 4096}}}};
   } else if (FLAGS_value_store_type == "TIERED_VALUE_STORE") {
     constexpr double dram_ratio = 0.1;
-    dram_capacity               = dram_capacity * dram_ratio;
+    if (FLAGS_dram_capacity_bytes == 0) {
+      dram_capacity = dram_capacity * dram_ratio;
+    }
 
     config.json_config_["value"]["dram_allocator"] = {
         {"type", FLAGS_dram_allocator},
@@ -411,8 +421,12 @@ BaseKVConfig BuildConfig() {
         {"io",
          {{"type", FLAGS_ssd_io_backend},
           {"queue_depth", FLAGS_ssd_queue_depth},
+          {"completion_poll_spins", FLAGS_ssd_completion_poll_spins},
           {"base_offset_bytes", 4096}}}};
-    config.json_config_["value"]["tiering"] = {{"cache_policy", "LRU"}};
+    config.json_config_["value"]["tiering"] = {
+        {"cache_policy", FLAGS_tiered_cache_policy},
+        {"cache_budget_ratio", FLAGS_tiered_cache_budget_ratio},
+        {"expected_dram_bytes", FLAGS_tiered_cache_expected_dram_bytes}};
   }
   if (!FLAGS_ssd_layout_strategy.empty() &&
       FLAGS_ssd_layout_strategy != "plain") {
@@ -425,6 +439,7 @@ BaseKVConfig BuildConfig() {
       config.json_config_["value"]["io"]   = {
           {"type", FLAGS_ssd_io_backend},
           {"queue_depth", FLAGS_ssd_queue_depth},
+          {"completion_poll_spins", FLAGS_ssd_completion_poll_spins},
           {"base_offset_bytes", 0}};
     }
     config.json_config_["value"]["ssd_layout"] = {
@@ -471,7 +486,8 @@ PhaseStats RunTransactions(
     const std::string& distribution,
     int threads_num,
     uint64_t record_count,
-    int seconds) {
+    int seconds,
+    uint64_t seed_offset = 0) {
   const WorkloadMix mix         = GetWorkloadMix(workload);
   const bool use_exists         = FLAGS_read_mode == "exists";
   const bool use_batch_get_flat = FLAGS_read_mode == "batch_get_flat";
@@ -503,7 +519,7 @@ PhaseStats RunTransactions(
             distribution,
             record_count,
             FLAGS_zipfian_alpha,
-            0x9e3779b97f4a7c15ULL + static_cast<uint64_t>(tid),
+            0x9e3779b97f4a7c15ULL + static_cast<uint64_t>(tid) + seed_offset,
             FLAGS_zipfian_scramble);
         std::string value(
             FLAGS_value_size, static_cast<char>('A' + (tid % 26)));
@@ -809,7 +825,33 @@ int RunBenchmark(int argc, char* argv[]) {
     }
   }
 
+  auto verify_values = [&]() {
+    // Check evenly spaced loaded values outside the measured interval.
+    for (uint64_t sample = 0; sample < 1024; ++sample) {
+      const uint64_t key = sample * FLAGS_record_count / 1024;
+      std::string value;
+      kv->Get(key, value, 0);
+      const uint64_t per_thread =
+          (FLAGS_record_count + load_threads - 1) / load_threads;
+      const std::string expected(FLAGS_value_size,
+                                static_cast<char>('a' + ((key / per_thread) % 26)));
+      if (value != expected) {
+        throw std::runtime_error("loaded value mismatch at key " + std::to_string(key));
+      }
+    }
+  };
+  if (FLAGS_run && FLAGS_load) {
+    verify_values();
+    std::printf("YCSB_VERIFY samples=1024 ok=1\n");
+    std::printf("YCSB_AFTER_LOAD%s\n", kv->ExtraResultFields().c_str());
+  }
+
   if (FLAGS_run) {
+    if (FLAGS_warmup_seconds > 0) {
+      RunTransactions(kv.get(), workload, FLAGS_distribution, FLAGS_thread_num,
+                      FLAGS_record_count, FLAGS_warmup_seconds, 0x100000000ULL);
+    }
+    std::printf("YCSB_BEFORE_RUN%s\n", kv->ExtraResultFields().c_str());
     const auto begin     = std::chrono::steady_clock::now();
     PhaseStats run_stats = RunTransactions(
         kv.get(),
@@ -838,6 +880,11 @@ int RunBenchmark(int argc, char* argv[]) {
         throughput,
         run_stats.read_ops,
         run_stats.update_ops);
+    std::printf("YCSB_AFTER_RUN%s\n", kv->ExtraResultFields().c_str());
+    if (FLAGS_load && workload == "c") {
+      verify_values();
+      std::printf("YCSB_VERIFY_AFTER_RUN samples=1024 ok=1\n");
+    }
     if (FLAGS_report_latency) {
       PrintLatencyPercentiles(run_stats);
     }

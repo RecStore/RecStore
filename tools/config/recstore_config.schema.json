@@ -471,7 +471,19 @@
             },
             "tiering": {
               "type": "object",
-              "additionalProperties": true
+              "additionalProperties": true,
+              "properties": {
+                "cache_policy": {
+                  "type": "string",
+                  "enum": ["none", "lru", "LRU", "clock", "CLOCK"],
+                  "description": "lru reserves an SSD read cache; clock exchanges cold DRAM and hot SSD values within the full DRAM watermark."
+                },
+                "expected_dram_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Load-time working set in DRAM slot bytes; 0 means unknown. A fitting working set skips read-cache reservation."
+                }
+              }
             }
           },
           "additionalProperties": true,

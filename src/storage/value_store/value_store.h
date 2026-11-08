@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -31,6 +32,15 @@ public:
   virtual void Write(uint64_t handle, const void* data, size_t size)   = 0;
   virtual uint64_t AllocAndWrite(const void* data, size_t size)        = 0;
   virtual size_t Read(uint64_t handle, void* out_buf, size_t buf_size) = 0;
+  virtual void ReadValue(uint64_t handle, std::string& value) {
+    if (handle == kValueHandleNone) { value.clear(); return; }
+    value.resize(SlotCapacity(handle));
+    if (const char* ptr = DirectPtr(handle)) {
+      std::memcpy(value.data(), ptr, value.size());
+    } else {
+      value.resize(Read(handle, value.data(), value.size()));
+    }
+  }
   virtual void Free(uint64_t handle)                                   = 0;
   virtual void Retire(uint64_t handle) { Free(handle); }
   virtual const char* DirectPtr(uint64_t handle) const { return nullptr; }

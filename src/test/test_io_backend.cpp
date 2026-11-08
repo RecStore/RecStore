@@ -172,7 +172,8 @@ TEST_F(IOBackendTest, SyncReadWriteRoundTrip) {
 }
 
 TEST_F(IOBackendTest, BatchReadWriteRoundTrip) {
-  constexpr int kNumPages = 8;
+  // Exceeds the ring's in-flight window and exercises refill after completion.
+  constexpr int kNumPages = 73;
 
   std::vector<IOBackend::IOEntry> write_entries;
   std::vector<char*> write_buffers;

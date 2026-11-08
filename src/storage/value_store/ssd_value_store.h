@@ -23,11 +23,12 @@ public:
     const auto& ssd = v.at("ssd_allocator");
     const auto& io  = ssd.at("io");
 
-    BaseKVConfig io_cfg  = config;
-    auto& j              = io_cfg.json_config_;
-    j["io_backend_type"] = io.value("type", "IOURING");
-    j["file_path"]       = v.at("path").get<std::string>();
-    j["queue_cnt"]       = io.value("queue_depth", 512);
+    BaseKVConfig io_cfg        = config;
+    auto& j                    = io_cfg.json_config_;
+    j["io_backend_type"]       = io.value("type", "IOURING");
+    j["file_path"]             = v.at("path").get<std::string>();
+    j["queue_cnt"]             = io.value("queue_depth", 512);
+    j["completion_poll_spins"] = io.value("completion_poll_spins", 8192);
     j["page_id_offset"] =
         io.value("base_offset_bytes", static_cast<uint64_t>(0)) / PAGE_SIZE;
 

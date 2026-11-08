@@ -65,20 +65,28 @@ public:
     }
   }
 
-  // Returns true when `key` was cached, copying up to `buf_size` bytes out.
-  bool CopyOut(uint64_t key, void* buf, size_t buf_size, size_t* copied) {
+  // A miss optionally captures its promotion token under the same shard lock.
+  // A hit copies up to `buf_size` bytes while eviction is excluded.
+  bool CopyOut(uint64_t key,
+               void* buf,
+               size_t buf_size,
+               size_t* copied,
+               uint64_t* barrier = nullptr) {
     Shard& shard = ShardOf(key);
     std::lock_guard<std::mutex> lock(shard.mutex);
     auto it = shard.map.find(key);
     if (it == shard.map.end()) {
-      misses_.fetch_add(1, std::memory_order_relaxed);
+      ++shard.misses;
+      if (barrier != nullptr) {
+        *barrier = WriteBarrierLocked(shard, key);
+      }
       return false;
     }
     const size_t n = std::min(buf_size, it->second.size);
     // Safe under the shard lock: an eviction of this key needs the same lock.
     store_->Read(it->second.dram_raw, buf, n);
     shard.order.splice(shard.order.begin(), shard.order, it->second.pos);
-    hits_.fetch_add(1, std::memory_order_relaxed);
+    ++shard.hits;
     if (copied != nullptr) {
       *copied = n;
     }
@@ -90,15 +98,7 @@ public:
   uint64_t WriteBarrier(uint64_t key) {
     Shard& shard = ShardOf(key);
     std::lock_guard<std::mutex> lock(shard.mutex);
-    BarrierSlot& slot = BarrierSlotOf(shard, key);
-    if (slot.key != key) {
-      // Materialise the record so that a later collision cannot make an older
-      // token look current again: every (re)assignment takes a fresh global
-      // sequence number.
-      slot.key = key;
-      slot.seq = NextBarrierSeq();
-    }
-    return slot.seq;
+    return WriteBarrierLocked(shard, key);
   }
 
   // Caches a copy of an SSD value, evicting this shard's LRU entry when the
@@ -113,7 +113,7 @@ public:
     std::lock_guard<std::mutex> lock(shard.mutex);
     const BarrierSlot& barrier_slot = BarrierSlotOf(shard, key);
     if (barrier_slot.key != key || barrier_slot.seq != barrier) {
-      stale_promotions_.fetch_add(1, std::memory_order_relaxed);
+      ++shard.stale_promotions;
       return;
     }
     auto existing = shard.map.find(key);
@@ -132,11 +132,11 @@ public:
       if (slot.key != key) {
         slot.key   = key;
         slot.count = 1;
-        admission_rejects_.fetch_add(1, std::memory_order_relaxed);
+        ++shard.admission_rejects;
         return;
       }
       if (++slot.count < promote_min_misses_) {
-        admission_rejects_.fetch_add(1, std::memory_order_relaxed);
+        ++shard.admission_rejects;
         return;
       }
       slot.key   = 0;
@@ -146,18 +146,18 @@ public:
     // and the cache together may occupy. Whichever binds first is the cap.
     const uint64_t shard_cap = EffectiveBudgetBytes() / shards_.size();
     if (size > shard_cap) {
-      alloc_failures_.fetch_add(1, std::memory_order_relaxed);
+      ++shard.alloc_failures;
       return;
     }
     // Free room before allocating: a full cache must replace, not refuse, or it
     // would keep the first values it ever saw and never admit a newer hot one.
     while (shard.bytes + size > shard_cap && !shard.order.empty()) {
       EraseLocked(shard, shard.map.find(shard.order.back()));
-      evictions_.fetch_add(1, std::memory_order_relaxed);
+      ++shard.evictions;
     }
     const uint64_t dram_raw = store_->Alloc(size);
     if (dram_raw == kValueHandleNone) {
-      alloc_failures_.fetch_add(1, std::memory_order_relaxed);
+      ++shard.alloc_failures;
       return;
     }
     store_->Write(dram_raw, data, size);
@@ -166,9 +166,8 @@ public:
     shard.map.emplace(
         key, Entry{dram_raw, std::min(size, slot_bytes), shard.order.begin()});
     shard.bytes += slot_bytes;
-    bytes_.fetch_add(slot_bytes, std::memory_order_relaxed);
-    entries_.fetch_add(1, std::memory_order_relaxed);
-    promotions_.fetch_add(1, std::memory_order_relaxed);
+    ++shard.entries;
+    ++shard.promotions;
     TrimLocked(shard, shard_cap);
   }
 
@@ -213,29 +212,19 @@ public:
     shard.order.splice(shard.order.begin(), shard.order, it->second.pos);
   }
 
-  uint64_t Bytes() const { return bytes_.load(std::memory_order_relaxed); }
-  uint64_t Entries() const { return entries_.load(std::memory_order_relaxed); }
-  uint64_t Hits() const { return hits_.load(std::memory_order_relaxed); }
-  uint64_t Misses() const { return misses_.load(std::memory_order_relaxed); }
-  uint64_t Promotions() const {
-    return promotions_.load(std::memory_order_relaxed);
-  }
-  uint64_t Evictions() const {
-    return evictions_.load(std::memory_order_relaxed);
-  }
-  uint64_t AllocFailures() const {
-    return alloc_failures_.load(std::memory_order_relaxed);
-  }
+  uint64_t Bytes() const { return Sum(&Shard::bytes); }
+  uint64_t Entries() const { return Sum(&Shard::entries); }
+  uint64_t Hits() const { return Sum(&Shard::hits); }
+  uint64_t Misses() const { return Sum(&Shard::misses); }
+  uint64_t Promotions() const { return Sum(&Shard::promotions); }
+  uint64_t Evictions() const { return Sum(&Shard::evictions); }
+  uint64_t AllocFailures() const { return Sum(&Shard::alloc_failures); }
   // Misses that were not admitted because the key had not repeated enough
   // times.
-  uint64_t AdmissionRejects() const {
-    return admission_rejects_.load(std::memory_order_relaxed);
-  }
+  uint64_t AdmissionRejects() const { return Sum(&Shard::admission_rejects); }
   // Copies discarded because a write or free touched the key while they were
   // being read from SSD.
-  uint64_t StalePromotions() const {
-    return stale_promotions_.load(std::memory_order_relaxed);
-  }
+  uint64_t StalePromotions() const { return Sum(&Shard::stale_promotions); }
   uint32_t PromoteMinMisses() const { return promote_min_misses_; }
   uint64_t BudgetBytes() const { return budget_bytes_; }
   uint64_t DramLimitBytes() const { return dram_limit_bytes_; }
@@ -285,8 +274,8 @@ private:
     uint64_t seq = 0;
   };
 
-  struct Shard {
-    std::mutex mutex;
+  struct alignas(64) Shard {
+    mutable std::mutex mutex;
     std::list<uint64_t> order;
     std::unordered_map<uint64_t, Entry> map;
     // Direct-mapped miss sample for `promote_min_misses_ > 1`: fixed size, no
@@ -297,7 +286,16 @@ private:
     // a collision only causes a missed promotion (conservative), never a stale
     // one, because every assignment takes a fresh monotonically increasing seq.
     std::vector<BarrierSlot> barriers;
-    size_t bytes = 0;
+    uint64_t bytes             = 0;
+    uint64_t entries           = 0;
+    uint64_t next_barrier      = 0;
+    uint64_t hits              = 0;
+    uint64_t misses            = 0;
+    uint64_t promotions        = 0;
+    uint64_t evictions         = 0;
+    uint64_t alloc_failures    = 0;
+    uint64_t admission_rejects = 0;
+    uint64_t stale_promotions  = 0;
   };
 
   Shard& ShardOf(uint64_t key) {
@@ -314,21 +312,37 @@ private:
     return shard.barriers[stride % shard.barriers.size()];
   }
 
-  uint64_t NextBarrierSeq() {
-    return next_barrier_.fetch_add(1, std::memory_order_relaxed) + 1;
+  uint64_t Sum(uint64_t Shard::*field) const {
+    uint64_t total = 0;
+    for (const Shard& shard : shards_) {
+      std::lock_guard<std::mutex> lock(shard.mutex);
+      total += shard.*field;
+    }
+    return total;
+  }
+
+  uint64_t WriteBarrierLocked(Shard& shard, uint64_t key) {
+    BarrierSlot& slot = BarrierSlotOf(shard, key);
+    if (slot.key != key) {
+      // Keys always use the same shard; a fresh shard sequence prevents ABA
+      // when unrelated keys collide in the fixed-size token table.
+      slot.key = key;
+      slot.seq = ++shard.next_barrier;
+    }
+    return slot.seq;
   }
 
   void BumpBarrierLocked(Shard& shard, uint64_t key) {
     BarrierSlot& slot = BarrierSlotOf(shard, key);
     slot.key          = key;
-    slot.seq          = NextBarrierSeq();
+    slot.seq          = ++shard.next_barrier;
   }
 
   // Evicts this shard's LRU entries until it fits its share of the budget.
   void TrimLocked(Shard& shard, uint64_t shard_cap) {
     while (shard.bytes > shard_cap && !shard.order.empty()) {
       EraseLocked(shard, shard.map.find(shard.order.back()));
-      evictions_.fetch_add(1, std::memory_order_relaxed);
+      ++shard.evictions;
     }
   }
 
@@ -342,9 +356,7 @@ private:
     shard.order.erase(it->second.pos);
     shard.map.erase(it);
     shard.bytes -= std::min(shard.bytes, slot_bytes);
-    bytes_.fetch_sub(
-        std::min<uint64_t>(Bytes(), slot_bytes), std::memory_order_relaxed);
-    entries_.fetch_sub(1, std::memory_order_relaxed);
+    --shard.entries;
   }
 
   // Slots per shard in the direct-mapped admission sample. Sized well above the
@@ -360,14 +372,4 @@ private:
   const uint64_t dram_limit_bytes_;
   const std::atomic<uint64_t>* reserved_bytes_;
   const uint32_t promote_min_misses_;
-  std::atomic<uint64_t> next_barrier_{0};
-  std::atomic<uint64_t> bytes_{0};
-  std::atomic<uint64_t> entries_{0};
-  std::atomic<uint64_t> hits_{0};
-  std::atomic<uint64_t> misses_{0};
-  std::atomic<uint64_t> promotions_{0};
-  std::atomic<uint64_t> evictions_{0};
-  std::atomic<uint64_t> alloc_failures_{0};
-  std::atomic<uint64_t> admission_rejects_{0};
-  std::atomic<uint64_t> stale_promotions_{0};
 };

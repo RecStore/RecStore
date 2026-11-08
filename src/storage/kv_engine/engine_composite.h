@@ -63,15 +63,7 @@ public:
       value.clear();
       return;
     }
-    if (const char* ptr = value_store_->DirectPtr(handle)) {
-      value.resize(value_store_->SlotCapacity(handle));
-      std::memcpy(value.data(), ptr, value.size());
-      return;
-    }
-    value.resize(value_store_->SlotCapacity(handle));
-    const size_t actual =
-        value_store_->Read(handle, value.data(), value.size());
-    value.resize(actual);
+    value_store_->ReadValue(handle, value);
   }
 
   bool Exists(const uint64_t key, unsigned tid) override {
@@ -303,7 +295,8 @@ public:
         continue;
       }
       if (const char* ptr = value_store_->DirectPtr(handle)) {
-        if (default_value_size_hint_ != row_bytes) {
+        if (default_value_size_hint_ != row_bytes ||
+        !value_store_->GetLayoutId().plain()) {
           const size_t slot_bytes = value_store_->SlotCapacity(handle);
           if (slot_bytes != row_bytes) {
             LOG(ERROR) << "KVEngine::BatchGetFlat row size mismatch row=" << row
@@ -456,7 +449,8 @@ public:
       return false;
     }
     const size_t row_bytes = static_cast<size_t>(embedding_dim) * sizeof(float);
-    if (default_value_size_hint_ != row_bytes) {
+    if (default_value_size_hint_ != row_bytes ||
+        !value_store_->GetLayoutId().plain()) {
       return false;
     }
     thread_local std::vector<Value_t> handles;
@@ -630,7 +624,8 @@ public:
       return false;
     }
     const size_t row_bytes = static_cast<size_t>(row_dim) * sizeof(float);
-    if (default_value_size_hint_ != row_bytes) {
+    if (default_value_size_hint_ != row_bytes ||
+        !value_store_->GetLayoutId().plain()) {
       return false;
     }
 
@@ -736,7 +731,8 @@ public:
     }
     const size_t row_bytes =
         sizeof(int64_t) + static_cast<size_t>(value_dim) * sizeof(float);
-    if (default_value_size_hint_ != row_bytes) {
+    if (default_value_size_hint_ != row_bytes ||
+        !value_store_->GetLayoutId().plain()) {
       return false;
     }
 
@@ -753,6 +749,10 @@ public:
       }
       char* row = const_cast<char*>(value_store_->DirectPtr(handle));
       if (row == nullptr) {
+        value_store_->Free(handle);
+        for (uint64_t allocated : handles) {
+          if (allocated != kValueHandleNone) value_store_->Free(allocated);
+        }
         return false;
       }
       std::memcpy(row, row_indices + row_index, sizeof(int64_t));

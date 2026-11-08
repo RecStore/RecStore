@@ -773,7 +773,7 @@ def run_suite(
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run native benchmark_kv_engine YCSB comparisons."
     )
@@ -863,7 +863,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fasterkv-hlog-memory-bytes", type=int, default=0)
     parser.add_argument("--fasterkv-mutable-fraction", type=float, default=0.0)
     parser.add_argument("--fasterkv-read-cache-bytes", type=int, default=0)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
