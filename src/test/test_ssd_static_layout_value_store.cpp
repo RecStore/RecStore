@@ -1520,6 +1520,144 @@ TEST_F(StaticLayoutValueTest, ClockReusedMetadataRejectsStaleHandles) {
   EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_metadata_slots"), 1);
 }
 
+TEST_F(StaticLayoutValueTest, ClockRingUnlinksAndReusesAllPositions) {
+  for (bool frequency : {false, true}) {
+    SCOPED_TRACE(frequency);
+    auto config = ClockConfig(root_, frequency ? "clock-ring-frequency"
+                                              : "clock-ring-legacy",
+                              4, kCachedValueSize, frequency);
+    config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
+    HybridValueStore store(config);
+    std::array<uint64_t, 6> handles;
+    std::array<std::string, 6> values;
+    for (size_t i = 0; i < handles.size(); ++i) {
+      values[i] = std::string(kCachedValueSize, 'a' + i);
+      handles[i] = store.AllocAndWrite(i, values[i].data(), values[i].size());
+    }
+    const auto budget = TieredField(store.ExtraResultFields(),
+                                   "tiered_dram_bytes");
+    uint64_t next_key = handles.size();
+    std::string out;
+    // Remove a middle resident, the head, and the newly appended tail.
+    for (size_t index : {1U, 0U, 0U}) {
+      const uint64_t retired = handles[index];
+      store.Free(retired);
+      values[index] = std::string(kCachedValueSize, 'a' + next_key);
+      handles[index] = store.AllocAndWrite(
+          next_key++, values[index].data(), values[index].size());
+      EXPECT_NE(handles[index], retired);
+      EXPECT_EQ(static_cast<uint32_t>(handles[index]),
+                static_cast<uint32_t>(retired));
+      store.Free(retired);
+      store.ReadValue(handles[index], out);
+      EXPECT_EQ(out, values[index]);
+      const auto info = store.ExtraResultFields();
+      EXPECT_EQ(TieredField(info, "tiered_dram_live_allocs"), 4);
+      EXPECT_EQ(TieredField(info, "tiered_ssd_live_allocs"), 2);
+      EXPECT_EQ(TieredField(info, "tiered_dram_bytes"), budget);
+    }
+    for (size_t index : {4U, 5U}) {
+      const auto before = TieredField(store.ExtraResultFields(),
+                                     "tiered_clock_promotions");
+      for (int retry = 0; retry < 64; ++retry) {
+        store.ReadValue(handles[index], out);
+        if (TieredField(store.ExtraResultFields(), "tiered_clock_promotions") !=
+            before)
+          break;
+      }
+      EXPECT_EQ(out, values[index]);
+      EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+                before + 1);
+    }
+    for (size_t i = 0; i < handles.size(); ++i) {
+      store.ReadValue(handles[i], out);
+      EXPECT_EQ(out, values[i]);
+      EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_dram_bytes"),
+                budget);
+    }
+    for (uint64_t handle : handles)
+      store.Free(handle);
+    const auto empty = store.ExtraResultFields();
+    EXPECT_EQ(TieredField(empty, "tiered_live_allocs"), 0);
+    EXPECT_EQ(TieredField(empty, "tiered_dram_bytes"), 0);
+    EXPECT_EQ(TieredField(empty, "tiered_clock_failures"), 0);
+    // The final resident's removal must leave a reusable empty ring.
+    const auto fresh = store.AllocAndWrite(100, values[0].data(), values[0].size());
+    store.ReadValue(fresh, out);
+    EXPECT_EQ(out, values[0]);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_metadata_slots"),
+              handles.size());
+    store.Free(fresh);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_live_allocs"), 0);
+  }
+}
+
+TEST_F(StaticLayoutValueTest, ClockCountersSurviveReaderExitAndSlotReuse) {
+  for (bool frequency : {false, true}) {
+    SCOPED_TRACE(frequency);
+    auto config = ClockConfig(root_, frequency ? "clock-count-frequency"
+                                              : "clock-count-legacy",
+                              2, kCachedValueSize, frequency);
+    config.json_config_["value"]["tiering"]["promote_min_misses"] = 1000;
+    HybridValueStore store(config);
+    const std::string value(kCachedValueSize, 'c');
+    std::array<uint64_t, 3> handles;
+    for (size_t i = 0; i < handles.size(); ++i)
+      handles[i] = store.AllocAndWrite(i, value.data(), value.size());
+    std::thread reader([&] {
+      std::string out;
+      store.ReadValue(handles[0], out);
+      EXPECT_EQ(out, value);
+      std::array<char, kCachedValueSize> bytes{};
+      EXPECT_EQ(store.Read(handles[1], bytes.data(), bytes.size()), value.size());
+      EXPECT_EQ(std::string(bytes.data(), bytes.size()), value);
+      std::vector<ValueStore::ReadResult> results;
+      store.BatchRead({handles[0], handles[2], handles[0], handles[2],
+                       kValueHandleNone}, results);
+      ASSERT_EQ(results.size(), 5);
+      for (size_t i = 0; i < 4; ++i)
+        EXPECT_EQ(std::string(results[i].data.begin(), results[i].data.end()),
+                  value);
+      EXPECT_TRUE(results[4].data.empty());
+      // Cross two 64-row guard boundaries with duplicate hits and misses.
+      std::vector<uint64_t> batch(130, handles[1]);
+      for (size_t i : {0U, 63U, 64U, 129U})
+        batch[i] = handles[2];
+      batch[1] = batch[128] = kValueHandleNone;
+      std::vector<char> flat(batch.size() * value.size());
+      uint64_t missing = 0;
+      ASSERT_TRUE(store.ReadFlatFixedRows(batch.data(), batch.size(), flat.data(),
+                                         value.size(), &missing));
+      EXPECT_EQ(missing, 2);
+      for (size_t i = 0; i < batch.size(); ++i)
+        EXPECT_EQ(std::string(flat.data() + i * value.size(), value.size()),
+                  i == 1 || i == 128 ? std::string(value.size(), '\0') : value);
+    });
+    reader.join();
+    for (bool free_slots : {false, true}) {
+      if (free_slots)
+        for (uint64_t handle : handles)
+          store.Free(handle);
+      const auto info = store.ExtraResultFields();
+      EXPECT_EQ(TieredField(info, "tiered_clock_hits"), 128);
+      EXPECT_EQ(TieredField(info, "tiered_clock_misses"), 6);
+      EXPECT_EQ(TieredField(info, "tiered_clock_admission_rejects"), 6);
+      EXPECT_EQ(TieredField(info, "tiered_clock_promotions"), 0);
+      EXPECT_EQ(TieredField(info, "tiered_clock_writebacks"), 0);
+    }
+    const auto reused = store.AllocAndWrite(7, value.data(), value.size());
+    std::string out;
+    store.ReadValue(reused, out);
+    EXPECT_EQ(out, value);
+    store.Free(reused);
+    const auto info = store.ExtraResultFields();
+    EXPECT_EQ(TieredField(info, "tiered_clock_hits"), 129);
+    EXPECT_EQ(TieredField(info, "tiered_clock_misses"), 6);
+    EXPECT_EQ(TieredField(info, "tiered_live_allocs"), 0);
+    EXPECT_EQ(TieredField(info, "tiered_clock_metadata_slots"), handles.size());
+  }
+}
+
 TEST_F(StaticLayoutValueTest, ClockDemotionIoDoesNotBlockUnrelatedDramRead) {
   HybridValueStore store(ClockConfig(root_, "clock-nonblocking", 2));
   const std::string value(kCachedValueSize, 'q');

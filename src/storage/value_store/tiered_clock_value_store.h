@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
-#include <list>
 #include <mutex>
 #include <sstream>
 #include <shared_mutex>
@@ -234,22 +233,23 @@ public:
       const size_t end = std::min(handles.size(), begin + kBatch);
       std::vector<Entry*> entries;
       std::vector<size_t> pending;
-      for (size_t i = begin; i < end; ++i) {
-        Fast* fast = LocateFast(handles[i]);
-        if (!fast)
-          continue;
-        {
-          ReadGuard guard(GetReader(), fast);
+      Reader& reader = GetReader();
+      for (size_t section = begin; section < end; section += 64) {
+        BatchReadGuard guard(reader);
+        for (size_t i = section; i < std::min(end, section + 64); ++i) {
+          Fast* fast = LocateFast(handles[i]);
+          if (!fast)
+            continue;
           if (fast->readable.load() == handles[i]) {
             auto& data = results[i].data;
             data.resize(fast->size);
             std::memcpy(data.data(), fast->direct, data.size());
-            RecordHit(*fast, guard.reader);
+            RecordHit(*fast, reader);
             continue;
           }
+          pending.push_back(i);
+          entries.push_back(Locate(handles[i]));
         }
-        pending.push_back(i);
-        entries.push_back(Locate(handles[i]));
       }
       std::sort(entries.begin(), entries.end(), std::less<Entry*>{});
       entries.erase(std::unique(entries.begin(), entries.end()), entries.end());
@@ -266,7 +266,7 @@ public:
           raw_handles.push_back(entry->raw);
           versions.push_back(entry->version);
           indices.push_back(i);
-          ++entry->stats.misses;
+          ++GetReader().stats.misses;
           if (frequency_admission_)
             RecordAccess(GetReader());
         } else {
@@ -314,7 +314,7 @@ public:
       } catch (const std::exception&) {
         for (auto& exchange : exchanges)
           if (exchange.hot->ssd)
-            ++exchange.hot->stats.failures;
+            ++GetReader().stats.failures;
       }
       for (auto& exchange : exchanges)
         if (exchange.allocated)
@@ -357,19 +357,20 @@ public:
         if (entry->backing != kValueHandleNone)
           ++backed;
       }
-      stats.hits += entry->stats.hits;
-      stats.misses += entry->stats.misses;
-      stats.promotions += entry->stats.promotions;
-      stats.demotions += entry->stats.demotions;
-      stats.failures += entry->stats.failures;
-      stats.rejects += entry->stats.rejects;
-      stats.clean_evictions += entry->stats.clean_evictions;
-      stats.writebacks += entry->stats.writebacks;
     }
     {
       std::lock_guard<std::mutex> lock(readers_mutex_);
-      for (const auto& reader : readers_)
-        stats.hits += reader->hits.load(std::memory_order_relaxed);
+      for (const auto& reader : readers_) {
+        const auto& counters = reader->stats;
+        stats.hits += counters.hits.load(std::memory_order_relaxed);
+        stats.misses += counters.misses.load(std::memory_order_relaxed);
+        stats.promotions += counters.promotions.load(std::memory_order_relaxed);
+        stats.demotions += counters.demotions.load(std::memory_order_relaxed);
+        stats.failures += counters.failures.load(std::memory_order_relaxed);
+        stats.rejects += counters.rejects.load(std::memory_order_relaxed);
+        stats.clean_evictions += counters.clean_evictions.load(std::memory_order_relaxed);
+        stats.writebacks += counters.writebacks.load(std::memory_order_relaxed);
+      }
     }
     std::ostringstream out;
     out << " tiered_cache_policy=clock tiered_clock_promote_min_misses="
@@ -382,6 +383,10 @@ public:
         << " tiered_dram_bytes=" << dram_bytes_.load(std::memory_order_relaxed)
         << " tiered_dram_limit_bytes=" << limit_
         << " tiered_clock_backed_values=" << backed
+        << " tiered_clock_entry_bytes=" << sizeof(Entry)
+        << " tiered_clock_fast_bytes=" << sizeof(Fast)
+        << " tiered_clock_metadata_bytes="
+        << ((count + kChunkSize - 1) / kChunkSize) * sizeof(Chunk)
         << " tiered_clock_metadata_slots=" << count << " tiered_clock_hits="
         << stats.hits << " tiered_clock_misses=" << stats.misses
         << " tiered_clock_promotions=" << stats.promotions
@@ -396,8 +401,8 @@ public:
 private:
   struct Counters {
     std::atomic<uint64_t> hits{0}, misses{0};
-    uint64_t promotions = 0, demotions = 0, failures = 0, rejects = 0,
-             clean_evictions = 0, writebacks = 0;
+    std::atomic<uint64_t> promotions{0}, demotions{0}, failures{0}, rejects{0},
+                          clean_evictions{0}, writebacks{0};
   };
   struct Fast {
     std::atomic<uint64_t> readable{0};
@@ -421,8 +426,8 @@ private:
     size_t capacity = 0, shard = 0;
     bool alive = false, ssd = false, keyed = false, initialized = false;
     uint32_t misses = 0;
-    std::list<uint64_t>::iterator position;
-    Counters stats; // Lifetime counters survive metadata-slot reuse.
+    // Circular CLOCK links are metadata slot IDs, protected by shard.mutex.
+    uint32_t previous = 0, next = 0;
   };
   struct Exchange {
     Entry* hot;
@@ -441,7 +446,8 @@ private:
   struct alignas(64) Reader {
     std::atomic<Fast*> active{nullptr};
     std::atomic<uint64_t> batch_epoch{0};
-    std::atomic<uint64_t> hits{0};
+    Counters stats;
+    uint64_t hit_sequence = 0;
     uint32_t accesses = 0;
     const std::thread::id owner = std::this_thread::get_id();
   };
@@ -450,7 +456,10 @@ private:
     ReadGuard(Reader& state, Fast* entry) : reader(state) {
       reader.active.store(entry);
     }
-    ~ReadGuard() { reader.active.store(nullptr, std::memory_order_release); }
+    ~ReadGuard() {
+      reader.stats.hits.store(reader.hit_sequence, std::memory_order_relaxed);
+      reader.active.store(nullptr, std::memory_order_release);
+    }
   };
   struct BatchReadGuard {
     Reader& reader;
@@ -458,6 +467,7 @@ private:
       reader.batch_epoch.fetch_add(1);
     }
     ~BatchReadGuard() {
+      reader.stats.hits.store(reader.hit_sequence, std::memory_order_relaxed);
       reader.batch_epoch.fetch_add(1, std::memory_order_release);
     }
   };
@@ -534,8 +544,8 @@ private:
       entry.referenced.store(true, std::memory_order_relaxed);
   }
   void RecordHit(Fast& entry, Reader& reader) const {
-    const uint64_t hits = reader.hits.load(std::memory_order_relaxed) + 1;
-    reader.hits.store(hits, std::memory_order_relaxed);
+    // Guards publish the owning thread's total once per read section.
+    const uint64_t hits = ++reader.hit_sequence;
     if (!frequency_admission_) {
       // Preserve the original sampled resident path without an access clock.
       if ((hits & 15) == 1)
@@ -578,7 +588,8 @@ private:
   struct alignas(64) Shard {
     std::mutex mutex;
     std::unordered_map<uint64_t, uint64_t> keys;
-    std::list<uint64_t> clock;
+    uint32_t clock_head = 0;
+    uint32_t clock_size = 0;
     std::vector<uint32_t> free_slots;
   };
   static constexpr uint64_t kChunkSize  = 1ULL << 16;
@@ -603,6 +614,49 @@ private:
     Chunk* chunk =
         chunks_[(slot - 1) / kChunkSize].load(std::memory_order_acquire);
     return chunk ? chunk->entries + (slot - 1) % kChunkSize : nullptr;
+  }
+  // Called with shard.mutex held. Stable slot IDs avoid per-resident heap nodes.
+  void LinkClock(Shard& shard, Entry& entry) {
+    const uint32_t slot = static_cast<uint32_t>(entry.handle);
+    if (shard.clock_head == 0) {
+      entry.previous = entry.next = slot;
+      shard.clock_head = slot;
+    } else {
+      Entry& head = *Locate(shard.clock_head);
+      Entry& tail = *Locate(head.previous);
+      entry.previous = head.previous;
+      entry.next = shard.clock_head;
+      tail.next = slot;
+      head.previous = slot;
+    }
+    ++shard.clock_size;
+  }
+  void UnlinkClock(Shard& shard, Entry& entry) {
+    if (entry.next == static_cast<uint32_t>(entry.handle)) {
+      shard.clock_head = 0;
+    } else {
+      Locate(entry.previous)->next = entry.next;
+      Locate(entry.next)->previous = entry.previous;
+      if (shard.clock_head == static_cast<uint32_t>(entry.handle))
+        shard.clock_head = entry.next;
+    }
+    entry.previous = entry.next = 0;
+    --shard.clock_size;
+  }
+  void ReplaceClock(Shard& shard, Entry& cold, Entry& hot) {
+    const uint32_t old_slot = static_cast<uint32_t>(cold.handle);
+    const uint32_t new_slot = static_cast<uint32_t>(hot.handle);
+    if (cold.next == old_slot) {
+      hot.previous = hot.next = new_slot;
+    } else {
+      hot.previous = cold.previous;
+      hot.next = cold.next;
+      Locate(cold.previous)->next = new_slot;
+      Locate(cold.next)->previous = new_slot;
+    }
+    if (shard.clock_head == old_slot)
+      shard.clock_head = new_slot;
+    cold.previous = cold.next = 0;
   }
   static bool Matches(const Entry& entry, uint64_t handle) {
     return entry.alive && entry.handle == handle;
@@ -705,15 +759,14 @@ private:
     bool linked     = false;
     try {
       if (!entry->ssd) {
-        shard.clock.push_back(entry->handle);
-        entry->position = std::prev(shard.clock.end());
+        LinkClock(shard, *entry);
         linked          = true;
       }
       if (keyed)
         shard.keys.emplace(key, entry->handle);
     } catch (...) {
       if (linked)
-        shard.clock.erase(entry->position);
+        UnlinkClock(shard, *entry);
       Release(*entry);
       if (generation < UINT32_MAX)
         shard.free_slots.push_back(slot);
@@ -740,7 +793,7 @@ private:
     std::lock_guard<std::mutex> lock(shard.mutex);
     Release(entry);
     if (!entry.ssd)
-      shard.clock.erase(entry.position);
+      UnlinkClock(shard, entry);
     if (entry.keyed)
       shard.keys.erase(entry.key);
     entry.alive = false;
@@ -766,7 +819,7 @@ private:
       std::lock_guard<std::mutex> lock(shards_[entry.shard].mutex);
       Release(entry);
       if (!entry.ssd)
-        shards_[entry.shard].clock.erase(entry.position);
+        UnlinkClock(shards_[entry.shard], entry);
       entry.raw      = raw;
       entry.backing  = raw;
       entry.direct   = nullptr;
@@ -786,14 +839,15 @@ private:
       return 0;
     const size_t bytes = std::min(capacity, entry.size);
     if (!entry.ssd) {
-      ++entry.stats.hits;
+      Reader& reader = GetReader();
+      reader.stats.hits.store(++reader.hit_sequence, std::memory_order_relaxed);
       if (frequency_admission_)
         RecordAccess(GetReader());
       Touch(*entry.fast);
       std::memcpy(out, entry.direct, bytes);
       return bytes;
     }
-    ++entry.stats.misses;
+    ++GetReader().stats.misses;
     if (frequency_admission_)
       RecordAccess(GetReader());
     const size_t actual = ssd_->Read(entry.raw, out, bytes);
@@ -810,7 +864,7 @@ private:
     if (entry.misses < min_misses_)
       ++entry.misses;
     if (entry.misses < min_misses_)
-      ++entry.stats.rejects;
+      ++GetReader().stats.rejects;
     else if (size == entry.size)
       Promote(entry, data, exchanges, scheduled);
   }
@@ -825,34 +879,25 @@ private:
       if (free_dram != kValueHandleNone) {
         ReadPublication publication(*this, hot);
         std::lock_guard<std::mutex> lock(shard.mutex);
-        try {
-          shard.clock.push_back(hot.handle);
-        } catch (...) {
-          dram_bytes_.fetch_sub(
-              dram_->SlotCapacity(free_dram), std::memory_order_relaxed);
-          dram_->Free(free_dram);
-          throw;
-        }
+        LinkClock(shard, hot);
         dram_->Write(free_dram, data, hot.size);
         hot.direct           = dram_->DirectPtr(free_dram);
         hot.raw              = free_dram;
         hot.capacity         = dram_->SlotCapacity(free_dram);
-        hot.position         = std::prev(shard.clock.end());
         hot.ssd              = false;
         hot.fast->referenced = true;
         hot.misses           = 0;
-        ++hot.stats.promotions;
+        ++GetReader().stats.promotions;
         ReleasePromotedBacking(hot);
         return;
       }
       std::unique_lock<std::mutex> shard_lock(shard.mutex);
       // ponytail: bounded, shard-local CLOCK. Add cross-shard balancing only
       // if traces show usable victims concentrated in other shards.
-      const size_t scans = std::min<size_t>(64, shard.clock.size() * 2);
+      const size_t scans = std::min<size_t>(64, size_t(shard.clock_size) * 2);
       for (size_t i = 0; i < scans; ++i) {
-        auto position = shard.clock.begin();
-        Entry& cold   = *Locate(*position);
-        shard.clock.splice(shard.clock.end(), shard.clock, position);
+        Entry& cold = *Locate(shard.clock_head);
+        shard.clock_head = cold.next;
         if (scheduled && scheduled->count(&cold))
           continue;
         std::unique_lock<ValueMutex> cold_lock(cold.mutex, std::try_to_lock);
@@ -903,7 +948,7 @@ private:
           else if (allocated)
             dest = ssd_->Alloc(cold.size);
           if (dest == kValueHandleNone) {
-            ++hot.stats.failures;
+            ++GetReader().stats.failures;
             return;
           }
         }
@@ -932,7 +977,7 @@ private:
         return;
       }
     } catch (const std::exception&) {
-      ++hot.stats.failures;
+      ++GetReader().stats.failures;
     }
   }
 
@@ -960,9 +1005,9 @@ private:
       cold.backing       = exchange.dest;
       exchange.allocated = false;
       cold.dirty         = false;
-      ++cold.stats.writebacks;
+      ++GetReader().stats.writebacks;
     } else {
-      ++cold.stats.clean_evictions;
+      ++GetReader().stats.clean_evictions;
     }
     ReadPublication hot_publication(*this, hot);
     ReadPublication cold_publication(*this, cold);
@@ -981,10 +1026,9 @@ private:
     hot.ssd              = false;
     hot.fast->referenced = true;
     hot.misses           = 0;
-    hot.position         = cold.position;
-    *hot.position        = hot.handle;
-    ++cold.stats.demotions;
-    ++hot.stats.promotions;
+    ReplaceClock(shards_[hot.shard], cold, hot);
+    ++GetReader().stats.demotions;
+    ++GetReader().stats.promotions;
     ReleasePromotedBacking(hot);
   }
 
