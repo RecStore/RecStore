@@ -23,7 +23,8 @@ public:
       uint64_t dram_limit,
       size_t shards,
       uint32_t min_misses,
-      bool retain_backing_copies = true)
+      bool retain_backing_copies = true,
+      bool frequency_admission = false)
       : dram_(dram),
         ssd_(ssd),
         limit_(dram_limit),
@@ -31,6 +32,7 @@ public:
         min_misses_(min_misses),
         fixed_(!ssd->GetLayoutId().plain()),
         retain_backing_(retain_backing_copies),
+        frequency_admission_(frequency_admission),
         chunks_(new std::atomic<Chunk*>[kChunkCount]) {
     if (fixed_ && !retain_backing_)
       throw std::invalid_argument(
@@ -265,6 +267,8 @@ public:
           versions.push_back(entry->version);
           indices.push_back(i);
           ++entry->stats.misses;
+          if (frequency_admission_)
+            RecordAccess(GetReader());
         } else {
           auto& data = results[i].data;
           data.resize(entry->size);
@@ -370,7 +374,8 @@ public:
     std::ostringstream out;
     out << " tiered_cache_policy=clock tiered_clock_promote_min_misses="
         << min_misses_ << " tiered_clock_retain_backing_copies="
-        << retain_backing_ << " tiered_dram_live_allocs=" << dram
+        << retain_backing_ << " tiered_clock_frequency_admission="
+        << frequency_admission_ << " tiered_dram_live_allocs=" << dram
         << " tiered_ssd_live_allocs=" << ssd
         << " tiered_live_allocs=" << dram + ssd << " tiered_ssd_live_ratio="
         << (dram + ssd ? double(ssd) / (dram + ssd) : 0)
@@ -400,6 +405,8 @@ private:
     size_t size        = 0;
     std::atomic<bool> referenced{false};
     std::atomic<uint8_t> heat{0};
+    // Both modes fit in the original snapshot padding.
+    std::atomic<uint32_t> frequency{0}; // Upper 24 bits: epoch; lower 8: count.
   };
   static_assert(sizeof(Fast) == 32, "compact resident snapshot");
   using ValueMutex = std::shared_mutex;
@@ -435,6 +442,7 @@ private:
     std::atomic<Fast*> active{nullptr};
     std::atomic<uint64_t> batch_epoch{0};
     std::atomic<uint64_t> hits{0};
+    uint32_t accesses = 0;
     const std::thread::id owner = std::this_thread::get_id();
   };
   struct ReadGuard {
@@ -472,7 +480,29 @@ private:
     }
     return *local.reader;
   }
-  static void Touch(Fast& entry, uint8_t credit = 1) {
+  static constexpr uint32_t kHeatEpochMask = (1U << 24) - 1;
+  static uint8_t HeatAt(uint32_t state, uint32_t epoch) {
+    const uint32_t age = (epoch - (state >> 8)) & kHeatEpochMask;
+    // A concurrent touch can publish the next epoch after a caller sampled it.
+    return age > kHeatEpochMask / 2 ? state & UINT8_MAX
+                                   : (state & UINT8_MAX) >> std::min(age, 8U);
+  }
+  void RecordAccess(Reader& reader) const {
+    // Publish one shared clock update per 1024 reads, including SSD misses.
+    if (++reader.accesses != 1024)
+      return;
+    reader.accesses = 0;
+    const uint64_t accesses = heat_accesses_.fetch_add(1024,
+                                                     std::memory_order_relaxed) + 1024;
+    uint64_t next = next_heat_epoch_.load(std::memory_order_relaxed);
+    if (accesses >= next && next_heat_epoch_.compare_exchange_strong(
+            next,
+            accesses + std::max<uint64_t>(1024, next_slot_.load(
+                                                    std::memory_order_relaxed) * 4),
+            std::memory_order_relaxed))
+      heat_epoch_.fetch_add(1, std::memory_order_relaxed);
+  }
+  static void LegacyTouch(Fast& entry, uint8_t credit = 1) {
     const auto heat = entry.heat.load(std::memory_order_relaxed);
     if (heat != UINT8_MAX)
       entry.heat.store(std::min<unsigned>(UINT8_MAX, heat + credit),
@@ -480,13 +510,44 @@ private:
     if (!entry.referenced.load(std::memory_order_relaxed))
       entry.referenced.store(true, std::memory_order_relaxed);
   }
-  static void RecordHit(Fast& entry, Reader& reader) {
+  void Touch(Fast& entry, uint8_t hot_credit = 1) const {
+    if (!frequency_admission_) {
+      LegacyTouch(entry, hot_credit);
+      return;
+    }
+    uint32_t state = entry.frequency.load(std::memory_order_relaxed);
+    for (;;) {
+      uint32_t epoch = heat_epoch_.load(std::memory_order_relaxed) & kHeatEpochMask;
+      if (((epoch - (state >> 8)) & kHeatEpochMask) > kHeatEpochMask / 2)
+        epoch = state >> 8;
+      const unsigned aged_heat = HeatAt(state, epoch);
+      const unsigned credit = aged_heat < 64 ? 1 : hot_credit;
+      if (credit == 0)
+        break;
+      const uint32_t heat = std::min<unsigned>(UINT8_MAX, aged_heat + credit);
+      const uint32_t updated = (epoch << 8) | heat;
+      if (state == updated || entry.frequency.compare_exchange_weak(
+                                  state, updated, std::memory_order_relaxed))
+        break;
+    }
+    if (!entry.referenced.load(std::memory_order_relaxed))
+      entry.referenced.store(true, std::memory_order_relaxed);
+  }
+  void RecordHit(Fast& entry, Reader& reader) const {
     const uint64_t hits = reader.hits.load(std::memory_order_relaxed) + 1;
     reader.hits.store(hits, std::memory_order_relaxed);
-    // Sample resident hits to avoid a shared cache-line write on every read.
-    // SSD misses are counted individually for prompt admission.
-    if ((hits & 15) == 1)
-      Touch(entry, 16);
+    if (!frequency_admission_) {
+      // Preserve the original sampled resident path without an access clock.
+      if ((hits & 15) == 1)
+        LegacyTouch(entry, 16);
+      return;
+    }
+    RecordAccess(reader);
+    // Low-frequency residents count every hit. Above that boundary, use the
+    // upper Weyl bits so periodic batches do not always sample one position.
+    const uint8_t hot_credit =
+        ((hits * 0x9e3779b97f4a7c15ULL) >> 60) == 0 ? 16 : 0;
+    Touch(entry, hot_credit);
   }
   void SuspendReads(Entry& entry) {
     if (entry.fast->readable.exchange(0) == 0)
@@ -627,6 +688,7 @@ private:
     entry->fast->referenced   = false;
     entry->misses             = 0;
     entry->fast->heat         = 0;
+    entry->fast->frequency    = 0;
     entry->raw                = TryDram(size);
     entry->ssd                = entry->raw == kValueHandleNone;
     if (entry->ssd)
@@ -725,11 +787,15 @@ private:
     const size_t bytes = std::min(capacity, entry.size);
     if (!entry.ssd) {
       ++entry.stats.hits;
+      if (frequency_admission_)
+        RecordAccess(GetReader());
       Touch(*entry.fast);
       std::memcpy(out, entry.direct, bytes);
       return bytes;
     }
     ++entry.stats.misses;
+    if (frequency_admission_)
+      RecordAccess(GetReader());
     const size_t actual = ssd_->Read(entry.raw, out, bytes);
     FinishRead(entry, out, actual);
     return actual;
@@ -792,19 +858,36 @@ private:
         std::unique_lock<ValueMutex> cold_lock(cold.mutex, std::try_to_lock);
         if (!cold_lock || !cold.initialized || cold.capacity < hot.size)
           continue;
-        if (cold.fast->referenced) {
-          cold.fast->referenced = false;
-          cold.fast->heat.store(
-              cold.fast->heat.load(std::memory_order_relaxed) / 2,
-              std::memory_order_relaxed);
-          continue;
-        }
-        if (cold.fast->heat.load(std::memory_order_relaxed) >=
-            hot.fast->heat.load(std::memory_order_relaxed)) {
-          cold.fast->heat.store(
-              cold.fast->heat.load(std::memory_order_relaxed) / 2,
-              std::memory_order_relaxed);
-          continue;
+        if (!frequency_admission_) {
+          if (cold.fast->referenced) {
+            cold.fast->referenced = false;
+            cold.fast->heat.store(
+                cold.fast->heat.load(std::memory_order_relaxed) / 2,
+                std::memory_order_relaxed);
+            continue;
+          }
+          if (cold.fast->heat.load(std::memory_order_relaxed) >=
+              hot.fast->heat.load(std::memory_order_relaxed)) {
+            cold.fast->heat.store(
+                cold.fast->heat.load(std::memory_order_relaxed) / 2,
+                std::memory_order_relaxed);
+            continue;
+          }
+        } else {
+          if (cold.fast->referenced.exchange(false, std::memory_order_relaxed))
+            continue;
+          // Age both tiers in the same access window. Failed admission scans
+          // must not erase a resident's history or preserve stale SSD heat.
+          const uint32_t epoch =
+              heat_epoch_.load(std::memory_order_relaxed) & kHeatEpochMask;
+          const unsigned cold_heat =
+              HeatAt(cold.fast->frequency.load(std::memory_order_relaxed), epoch);
+          const unsigned hot_heat =
+              HeatAt(hot.fast->frequency.load(std::memory_order_relaxed), epoch);
+          // Require a clear frequency advantage before paying for an exchange.
+          // A threshold above 255 waits for aging rather than admitting a tie.
+          if (hot_heat < cold_heat + std::max(1U, cold_heat / 4))
+            continue;
         }
         // Keep only the two value locks during I/O. Other residents in this
         // shard remain readable/writable while the cold value is written.
@@ -922,11 +1005,14 @@ private:
   const uint32_t min_misses_;
   const bool fixed_;
   const bool retain_backing_;
+  const bool frequency_admission_;
   std::unique_ptr<std::atomic<Chunk*>[]> chunks_;
   std::mutex directory_mutex_;
   std::atomic<uint64_t> next_slot_{0}, allocation_shard_{0}, dram_bytes_{0};
   inline static std::atomic<uint64_t> next_instance_{1};
   const uint64_t instance_ = next_instance_.fetch_add(1);
+  mutable std::atomic<uint64_t> heat_accesses_{0}, next_heat_epoch_{1024};
+  mutable std::atomic<uint32_t> heat_epoch_{0};
   mutable std::mutex readers_mutex_;
   mutable std::vector<std::unique_ptr<Reader>> readers_;
 };

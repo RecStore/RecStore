@@ -91,7 +91,8 @@ public:
           &dram_store_, ssd_store_.get(),
           static_cast<uint64_t>(high_watermark_ratio_ * dram_capacity_bytes_),
           static_cast<size_t>(shard_count), static_cast<uint32_t>(promote_min_misses),
-          tiering.value("retain_backing_copies", true));
+          tiering.value("retain_backing_copies", true),
+          tiering.value("clock_frequency_admission", false));
       return;
     }
     // This optional load-time estimate includes allocator size-class rounding.

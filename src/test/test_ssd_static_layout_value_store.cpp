@@ -1184,13 +1184,15 @@ namespace {
 BaseKVConfig ClockConfig(const std::filesystem::path& root,
                          const std::string& name,
                          size_t slots    = 2,
-                         size_t row_size = kCachedValueSize) {
+                         size_t row_size = kCachedValueSize,
+                         bool frequency_admission = false) {
   auto config = TieredStoreConfig(
       root,
       name,
       {{"cache_policy", "clock"},
        {"cache_shards", 1},
-       {"promote_min_misses", 2}});
+       {"promote_min_misses", 2},
+       {"clock_frequency_admission", frequency_admission}});
   auto probe_config = config;
   probe_config.json_config_["value"]["path"] =
       (root / (name + "-probe")).string();
@@ -1315,7 +1317,7 @@ TEST_F(StaticLayoutValueTest, ClockFailedDemotionLeavesBothValuesIntact) {
 }
 
 TEST_F(StaticLayoutValueTest, ClockConcurrentEngineReadsUpdatesAndExchanges) {
-  auto config                     = ClockConfig(root_, "clock-concurrent", 2);
+  auto config                     = ClockConfig(root_, "clock-concurrent", 2, kCachedValueSize, true);
   config.num_threads_             = 5;
   config.json_config_["capacity"] = 32;
   KVEngineComposite engine(config);
@@ -1344,7 +1346,9 @@ TEST_F(StaticLayoutValueTest, ClockConcurrentEngineReadsUpdatesAndExchanges) {
       for (int i = 0; i < 500; ++i) {
         if (i == 100)
           ready_for_updates.store(true);
-        engine.Get((i + tid) % 8, out, tid);
+        // Short hot phases make replacement useful before growth starts.
+        const uint64_t key = i < 100 ? 2 + i / 25 : (i + tid) % 8;
+        engine.Get(key, out, tid);
         if (out.empty() ||
             (out.size() != 128 && out.size() != 512 && out.size() != 1024) ||
             out.find_first_not_of(out[0]) != std::string::npos)
@@ -1445,7 +1449,7 @@ TEST_F(StaticLayoutValueTest, ClockSsdExhaustionDoesNotLoseColdDram) {
 }
 
 TEST_F(StaticLayoutValueTest, ClockFlatReadsAndCheckpointSurviveExchanges) {
-  auto config = ClockConfig(root_, "clock-flat", 1, sizeof(float));
+  auto config = ClockConfig(root_, "clock-flat", 1, sizeof(float), true);
   KVEngineComposite engine(config);
   const std::vector<uint64_t> keys{0, 1, 2};
   const std::array<float, 3> values{1.5F, 2.5F, 3.5F};
@@ -1454,6 +1458,14 @@ TEST_F(StaticLayoutValueTest, ClockFlatReadsAndCheckpointSurviveExchanges) {
         keys[i],
         std::string(reinterpret_cast<const char*>(&values[i]), sizeof(float)),
         0);
+  // Repeated equal-frequency batches need not exchange tiers. Make an SSD
+  // row genuinely hot before testing mixed reads and checkpoint restoration.
+  const std::vector<uint64_t> hot_key{1};
+  float hot_value = 0;
+  for (int i = 0; i < 64; ++i)
+    ASSERT_TRUE(engine.BatchGetFlat(
+        base::ConstArray<uint64_t>(hot_key), &hot_value, 1, 1, 0));
+  EXPECT_EQ(hot_value, values[1]);
   std::array<float, 3> out{};
   for (int i = 0; i < 3; ++i) {
     EXPECT_TRUE(engine.BatchGetFlat(
@@ -1541,7 +1553,7 @@ TEST_F(StaticLayoutValueTest, ClockDemotionIoDoesNotBlockUnrelatedDramRead) {
 
 
 TEST_F(StaticLayoutValueTest, ClockProtectsFrequentResidentsAndAdaptsToNewHotKey) {
-  HybridValueStore store(ClockConfig(root_, "clock-heat", 1));
+  HybridValueStore store(ClockConfig(root_, "clock-heat", 1, kCachedValueSize, true));
   const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b');
   const auto ha = store.AllocAndWrite(0, a.data(), a.size());
   const auto hb = store.AllocAndWrite(1, b.data(), b.size());
@@ -1550,15 +1562,189 @@ TEST_F(StaticLayoutValueTest, ClockProtectsFrequentResidentsAndAdaptsToNewHotKey
   store.ReadValue(hb, out);
   store.ReadValue(hb, out);
   EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_demotions"), 0);
-  for (int i = 0; i < 10; ++i) store.ReadValue(hb, out);
+  // The new working set must earn more heat than the old one.
+  for (int i = 0; i < 128; ++i) store.ReadValue(hb, out);
   EXPECT_EQ(out, b);
   EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_demotions"), 1);
   store.ReadValue(ha, out);
   EXPECT_EQ(out, a);
 }
 
+TEST_F(StaticLayoutValueTest, ClockDefaultsToLegacyAdmission) {
+  auto config = ClockConfig(root_, "clock-default-legacy", 1);
+  config.json_config_["value"]["tiering"].erase("clock_frequency_admission");
+  HybridValueStore store(config);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(),
+                       "tiered_clock_frequency_admission"), 0);
+  const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b');
+  const auto resident = store.AllocAndWrite(0, a.data(), a.size());
+  const auto candidate = store.AllocAndWrite(1, b.data(), b.size());
+  std::string out;
+  for (int i = 0; i < 20; ++i)
+    store.ReadValue(resident, out);
+  for (int i = 0; i < 2; ++i)
+    store.ReadValue(candidate, out);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  // Legacy scans halve resident heat, so a new hot key can replace it before
+  // accumulating the 25 credits required by frequency admission in this case.
+  for (int i = 0; i < 10; ++i)
+    store.ReadValue(candidate, out);
+  EXPECT_EQ(out, b);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+}
+
+TEST_F(StaticLayoutValueTest, ClockFrequencyAdmissionFlagReachesEngineFactory) {
+  for (const bool enabled : {false, true}) {
+    auto config = ClockConfig(root_, enabled ? "clock-opt-in" : "clock-opt-out",
+                              1, kCachedValueSize, enabled);
+    KVEngineComposite engine(config);
+    EXPECT_EQ(TieredField(engine.ExtraResultFields(),
+                         "tiered_clock_frequency_admission"), enabled);
+    const std::string value(kCachedValueSize, 'f');
+    engine.Put(0, value, 0);
+    std::string out;
+    engine.Get(0, out, 0);
+    EXPECT_EQ(out, value);
+  }
+}
+
+TEST_F(StaticLayoutValueTest, ClockAdmissionRequiresFrequencyAdvantage) {
+  HybridValueStore store(
+      ClockConfig(root_, "clock-admission-margin", 1, kCachedValueSize, true));
+  const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b');
+  const auto resident = store.AllocAndWrite(0, a.data(), a.size());
+  const auto candidate = store.AllocAndWrite(1, b.data(), b.size());
+  std::string out;
+  for (int i = 0; i < 20; ++i)
+    store.ReadValue(resident, out);
+  for (int i = 0; i < 24; ++i)
+    store.ReadValue(candidate, out);
+  EXPECT_EQ(out, b);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  // A slight lead must not churn placement; a 25% lead can replace the old
+  // resident without waiting for an aging epoch.
+  store.ReadValue(candidate, out);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+  const auto reads = g_read_entries.load();
+  store.ReadValue(candidate, out);
+  EXPECT_EQ(out, b);
+  EXPECT_EQ(g_read_entries.load(), reads);
+}
+
+TEST_F(StaticLayoutValueTest, ClockAgedHotResidentReturnsToExactCounting) {
+  HybridValueStore store(
+      ClockConfig(root_, "clock-hot-count-aging", 2, kCachedValueSize, true));
+  const std::string a(kCachedValueSize, 'a'), d(kCachedValueSize, 'd'),
+      b(kCachedValueSize, 'b');
+  const auto resident = store.AllocAndWrite(0, a.data(), a.size());
+  const auto driver = store.AllocAndWrite(1, d.data(), d.size());
+  const auto candidate = store.AllocAndWrite(2, b.data(), b.size());
+  std::string out;
+  for (int i = 0; i < 100; ++i)
+    store.ReadValue(resident, out);
+  // Age the formerly hot resident through eight epochs while another value
+  // stays hot. Subsequent low-frequency reads must count individually again.
+  for (int i = 0; i < 8192; ++i)
+    store.ReadValue(driver, out);
+  for (int i = 0; i < 20; ++i)
+    store.ReadValue(resident, out);
+  EXPECT_EQ(out, a);
+  for (int i = 0; i < 24; ++i)
+    store.ReadValue(candidate, out);
+  EXPECT_EQ(out, b);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  store.ReadValue(candidate, out);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+  const auto reads = g_read_entries.load();
+  store.ReadValue(candidate, out);
+  EXPECT_EQ(out, b);
+  store.ReadValue(driver, out);
+  EXPECT_EQ(out, d);
+  EXPECT_EQ(g_read_entries.load(), reads);
+}
+
+TEST_F(StaticLayoutValueTest, ClockRejectedAdmissionsDoNotEraseResidentHeat) {
+  HybridValueStore store(
+      ClockConfig(root_, "clock-scan-heat", 1, kCachedValueSize, true));
+  const std::string value(kCachedValueSize, 'h');
+  const auto hot = store.AllocAndWrite(0, value.data(), value.size());
+  std::vector<uint64_t> cold;
+  for (uint64_t key = 1; key <= 64; ++key)
+    cold.push_back(store.AllocAndWrite(key, value.data(), value.size()));
+  std::string out;
+  for (int i = 0; i < 128; ++i)
+    store.ReadValue(hot, out);
+  for (const auto handle : cold) {
+    store.ReadValue(handle, out);
+    store.ReadValue(handle, out);
+    ASSERT_EQ(out, value);
+  }
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  const auto reads = g_read_entries.load();
+  store.ReadValue(hot, out);
+  EXPECT_EQ(out, value);
+  EXPECT_EQ(g_read_entries.load(), reads);
+}
+
+TEST_F(StaticLayoutValueTest, ClockSeparatedMissesCanReplaceUnusedResident) {
+  HybridValueStore store(
+      ClockConfig(root_, "clock-separated-misses", 2, kCachedValueSize, true));
+  const std::string a(kCachedValueSize, 'a'), d(kCachedValueSize, 'd'),
+      b(kCachedValueSize, 'b');
+  const auto unused = store.AllocAndWrite(0, a.data(), a.size());
+  const auto driver = store.AllocAndWrite(1, d.data(), d.size());
+  const auto candidate = store.AllocAndWrite(2, b.data(), b.size());
+  std::string out;
+  store.ReadValue(candidate, out);
+  ASSERT_EQ(out, b);
+  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  // The first miss's heat expires, but the admission miss count survives.
+  // A second separated miss must still displace a never-read resident.
+  for (int i = 0; i < 8192; ++i)
+    store.ReadValue(driver, out);
+  store.ReadValue(candidate, out);
+  ASSERT_EQ(out, b);
+  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+  const auto reads = g_read_entries.load();
+  store.ReadValue(candidate, out);
+  EXPECT_EQ(out, b);
+  store.ReadValue(driver, out);
+  EXPECT_EQ(out, d);
+  EXPECT_EQ(g_read_entries.load(), reads);
+  store.ReadValue(unused, out);
+  EXPECT_EQ(out, a);
+  EXPECT_GT(g_read_entries.load(), reads);
+}
+
+TEST_F(StaticLayoutValueTest, ClockSsdHistoryAgesWithResidentReads) {
+  HybridValueStore store(
+      ClockConfig(root_, "clock-ssd-aging", 2, kCachedValueSize, true));
+  const std::string value(kCachedValueSize, 'h');
+  const auto first = store.AllocAndWrite(0, value.data(), value.size());
+  const auto second = store.AllocAndWrite(1, value.data(), value.size());
+  const auto old_ssd = store.AllocAndWrite(2, value.data(), value.size());
+  std::string out;
+  for (int i = 0; i < 4096; ++i) {
+    store.ReadValue(first, out);
+    store.ReadValue(second, out);
+  }
+  for (int i = 0; i < 64; ++i)
+    store.ReadValue(old_ssd, out);
+  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  // Both tiers age while another value is read. Refresh the second resident
+  // before revisiting the old SSD candidate so only recent demand competes.
+  for (int i = 0; i < 8192; ++i)
+    store.ReadValue(first, out);
+  for (int i = 0; i < 64; ++i)
+    store.ReadValue(second, out);
+  store.ReadValue(old_ssd, out);
+  store.ReadValue(old_ssd, out);
+  EXPECT_EQ(out, value);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+}
+
 TEST_F(StaticLayoutValueTest, ClockConcurrentBatchesSurviveWritesAndSlotReuse) {
-  auto config = ClockConfig(root_, "clock-batch-race", 8);
+  auto config = ClockConfig(root_, "clock-batch-race", 8, kCachedValueSize, true);
   config.json_config_["value"]["tiering"]["cache_shards"] = 4;
   HybridValueStore store(config);
   const std::string initial(512, 'a');
@@ -1669,8 +1855,8 @@ TEST_F(StaticLayoutValueTest, ClockBatchCoalescesDemandWriteback) {
     handles.push_back(store.AllocAndWrite(i, value.data(), value.size()));
   }
   const std::vector<uint64_t> hot(handles.begin() + 32, handles.end());
-  const auto before = g_read_entries.load();
   std::vector<ValueStore::ReadResult> results;
+  const auto before = g_read_entries.load();
   store.BatchRead(hot, results);
   EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_writebacks"),
             32);
@@ -1821,7 +2007,7 @@ TEST_F(StaticLayoutValueTest, ClockFailedBatchWritebackKeepsBothTiersIntact) {
 }
 
 TEST_F(StaticLayoutValueTest, ClockCanReleasePromotedBackingCopies) {
-  auto config = ClockConfig(root_, "clock-exclusive", 4);
+  auto config = ClockConfig(root_, "clock-exclusive", 4, kCachedValueSize, true);
   config.json_config_["value"]["tiering"]["retain_backing_copies"] = false;
   config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
   HybridValueStore store(config);
@@ -1832,6 +2018,12 @@ TEST_F(StaticLayoutValueTest, ClockCanReleasePromotedBackingCopies) {
     handles.push_back(store.AllocAndWrite(key, values.back().data(), values.back().size()));
   }
   for (int repeat = 0; repeat < 8; ++repeat) {
+    // Create an actual hot candidate instead of requiring equal-frequency churn.
+    for (int access = 0; access < 4; ++access) {
+      std::string value;
+      store.ReadValue(handles[repeat + 4], value);
+      EXPECT_EQ(value, values[repeat + 4]);
+    }
     std::vector<ValueStore::ReadResult> results;
     store.BatchRead(handles, results);
     ASSERT_EQ(results.size(), values.size());
@@ -1856,7 +2048,7 @@ TEST_F(StaticLayoutValueTest, ClockCanReleasePromotedBackingCopies) {
 }
 
 TEST_F(StaticLayoutValueTest, ClockReleasedBackingSurvivesFailedEviction) {
-  auto config = ClockConfig(root_, "clock-exclusive-failure", 1);
+  auto config = ClockConfig(root_, "clock-exclusive-failure", 1, kCachedValueSize, true);
   config.json_config_["value"]["tiering"]["retain_backing_copies"] = false;
   config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
   HybridValueStore store(config);
@@ -1867,7 +2059,8 @@ TEST_F(StaticLayoutValueTest, ClockReleasedBackingSurvivesFailedEviction) {
   store.ReadValue(hb, value);
   ASSERT_EQ(value, b);
   g_fail_next_write.store(true);
-  store.ReadValue(ha, value);
+  for (int retry = 0; retry < 32 && g_fail_next_write.load(); ++retry)
+    store.ReadValue(ha, value);
   EXPECT_EQ(value, a);
   EXPECT_FALSE(g_fail_next_write.load());
   EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_failures"), 1);
@@ -2071,7 +2264,7 @@ TEST_F(StaticLayoutValueTest, AdaptiveUsesClockForLargeOrUnknownWorkingSets) {
 
 TEST_F(StaticLayoutValueTest,
        ClockFailedDirtyWritebackKeepsNewestResidentValue) {
-  HybridValueStore store(ClockConfig(root_, "clock-dirty-failure", 1));
+  HybridValueStore store(ClockConfig(root_, "clock-dirty-failure", 1, kCachedValueSize, true));
   const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b'),
       updated(kCachedValueSize, 'u');
   const auto ha = store.AllocAndWrite(0, a.data(), a.size());
@@ -2082,7 +2275,8 @@ TEST_F(StaticLayoutValueTest,
   store.Write(hb, updated.data(), updated.size());
   store.ReadValue(ha, out);
   g_fail_next_write.store(true);
-  store.ReadValue(ha, out);
+  for (int retry = 0; retry < 32 && g_fail_next_write.load(); ++retry)
+    store.ReadValue(ha, out);
   EXPECT_EQ(out, a);
   EXPECT_FALSE(g_fail_next_write.load());
   EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_failures"), 1);
