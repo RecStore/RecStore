@@ -1219,7 +1219,7 @@ class ShardedRecstoreClient:
             return
         for shard, index_tensor, shard_keys in self._group_ids_by_shard(
             ids,
-            keep_device=True,
+            keep_key_device=True,
         ):
             if grads.device.type != "cpu":
                 grad_index = index_tensor.to(grads.device)

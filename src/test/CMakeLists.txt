@@ -773,6 +773,7 @@ add_recstore_unittest(
     recstore.unittest.test_kvclient_native_distributed
     recstore.unittest.test_logical_shard_router
     recstore.unittest.test_prefetch_strict_mode
+    recstore.unittest.test_sharded_update_async_lr
     recstore.unittest.test_single_node_exchange
 )
 set_tests_properties(test_recstore_client_py PROPERTIES

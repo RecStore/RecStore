@@ -402,7 +402,7 @@ void KVClientOp::EmbUpdateWithLearningRate(
     const base::RecTensor& grads,
     float learning_rate) {
   if (IsHierKVBackendName(ps_backend_name_)) {
-    GetHierKVLocalRuntime().Update(table_name, keys, grads);
+    GetHierKVLocalRuntime().Update(table_name, keys, grads, learning_rate);
     return;
   }
   if (ps_client_ == nullptr) {

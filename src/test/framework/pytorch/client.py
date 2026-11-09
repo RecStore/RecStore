@@ -55,7 +55,7 @@ class RecstoreClient:
         if keys.shape[0] != grads.shape[0]:
             raise ValueError("keys and grads must have the same number of entries")
 
-        self.ops.emb_update_table(table_name, keys, grads)
+        self.ops.emb_update_table(table_name, keys, grads, float(learning_rate))
 
     def init_embedding_table(
         self,
