@@ -27,6 +27,9 @@
 #include "storage/kv_engine/engine_selector.h"
 #include "storage/ssd_layout/ssd_layout.h"
 
+// Defined in kv_engine_register.cc; see the call site for why it exists.
+extern "C" void RecStoreForceLinkKVEngineRegistrations();
+
 DEFINE_string(
     dram_path,
     "",
@@ -63,26 +66,49 @@ DEFINE_int64(ssd_capacity_bytes, 0, "override SSD allocator capacity bytes");
 DEFINE_string(tiered_cache_policy,
               "none",
               "tiered policy: none/lru/clock/adaptive (cold DRAM exchange)");
-DEFINE_double(tiered_cache_budget_ratio, 0.05, "fraction of DRAM reserved for cache");
-DEFINE_int64(tiered_cache_expected_dram_bytes, 0,
+DEFINE_double(tiered_cache_budget_ratio,
+              0.05,
+              "fraction of DRAM reserved for cache");
+DEFINE_int64(tiered_cache_expected_dram_bytes,
+             0,
              "load-time working set in DRAM slot bytes; 0 means unknown");
-DEFINE_int64(tiered_cache_promote_min_misses, 2,
+DEFINE_int64(tiered_cache_promote_min_misses,
+             2,
              "SSD misses before a value is eligible for promotion");
-DEFINE_bool(tiered_clock_frequency_admission, false,
-            "use shared-epoch frequency admission instead of legacy CLOCK heat");
-DEFINE_bool(tiered_clock_cost_aware, false,
+DEFINE_bool(
+    tiered_clock_frequency_admission,
+    false,
+    "use shared-epoch frequency admission instead of legacy CLOCK heat");
+DEFINE_bool(tiered_clock_cost_aware,
+            false,
             "break eligible victim heat ties by SSD write cost");
-DEFINE_bool(tiered_clock_async_exchange, false,
+DEFINE_bool(tiered_clock_async_exchange,
+            false,
             "move CLOCK exchanges to a bounded background queue");
-DEFINE_int64(tiered_clock_exchange_queue_entries, 256,
+DEFINE_int64(tiered_clock_exchange_queue_entries,
+             256,
              "maximum queued and active CLOCK exchange candidates");
-DEFINE_int64(tiered_clock_exchange_queue_bytes, 4 * 1024 * 1024,
+DEFINE_int64(tiered_clock_exchange_queue_bytes,
+             4 * 1024 * 1024,
              "maximum queued and active CLOCK candidate payload bytes");
-DEFINE_bool(tiered_retain_backing_copies, true,
-            "retain SSD copies of promoted CLOCK values (plain layouts only when false)");
-DEFINE_int32(ssd_completion_poll_spins, 8192,
+DEFINE_bool(tiered_retain_backing_copies,
+            true,
+            "retain SSD copies of promoted CLOCK values (plain layouts only "
+            "when false)");
+DEFINE_int32(ssd_completion_poll_spins,
+             8192,
              "SSD value I/O CQ polls before blocking; 0 waits immediately");
 DEFINE_int32(warmup_seconds, 0, "unmeasured transaction warmup seconds");
+DEFINE_string(tiering_cache_policy,
+              "none",
+              "value.tiering.cache_policy: none/lru/clock/adaptive");
+DEFINE_double(tiering_cache_budget_ratio,
+              0.05,
+              "fraction of tiered DRAM reserved for the LRU read cache");
+DEFINE_int32(tiering_cache_shards, 16, "read cache shard count");
+DEFINE_int64(tiering_promote_min_misses,
+             2,
+             "SSD misses before a value is eligible for promotion");
 
 DEFINE_int64(record_count, 100000000, "YCSB record count");
 DEFINE_string(workload,
@@ -93,8 +119,10 @@ DEFINE_string(distribution,
               "key distribution: uniform/zipfian/trace");
 DEFINE_string(access_trace, "", "binary uint64 key trace for timed replay");
 DEFINE_string(warmup_access_trace, "", "optional separate warmup trace");
-DEFINE_string(load_order, "",
-              "binary uint64 permutation of all keys, hottest historical keys first");
+DEFINE_string(
+    load_order,
+    "",
+    "binary uint64 permutation of all keys, hottest historical keys first");
 DEFINE_double(zipfian_alpha, 0.9, "Zipfian alpha");
 DEFINE_bool(
     zipfian_scramble,
@@ -138,7 +166,7 @@ struct PhaseStats {
   static constexpr uint64_t kLatencyBucketNs   = 100;
   static constexpr std::size_t kLatencyBuckets = 1024;
   std::array<uint64_t, kLatencyBuckets> latency_ns{};
-  uint64_t max_latency_ns = 0;
+  uint64_t max_latency_ns   = 0;
   uint64_t total_latency_ns = 0;
   BaseKV::BatchGetFlatStats get_stats;
 
@@ -326,6 +354,20 @@ bool IsLegacyDirectEngine(const std::string& engine_class) {
          engine_class == "KVEnginePetKV";
 }
 
+template <typename T>
+T TieringFlag(const char* name,
+              const T& value,
+              const char* alias_name,
+              const T& alias_value) {
+  if (gflags::GetCommandLineFlagInfoOrDie(alias_name).is_default)
+    return value;
+  if (!gflags::GetCommandLineFlagInfoOrDie(name).is_default &&
+      value != alias_value)
+    throw std::invalid_argument(
+        std::string("conflicting flags --") + name + " and --" + alias_name);
+  return alias_value;
+}
+
 BaseKVConfig BuildConfig() {
   BaseKVConfig config;
   const uint64_t capacity = static_cast<uint64_t>(FLAGS_record_count);
@@ -468,13 +510,27 @@ BaseKVConfig BuildConfig() {
           {"completion_poll_spins", FLAGS_ssd_completion_poll_spins},
           {"base_offset_bytes", 4096}}}};
     config.json_config_["value"]["tiering"] = {
-        {"cache_policy", FLAGS_tiered_cache_policy},
-        {"cache_budget_ratio", FLAGS_tiered_cache_budget_ratio},
-        {"promote_min_misses", FLAGS_tiered_cache_promote_min_misses},
+        {"cache_policy",
+         TieringFlag("tiering_cache_policy",
+                     FLAGS_tiering_cache_policy,
+                     "tiered_cache_policy",
+                     FLAGS_tiered_cache_policy)},
+        {"cache_budget_ratio",
+         TieringFlag("tiering_cache_budget_ratio",
+                     FLAGS_tiering_cache_budget_ratio,
+                     "tiered_cache_budget_ratio",
+                     FLAGS_tiered_cache_budget_ratio)},
+        {"cache_shards", FLAGS_tiering_cache_shards},
+        {"promote_min_misses",
+         TieringFlag("tiering_promote_min_misses",
+                     FLAGS_tiering_promote_min_misses,
+                     "tiered_cache_promote_min_misses",
+                     FLAGS_tiered_cache_promote_min_misses)},
         {"clock_frequency_admission", FLAGS_tiered_clock_frequency_admission},
         {"clock_cost_aware", FLAGS_tiered_clock_cost_aware},
         {"clock_async_exchange", FLAGS_tiered_clock_async_exchange},
-        {"clock_exchange_queue_entries", FLAGS_tiered_clock_exchange_queue_entries},
+        {"clock_exchange_queue_entries",
+         FLAGS_tiered_clock_exchange_queue_entries},
         {"clock_exchange_queue_bytes", FLAGS_tiered_clock_exchange_queue_bytes},
         {"retain_backing_copies", FLAGS_tiered_retain_backing_copies},
         {"expected_dram_bytes", FLAGS_tiered_cache_expected_dram_bytes}};
@@ -502,7 +558,9 @@ BaseKVConfig BuildConfig() {
   return config;
 }
 
-PhaseStats LoadRecords(BaseKV* kv, int load_threads, uint64_t record_count,
+PhaseStats LoadRecords(BaseKV* kv,
+                       int load_threads,
+                       uint64_t record_count,
                        const std::vector<uint64_t>& order) {
   std::atomic<uint64_t> next{0};
   std::vector<std::thread> threads;
@@ -826,6 +884,9 @@ void ReplayQueryLog(BaseKV* kv) {
 } // namespace
 
 int RunBenchmark(int argc, char* argv[]) {
+  // Static builds drop the registration translation unit unless it is
+  // referenced; shared builds get it through --no-as-needed.
+  RecStoreForceLinkKVEngineRegistrations();
   ForceLinkIOBackends();
   base::Init(&argc, &argv);
 
@@ -893,7 +954,8 @@ int RunBenchmark(int argc, char* argv[]) {
       seen[key] = true;
     }
     std::printf("YCSB_PLACEMENT keys=%zu path=%s\n",
-                load_order.size(), FLAGS_load_order.c_str());
+                load_order.size(),
+                FLAGS_load_order.c_str());
   }
   std::vector<uint64_t> trace, warmup_trace;
   if (FLAGS_distribution == "trace") {
@@ -941,7 +1003,9 @@ int RunBenchmark(int argc, char* argv[]) {
   if (FLAGS_load) {
     const auto begin      = std::chrono::steady_clock::now();
     PhaseStats load_stats = LoadRecords(
-        kv.get(), load_threads, static_cast<uint64_t>(FLAGS_record_count),
+        kv.get(),
+        load_threads,
+        static_cast<uint64_t>(FLAGS_record_count),
         load_order);
     const auto end       = std::chrono::steady_clock::now();
     const double seconds = SecondsSince(begin, end);
@@ -979,11 +1043,11 @@ int RunBenchmark(int argc, char* argv[]) {
   auto wait_for_exchanges = [&]() {
     if (!FLAGS_tiered_clock_async_exchange)
       return 0.0;
-    const auto begin = std::chrono::steady_clock::now();
+    const auto begin        = std::chrono::steady_clock::now();
     const std::string field = " tiered_clock_exchange_pending=";
     for (;;) {
       const std::string info = kv->ExtraResultFields();
-      const auto pos = info.find(field);
+      const auto pos         = info.find(field);
       if (pos == std::string::npos)
         return 0.0; // The adaptive policy may select the direct DRAM path.
       if (std::stoull(info.substr(pos + field.size())) == 0)
@@ -1029,10 +1093,11 @@ int RunBenchmark(int argc, char* argv[]) {
     const double throughput =
         seconds > 0.0 ? static_cast<double>(run_stats.total_ops) / seconds
                       : 0.0;
+    const double drain_seconds = wait_for_exchanges();
     std::printf(
         "YCSB_RESULT workload=%s distribution=%s zipfian_alpha=%.6f "
         "read_mode=%s threads=%d records=%ld runtime_s=%.6f ops=%lu "
-        "throughput_ops_sec=%.6f read_ops=%lu update_ops=%lu\n",
+        "throughput_ops_sec=%.6f read_ops=%lu update_ops=%lu%s\n",
         workload.c_str(),
         FLAGS_distribution.c_str(),
         FLAGS_zipfian_alpha,
@@ -1043,13 +1108,14 @@ int RunBenchmark(int argc, char* argv[]) {
         run_stats.total_ops,
         throughput,
         run_stats.read_ops,
-        run_stats.update_ops);
-    const double drain_seconds = wait_for_exchanges();
+        run_stats.update_ops,
+        kv->ExtraResultFields().c_str());
     if (FLAGS_tiered_clock_async_exchange)
-      std::printf("YCSB_RUN_MAINTENANCE drain_seconds=%.6f "
-                  "throughput_including_drain=%.6f\n",
-                  drain_seconds,
-                  static_cast<double>(run_stats.total_ops) / (seconds + drain_seconds));
+      std::printf(
+          "YCSB_RUN_MAINTENANCE drain_seconds=%.6f "
+          "throughput_including_drain=%.6f\n",
+          drain_seconds,
+          static_cast<double>(run_stats.total_ops) / (seconds + drain_seconds));
     std::printf("YCSB_AFTER_RUN%s\n", kv->ExtraResultFields().c_str());
     if (FLAGS_load && workload == "c") {
       verify_values();

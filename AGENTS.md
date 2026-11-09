@@ -99,5 +99,15 @@ Prioritize correctness before performance. Pay special attention to:
 - Prefer readable, local changes over clever or broad refactors.
 - Use ASCII by default unless the file already requires non-ASCII content.
 - Add comments only for non-obvious intent or invariants.
+- Before editing documentation, verify the implementation and surrounding context,
+  write only accurate content that helps readers understand or use the system,
+  state the applicable conditions, prioritize correcting and shortening existing
+  text, and avoid repetition, unsupported generalizations, and irrelevant
+  defensive explanations.
+- Do not layer explanations onto an existing document. Clean up, shorten, or
+  replace the stale text instead of appending new sections, restating
+  implementation details, or listing generic limitations.
+- Do not hard-wrap prose to a column limit. Break paragraphs and list items by
+  meaning, not by line width; leave code blocks unchanged.
 - In Python, make submission, wait, and consumption semantics explicit.
 - In C++, preserve surrounding ownership and synchronization style.

@@ -44,6 +44,7 @@ struct PrefetchBatch {
     response_readers_.resize(request_num);
     cqs_             = std::make_unique<grpc::CompletionQueue>();
     completed_count_ = 0;
+    failed_          = false;
   }
 
   PrefetchBatch(PrefetchBatch&& other) noexcept
@@ -54,8 +55,10 @@ struct PrefetchBatch {
         responses_(std::move(other.responses_)),
         response_readers_(std::move(other.response_readers_)),
         batch_size_(other.batch_size_),
-        cqs_(std::move(other.cqs_)),
-        completed_count_(other.completed_count_) {
+        completed_count_(other.completed_count_),
+        failed_(other.failed_),
+        error_(std::move(other.error_)),
+        cqs_(std::move(other.cqs_)) {
     other.batch_size_ = 0;
   }
   PrefetchBatch(const PrefetchBatch&)            = delete;
@@ -72,6 +75,11 @@ struct PrefetchBatch {
 
   int batch_size_;
   int completed_count_;
+  // Set when at least one batched RPC failed or the wait timed out. The
+  // response payload cannot be trusted afterwards; GetPrefetchResult reports
+  // the recorded error instead of returning partially zeroed rows.
+  bool failed_;
+  std::string error_;
   std::unique_ptr<grpc::CompletionQueue> cqs_;
 };
 
@@ -125,6 +133,8 @@ public:
                          const recstore::EmbeddingTableConfig& config) override;
 
   uint64_t PrefetchParameter(const base::ConstArray<uint64_t>& keys) override;
+  // Returns true once the batch is terminal: either every response arrived or
+  // at least one RPC failed. GetPrefetchResult() reports which one it was.
   bool IsPrefetchDone(uint64_t prefetch_id) override;
   void WaitForPrefetch(uint64_t prefetch_id) override;
   bool

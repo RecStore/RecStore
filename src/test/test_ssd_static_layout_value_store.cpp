@@ -33,7 +33,8 @@ std::atomic<uint64_t> g_read_entries{0}, g_completed_writes{0};
 std::atomic<uint64_t> g_buffer_allocations{0}, g_buffer_frees{0};
 std::atomic<bool> g_fail_next_write{false};
 std::atomic<bool> g_fail_next_read{false};
-std::atomic<bool> g_pause_next_write{false}, g_write_paused{false}, g_release_write{false};
+std::atomic<bool> g_pause_next_write{false}, g_write_paused{false},
+    g_release_write{false};
 std::atomic<bool> g_pause_next_read{false}, g_read_paused{false},
     g_release_read{false};
 
@@ -111,10 +112,12 @@ protected:
     WritePageSync(page_id, buffer);
   }
   void WritePageSync(PageID_t page_id, char* buffer) override {
-    if (g_fail_next_write.exchange(false)) throw std::runtime_error("injected write failure");
+    if (g_fail_next_write.exchange(false))
+      throw std::runtime_error("injected write failure");
     if (g_pause_next_write.exchange(false)) {
       g_write_paused.store(true);
-      while (!g_release_write.load()) std::this_thread::yield();
+      while (!g_release_write.load())
+        std::this_thread::yield();
     }
     std::lock_guard<std::mutex> lock(pages_mutex_);
     auto& page = pages_[page_id];
@@ -1178,16 +1181,108 @@ TEST_F(StaticLayoutValueTest, TieredReadCacheConcurrentReadsStayCoherent) {
             TieredField(info, "tiered_cache_budget_bytes"));
 }
 
+TEST_F(StaticLayoutValueTest, TieredReadCacheConcurrentWriteStaysCoherent) {
+  // Readers and a writer share one SSD handle while the cache is too small to
+  // hold the working set, so the read path keeps falling back to SSD and
+  // re-promoting. That is the interleaving the write barrier exists for: a
+  // reader that fetched the pre-write value must not insert it after the write
+  // landed, or the cache serves a stale copy until the key is written again.
+  // TieredReadCacheRejectsPromotionRacingWrite pins the interleaving
+  // deterministically; this test runs the same guard from two real threads.
+  constexpr size_t kHandles  = 200;
+  constexpr int kReaders     = 4;
+  constexpr int kWriterLoops = 20000;
+  HybridValueStore store(
+      TieredStoreConfig(root_, "concurrent-write", LruTieringConfig(0.02, 4)));
+  const auto ssd = FillUntilSsd(store, kHandles);
+  ASSERT_EQ(ssd.size(), kHandles);
+
+  const std::string first(kCachedValueSize, 'x');
+  const std::string second(kCachedValueSize, 'y');
+  const std::string last(kCachedValueSize, 'z');
+
+  std::atomic<bool> stopped{false};
+  std::atomic<int> mismatches{0};
+  std::atomic<int> reads_done{0};
+  std::atomic<int> readers_ready{0};
+
+  std::vector<std::thread> readers;
+  readers.reserve(kReaders);
+  for (int t = 0; t < kReaders; ++t) {
+    readers.emplace_back([&, t] {
+      std::string out(kCachedValueSize, '\0');
+      int reads = 0;
+      readers_ready.fetch_add(1, std::memory_order_release);
+      for (int i = 0; i < 1000000 && !stopped.load(std::memory_order_acquire);
+           ++i) {
+        const size_t index = static_cast<size_t>(t + i) % ssd.size();
+        const bool whole =
+            store.Read(ssd[index].handle, out.data(), out.size()) ==
+            kCachedValueSize;
+        // A read racing a write may see either value, but never a mixture of
+        // the two (the store writes whole rows under a page lock).
+        const bool coherent =
+            index == 0 ? (out == ssd[0].payload || out == first ||
+                          out == second || out == last)
+                       : out == ssd[index].payload;
+        if (!whole || !coherent) {
+          mismatches.fetch_add(1, std::memory_order_relaxed);
+        }
+        ++reads;
+      }
+      reads_done.fetch_add(reads, std::memory_order_relaxed);
+    });
+  }
+
+  std::thread writer([&] {
+    // Start writing only once the readers are running, so the two paths are
+    // guaranteed to overlap instead of racing thread startup.
+    while (readers_ready.load(std::memory_order_acquire) < kReaders) {
+      std::this_thread::yield();
+    }
+    for (int i = 0; i < kWriterLoops; ++i) {
+      const std::string& value = (i % 2 == 0) ? first : second;
+      store.Write(ssd.front().handle, value.data(), value.size());
+    }
+    // Leave behind a value that differs from both racing ones, then let the
+    // readers drain so that no read is still in flight afterwards.
+    store.Write(ssd.front().handle, last.data(), last.size());
+    stopped.store(true, std::memory_order_release);
+  });
+  writer.join();
+  for (auto& thread : readers) {
+    thread.join();
+  }
+  EXPECT_EQ(mismatches.load(), 0);
+  EXPECT_GT(reads_done.load(), 0);
+
+  // Every read performs exactly one cache lookup, whichever way it ends.
+  const std::string info = store.ExtraResultFields();
+  EXPECT_EQ(TieredField(info, "tiered_cache_hits") +
+                TieredField(info, "tiered_cache_misses"),
+            static_cast<double>(reads_done.load()));
+  // The reads must have gone back to SSD and re-promoted, otherwise this is
+  // just the read-only hit test again.
+  EXPECT_GT(TieredField(info, "tiered_cache_misses"), 0.0);
+  EXPECT_GT(TieredField(info, "tiered_cache_promotions"), 0.0);
+
+  // The writer's last value must be what the store serves now; a promotion
+  // that outlived its barrier would have left the previous copy cached.
+  std::string out(kCachedValueSize, '\0');
+  ASSERT_EQ(store.Read(ssd.front().handle, out.data(), out.size()),
+            kCachedValueSize);
+  EXPECT_EQ(out, last);
+}
+
 } // namespace
 
-
-
 namespace {
-BaseKVConfig ClockConfig(const std::filesystem::path& root,
-                         const std::string& name,
-                         size_t slots    = 2,
-                         size_t row_size = kCachedValueSize,
-                         bool frequency_admission = false) {
+BaseKVConfig
+ClockConfig(const std::filesystem::path& root,
+            const std::string& name,
+            size_t slots             = 2,
+            size_t row_size          = kCachedValueSize,
+            bool frequency_admission = false) {
   auto config = TieredStoreConfig(
       root,
       name,
@@ -1208,7 +1303,8 @@ BaseKVConfig ClockConfig(const std::filesystem::path& root,
   config.json_config_["value"]["default_value_size_hint"] = row_size;
   return config;
 }
-// Separate candidate pages from the new victim backing page in paused-I/O tests.
+// Separate candidate pages from the new victim backing page in paused-I/O
+// tests.
 std::vector<SsdValue> FillClockValues(HybridValueStore& store, size_t count) {
   std::vector<SsdValue> values;
   for (size_t i = 0; i < count; ++i) {
@@ -1220,9 +1316,11 @@ std::vector<SsdValue> FillClockValues(HybridValueStore& store, size_t count) {
 }
 
 bool WaitClockIdle(HybridValueStore& store) {
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(3);
   do {
-    if (TieredField(store.ExtraResultFields(), "tiered_clock_exchange_pending") == 0)
+    if (TieredField(store.ExtraResultFields(),
+                    "tiered_clock_exchange_pending") == 0)
       return true;
     std::this_thread::yield();
   } while (std::chrono::steady_clock::now() < deadline);
@@ -1242,11 +1340,12 @@ bool PauseClockExchange(HybridValueStore& store, const SsdValue& candidate) {
     store.ReadValue(candidate.handle, out);
     return out;
   });
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(3);
   while (!g_write_paused.load() && std::chrono::steady_clock::now() < deadline)
     std::this_thread::yield();
   const bool paused = g_write_paused.load();
-  const auto state = read.wait_for(std::chrono::milliseconds(200));
+  const auto state  = read.wait_for(std::chrono::milliseconds(200));
   if (!paused || state != std::future_status::ready)
     g_release_write.store(true);
   EXPECT_TRUE(paused);
@@ -1366,7 +1465,8 @@ TEST_F(StaticLayoutValueTest, ClockFailedDemotionLeavesBothValuesIntact) {
 }
 
 TEST_F(StaticLayoutValueTest, ClockConcurrentEngineReadsUpdatesAndExchanges) {
-  auto config                     = ClockConfig(root_, "clock-concurrent", 2, kCachedValueSize, true);
+  auto config =
+      ClockConfig(root_, "clock-concurrent", 2, kCachedValueSize, true);
   config.num_threads_             = 5;
   config.json_config_["capacity"] = 32;
   KVEngineComposite engine(config);
@@ -1421,7 +1521,7 @@ TEST_F(StaticLayoutValueTest, ClockStaticRowsExchangeAndUpdateReplicas) {
   auto config = ClockConfig(root_, "clock-static", 1, 4);
   config.json_config_["value"]["ssd_layout"] = {
       {"strategy", "maxembed"}, {"mapping_path", Save(MaxEmbed()).string()}};
-  auto invalid = config;
+  auto invalid                                                      = config;
   invalid.json_config_["value"]["tiering"]["retain_backing_copies"] = false;
   EXPECT_THROW(HybridValueStore rejected(invalid), std::invalid_argument);
   HybridValueStore store(config);
@@ -1546,7 +1646,6 @@ TEST_F(StaticLayoutValueTest, ClockDirectBulkFallbackReleasesUnpublishedRows) {
   EXPECT_EQ(TieredField(engine.ExtraResultFields(), "tiered_dram_bytes"), 0);
 }
 
-
 TEST_F(StaticLayoutValueTest, ClockReusedMetadataRejectsStaleHandles) {
   HybridValueStore store(ClockConfig(root_, "clock-reuse", 1));
   const std::string value(kCachedValueSize, 'r');
@@ -1562,36 +1661,41 @@ TEST_F(StaticLayoutValueTest, ClockReusedMetadataRejectsStaleHandles) {
     store.BatchRead({old, current, old, current}, results);
     EXPECT_TRUE(results[0].data.empty());
     EXPECT_TRUE(results[2].data.empty());
-    EXPECT_EQ(std::string(results[1].data.begin(), results[1].data.end()), value);
+    EXPECT_EQ(std::string(results[1].data.begin(), results[1].data.end()),
+              value);
     EXPECT_EQ(results[1].data, results[3].data);
     old = current;
   }
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_metadata_slots"), 1);
+  EXPECT_EQ(
+      TieredField(store.ExtraResultFields(), "tiered_clock_metadata_slots"), 1);
 }
 
 TEST_F(StaticLayoutValueTest, ClockRingUnlinksAndReusesAllPositions) {
   for (bool frequency : {false, true}) {
     SCOPED_TRACE(frequency);
-    auto config = ClockConfig(root_, frequency ? "clock-ring-frequency"
-                                              : "clock-ring-legacy",
-                              4, kCachedValueSize, frequency);
+    auto config = ClockConfig(
+        root_,
+        frequency ? "clock-ring-frequency" : "clock-ring-legacy",
+        4,
+        kCachedValueSize,
+        frequency);
     config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
     HybridValueStore store(config);
     std::array<uint64_t, 6> handles;
     std::array<std::string, 6> values;
     for (size_t i = 0; i < handles.size(); ++i) {
-      values[i] = std::string(kCachedValueSize, 'a' + i);
+      values[i]  = std::string(kCachedValueSize, 'a' + i);
       handles[i] = store.AllocAndWrite(i, values[i].data(), values[i].size());
     }
-    const auto budget = TieredField(store.ExtraResultFields(),
-                                   "tiered_dram_bytes");
+    const auto budget =
+        TieredField(store.ExtraResultFields(), "tiered_dram_bytes");
     uint64_t next_key = handles.size();
     std::string out;
     // Remove a middle resident, the head, and the newly appended tail.
     for (size_t index : {1U, 0U, 0U}) {
       const uint64_t retired = handles[index];
       store.Free(retired);
-      values[index] = std::string(kCachedValueSize, 'a' + next_key);
+      values[index]  = std::string(kCachedValueSize, 'a' + next_key);
       handles[index] = store.AllocAndWrite(
           next_key++, values[index].data(), values[index].size());
       EXPECT_NE(handles[index], retired);
@@ -1606,8 +1710,8 @@ TEST_F(StaticLayoutValueTest, ClockRingUnlinksAndReusesAllPositions) {
       EXPECT_EQ(TieredField(info, "tiered_dram_bytes"), budget);
     }
     for (size_t index : {4U, 5U}) {
-      const auto before = TieredField(store.ExtraResultFields(),
-                                     "tiered_clock_promotions");
+      const auto before =
+          TieredField(store.ExtraResultFields(), "tiered_clock_promotions");
       for (int retry = 0; retry < 64; ++retry) {
         store.ReadValue(handles[index], out);
         if (TieredField(store.ExtraResultFields(), "tiered_clock_promotions") !=
@@ -1615,8 +1719,9 @@ TEST_F(StaticLayoutValueTest, ClockRingUnlinksAndReusesAllPositions) {
           break;
       }
       EXPECT_EQ(out, values[index]);
-      EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
-                before + 1);
+      EXPECT_EQ(
+          TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+          before + 1);
     }
     for (size_t i = 0; i < handles.size(); ++i) {
       store.ReadValue(handles[i], out);
@@ -1631,11 +1736,13 @@ TEST_F(StaticLayoutValueTest, ClockRingUnlinksAndReusesAllPositions) {
     EXPECT_EQ(TieredField(empty, "tiered_dram_bytes"), 0);
     EXPECT_EQ(TieredField(empty, "tiered_clock_failures"), 0);
     // The final resident's removal must leave a reusable empty ring.
-    const auto fresh = store.AllocAndWrite(100, values[0].data(), values[0].size());
+    const auto fresh =
+        store.AllocAndWrite(100, values[0].data(), values[0].size());
     store.ReadValue(fresh, out);
     EXPECT_EQ(out, values[0]);
-    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_metadata_slots"),
-              handles.size());
+    EXPECT_EQ(
+        TieredField(store.ExtraResultFields(), "tiered_clock_metadata_slots"),
+        handles.size());
     store.Free(fresh);
     EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_live_allocs"), 0);
   }
@@ -1644,9 +1751,12 @@ TEST_F(StaticLayoutValueTest, ClockRingUnlinksAndReusesAllPositions) {
 TEST_F(StaticLayoutValueTest, ClockCountersSurviveReaderExitAndSlotReuse) {
   for (bool frequency : {false, true}) {
     SCOPED_TRACE(frequency);
-    auto config = ClockConfig(root_, frequency ? "clock-count-frequency"
-                                              : "clock-count-legacy",
-                              2, kCachedValueSize, frequency);
+    auto config = ClockConfig(
+        root_,
+        frequency ? "clock-count-frequency" : "clock-count-legacy",
+        2,
+        kCachedValueSize,
+        frequency);
     config.json_config_["value"]["tiering"]["promote_min_misses"] = 1000;
     HybridValueStore store(config);
     const std::string value(kCachedValueSize, 'c');
@@ -1658,11 +1768,13 @@ TEST_F(StaticLayoutValueTest, ClockCountersSurviveReaderExitAndSlotReuse) {
       store.ReadValue(handles[0], out);
       EXPECT_EQ(out, value);
       std::array<char, kCachedValueSize> bytes{};
-      EXPECT_EQ(store.Read(handles[1], bytes.data(), bytes.size()), value.size());
+      EXPECT_EQ(store.Read(handles[1], bytes.data(), bytes.size()),
+                value.size());
       EXPECT_EQ(std::string(bytes.data(), bytes.size()), value);
       std::vector<ValueStore::ReadResult> results;
-      store.BatchRead({handles[0], handles[2], handles[0], handles[2],
-                       kValueHandleNone}, results);
+      store.BatchRead(
+          {handles[0], handles[2], handles[0], handles[2], kValueHandleNone},
+          results);
       ASSERT_EQ(results.size(), 5);
       for (size_t i = 0; i < 4; ++i)
         EXPECT_EQ(std::string(results[i].data.begin(), results[i].data.end()),
@@ -1675,8 +1787,8 @@ TEST_F(StaticLayoutValueTest, ClockCountersSurviveReaderExitAndSlotReuse) {
       batch[1] = batch[128] = kValueHandleNone;
       std::vector<char> flat(batch.size() * value.size());
       uint64_t missing = 0;
-      ASSERT_TRUE(store.ReadFlatFixedRows(batch.data(), batch.size(), flat.data(),
-                                         value.size(), &missing));
+      ASSERT_TRUE(store.ReadFlatFixedRows(
+          batch.data(), batch.size(), flat.data(), value.size(), &missing));
       EXPECT_EQ(missing, 2);
       for (size_t i = 0; i < batch.size(); ++i)
         EXPECT_EQ(std::string(flat.data() + i * value.size(), value.size()),
@@ -1708,8 +1820,8 @@ TEST_F(StaticLayoutValueTest, ClockCountersSurviveReaderExitAndSlotReuse) {
 }
 
 TEST_F(StaticLayoutValueTest, ClockExchangeQueueRejectsNonpositiveLimits) {
-  for (const char* field : {"clock_exchange_queue_entries",
-                            "clock_exchange_queue_bytes"}) {
+  for (const char* field :
+       {"clock_exchange_queue_entries", "clock_exchange_queue_bytes"}) {
     for (int64_t limit : {0, -1}) {
       SCOPED_TRACE(field);
       SCOPED_TRACE(limit);
@@ -1739,13 +1851,17 @@ TEST_F(StaticLayoutValueTest, ClockSampledHeatProtectsPeriodicResidents) {
       for (int round = 0; round < 128; ++round) {
         if (flat) {
           uint64_t missing = 0;
-          ASSERT_TRUE(store.ReadFlatFixedRows(handles.data(), handles.size(),
-                                             buffer.data(), kCachedValueSize,
-                                             &missing));
+          ASSERT_TRUE(store.ReadFlatFixedRows(
+              handles.data(),
+              handles.size(),
+              buffer.data(),
+              kCachedValueSize,
+              &missing));
           ASSERT_EQ(missing, 0);
           for (size_t key = 0; key < handles.size(); ++key)
             ASSERT_EQ(std::string(buffer.data() + key * kCachedValueSize,
-                                  kCachedValueSize), values[key].payload);
+                                  kCachedValueSize),
+                      values[key].payload);
         } else {
           for (size_t key = 0; key < handles.size(); ++key) {
             store.ReadValue(handles[key], out);
@@ -1758,7 +1874,8 @@ TEST_F(StaticLayoutValueTest, ClockSampledHeatProtectsPeriodicResidents) {
         store.ReadValue(values[16].handle, out);
         EXPECT_EQ(out, values[16].payload);
       }
-      EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+      EXPECT_EQ(
+          TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
       for (size_t key = 0; key < handles.size(); ++key) {
         store.ReadValue(handles[key], out);
         EXPECT_EQ(out, values[key].payload);
@@ -1768,7 +1885,8 @@ TEST_F(StaticLayoutValueTest, ClockSampledHeatProtectsPeriodicResidents) {
   }
 }
 
-TEST_F(StaticLayoutValueTest, ClockCostAwareRequiresRepeatedDemandForEveryVictim) {
+TEST_F(StaticLayoutValueTest,
+       ClockCostAwareRequiresRepeatedDemandForEveryVictim) {
   auto config = ClockConfig(root_, "clock-cost-dirty", 1);
   config.json_config_["value"]["tiering"]["clock_cost_aware"] = true;
   HybridValueStore dirty(config);
@@ -1776,10 +1894,13 @@ TEST_F(StaticLayoutValueTest, ClockCostAwareRequiresRepeatedDemandForEveryVictim
   std::string out;
   dirty.ReadValue(values[1].handle, out);
   EXPECT_EQ(out, values[1].payload);
-  EXPECT_EQ(TieredField(dirty.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  EXPECT_EQ(TieredField(dirty.ExtraResultFields(), "tiered_clock_promotions"),
+            0);
   dirty.ReadValue(values[1].handle, out);
-  EXPECT_EQ(TieredField(dirty.ExtraResultFields(), "tiered_clock_promotions"), 1);
-  EXPECT_EQ(TieredField(dirty.ExtraResultFields(), "tiered_clock_writebacks"), 1);
+  EXPECT_EQ(TieredField(dirty.ExtraResultFields(), "tiered_clock_promotions"),
+            1);
+  EXPECT_EQ(TieredField(dirty.ExtraResultFields(), "tiered_clock_writebacks"),
+            1);
 
   config = ClockConfig(root_, "clock-cost-clean", 1);
   config.json_config_["value"]["tiering"]["clock_cost_aware"] = true;
@@ -1787,11 +1908,13 @@ TEST_F(StaticLayoutValueTest, ClockCostAwareRequiresRepeatedDemandForEveryVictim
   auto backed = FillClockValues(clean, 2);
   clean.Free(backed[0].handle);
   clean.ReadValue(backed[1].handle, out);
-  clean.ReadValue(backed[1].handle, out); // Promote into free DRAM, keeping backing.
-  const auto candidate = clean.AllocAndWrite(2, values[0].payload.data(),
-                                           values[0].payload.size());
+  clean.ReadValue(
+      backed[1].handle, out); // Promote into free DRAM, keeping backing.
+  const auto candidate = clean.AllocAndWrite(
+      2, values[0].payload.data(), values[0].payload.size());
   clean.ReadValue(candidate, out);
-  EXPECT_EQ(TieredField(clean.ExtraResultFields(), "tiered_clock_promotions"), 1);
+  EXPECT_EQ(TieredField(clean.ExtraResultFields(), "tiered_clock_promotions"),
+            1);
   clean.ReadValue(candidate, out);
   EXPECT_EQ(out, values[0].payload);
   const auto info = clean.ExtraResultFields();
@@ -1802,14 +1925,15 @@ TEST_F(StaticLayoutValueTest, ClockCostAwareRequiresRepeatedDemandForEveryVictim
 
 TEST_F(StaticLayoutValueTest, ClockCostAwarePrefersCleanWhenVictimHeatMatches) {
   auto config = ClockConfig(root_, "clock-cost-tie", 2);
-  config.json_config_["value"]["tiering"]["clock_cost_aware"] = true;
+  config.json_config_["value"]["tiering"]["clock_cost_aware"]   = true;
   config.json_config_["value"]["tiering"]["promote_min_misses"] = 16;
   HybridValueStore store(config);
   const auto values = FillClockValues(store, 4);
   std::string out;
   for (int i = 0; i < 16; ++i)
     store.ReadValue(values[2].handle, out);
-  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_writebacks"), 1);
+  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_writebacks"),
+            1);
   // The first sampled DRAM hit gives the dirty resident the same heat (16)
   // as the clean newcomer. Both lose their reference bit and halve to 8
   // before becoming eligible, so clean backing only breaks a genuine tie.
@@ -1848,7 +1972,8 @@ TEST_F(StaticLayoutValueTest, ClockCostLookaheadPreservesLegacyHeat) {
     store.ReadValue(values[2].handle, out);
     ASSERT_EQ(out, values[2].payload);
   }
-  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            1);
   for (int access = 0; access < 256; ++access) {
     store.ReadValue(values[2].handle, out);
     ASSERT_EQ(out, values[2].payload);
@@ -1862,7 +1987,8 @@ TEST_F(StaticLayoutValueTest, ClockCostLookaheadPreservesLegacyHeat) {
   }
   store.ReadValue(values[3].handle, out);
   EXPECT_EQ(out, values[3].payload);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            1);
   const auto reads = g_read_entries.load();
   store.ReadValue(values[1].handle, out);
   EXPECT_EQ(out, values[1].payload);
@@ -1873,7 +1999,8 @@ TEST_F(StaticLayoutValueTest, ClockCostLookaheadPreservesLegacyHeat) {
     store.ReadValue(values[3].handle, out);
     ASSERT_EQ(out, values[3].payload);
   }
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 2);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            2);
   const auto adapted_reads = g_read_entries.load();
   store.ReadValue(values[3].handle, out);
   EXPECT_EQ(out, values[3].payload);
@@ -1882,8 +2009,8 @@ TEST_F(StaticLayoutValueTest, ClockCostLookaheadPreservesLegacyHeat) {
 }
 
 TEST_F(StaticLayoutValueTest, ClockCostLookaheadPreservesFrequencyReference) {
-  auto config = ClockConfig(root_, "clock-lookahead-reference", 2,
-                            kCachedValueSize, true);
+  auto config = ClockConfig(
+      root_, "clock-lookahead-reference", 2, kCachedValueSize, true);
   config.json_config_["value"]["tiering"]["clock_cost_aware"] = true;
   HybridValueStore store(config);
   const auto values = FillClockValues(store, 4);
@@ -1896,8 +2023,10 @@ TEST_F(StaticLayoutValueTest, ClockCostLookaheadPreservesFrequencyReference) {
     store.ReadValue(values[2].handle, out);
     ASSERT_EQ(out, values[2].payload);
   }
-  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
-  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_writebacks"), 1);
+  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            1);
+  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_writebacks"),
+            1);
   // The bootstrap scan consumed dirty key 0's reference. Newly promoted
   // clean key 2 still has its second chance, which cost lookahead must keep.
   char prefix = 0;
@@ -1925,7 +2054,8 @@ TEST_F(StaticLayoutValueTest, ClockCostLookaheadPreservesFrequencyReference) {
     store.ReadValue(values[0].handle, out);
     ASSERT_EQ(out, values[0].payload);
   }
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 3);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            3);
   const auto adapted_reads = g_read_entries.load();
   store.ReadValue(values[0].handle, out);
   EXPECT_EQ(out, values[0].payload);
@@ -1936,10 +2066,11 @@ TEST_F(StaticLayoutValueTest, ClockCostLookaheadPreservesFrequencyReference) {
 TEST_F(StaticLayoutValueTest, ClockCostAwareRechecksMissGateAfterDemotion) {
   for (bool asynchronous : {false, true}) {
     SCOPED_TRACE(asynchronous);
-    auto config = ClockConfig(root_, asynchronous ? "clock-readmit-async"
-                                                  : "clock-readmit-sync", 1);
+    auto config = ClockConfig(
+        root_, asynchronous ? "clock-readmit-async" : "clock-readmit-sync", 1);
     config.json_config_["value"]["tiering"]["clock_cost_aware"] = true;
-    config.json_config_["value"]["tiering"]["clock_async_exchange"] = asynchronous;
+    config.json_config_["value"]["tiering"]["clock_async_exchange"] =
+        asynchronous;
     HybridValueStore store(config);
     const auto values = FillClockValues(store, 2);
     std::string out;
@@ -1950,8 +2081,10 @@ TEST_F(StaticLayoutValueTest, ClockCostAwareRechecksMissGateAfterDemotion) {
       if (asynchronous)
         ASSERT_TRUE(WaitClockIdle(store));
     }
-    ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
-    ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_writebacks"), 1);
+    ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+              1);
+    ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_writebacks"),
+              1);
     for (int access = 0; access < 2; ++access) {
       store.ReadValue(values[0].handle, out);
       ASSERT_EQ(out, values[0].payload);
@@ -1960,7 +2093,7 @@ TEST_F(StaticLayoutValueTest, ClockCostAwareRechecksMissGateAfterDemotion) {
     }
     const auto before = store.ExtraResultFields();
     ASSERT_EQ(TieredField(before, "tiered_clock_promotions"), 2);
-    const auto reads = g_read_entries.load();
+    const auto reads  = g_read_entries.load();
     const auto misses = TieredField(before, "tiered_clock_misses");
     // Cost ranking must not bypass the per-residency miss gate.
     store.ReadValue(values[1].handle, out);
@@ -1990,10 +2123,13 @@ TEST_F(StaticLayoutValueTest, ClockCostAwareRechecksMissGateAfterDemotion) {
 TEST_F(StaticLayoutValueTest, ClockCostAwareDoesNotStrandUnusedDirtyResidents) {
   for (bool asynchronous : {false, true}) {
     SCOPED_TRACE(asynchronous);
-    auto config = ClockConfig(root_, asynchronous ? "clock-fairness-async"
-                                                  : "clock-fairness-sync", 4);
+    auto config = ClockConfig(
+        root_,
+        asynchronous ? "clock-fairness-async" : "clock-fairness-sync",
+        4);
     config.json_config_["value"]["tiering"]["clock_cost_aware"] = true;
-    config.json_config_["value"]["tiering"]["clock_async_exchange"] = asynchronous;
+    config.json_config_["value"]["tiering"]["clock_async_exchange"] =
+        asynchronous;
     HybridValueStore store(config);
     const auto values = FillClockValues(store, 9);
     store.Free(values[0].handle);
@@ -2023,15 +2159,15 @@ TEST_F(StaticLayoutValueTest, ClockCostAwareDoesNotStrandUnusedDirtyResidents) {
       }
     }
     const auto settled = store.ExtraResultFields();
-    SCOPED_TRACE(::testing::Message()
-                 << "promotions="
-                 << TieredField(settled, "tiered_clock_promotions") -
-                        TieredField(before, "tiered_clock_promotions")
-                 << " clean_evictions="
-                 << TieredField(settled, "tiered_clock_clean_evictions")
-                 << " writebacks="
-                 << TieredField(settled, "tiered_clock_writebacks")
-                 << " read_entries=" << g_read_entries.load() - initial_reads);
+    SCOPED_TRACE(
+        ::testing::Message()
+        << "promotions="
+        << TieredField(settled, "tiered_clock_promotions") -
+               TieredField(before, "tiered_clock_promotions")
+        << " clean_evictions="
+        << TieredField(settled, "tiered_clock_clean_evictions")
+        << " writebacks=" << TieredField(settled, "tiered_clock_writebacks")
+        << " read_entries=" << g_read_entries.load() - initial_reads);
     EXPECT_GE(TieredField(settled, "tiered_clock_writebacks"), 3);
     EXPECT_EQ(TieredField(settled, "tiered_dram_bytes"),
               TieredField(before, "tiered_dram_bytes"));
@@ -2056,15 +2192,16 @@ TEST_F(StaticLayoutValueTest, ClockCostAwareDoesNotStrandUnusedDirtyResidents) {
   }
 }
 
-TEST_F(StaticLayoutValueTest, ClockAsyncReturnsBeforeWriteAndDestructorDrainsQueue) {
+TEST_F(StaticLayoutValueTest,
+       ClockAsyncReturnsBeforeWriteAndDestructorDrainsQueue) {
   auto config = ClockConfig(root_, "clock-async-drain", 2);
   config.json_config_["value"]["tiering"]["clock_async_exchange"] = true;
-  config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
-  auto store = std::make_unique<HybridValueStore>(config);
+  config.json_config_["value"]["tiering"]["promote_min_misses"]   = 1;
+  auto store        = std::make_unique<HybridValueStore>(config);
   const auto values = FillClockValues(*store, 66);
   ReleaseClockWrite release;
   ASSERT_TRUE(PauseClockExchange(*store, values[2]));
-  auto next = std::async(std::launch::async, [&] {
+  auto next        = std::async(std::launch::async, [&] {
     std::string out;
     // Put this reader's sampled heat on the victim already leaving DRAM.
     store->ReadValue(values[0].handle, out);
@@ -2081,34 +2218,38 @@ TEST_F(StaticLayoutValueTest, ClockAsyncReturnsBeforeWriteAndDestructorDrainsQue
   EXPECT_EQ(next.get(), values[10].payload);
   if (state != std::future_status::ready)
     return;
-  EXPECT_EQ(TieredField(store->ExtraResultFields(), "tiered_clock_exchange_pending"), 2);
+  EXPECT_EQ(
+      TieredField(store->ExtraResultFields(), "tiered_clock_exchange_pending"),
+      2);
   const auto writes = g_completed_writes.load();
-  auto shutdown = std::async(std::launch::async, [&] { store.reset(); });
+  auto shutdown     = std::async(std::launch::async, [&] { store.reset(); });
   EXPECT_EQ(shutdown.wait_for(std::chrono::milliseconds(100)),
             std::future_status::timeout);
   g_release_write.store(true);
-  EXPECT_EQ(shutdown.wait_for(std::chrono::seconds(3)), std::future_status::ready);
+  EXPECT_EQ(shutdown.wait_for(std::chrono::seconds(3)),
+            std::future_status::ready);
   shutdown.get();
-  // Both the active and queued job had dirty victims and must finish on shutdown.
+  // Both the active and queued job had dirty victims and must finish on
+  // shutdown.
   EXPECT_GE(g_completed_writes.load() - writes, 2);
 }
 
 TEST_F(StaticLayoutValueTest, ClockAsyncBoundsActiveAndQueuedEntriesAndBytes) {
   for (bool byte_limit : {false, true}) {
     SCOPED_TRACE(byte_limit);
-    auto config = ClockConfig(root_, byte_limit ? "clock-async-bytes"
-                                                : "clock-async-entries", 2);
-    auto& tiering = config.json_config_["value"]["tiering"];
+    auto config = ClockConfig(
+        root_, byte_limit ? "clock-async-bytes" : "clock-async-entries", 2);
+    auto& tiering                   = config.json_config_["value"]["tiering"];
     tiering["clock_async_exchange"] = true;
-    tiering["promote_min_misses"] = 1;
+    tiering["promote_min_misses"]   = 1;
     tiering["clock_exchange_queue_entries"] = byte_limit ? 8 : 2;
-    tiering["clock_exchange_queue_bytes"] = byte_limit ? 2 * kCachedValueSize
-                                                       : 4 * 1024 * 1024;
+    tiering["clock_exchange_queue_bytes"] =
+        byte_limit ? 2 * kCachedValueSize : 4 * 1024 * 1024;
     HybridValueStore store(config);
     const auto values = FillClockValues(store, 66);
     ReleaseClockWrite release;
     ASSERT_TRUE(PauseClockExchange(store, values[2]));
-    auto submit = std::async(std::launch::async, [&] {
+    auto submit      = std::async(std::launch::async, [&] {
       for (size_t i : {10U, 10U, 18U}) {
         std::string out;
         store.ReadValue(values[i].handle, out);
@@ -2136,15 +2277,17 @@ TEST_F(StaticLayoutValueTest, ClockAsyncBoundsActiveAndQueuedEntriesAndBytes) {
     g_release_write.store(true);
     ASSERT_TRUE(WaitClockIdle(store));
     EXPECT_EQ(TieredField(store.ExtraResultFields(),
-                         "tiered_clock_exchange_pending_bytes"), 0);
+                          "tiered_clock_exchange_pending_bytes"),
+              0);
   }
 }
 
-TEST_F(StaticLayoutValueTest, ClockAsyncOversizeValueStillReturnsWithoutExchange) {
-  auto config = ClockConfig(root_, "clock-async-oversize", 2);
+TEST_F(StaticLayoutValueTest,
+       ClockAsyncOversizeValueStillReturnsWithoutExchange) {
+  auto config   = ClockConfig(root_, "clock-async-oversize", 2);
   auto& tiering = config.json_config_["value"]["tiering"];
-  tiering["clock_async_exchange"] = true;
-  tiering["promote_min_misses"] = 1;
+  tiering["clock_async_exchange"]       = true;
+  tiering["promote_min_misses"]         = 1;
   tiering["clock_exchange_queue_bytes"] = kCachedValueSize - 1;
   HybridValueStore store(config);
   const auto values = FillClockValues(store, 3);
@@ -2162,14 +2305,15 @@ TEST_F(StaticLayoutValueTest, ClockAsyncOversizeValueStillReturnsWithoutExchange
 TEST_F(StaticLayoutValueTest, ClockAsyncRejectsQueuedWritesAndReusedHandles) {
   auto config = ClockConfig(root_, "clock-async-stale", 2);
   config.json_config_["value"]["tiering"]["clock_async_exchange"] = true;
-  config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
+  config.json_config_["value"]["tiering"]["promote_min_misses"]   = 1;
   HybridValueStore store(config);
   const auto values = FillClockValues(store, 66);
-  const std::string updated(kCachedValueSize, 'u'), replacement(kCachedValueSize, 'r');
+  const std::string updated(kCachedValueSize, 'u'),
+      replacement(kCachedValueSize, 'r');
   uint64_t reused = 0;
   ReleaseClockWrite release;
   ASSERT_TRUE(PauseClockExchange(store, values[2]));
-  auto changes = std::async(std::launch::async, [&] {
+  auto changes     = std::async(std::launch::async, [&] {
     std::string out;
     for (size_t i : {10U, 18U}) {
       store.ReadValue(values[i].handle, out);
@@ -2186,12 +2330,16 @@ TEST_F(StaticLayoutValueTest, ClockAsyncRejectsQueuedWritesAndReusedHandles) {
   changes.get();
   if (state != std::future_status::ready)
     return;
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_exchange_pending"), 3);
+  EXPECT_EQ(
+      TieredField(store.ExtraResultFields(), "tiered_clock_exchange_pending"),
+      3);
   EXPECT_NE(reused, values[18].handle);
-  EXPECT_EQ(static_cast<uint32_t>(reused), static_cast<uint32_t>(values[18].handle));
+  EXPECT_EQ(static_cast<uint32_t>(reused),
+            static_cast<uint32_t>(values[18].handle));
   g_release_write.store(true);
   ASSERT_TRUE(WaitClockIdle(store));
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_exchange_stale"), 2);
+  EXPECT_EQ(
+      TieredField(store.ExtraResultFields(), "tiered_clock_exchange_stale"), 2);
   std::string out;
   store.ReadValue(values[10].handle, out);
   EXPECT_EQ(out, updated);
@@ -2206,10 +2354,11 @@ TEST_F(StaticLayoutValueTest, ClockAsyncRejectsQueuedWritesAndReusedHandles) {
             TieredField(info, "tiered_dram_limit_bytes"));
 }
 
-TEST_F(StaticLayoutValueTest, ClockAsyncWriteFailurePreservesLatestValueAndWorker) {
+TEST_F(StaticLayoutValueTest,
+       ClockAsyncWriteFailurePreservesLatestValueAndWorker) {
   auto config = ClockConfig(root_, "clock-async-failure", 2);
   config.json_config_["value"]["tiering"]["clock_async_exchange"] = true;
-  config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
+  config.json_config_["value"]["tiering"]["promote_min_misses"]   = 1;
   HybridValueStore store(config);
   const auto values = FillClockValues(store, 66);
   const std::string updated(kCachedValueSize, 'z');
@@ -2230,18 +2379,21 @@ TEST_F(StaticLayoutValueTest, ClockAsyncWriteFailurePreservesLatestValueAndWorke
             TieredField(before, "tiered_dram_bytes"));
   store.ReadValue(values[0].handle, out);
   EXPECT_EQ(out, updated);
-  store.ReadValue(values[2].handle, out); // The same worker must accept a retry.
+  store.ReadValue(
+      values[2].handle, out); // The same worker must accept a retry.
   EXPECT_EQ(out, values[2].payload);
   ASSERT_TRUE(WaitClockIdle(store));
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            1);
   store.ReadValue(values[0].handle, out);
   EXPECT_EQ(out, updated);
   ASSERT_TRUE(WaitClockIdle(store));
 }
 
 TEST_F(StaticLayoutValueTest, ClockAsyncCostAwareAdaptsToBothHotsetDirections) {
-  auto config = ClockConfig(root_, "clock-async-drift", 4, kCachedValueSize, true);
-  config.json_config_["value"]["tiering"]["clock_cost_aware"] = true;
+  auto config =
+      ClockConfig(root_, "clock-async-drift", 4, kCachedValueSize, true);
+  config.json_config_["value"]["tiering"]["clock_cost_aware"]     = true;
   config.json_config_["value"]["tiering"]["clock_async_exchange"] = true;
   HybridValueStore store(config);
   const auto values = FillClockValues(store, 8);
@@ -2270,7 +2422,8 @@ TEST_F(StaticLayoutValueTest, ClockAsyncCostAwareAdaptsToBothHotsetDirections) {
               TieredField(info, "tiered_dram_limit_bytes"));
     EXPECT_EQ(TieredField(info, "tiered_clock_failures"), 0);
   }
-  EXPECT_GE(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 8);
+  EXPECT_GE(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            8);
 }
 
 TEST_F(StaticLayoutValueTest, ClockDemotionIoDoesNotBlockUnrelatedDramRead) {
@@ -2288,7 +2441,8 @@ TEST_F(StaticLayoutValueTest, ClockDemotionIoDoesNotBlockUnrelatedDramRead) {
     store.ReadValue(hot, data);
     return data;
   });
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
   while (!g_write_paused.load() && std::chrono::steady_clock::now() < deadline)
     std::this_thread::yield();
   EXPECT_TRUE(g_write_paused.load());
@@ -2297,28 +2451,33 @@ TEST_F(StaticLayoutValueTest, ClockDemotionIoDoesNotBlockUnrelatedDramRead) {
     store.ReadValue(first, data);
     return data;
   });
-  const auto state = resident_read.wait_for(std::chrono::milliseconds(200));
+  const auto state   = resident_read.wait_for(std::chrono::milliseconds(200));
   g_release_write.store(true);
   EXPECT_EQ(state, std::future_status::ready);
   EXPECT_EQ(resident_read.get(), value);
   EXPECT_EQ(promotion.get(), value);
 }
 
-
-TEST_F(StaticLayoutValueTest, ClockProtectsFrequentResidentsAndAdaptsToNewHotKey) {
-  HybridValueStore store(ClockConfig(root_, "clock-heat", 1, kCachedValueSize, true));
+TEST_F(StaticLayoutValueTest,
+       ClockProtectsFrequentResidentsAndAdaptsToNewHotKey) {
+  HybridValueStore store(
+      ClockConfig(root_, "clock-heat", 1, kCachedValueSize, true));
   const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b');
   const auto ha = store.AllocAndWrite(0, a.data(), a.size());
   const auto hb = store.AllocAndWrite(1, b.data(), b.size());
   std::string out;
-  for (int i = 0; i < 20; ++i) store.ReadValue(ha, out);
+  for (int i = 0; i < 20; ++i)
+    store.ReadValue(ha, out);
   store.ReadValue(hb, out);
   store.ReadValue(hb, out);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_demotions"), 0);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_demotions"),
+            0);
   // The new working set must earn more heat than the old one.
-  for (int i = 0; i < 128; ++i) store.ReadValue(hb, out);
+  for (int i = 0; i < 128; ++i)
+    store.ReadValue(hb, out);
   EXPECT_EQ(out, b);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_demotions"), 1);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_demotions"),
+            1);
   store.ReadValue(ha, out);
   EXPECT_EQ(out, a);
 }
@@ -2328,33 +2487,43 @@ TEST_F(StaticLayoutValueTest, ClockDefaultsToLegacyAdmission) {
   config.json_config_["value"]["tiering"].erase("clock_frequency_admission");
   HybridValueStore store(config);
   EXPECT_EQ(TieredField(store.ExtraResultFields(),
-                       "tiered_clock_frequency_admission"), 0);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_cost_aware"), 0);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_async_exchange"), 0);
+                        "tiered_clock_frequency_admission"),
+            0);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_cost_aware"),
+            0);
+  EXPECT_EQ(
+      TieredField(store.ExtraResultFields(), "tiered_clock_async_exchange"), 0);
   const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b');
-  const auto resident = store.AllocAndWrite(0, a.data(), a.size());
+  const auto resident  = store.AllocAndWrite(0, a.data(), a.size());
   const auto candidate = store.AllocAndWrite(1, b.data(), b.size());
   std::string out;
   for (int i = 0; i < 20; ++i)
     store.ReadValue(resident, out);
   for (int i = 0; i < 2; ++i)
     store.ReadValue(candidate, out);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            0);
   // Legacy scans halve resident heat, so a new hot key can replace it before
   // accumulating the 25 credits required by frequency admission in this case.
   for (int i = 0; i < 10; ++i)
     store.ReadValue(candidate, out);
   EXPECT_EQ(out, b);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            1);
 }
 
 TEST_F(StaticLayoutValueTest, ClockFrequencyAdmissionFlagReachesEngineFactory) {
   for (const bool enabled : {false, true}) {
-    auto config = ClockConfig(root_, enabled ? "clock-opt-in" : "clock-opt-out",
-                              1, kCachedValueSize, enabled);
+    auto config = ClockConfig(
+        root_,
+        enabled ? "clock-opt-in" : "clock-opt-out",
+        1,
+        kCachedValueSize,
+        enabled);
     KVEngineComposite engine(config);
     EXPECT_EQ(TieredField(engine.ExtraResultFields(),
-                         "tiered_clock_frequency_admission"), enabled);
+                          "tiered_clock_frequency_admission"),
+              enabled);
     const std::string value(kCachedValueSize, 'f');
     engine.Put(0, value, 0);
     std::string out;
@@ -2367,7 +2536,7 @@ TEST_F(StaticLayoutValueTest, ClockAdmissionRequiresFrequencyAdvantage) {
   HybridValueStore store(
       ClockConfig(root_, "clock-admission-margin", 1, kCachedValueSize, true));
   const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b');
-  const auto resident = store.AllocAndWrite(0, a.data(), a.size());
+  const auto resident  = store.AllocAndWrite(0, a.data(), a.size());
   const auto candidate = store.AllocAndWrite(1, b.data(), b.size());
   std::string out;
   for (int i = 0; i < 20; ++i)
@@ -2375,11 +2544,13 @@ TEST_F(StaticLayoutValueTest, ClockAdmissionRequiresFrequencyAdvantage) {
   for (int i = 0; i < 24; ++i)
     store.ReadValue(candidate, out);
   EXPECT_EQ(out, b);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            0);
   // A slight lead must not churn placement; a 25% lead can replace the old
   // resident without waiting for an aging epoch.
   store.ReadValue(candidate, out);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            1);
   const auto reads = g_read_entries.load();
   store.ReadValue(candidate, out);
   EXPECT_EQ(out, b);
@@ -2391,8 +2562,8 @@ TEST_F(StaticLayoutValueTest, ClockAgedHotResidentReturnsToExactCounting) {
       ClockConfig(root_, "clock-hot-count-aging", 2, kCachedValueSize, true));
   const std::string a(kCachedValueSize, 'a'), d(kCachedValueSize, 'd'),
       b(kCachedValueSize, 'b');
-  const auto resident = store.AllocAndWrite(0, a.data(), a.size());
-  const auto driver = store.AllocAndWrite(1, d.data(), d.size());
+  const auto resident  = store.AllocAndWrite(0, a.data(), a.size());
+  const auto driver    = store.AllocAndWrite(1, d.data(), d.size());
   const auto candidate = store.AllocAndWrite(2, b.data(), b.size());
   std::string out;
   for (int i = 0; i < 100; ++i)
@@ -2407,9 +2578,11 @@ TEST_F(StaticLayoutValueTest, ClockAgedHotResidentReturnsToExactCounting) {
   for (int i = 0; i < 24; ++i)
     store.ReadValue(candidate, out);
   EXPECT_EQ(out, b);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            0);
   store.ReadValue(candidate, out);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            1);
   const auto reads = g_read_entries.load();
   store.ReadValue(candidate, out);
   EXPECT_EQ(out, b);
@@ -2434,7 +2607,8 @@ TEST_F(StaticLayoutValueTest, ClockRejectedAdmissionsDoNotEraseResidentHeat) {
     store.ReadValue(handle, out);
     ASSERT_EQ(out, value);
   }
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            0);
   const auto reads = g_read_entries.load();
   store.ReadValue(hot, out);
   EXPECT_EQ(out, value);
@@ -2446,20 +2620,22 @@ TEST_F(StaticLayoutValueTest, ClockSeparatedMissesCanReplaceUnusedResident) {
       ClockConfig(root_, "clock-separated-misses", 2, kCachedValueSize, true));
   const std::string a(kCachedValueSize, 'a'), d(kCachedValueSize, 'd'),
       b(kCachedValueSize, 'b');
-  const auto unused = store.AllocAndWrite(0, a.data(), a.size());
-  const auto driver = store.AllocAndWrite(1, d.data(), d.size());
+  const auto unused    = store.AllocAndWrite(0, a.data(), a.size());
+  const auto driver    = store.AllocAndWrite(1, d.data(), d.size());
   const auto candidate = store.AllocAndWrite(2, b.data(), b.size());
   std::string out;
   store.ReadValue(candidate, out);
   ASSERT_EQ(out, b);
-  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            0);
   // The first miss's heat expires, but the admission miss count survives.
   // A second separated miss must still displace a never-read resident.
   for (int i = 0; i < 8192; ++i)
     store.ReadValue(driver, out);
   store.ReadValue(candidate, out);
   ASSERT_EQ(out, b);
-  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            1);
   const auto reads = g_read_entries.load();
   store.ReadValue(candidate, out);
   EXPECT_EQ(out, b);
@@ -2475,8 +2651,8 @@ TEST_F(StaticLayoutValueTest, ClockSsdHistoryAgesWithResidentReads) {
   HybridValueStore store(
       ClockConfig(root_, "clock-ssd-aging", 2, kCachedValueSize, true));
   const std::string value(kCachedValueSize, 'h');
-  const auto first = store.AllocAndWrite(0, value.data(), value.size());
-  const auto second = store.AllocAndWrite(1, value.data(), value.size());
+  const auto first   = store.AllocAndWrite(0, value.data(), value.size());
+  const auto second  = store.AllocAndWrite(1, value.data(), value.size());
   const auto old_ssd = store.AllocAndWrite(2, value.data(), value.size());
   std::string out;
   for (int i = 0; i < 4096; ++i) {
@@ -2485,7 +2661,8 @@ TEST_F(StaticLayoutValueTest, ClockSsdHistoryAgesWithResidentReads) {
   }
   for (int i = 0; i < 64; ++i)
     store.ReadValue(old_ssd, out);
-  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            0);
   // Both tiers age while another value is read. Refresh the second resident
   // before revisiting the old SSD candidate so only recent demand competes.
   for (int i = 0; i < 8192; ++i)
@@ -2495,11 +2672,13 @@ TEST_F(StaticLayoutValueTest, ClockSsdHistoryAgesWithResidentReads) {
   store.ReadValue(old_ssd, out);
   store.ReadValue(old_ssd, out);
   EXPECT_EQ(out, value);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            0);
 }
 
 TEST_F(StaticLayoutValueTest, ClockConcurrentBatchesSurviveWritesAndSlotReuse) {
-  auto config = ClockConfig(root_, "clock-batch-race", 8, kCachedValueSize, true);
+  auto config =
+      ClockConfig(root_, "clock-batch-race", 8, kCachedValueSize, true);
   config.json_config_["value"]["tiering"]["cache_shards"] = 4;
   HybridValueStore store(config);
   const std::string initial(512, 'a');
@@ -2510,7 +2689,8 @@ TEST_F(StaticLayoutValueTest, ClockConcurrentBatchesSurviveWritesAndSlotReuse) {
   std::atomic<bool> start{false}, failed{false};
   std::vector<std::thread> threads;
   threads.emplace_back([&] {
-    while (!start.load()) std::this_thread::yield();
+    while (!start.load())
+      std::this_thread::yield();
     for (int i = 0; i < 300; ++i) {
       const std::string value(i % 2 ? 128 : 1024, i % 2 ? 'b' : 'c');
       store.Free(current.load());
@@ -2520,7 +2700,8 @@ TEST_F(StaticLayoutValueTest, ClockConcurrentBatchesSurviveWritesAndSlotReuse) {
   });
   for (int tid = 0; tid < 3; ++tid) {
     threads.emplace_back([&] {
-      while (!start.load()) std::this_thread::yield();
+      while (!start.load())
+        std::this_thread::yield();
       for (int i = 0; i < 300; ++i) {
         auto batch = handles;
         batch.push_back(current.load());
@@ -2528,16 +2709,21 @@ TEST_F(StaticLayoutValueTest, ClockConcurrentBatchesSurviveWritesAndSlotReuse) {
         store.BatchRead(batch, results);
         for (const auto& result : results) {
           const auto& data = result.data;
-          if (data.empty()) continue;
-          if ((data.size() != 128 && data.size() != 512 && data.size() != 1024) ||
-              !std::all_of(data.begin(), data.end(), [&](char c) { return c == data[0]; }))
+          if (data.empty())
+            continue;
+          if ((data.size() != 128 && data.size() != 512 &&
+               data.size() != 1024) ||
+              !std::all_of(data.begin(), data.end(), [&](char c) {
+                return c == data[0];
+              }))
             failed.store(true);
         }
       }
     });
   }
   start.store(true);
-  for (auto& thread : threads) thread.join();
+  for (auto& thread : threads)
+    thread.join();
   EXPECT_FALSE(failed.load());
   EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_live_allocs"), 16);
 }
@@ -2557,15 +2743,18 @@ TEST_F(StaticLayoutValueTest, ClockFlatReadsMixTiersAndRejectStaleOrWrongSize) {
   std::vector<char> output(handles.size() * 512);
   uint64_t missing = 0;
   for (int repeat = 0; repeat < 5; ++repeat) {
-    ASSERT_TRUE(store.ReadFlatFixedRows(handles.data(), handles.size(), output.data(), 512, &missing));
+    ASSERT_TRUE(store.ReadFlatFixedRows(
+        handles.data(), handles.size(), output.data(), 512, &missing));
     EXPECT_EQ(missing, 1);
     for (size_t i = 0; i < handles.size(); ++i)
       EXPECT_EQ(std::string(output.data() + i * 512, 512), values[i]);
   }
-  EXPECT_FALSE(store.ReadFlatFixedRows(handles.data(), handles.size(), output.data(), 128, &missing));
+  EXPECT_FALSE(store.ReadFlatFixedRows(
+      handles.data(), handles.size(), output.data(), 128, &missing));
   store.Free(handles[0]);
   store.AllocAndWrite(0, values[0].data(), 512);
-  EXPECT_FALSE(store.ReadFlatFixedRows(handles.data(), handles.size(), output.data(), 512, &missing));
+  EXPECT_FALSE(store.ReadFlatFixedRows(
+      handles.data(), handles.size(), output.data(), 512, &missing));
 }
 
 TEST_F(StaticLayoutValueTest, ClockBatchSsdWaitDoesNotBlockResidentUpdate) {
@@ -2655,14 +2844,18 @@ TEST_F(StaticLayoutValueTest, ClockBatchReadersShareSsdValues) {
 TEST_F(StaticLayoutValueTest, ClockBatchDemandSurvivesPromotionLockContention) {
   for (bool frequency : {false, true}) {
     SCOPED_TRACE(frequency);
-    auto config = ClockConfig(root_, frequency ? "clock-demand-frequency"
-                                               : "clock-demand-legacy",
-                              1, kCachedValueSize, frequency);
+    auto config = ClockConfig(
+        root_,
+        frequency ? "clock-demand-frequency" : "clock-demand-legacy",
+        1,
+        kCachedValueSize,
+        frequency);
     config.json_config_["value"]["tiering"]["promote_min_misses"] = 3;
     HybridValueStore store(config);
     const auto values = FillClockValues(store, 2);
-    ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_entry_bytes"),
-              160);
+    ASSERT_EQ(
+        TieredField(store.ExtraResultFields(), "tiered_clock_entry_bytes"),
+        160);
     g_read_paused.store(false);
     g_release_read.store(false);
     g_pause_next_read.store(true);
@@ -2682,7 +2875,7 @@ TEST_F(StaticLayoutValueTest, ClockBatchDemandSurvivesPromotionLockContention) {
 
     // The first reader keeps its shared value lock. The second can finish
     // its small SSD read, but cannot acquire an exclusive promotion lock.
-    auto second = std::async(std::launch::async, [&] {
+    auto second      = std::async(std::launch::async, [&] {
       std::vector<ValueStore::ReadResult> results;
       store.BatchRead({values[1].handle, values[1].handle}, results);
       return results;
@@ -2697,7 +2890,8 @@ TEST_F(StaticLayoutValueTest, ClockBatchDemandSurvivesPromotionLockContention) {
       EXPECT_EQ(std::string(result.data.begin(), result.data.end()),
                 values[1].payload);
     EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_misses"), 3);
-    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+              0);
 
     g_release_read.store(true);
     const auto resumed = first.get();
@@ -2706,13 +2900,15 @@ TEST_F(StaticLayoutValueTest, ClockBatchDemandSurvivesPromotionLockContention) {
               values[1].payload);
     // All three successful demands must count, including the two whose
     // promotion locks were busy. The last reader can now admit the hot key.
-    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+              1);
     const auto reads = g_read_entries.load();
     std::string value;
     store.ReadValue(values[1].handle, value);
     EXPECT_EQ(value, values[1].payload);
     EXPECT_EQ(g_read_entries.load(), reads);
-    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_failures"), 0);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_failures"),
+              0);
   }
 }
 
@@ -2720,33 +2916,43 @@ TEST_F(StaticLayoutValueTest, ClockFailedBatchReadDoesNotEarnAdmissionCredit) {
   for (bool frequency : {false, true}) {
     SCOPED_TRACE(frequency);
     HybridValueStore store(ClockConfig(
-        root_, frequency ? "clock-failed-demand-frequency"
-                         : "clock-failed-demand-legacy",
-        1, kCachedValueSize, frequency));
+        root_,
+        frequency ? "clock-failed-demand-frequency"
+                  : "clock-failed-demand-legacy",
+        1,
+        kCachedValueSize,
+        frequency));
     const auto values = FillClockValues(store, 2);
     std::vector<ValueStore::ReadResult> results;
     g_fail_next_read.store(true);
-    EXPECT_THROW(store.BatchRead({values[1].handle}, results), std::runtime_error);
+    EXPECT_THROW(store.BatchRead({values[1].handle}, results),
+                 std::runtime_error);
     for (int successful_reads = 1; successful_reads <= 2; ++successful_reads) {
       store.BatchRead({values[1].handle}, results);
       ASSERT_EQ(results.size(), 1);
       EXPECT_EQ(std::string(results[0].data.begin(), results[0].data.end()),
                 values[1].payload);
-      EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
-                successful_reads == 2 ? 1 : 0);
+      EXPECT_EQ(
+          TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+          successful_reads == 2 ? 1 : 0);
     }
     EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_misses"), 3);
     EXPECT_EQ(TieredField(store.ExtraResultFields(),
-                         "tiered_clock_admission_rejects"), 1);
+                          "tiered_clock_admission_rejects"),
+              1);
   }
 }
 
 TEST_F(StaticLayoutValueTest, ClockBatchDemandResetsOnWriteAndSlotReuse) {
   for (bool frequency : {false, true}) {
     SCOPED_TRACE(frequency);
-    auto config = ClockConfig(root_, frequency ? "clock-demand-reset-frequency"
-                                               : "clock-demand-reset-legacy",
-                              1, kCachedValueSize, frequency);
+    auto config = ClockConfig(
+        root_,
+        frequency ? "clock-demand-reset-frequency"
+                  : "clock-demand-reset-legacy",
+        1,
+        kCachedValueSize,
+        frequency);
     config.json_config_["value"]["tiering"]["promote_min_misses"] = 3;
     HybridValueStore store(config);
     const auto values = FillClockValues(store, 2);
@@ -2756,19 +2962,22 @@ TEST_F(StaticLayoutValueTest, ClockBatchDemandResetsOnWriteAndSlotReuse) {
     for (const auto& result : results)
       EXPECT_EQ(std::string(result.data.begin(), result.data.end()),
                 values[1].payload);
-    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+              0);
 
     const std::string updated(kCachedValueSize, 'w');
     store.Write(values[1].handle, updated.data(), updated.size());
     store.BatchRead({values[1].handle}, results);
     ASSERT_EQ(results.size(), 1);
-    EXPECT_EQ(std::string(results[0].data.begin(), results[0].data.end()), updated);
-    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+    EXPECT_EQ(std::string(results[0].data.begin(), results[0].data.end()),
+              updated);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+              0);
 
     store.Free(values[1].handle);
     const std::string replacement(kCachedValueSize, 'r');
-    const auto reused = store.AllocAndWrite(2, replacement.data(),
-                                           replacement.size());
+    const auto reused =
+        store.AllocAndWrite(2, replacement.data(), replacement.size());
     ASSERT_NE(reused, values[1].handle);
     // The stale logical handle earns no credit, and each valid duplicate
     // earns exactly one. Neither the write nor slot reuse retains old credit.
@@ -2778,27 +2987,33 @@ TEST_F(StaticLayoutValueTest, ClockBatchDemandResetsOnWriteAndSlotReuse) {
     for (size_t i = 1; i < results.size(); ++i)
       EXPECT_EQ(std::string(results[i].data.begin(), results[i].data.end()),
                 replacement);
-    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+              0);
     store.BatchRead({reused}, results);
     ASSERT_EQ(results.size(), 1);
     EXPECT_EQ(std::string(results[0].data.begin(), results[0].data.end()),
               replacement);
-    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
-    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_failures"), 0);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+              1);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_failures"),
+              0);
   }
 }
 
 TEST_F(StaticLayoutValueTest, SsdBatchWriteReleasesBuffersOnIoFailure) {
-  SsdValueStore store(TieredStoreConfig(root_, "batch-write-failure", {{"cache_policy", "none"}}));
+  SsdValueStore store(TieredStoreConfig(
+      root_, "batch-write-failure", {{"cache_policy", "none"}}));
   const std::string value(512, 'a');
   std::vector<ValueStore::WriteSpec> specs(40, {value.data(), value.size()});
   const auto handles = store.BatchAllocAndWrite(specs);
   for (bool read_failure : {true, false}) {
     const auto allocated = g_buffer_allocations.load();
-    const auto freed = g_buffer_frees.load();
+    const auto freed     = g_buffer_frees.load();
     g_fail_next_read.store(read_failure);
     g_fail_next_write.store(!read_failure);
-    EXPECT_THROW(store.BatchWrite({handles.front(), handles.back()}, {specs.front(), specs.back()}), std::runtime_error);
+    EXPECT_THROW(store.BatchWrite({handles.front(), handles.back()},
+                                  {specs.front(), specs.back()}),
+                 std::runtime_error);
     EXPECT_EQ(g_buffer_allocations.load() - allocated, 2);
     EXPECT_EQ(g_buffer_frees.load() - freed, 2);
   }
@@ -2820,10 +3035,13 @@ TEST_F(StaticLayoutValueTest, SsdLargeBatchesShareOnlyInflightReadsAndErrors) {
     const auto handles = store.BatchAllocAndWrite(specs);
     auto read          = [&](size_t start, size_t count) {
       std::vector<ValueStore::ReadResult> results;
-      store.BatchRead({handles.begin() + start, handles.begin() + start + count}, results);
+      store.BatchRead(
+          {handles.begin() + start, handles.begin() + start + count}, results);
       return results;
     };
-    auto verify = [&](const std::vector<ValueStore::ReadResult>& results, size_t start, size_t count) {
+    auto verify = [&](const std::vector<ValueStore::ReadResult>& results,
+                      size_t start,
+                      size_t count) {
       ASSERT_EQ(results.size(), count);
       for (size_t i = 0; i < results.size(); ++i)
         EXPECT_EQ(std::string(results[i].data.begin(), results[i].data.end()),
@@ -2898,18 +3116,21 @@ TEST_F(StaticLayoutValueTest, ClockFailedBatchWritebackKeepsBothTiersIntact) {
 }
 
 TEST_F(StaticLayoutValueTest, ClockCanReleasePromotedBackingCopies) {
-  auto config = ClockConfig(root_, "clock-exclusive", 4, kCachedValueSize, true);
+  auto config =
+      ClockConfig(root_, "clock-exclusive", 4, kCachedValueSize, true);
   config.json_config_["value"]["tiering"]["retain_backing_copies"] = false;
-  config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
+  config.json_config_["value"]["tiering"]["promote_min_misses"]    = 1;
   HybridValueStore store(config);
   std::vector<uint64_t> handles;
   std::vector<std::string> values;
   for (uint64_t key = 0; key < 24; ++key) {
     values.emplace_back(kCachedValueSize, 'A' + key);
-    handles.push_back(store.AllocAndWrite(key, values.back().data(), values.back().size()));
+    handles.push_back(
+        store.AllocAndWrite(key, values.back().data(), values.back().size()));
   }
   for (int repeat = 0; repeat < 8; ++repeat) {
-    // Create an actual hot candidate instead of requiring equal-frequency churn.
+    // Create an actual hot candidate instead of requiring equal-frequency
+    // churn.
     for (int access = 0; access < 4; ++access) {
       std::string value;
       store.ReadValue(handles[repeat + 4], value);
@@ -2919,16 +3140,19 @@ TEST_F(StaticLayoutValueTest, ClockCanReleasePromotedBackingCopies) {
     store.BatchRead(handles, results);
     ASSERT_EQ(results.size(), values.size());
     for (size_t i = 0; i < values.size(); ++i)
-      EXPECT_EQ(std::string(results[i].data.begin(), results[i].data.end()), values[i]);
+      EXPECT_EQ(std::string(results[i].data.begin(), results[i].data.end()),
+                values[i]);
     const auto info = store.ExtraResultFields();
     EXPECT_EQ(TieredField(info, "tiered_clock_backed_values"), 20);
     EXPECT_EQ(TieredField(info, "tiered_clock_clean_evictions"), 0);
     EXPECT_EQ(TieredField(info, "tiered_clock_failures"), 0);
-    EXPECT_LE(TieredField(info, "tiered_dram_bytes"), TieredField(info, "tiered_dram_limit_bytes"));
+    EXPECT_LE(TieredField(info, "tiered_dram_bytes"),
+              TieredField(info, "tiered_dram_limit_bytes"));
     values[repeat] = std::string(kCachedValueSize, 'z');
     store.Write(handles[repeat], values[repeat].data(), values[repeat].size());
   }
-  EXPECT_GT(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+  EXPECT_GT(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            0);
   for (size_t i = 0; i < values.size(); ++i) {
     std::string value;
     store.ReadValue(handles[i], value);
@@ -2939,9 +3163,10 @@ TEST_F(StaticLayoutValueTest, ClockCanReleasePromotedBackingCopies) {
 }
 
 TEST_F(StaticLayoutValueTest, ClockReleasedBackingSurvivesFailedEviction) {
-  auto config = ClockConfig(root_, "clock-exclusive-failure", 1, kCachedValueSize, true);
+  auto config =
+      ClockConfig(root_, "clock-exclusive-failure", 1, kCachedValueSize, true);
   config.json_config_["value"]["tiering"]["retain_backing_copies"] = false;
-  config.json_config_["value"]["tiering"]["promote_min_misses"] = 1;
+  config.json_config_["value"]["tiering"]["promote_min_misses"]    = 1;
   HybridValueStore store(config);
   const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b');
   const auto ha = store.AllocAndWrite(a.data(), a.size());
@@ -2960,8 +3185,10 @@ TEST_F(StaticLayoutValueTest, ClockReleasedBackingSurvivesFailedEviction) {
   for (int retry = 0; retry < 16; ++retry)
     store.ReadValue(ha, value);
   EXPECT_EQ(value, a);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 2);
-  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_backed_values"), 1);
+  EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+            2);
+  EXPECT_EQ(
+      TieredField(store.ExtraResultFields(), "tiered_clock_backed_values"), 1);
 }
 
 TEST_F(StaticLayoutValueTest,
@@ -3021,9 +3248,11 @@ TEST_F(StaticLayoutValueTest,
       while (!done.load()) {
         if (i & 1) {
           handles.fill(current.load());
-          if (store.ReadFlatFixedRows(handles.data(), handles.size(), flat.data(), 512, nullptr))
+          if (store.ReadFlatFixedRows(
+                  handles.data(), handles.size(), flat.data(), 512, nullptr))
             for (size_t row = 0; row < handles.size(); ++row)
-              if (!std::all_of(flat.begin() + row * 512, flat.begin() + (row + 1) * 512,
+              if (!std::all_of(flat.begin() + row * 512,
+                               flat.begin() + (row + 1) * 512,
                                [&](char c) { return c == flat[row * 512]; }))
                 failed.store(true);
           continue;
@@ -3104,23 +3333,39 @@ TEST_F(StaticLayoutValueTest, AdaptiveSizesSmallCacheToKnownOverflow) {
 
 TEST_F(StaticLayoutValueTest, AdaptiveFlatReadsMixDramCachedSsdAndMissingRows) {
   auto config = TieredStoreConfig(
-      root_, "adaptive-flat",
-      {{"cache_policy", "adaptive"}, {"cache_shards", 1},
-       {"expected_dram_bytes", static_cast<int64_t>(kCacheDramBytes * 0.85) + kCachedValueSize}});
+      root_,
+      "adaptive-flat",
+      {{"cache_policy", "adaptive"},
+       {"cache_shards", 1},
+       {"expected_dram_bytes",
+        static_cast<int64_t>(kCacheDramBytes * 0.85) + kCachedValueSize}});
   HybridValueStore store(config);
   const std::string resident(kCachedValueSize, 'r');
   const auto dram = store.AllocAndWrite(resident.data(), resident.size());
-  const auto ssd = FillUntilSsd(store, 2);
+  const auto ssd  = FillUntilSsd(store, 2);
   ASSERT_EQ(ssd.size(), 2);
-  const std::array<uint64_t, 5> handles{dram, ssd[0].handle, kValueHandleNone, ssd[1].handle, ssd[0].handle};
-  std::vector<std::string> expected{resident, ssd[0].payload, std::string(kCachedValueSize, '\0'), ssd[1].payload, ssd[0].payload};
+  const std::array<uint64_t, 5> handles{
+      dram, ssd[0].handle, kValueHandleNone, ssd[1].handle, ssd[0].handle};
+  std::vector<std::string> expected{
+      resident,
+      ssd[0].payload,
+      std::string(kCachedValueSize, '\0'),
+      ssd[1].payload,
+      ssd[0].payload};
   std::array<char, 5 * kCachedValueSize> output;
   auto verify = [&] {
     uint64_t missing = 0;
-    ASSERT_TRUE(store.ReadFlatFixedRows(handles.data(), handles.size(), output.data(), kCachedValueSize, &missing));
+    ASSERT_TRUE(store.ReadFlatFixedRows(
+        handles.data(),
+        handles.size(),
+        output.data(),
+        kCachedValueSize,
+        &missing));
     EXPECT_EQ(missing, 1);
     for (size_t i = 0; i < handles.size(); ++i)
-      EXPECT_EQ(std::string(output.data() + i * kCachedValueSize, kCachedValueSize), expected[i]);
+      EXPECT_EQ(
+          std::string(output.data() + i * kCachedValueSize, kCachedValueSize),
+          expected[i]);
   };
   for (int repeat = 0; repeat < 3; ++repeat)
     verify();
@@ -3130,7 +3375,12 @@ TEST_F(StaticLayoutValueTest, AdaptiveFlatReadsMixDramCachedSsdAndMissingRows) {
   verify();
   const std::string short_value(128, 's');
   store.Write(ssd[0].handle, short_value.data(), short_value.size());
-  EXPECT_FALSE(store.ReadFlatFixedRows(handles.data(), handles.size(), output.data(), kCachedValueSize, nullptr));
+  EXPECT_FALSE(store.ReadFlatFixedRows(
+      handles.data(),
+      handles.size(),
+      output.data(),
+      kCachedValueSize,
+      nullptr));
 }
 
 TEST_F(StaticLayoutValueTest, AdaptiveUsesClockForLargeOrUnknownWorkingSets) {
@@ -3155,7 +3405,8 @@ TEST_F(StaticLayoutValueTest, AdaptiveUsesClockForLargeOrUnknownWorkingSets) {
 
 TEST_F(StaticLayoutValueTest,
        ClockFailedDirtyWritebackKeepsNewestResidentValue) {
-  HybridValueStore store(ClockConfig(root_, "clock-dirty-failure", 1, kCachedValueSize, true));
+  HybridValueStore store(
+      ClockConfig(root_, "clock-dirty-failure", 1, kCachedValueSize, true));
   const std::string a(kCachedValueSize, 'a'), b(kCachedValueSize, 'b'),
       updated(kCachedValueSize, 'u');
   const auto ha = store.AllocAndWrite(0, a.data(), a.size());

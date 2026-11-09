@@ -26,11 +26,11 @@ public:
       size_t shards,
       uint32_t min_misses,
       bool retain_backing_copies = true,
-      bool frequency_admission = false,
-      bool cost_aware = false,
-      bool async_exchange = false,
-      size_t queue_entries = 256,
-      size_t queue_bytes = 4 * 1024 * 1024)
+      bool frequency_admission   = false,
+      bool cost_aware            = false,
+      bool async_exchange        = false,
+      size_t queue_entries       = 256,
+      size_t queue_bytes         = 4 * 1024 * 1024)
       : dram_(dram),
         ssd_(ssd),
         limit_(dram_limit),
@@ -48,7 +48,8 @@ public:
       throw std::invalid_argument(
           "releasing CLOCK backing copies requires a plain SSD layout");
     if (async_exchange_ && (queue_entry_limit_ == 0 || queue_byte_limit_ == 0))
-      throw std::invalid_argument("CLOCK exchange queue limits must be positive");
+      throw std::invalid_argument(
+          "CLOCK exchange queue limits must be positive");
     for (size_t i = 0; i < kChunkCount; ++i)
       chunks_[i].store(nullptr);
     if (async_exchange_)
@@ -211,8 +212,8 @@ public:
       const size_t end = std::min(num_rows, begin + 64);
       std::array<Fast*, 64> snapshots;
       for (size_t i = begin; i < end; ++i) {
-        Fast* fast = handles[i] == kValueHandleNone ? nullptr
-                                                   : LocateFast(handles[i]);
+        Fast* fast =
+            handles[i] == kValueHandleNone ? nullptr : LocateFast(handles[i]);
         snapshots[i - begin] = fast;
         if (fast)
           __builtin_prefetch(fast, 0, 1);
@@ -383,11 +384,11 @@ public:
     size_t pending, pending_bytes, inflight, peak_entries, peak_bytes;
     {
       std::lock_guard<std::mutex> lock(exchange_mutex_);
-      pending = exchange_pending_.size();
+      pending       = exchange_pending_.size();
       pending_bytes = exchange_pending_bytes_;
-      inflight = exchange_inflight_;
-      peak_entries = exchange_peak_entries_;
-      peak_bytes = exchange_peak_bytes_;
+      inflight      = exchange_inflight_;
+      peak_entries  = exchange_peak_entries_;
+      peak_bytes    = exchange_peak_bytes_;
     }
     Counters stats;
     const uint64_t count = std::min<uint64_t>(next_slot_.load(), UINT32_MAX);
@@ -401,15 +402,17 @@ public:
         stats.demotions += counters.demotions.load(std::memory_order_relaxed);
         stats.failures += counters.failures.load(std::memory_order_relaxed);
         stats.rejects += counters.rejects.load(std::memory_order_relaxed);
-        stats.clean_evictions += counters.clean_evictions.load(std::memory_order_relaxed);
+        stats.clean_evictions +=
+            counters.clean_evictions.load(std::memory_order_relaxed);
         stats.writebacks += counters.writebacks.load(std::memory_order_relaxed);
       }
     }
     std::ostringstream out;
     out << " tiered_cache_policy=clock tiered_clock_promote_min_misses="
-        << min_misses_ << " tiered_clock_retain_backing_copies="
-        << retain_backing_ << " tiered_clock_frequency_admission="
-        << frequency_admission_ << " tiered_clock_cost_aware=" << cost_aware_
+        << min_misses_
+        << " tiered_clock_retain_backing_copies=" << retain_backing_
+        << " tiered_clock_frequency_admission=" << frequency_admission_
+        << " tiered_clock_cost_aware=" << cost_aware_
         << " tiered_clock_async_exchange=" << async_exchange_
         << " tiered_clock_exchange_queue_entries=" << queue_entry_limit_
         << " tiered_clock_exchange_queue_bytes=" << queue_byte_limit_
@@ -419,9 +422,11 @@ public:
         << " tiered_clock_exchange_peak_entries=" << peak_entries
         << " tiered_clock_exchange_peak_bytes=" << peak_bytes
         << " tiered_clock_exchange_enqueued=" << exchange_stats_.enqueued.load()
-        << " tiered_clock_exchange_completed=" << exchange_stats_.completed.load()
+        << " tiered_clock_exchange_completed="
+        << exchange_stats_.completed.load()
         << " tiered_clock_exchange_dropped=" << exchange_stats_.dropped.load()
-        << " tiered_clock_exchange_deduplicated=" << exchange_stats_.deduplicated.load()
+        << " tiered_clock_exchange_deduplicated="
+        << exchange_stats_.deduplicated.load()
         << " tiered_clock_exchange_busy=" << exchange_stats_.busy.load()
         << " tiered_clock_exchange_stale=" << exchange_stats_.stale.load()
         << " tiered_clock_exchange_failures=" << exchange_stats_.failures.load()
@@ -451,7 +456,7 @@ private:
   struct Counters {
     std::atomic<uint64_t> hits{0}, misses{0};
     std::atomic<uint64_t> promotions{0}, demotions{0}, failures{0}, rejects{0},
-                          clean_evictions{0}, writebacks{0};
+        clean_evictions{0}, writebacks{0};
   };
   struct Fast {
     std::atomic<uint64_t> readable{0};
@@ -504,8 +509,8 @@ private:
     std::atomic<Fast*> active{nullptr};
     std::atomic<uint64_t> batch_epoch{0};
     // Keep owner-only hit state beside publication fields in the first line.
-    uint64_t hit_sequence = 0;
-    uint32_t accesses = 0;
+    uint64_t hit_sequence       = 0;
+    uint32_t accesses           = 0;
     const std::thread::id owner = std::this_thread::get_id();
     Counters stats;
   };
@@ -556,21 +561,24 @@ private:
   static uint8_t HeatAt(uint32_t state, uint32_t epoch) {
     const uint32_t age = (epoch - (state >> 8)) & kHeatEpochMask;
     // A concurrent touch can publish the next epoch after a caller sampled it.
-    return age > kHeatEpochMask / 2 ? state & UINT8_MAX
-                                   : (state & UINT8_MAX) >> std::min(age, 8U);
+    return age > kHeatEpochMask / 2
+             ? state & UINT8_MAX
+             : (state & UINT8_MAX) >> std::min(age, 8U);
   }
   void RecordAccess(Reader& reader) const {
     // Publish one shared clock update per 1024 reads, including SSD misses.
     if (++reader.accesses != 1024)
       return;
     reader.accesses = 0;
-    const uint64_t accesses = heat_accesses_.fetch_add(1024,
-                                                     std::memory_order_relaxed) + 1024;
+    const uint64_t accesses =
+        heat_accesses_.fetch_add(1024, std::memory_order_relaxed) + 1024;
     uint64_t next = next_heat_epoch_.load(std::memory_order_relaxed);
-    if (accesses >= next && next_heat_epoch_.compare_exchange_strong(
+    if (accesses >= next &&
+        next_heat_epoch_.compare_exchange_strong(
             next,
-            accesses + std::max<uint64_t>(1024, next_slot_.load(
-                                                    std::memory_order_relaxed) * 4),
+            accesses +
+                std::max<uint64_t>(
+                    1024, next_slot_.load(std::memory_order_relaxed) * 4),
             std::memory_order_relaxed))
       heat_epoch_.fetch_add(1, std::memory_order_relaxed);
   }
@@ -589,11 +597,12 @@ private:
     }
     uint32_t state = entry.frequency.load(std::memory_order_relaxed);
     for (;;) {
-      uint32_t epoch = heat_epoch_.load(std::memory_order_relaxed) & kHeatEpochMask;
+      uint32_t epoch =
+          heat_epoch_.load(std::memory_order_relaxed) & kHeatEpochMask;
       if (((epoch - (state >> 8)) & kHeatEpochMask) > kHeatEpochMask / 2)
         epoch = state >> 8;
       const unsigned aged_heat = HeatAt(state, epoch);
-      const unsigned credit = aged_heat < 64 ? 1 : hot_credit;
+      const unsigned credit    = aged_heat < 64 ? 1 : hot_credit;
       if (credit == 0)
         break;
       const uint32_t heat = std::min<unsigned>(UINT8_MAX, aged_heat + credit);
@@ -679,19 +688,20 @@ private:
         chunks_[(slot - 1) / kChunkSize].load(std::memory_order_acquire);
     return chunk ? chunk->entries + (slot - 1) % kChunkSize : nullptr;
   }
-  // Called with shard.mutex held. Stable slot IDs avoid per-resident heap nodes.
+  // Called with shard.mutex held. Stable slot IDs avoid per-resident heap
+  // nodes.
   void LinkClock(Shard& shard, Entry& entry) {
     const uint32_t slot = static_cast<uint32_t>(entry.handle);
     if (shard.clock_head == 0) {
       entry.previous = entry.next = slot;
-      shard.clock_head = slot;
+      shard.clock_head            = slot;
     } else {
-      Entry& head = *Locate(shard.clock_head);
-      Entry& tail = *Locate(head.previous);
+      Entry& head    = *Locate(shard.clock_head);
+      Entry& tail    = *Locate(head.previous);
       entry.previous = head.previous;
-      entry.next = shard.clock_head;
-      tail.next = slot;
-      head.previous = slot;
+      entry.next     = shard.clock_head;
+      tail.next      = slot;
+      head.previous  = slot;
     }
     ++shard.clock_size;
   }
@@ -713,8 +723,8 @@ private:
     if (cold.next == old_slot) {
       hot.previous = hot.next = new_slot;
     } else {
-      hot.previous = cold.previous;
-      hot.next = cold.next;
+      hot.previous                = cold.previous;
+      hot.next                    = cold.next;
       Locate(cold.previous)->next = new_slot;
       Locate(cold.next)->previous = new_slot;
     }
@@ -805,10 +815,10 @@ private:
     entry->initialized        = false;
     entry->fast->referenced   = false;
     entry->misses.store(0, std::memory_order_relaxed);
-    entry->fast->heat         = 0;
-    entry->fast->frequency    = 0;
-    entry->raw                = TryDram(size);
-    entry->ssd                = entry->raw == kValueHandleNone;
+    entry->fast->heat      = 0;
+    entry->fast->frequency = 0;
+    entry->raw             = TryDram(size);
+    entry->ssd             = entry->raw == kValueHandleNone;
     if (entry->ssd)
       entry->raw = fixed_ ? key + 1 : ssd_->Alloc(size);
     if (entry->raw == kValueHandleNone) {
@@ -824,7 +834,7 @@ private:
     try {
       if (!entry->ssd) {
         LinkClock(shard, *entry);
-        linked          = true;
+        linked = true;
       }
       if (keyed)
         shard.keys.emplace(key, entry->handle);
@@ -837,7 +847,8 @@ private:
       throw;
     }
     entry->alive = true;
-    residency_.fetch_add(entry->ssd ? kSsdResident : 1, std::memory_order_relaxed);
+    residency_.fetch_add(
+        entry->ssd ? kSsdResident : 1, std::memory_order_relaxed);
     if (entry->backing != kValueHandleNone)
       backed_values_.fetch_add(1, std::memory_order_relaxed);
     return entry;
@@ -864,7 +875,8 @@ private:
     if (entry.keyed)
       shard.keys.erase(entry.key);
     entry.alive = false;
-    residency_.fetch_sub(entry.ssd ? kSsdResident : 1, std::memory_order_relaxed);
+    residency_.fetch_sub(
+        entry.ssd ? kSsdResident : 1, std::memory_order_relaxed);
     if (entry.backing != kValueHandleNone)
       backed_values_.fetch_sub(1, std::memory_order_relaxed);
     // Retire a slot permanently rather than wrap its generation (ABA).
@@ -976,9 +988,10 @@ private:
     try {
       exchange_pending_.insert(entry.handle);
       try {
-        exchange_queue_.push_back({
-            entry.handle, entry.version,
-            std::string(static_cast<const char*>(data), size)});
+        exchange_queue_.push_back(
+            {entry.handle,
+             entry.version,
+             std::string(static_cast<const char*>(data), size)});
       } catch (...) {
         exchange_pending_.erase(entry.handle);
         throw;
@@ -986,7 +999,8 @@ private:
       exchange_pending_bytes_ += size;
       exchange_peak_entries_ =
           std::max(exchange_peak_entries_, exchange_pending_.size());
-      exchange_peak_bytes_ = std::max(exchange_peak_bytes_, exchange_pending_bytes_);
+      exchange_peak_bytes_ =
+          std::max(exchange_peak_bytes_, exchange_pending_bytes_);
       ++exchange_stats_.enqueued;
     } catch (...) {
       ++exchange_stats_.failures;
@@ -997,8 +1011,9 @@ private:
     exchange_ready_.notify_one();
   }
 
-  void ProcessExchangeBatch(std::array<PendingExchange, 64>& jobs, size_t count) {
-    Counters& counters = GetReader().stats;
+  void
+  ProcessExchangeBatch(std::array<PendingExchange, 64>& jobs, size_t count) {
+    Counters& counters    = GetReader().stats;
     const uint64_t before = counters.failures.load(std::memory_order_relaxed);
     std::vector<Exchange> exchanges;
     std::unordered_set<Entry*> scheduled;
@@ -1007,7 +1022,7 @@ private:
       scheduled.reserve(count * 2);
       for (size_t i = 0; i < count; ++i) {
         const auto& job = jobs[i];
-        Entry* entry = Locate(job.handle);
+        Entry* entry    = Locate(job.handle);
         if (!entry) {
           ++exchange_stats_.stale;
           continue;
@@ -1025,8 +1040,9 @@ private:
           ++exchange_stats_.busy;
           continue;
         }
-        if (!Matches(*entry, job.handle) || !entry->initialized || !entry->ssd ||
-            entry->version != job.version || entry->size != job.data.size()) {
+        if (!Matches(*entry, job.handle) || !entry->initialized ||
+            !entry->ssd || entry->version != job.version ||
+            entry->size != job.data.size()) {
           ++exchange_stats_.stale;
           continue;
         }
@@ -1088,10 +1104,12 @@ private:
         try {
           ++GetReader().stats.failures;
         } catch (...) {
-          // The independent queue counter also covers reader allocation failure.
+          // The independent queue counter also covers reader allocation
+          // failure.
         }
       }
-      // ProcessExchangeBatch releases every value lock before queue bookkeeping.
+      // ProcessExchangeBatch releases every value lock before queue
+      // bookkeeping.
       std::lock_guard<std::mutex> lock(exchange_mutex_);
       for (size_t i = 0; i < count; ++i) {
         const size_t bytes = jobs[i].data.size();
@@ -1116,10 +1134,10 @@ private:
         std::lock_guard<std::mutex> lock(shard.mutex);
         LinkClock(shard, hot);
         dram_->Write(free_dram, data, hot.size);
-        hot.direct           = dram_->DirectPtr(free_dram);
-        hot.raw              = free_dram;
-        hot.capacity         = dram_->SlotCapacity(free_dram);
-        hot.ssd              = false;
+        hot.direct   = dram_->DirectPtr(free_dram);
+        hot.raw      = free_dram;
+        hot.capacity = dram_->SlotCapacity(free_dram);
+        hot.ssd      = false;
         residency_.fetch_sub(kSsdResident - 1, std::memory_order_relaxed);
         hot.fast->referenced = true;
         hot.misses.store(0, std::memory_order_relaxed);
@@ -1130,16 +1148,17 @@ private:
       std::unique_lock<std::mutex> shard_lock(shard.mutex);
       // ponytail: bounded, shard-local CLOCK. Add cross-shard balancing only
       // if traces show usable victims concentrated in other shards.
-      const size_t scans = std::min<size_t>(64, size_t(shard.clock_size) * 2);
-      Entry* victim = nullptr;
+      const size_t scans   = std::min<size_t>(64, size_t(shard.clock_size) * 2);
+      Entry* victim        = nullptr;
       unsigned victim_heat = 0;
       bool victim_writeback = false;
-      const uint32_t scan_epoch = cost_aware_ && frequency_admission_
-          ? heat_epoch_.load(std::memory_order_relaxed) & kHeatEpochMask
-          : 0;
+      const uint32_t scan_epoch =
+          cost_aware_ && frequency_admission_
+              ? heat_epoch_.load(std::memory_order_relaxed) & kHeatEpochMask
+              : 0;
       std::unique_lock<ValueMutex> victim_lock;
       for (size_t i = 0; i < scans; ++i) {
-        Entry& cold = *Locate(shard.clock_head);
+        Entry& cold      = *Locate(shard.clock_head);
         shard.clock_head = cold.next;
         if (&cold == victim || (scheduled && scheduled->count(&cold)))
           continue;
@@ -1147,7 +1166,7 @@ private:
         if (!cold_lock || !cold.initialized || cold.capacity < hot.size)
           continue;
         const bool writeback = cold.dirty || cold.backing == kValueHandleNone;
-        unsigned cold_heat = 0;
+        unsigned cold_heat   = 0;
         if (!frequency_admission_) {
           if (cold.fast->referenced) {
             // Cost lookahead must not consume another resident's second chance.
@@ -1167,16 +1186,19 @@ private:
           }
         } else {
           if (victim ? cold.fast->referenced.load(std::memory_order_relaxed)
-                     : cold.fast->referenced.exchange(false, std::memory_order_relaxed))
+                     : cold.fast->referenced.exchange(
+                           false, std::memory_order_relaxed))
             continue;
           // Age both tiers in the same access window. Failed admission scans
           // must not erase a resident's history or preserve stale SSD heat.
-          const uint32_t epoch = cost_aware_ ? scan_epoch
-              : heat_epoch_.load(std::memory_order_relaxed) & kHeatEpochMask;
-          cold_heat =
-              HeatAt(cold.fast->frequency.load(std::memory_order_relaxed), epoch);
-          const unsigned hot_heat =
-              HeatAt(hot.fast->frequency.load(std::memory_order_relaxed), epoch);
+          const uint32_t epoch =
+              cost_aware_ ? scan_epoch
+                          : heat_epoch_.load(std::memory_order_relaxed) &
+                                kHeatEpochMask;
+          cold_heat = HeatAt(
+              cold.fast->frequency.load(std::memory_order_relaxed), epoch);
+          const unsigned hot_heat = HeatAt(
+              hot.fast->frequency.load(std::memory_order_relaxed), epoch);
           // Require a clear frequency advantage before paying for an exchange.
           // A threshold above 255 waits for aging rather than admitting a tie.
           if (hot_heat < cold_heat + std::max(1U, cold_heat / 4))
@@ -1184,14 +1206,14 @@ private:
         }
         if (cost_aware_) {
           // Prefer the coldest eligible resident; write cost breaks heat ties.
-          if (victim && (cold_heat > victim_heat ||
-                         (cold_heat == victim_heat &&
-                          (writeback || !victim_writeback))))
+          if (victim &&
+              (cold_heat > victim_heat ||
+               (cold_heat == victim_heat && (writeback || !victim_writeback))))
             continue;
-          victim_heat = cold_heat;
+          victim_heat      = cold_heat;
           victim_writeback = writeback;
         }
-        victim = &cold;
+        victim      = &cold;
         victim_lock = std::move(cold_lock);
         if (!cost_aware_ || (victim_heat == 0 && !victim_writeback))
           break;

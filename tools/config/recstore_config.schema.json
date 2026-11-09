@@ -21,7 +21,6 @@
       "additionalProperties": true,
       "required": [
         "ps_type",
-        "max_batch_keys_size",
         "num_threads",
         "num_shards",
         "servers",
@@ -39,7 +38,8 @@
         "max_batch_keys_size": {
           "type": "integer",
           "minimum": 1,
-          "description": "Maximum key count per batch request on server side."
+          "deprecated": true,
+          "description": "Deprecated and ignored. Batching is controlled by distributed_client.max_keys_per_request; the field is only accepted for backward compatibility."
         },
         "num_threads": {
           "type": "integer",

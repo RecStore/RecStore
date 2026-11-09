@@ -12,9 +12,6 @@
 #include <unordered_map>
 #include <vector>
 
-thread_local int pending = 0;
-thread_local std::vector<std::unique_ptr<coroutine<void>::pull_type>> coros;
-
 #define f_seed 0xc70697UL
 #define s_seed 0xc70697UL
 // #define f_seed 0xc70f6907UL

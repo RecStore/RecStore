@@ -296,7 +296,7 @@ public:
       }
       if (const char* ptr = value_store_->DirectPtr(handle)) {
         if (default_value_size_hint_ != row_bytes ||
-        !value_store_->GetLayoutId().plain()) {
+            !value_store_->GetLayoutId().plain()) {
           const size_t slot_bytes = value_store_->SlotCapacity(handle);
           if (slot_bytes != row_bytes) {
             LOG(ERROR) << "KVEngine::BatchGetFlat row size mismatch row=" << row
@@ -354,67 +354,41 @@ public:
       unsigned tid,
       BatchGetFlatStats* stats = nullptr,
       bool collect_profile     = true) override {
-    if (values == nullptr || num_rows < 0 || row_dim <= 0 || value_offset < 0 ||
-        value_dim <= 0 || value_offset > row_dim ||
-        value_dim > row_dim - value_offset ||
-        keys.Size() != static_cast<size_t>(num_rows)) {
-      return false;
-    }
-    const size_t stored_row_bytes =
-        static_cast<size_t>(row_dim) * sizeof(float);
-    if (default_value_size_hint_ != stored_row_bytes) {
-      return false;
-    }
-    const size_t source_offset_bytes =
-        static_cast<size_t>(value_offset) * sizeof(float);
-    const size_t output_row_bytes =
-        static_cast<size_t>(value_dim) * sizeof(float);
-    thread_local std::vector<Value_t> handles;
-    handles.assign(keys.Size(), kValueHandleNone);
-    const bool profile_enabled = stats != nullptr && collect_profile;
-    if (stats != nullptr) {
-      stats->index_lookup_ns = 0;
-      stats->zero_fill_ns    = 0;
-      stats->row_copy_ns     = 0;
-      stats->missing_rows    = 0;
-    }
-    const auto index_lookup_start =
-        profile_enabled ? std::chrono::steady_clock::now()
-                        : std::chrono::steady_clock::time_point{};
-    if (keys.Size() > 0) {
-      index_->BatchGet(keys, handles.data(), tid);
-    }
-    if (profile_enabled) {
-      stats->index_lookup_ns = static_cast<std::uint64_t>(
-          std::chrono::duration_cast<std::chrono::nanoseconds>(
-              std::chrono::steady_clock::now() - index_lookup_start)
-              .count());
-    }
+    return BatchGetFlatRangeImpl(
+        keys,
+        values,
+        num_rows,
+        row_dim,
+        value_offset,
+        value_dim,
+        tid,
+        nullptr,
+        stats,
+        collect_profile);
+  }
 
-    uint64_t missing_rows = 0;
-    const auto row_copy_start =
-        profile_enabled ? std::chrono::steady_clock::now()
-                        : std::chrono::steady_clock::time_point{};
-    if (!value_store_->ReadFlatFixedRowSlices(
-            handles.data(),
-            static_cast<size_t>(num_rows),
-            values,
-            stored_row_bytes,
-            source_offset_bytes,
-            output_row_bytes,
-            &missing_rows)) {
-      return false;
-    }
-    if (stats != nullptr) {
-      if (profile_enabled) {
-        stats->row_copy_ns = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - row_copy_start)
-                .count());
-      }
-      stats->missing_rows = missing_rows;
-    }
-    return true;
+  bool BatchGetFlatRangeWithMissing(
+      base::ConstArray<uint64_t> keys,
+      float* values,
+      int64_t num_rows,
+      int64_t row_dim,
+      int64_t value_offset,
+      int64_t value_dim,
+      unsigned tid,
+      MissingPositionsOutput* missing,
+      BatchGetFlatStats* stats = nullptr,
+      bool collect_profile     = true) override {
+    return BatchGetFlatRangeImpl(
+        keys,
+        values,
+        num_rows,
+        row_dim,
+        value_offset,
+        value_dim,
+        tid,
+        missing,
+        stats,
+        collect_profile);
   }
 
   bool BatchGetIndexOnly(base::ConstArray<uint64_t> keys,
@@ -751,7 +725,8 @@ public:
       if (row == nullptr) {
         value_store_->Free(handle);
         for (uint64_t allocated : handles) {
-          if (allocated != kValueHandleNone) value_store_->Free(allocated);
+          if (allocated != kValueHandleNone)
+            value_store_->Free(allocated);
         }
         return false;
       }
@@ -1038,6 +1013,111 @@ public:
   }
 
 private:
+  bool BatchGetFlatRangeImpl(
+      base::ConstArray<uint64_t> keys,
+      float* values,
+      int64_t num_rows,
+      int64_t row_dim,
+      int64_t value_offset,
+      int64_t value_dim,
+      unsigned tid,
+      MissingPositionsOutput* missing,
+      BatchGetFlatStats* stats,
+      bool collect_profile) {
+    if (missing != nullptr) {
+      missing->count = 0;
+    }
+    if (values == nullptr || num_rows < 0 || row_dim <= 0 || value_offset < 0 ||
+        value_dim <= 0 || value_offset > row_dim ||
+        value_dim > row_dim - value_offset ||
+        keys.Size() != static_cast<size_t>(num_rows)) {
+      return false;
+    }
+
+    if (missing != nullptr) {
+      if (missing->capacity < static_cast<size_t>(num_rows) ||
+          (num_rows > 0 && missing->positions == nullptr)) {
+        return false;
+      }
+    }
+
+    const size_t stored_row_bytes =
+        static_cast<size_t>(row_dim) * sizeof(float);
+    if (default_value_size_hint_ != stored_row_bytes) {
+      return false;
+    }
+
+    const size_t source_offset_bytes =
+        static_cast<size_t>(value_offset) * sizeof(float);
+    const size_t output_row_bytes =
+        static_cast<size_t>(value_dim) * sizeof(float);
+
+    thread_local std::vector<Value_t> handles;
+    handles.assign(keys.Size(), kValueHandleNone);
+
+    const bool profile_enabled = stats != nullptr && collect_profile;
+    if (stats != nullptr) {
+      stats->index_lookup_ns = 0;
+      stats->zero_fill_ns    = 0;
+      stats->row_copy_ns     = 0;
+      stats->missing_rows    = 0;
+    }
+
+    if (num_rows == 0) {
+      return true;
+    }
+
+    const auto index_lookup_start =
+        profile_enabled ? std::chrono::steady_clock::now()
+                        : std::chrono::steady_clock::time_point{};
+    if (keys.Size() > 0) {
+      index_->BatchGet(keys, handles.data(), tid);
+    }
+    if (profile_enabled) {
+      stats->index_lookup_ns = static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now() - index_lookup_start)
+              .count());
+    }
+
+    uint64_t missing_rows = 0;
+    const auto row_copy_start =
+        profile_enabled ? std::chrono::steady_clock::now()
+                        : std::chrono::steady_clock::time_point{};
+    if (!value_store_->ReadFlatFixedRowSlices(
+            handles.data(),
+            static_cast<size_t>(num_rows),
+            values,
+            stored_row_bytes,
+            source_offset_bytes,
+            output_row_bytes,
+            &missing_rows)) {
+      return false;
+    }
+    if (stats != nullptr) {
+      if (profile_enabled) {
+        stats->row_copy_ns = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - row_copy_start)
+                .count());
+      }
+      stats->missing_rows = missing_rows;
+    }
+
+    if (missing != nullptr && missing_rows > 0) {
+      size_t count = 0;
+      for (size_t row = 0; row < handles.size(); ++row) {
+        if (handles[row] == kValueHandleNone) {
+          missing->positions[count] = row;
+          ++count;
+        }
+      }
+      missing->count = count;
+    }
+
+    return true;
+  }
+
   static bool WriteBytes(std::ofstream& output, const void* data, size_t size) {
     if (size >
         static_cast<size_t>((std::numeric_limits<std::streamsize>::max)())) {
