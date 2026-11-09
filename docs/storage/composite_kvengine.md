@@ -286,6 +286,60 @@ replacement work but delays adaptation to a new hot set. The storage benchmark
 exposes it as `--tiered_cache_promote_min_misses`; compare throughput and SSD
 misses on the intended trace before choosing a larger value.
 
+`tiering.clock_cost_aware=true` selects the lowest-heat eligible resident and
+prefers a clean SSD backing copy only when heat is equal. The search examines at
+most 64 candidates and retains the existing heat, capacity, and lock checks;
+a zero-heat clean candidate ends the scan because neither score can improve.
+After finding the first eligible victim, further cost comparisons only read other
+residents' heat and reference bits; they do not accelerate CLOCK aging. The CLOCK
+hand resumes after the selected victim so lookahead does not repeatedly favor
+the same ring positions.
+Every promotion still requires `promote_min_misses` misses since the previous
+promotion or eviction. Write cost does not override this gate or the heat ranking:
+repeatedly evicting hotter clean values can trap a new hot set in a small clean
+pool while unused dirty values retain DRAM capacity. Historical initial placement
+does not pin keys in DRAM. Cost here means whether an actual SSD write or
+read-modify-write is required, not a fitted latency model. This option defaults
+to `false` and is independent of frequency admission.
+
+`tiering.clock_async_exchange=true` moves eligible exchanges to one background
+worker. The foreground copies the fetched value into a bounded candidate queue
+and returns without waiting for the candidate's writeback. The worker owns its
+locks and value buffers, checks the logical handle generation and write version,
+and groups up to 64 candidates for batched writeback. A full queue, a duplicate
+candidate, or lock contention can skip that promotion; the read still returns
+its fetched data. A later access can retry. Writes and frees invalidate stale
+candidates, and recoverable writeback failures leave the authoritative values in
+their old tiers. Destruction joins the worker before releasing either value store.
+
+The queue defaults to 256 candidates and 4 MiB of candidate payload, configured
+with `clock_exchange_queue_entries` and `clock_exchange_queue_bytes`. Both limits
+include queued and active candidates and must be positive. Queue bookkeeping
+and string allocation overhead are additional to the payload limit, bounded by
+the candidate count. The value DRAM budget is unchanged. Asynchronous exchange
+defaults to `false`; it removes exchange writeback from the foreground path, but
+single-key demand reads still wait for SSD completion and retain the existing
+value-lock semantics. Benchmark flags use the `--tiered_` prefix for these four
+settings. Report these modes separately from synchronous CLOCK. The benchmark
+waits for queued exchanges at phase boundaries, outside request timing, and emits
+`YCSB_RUN_MAINTENANCE` with the drain duration and throughput including that drain.
+Use both throughput measures so outstanding writeback cannot hide deferred work.
+`tiered_clock_exchange_completed` counts processed jobs, including stale or
+rejected candidates; use `tiered_clock_promotions` to count completed promotions.
+
+CLOCK lifetime counters are aggregated per reader, including readers that have
+exited, instead of allocating counters for every key. Legacy resident heat samples
+mixed per-reader counters at approximately one hit in sixteen, avoiding the fixed
+position bias of a low-bit mask on periodic batches. Fast batch readers publish
+hit counts once per protected section of at most 64 rows. Flat batch reads
+prefetch the section's stable metadata addresses before checking and copying rows;
+handle, size, and publication checks still guard every copy. The circular CLOCK list
+uses two metadata-slot links per entry instead of separately allocated list nodes.
+`tiered_clock_entry_bytes`, `tiered_clock_fast_bytes`, and
+`tiered_clock_metadata_bytes` expose structure sizes and allocated chunk-array
+bytes. The last field excludes reader state, key directories, allocator overhead,
+and pending candidate buffers; it is not total metadata memory or process RSS.
+
 For an existing historical profile, place its hottest keys first during initial
 load rather than waiting for synchronous exchanges to repair arbitrary placement.
 The storage benchmark accepts `--load_order=<path>`, a headerless binary uint64
