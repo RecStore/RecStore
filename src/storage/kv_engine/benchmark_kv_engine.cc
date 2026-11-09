@@ -68,6 +68,8 @@ DEFINE_int64(tiered_cache_expected_dram_bytes, 0,
              "load-time working set in DRAM slot bytes; 0 means unknown");
 DEFINE_int64(tiered_cache_promote_min_misses, 2,
              "SSD misses before a value is eligible for promotion");
+DEFINE_bool(tiered_clock_frequency_admission, false,
+            "use shared-epoch frequency admission instead of legacy CLOCK heat");
 DEFINE_bool(tiered_retain_backing_copies, true,
             "retain SSD copies of promoted CLOCK values (plain layouts only when false)");
 DEFINE_int32(ssd_completion_poll_spins, 8192,
@@ -83,6 +85,8 @@ DEFINE_string(distribution,
               "key distribution: uniform/zipfian/trace");
 DEFINE_string(access_trace, "", "binary uint64 key trace for timed replay");
 DEFINE_string(warmup_access_trace, "", "optional separate warmup trace");
+DEFINE_string(load_order, "",
+              "binary uint64 permutation of all keys, hottest historical keys first");
 DEFINE_double(zipfian_alpha, 0.9, "Zipfian alpha");
 DEFINE_bool(
     zipfian_scramble,
@@ -459,6 +463,7 @@ BaseKVConfig BuildConfig() {
         {"cache_policy", FLAGS_tiered_cache_policy},
         {"cache_budget_ratio", FLAGS_tiered_cache_budget_ratio},
         {"promote_min_misses", FLAGS_tiered_cache_promote_min_misses},
+        {"clock_frequency_admission", FLAGS_tiered_clock_frequency_admission},
         {"retain_backing_copies", FLAGS_tiered_retain_backing_copies},
         {"expected_dram_bytes", FLAGS_tiered_cache_expected_dram_bytes}};
   }
@@ -485,15 +490,44 @@ BaseKVConfig BuildConfig() {
   return config;
 }
 
-PhaseStats LoadRecords(BaseKV* kv, int load_threads, uint64_t record_count) {
+PhaseStats LoadRecords(BaseKV* kv, int load_threads, uint64_t record_count,
+                       const std::vector<uint64_t>& order) {
+  std::atomic<uint64_t> next{0};
   std::vector<std::thread> threads;
   std::vector<uint64_t> counts(load_threads, 0);
   const uint64_t per_thread = (record_count + load_threads - 1) / load_threads;
+  if (!order.empty()) {
+    // Place the heaviest keys before scheduling can delay a loader thread.
+    const uint64_t prefix = std::min<uint64_t>(record_count, load_threads);
+    for (uint64_t rank = 0; rank < prefix; ++rank) {
+      const uint64_t key = order[rank];
+      const std::string value(
+          FLAGS_value_size, static_cast<char>('a' + ((key / per_thread) % 26)));
+      kv->Put(key, value, 0);
+      ++counts[0];
+    }
+    next.store(prefix);
+  }
 
   for (int tid = 0; tid < load_threads; ++tid) {
-    threads.emplace_back([kv, tid, per_thread, record_count, &counts]() {
+    threads.emplace_back([&, tid]() {
       base::auto_bind_core();
       std::string value(FLAGS_value_size, static_cast<char>('a' + (tid % 26)));
+      if (!order.empty()) {
+        // Up to load_threads - 1 earlier keys may still be in flight.
+        // Values retain their key-derived contents for post-run verification.
+        for (;;) {
+          const uint64_t rank = next.fetch_add(1, std::memory_order_relaxed);
+          if (rank >= record_count)
+            break;
+          const uint64_t key = order[rank];
+          value.assign(FLAGS_value_size,
+                       static_cast<char>('a' + ((key / per_thread) % 26)));
+          kv->Put(key, std::string_view(value.data(), value.size()), tid);
+          ++counts[tid];
+        }
+        return;
+      }
       const uint64_t begin = static_cast<uint64_t>(tid) * per_thread;
       const uint64_t end   = std::min(record_count, begin + per_thread);
       for (uint64_t key = begin; key < end; ++key) {
@@ -835,6 +869,20 @@ int RunBenchmark(int argc, char* argv[]) {
         throw std::invalid_argument("trace key exceeds record_count");
     return keys;
   };
+  std::vector<uint64_t> load_order;
+  if (!FLAGS_load_order.empty()) {
+    load_order = read_trace(FLAGS_load_order);
+    if (load_order.size() != static_cast<size_t>(FLAGS_record_count))
+      throw std::invalid_argument("load_order must contain every key once");
+    std::vector<bool> seen(load_order.size());
+    for (uint64_t key : load_order) {
+      if (seen[key])
+        throw std::invalid_argument("load_order contains a duplicate key");
+      seen[key] = true;
+    }
+    std::printf("YCSB_PLACEMENT keys=%zu path=%s\n",
+                load_order.size(), FLAGS_load_order.c_str());
+  }
   std::vector<uint64_t> trace, warmup_trace;
   if (FLAGS_distribution == "trace") {
     trace        = read_trace(FLAGS_access_trace);
@@ -881,7 +929,8 @@ int RunBenchmark(int argc, char* argv[]) {
   if (FLAGS_load) {
     const auto begin      = std::chrono::steady_clock::now();
     PhaseStats load_stats = LoadRecords(
-        kv.get(), load_threads, static_cast<uint64_t>(FLAGS_record_count));
+        kv.get(), load_threads, static_cast<uint64_t>(FLAGS_record_count),
+        load_order);
     const auto end       = std::chrono::steady_clock::now();
     const double seconds = SecondsSince(begin, end);
     const double throughput =
