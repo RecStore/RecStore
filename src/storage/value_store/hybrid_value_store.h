@@ -1,10 +1,15 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <deque>
 #include <iomanip>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 #include "base/factory.h"
 #include "storage/cache/tiered_read_cache.h"
@@ -169,11 +174,31 @@ public:
     const size_t cap   = dram_store_.SlotCapacity(raw);
     dram_store_.Free(raw);
     dram_live_allocs_.fetch_sub(1, std::memory_order_relaxed);
-    uint64_t cur = dram_bytes_reserved_.load(std::memory_order_relaxed);
-    while (cur != 0 &&
-           !dram_bytes_reserved_.compare_exchange_weak(
-               cur, cur > cap ? cur - cap : 0, std::memory_order_relaxed)) {
+    ReleaseDramReservation(cap);
+  }
+
+  // The engine publishes the new handle before retiring the old one, so a
+  // reader that already loaded the old handle may still be copying from its
+  // slot. Free would hand that slot back for reuse immediately; defer it by the
+  // same short grace period DramValueStore uses for its own slots.
+  void Retire(uint64_t handle) override {
+    if (handle == kValueHandleNone) {
+      return;
     }
+    if (IsOnSSD(handle)) {
+      const uint64_t raw = SsdRawHandle(handle);
+      if (cache_) {
+        cache_->Invalidate(raw);
+      }
+      RetireSsdSlot(raw);
+      ssd_live_allocs_.fetch_sub(1, std::memory_order_relaxed);
+      return;
+    }
+    const uint64_t raw = DramRawHandle(handle);
+    const size_t cap   = dram_store_.SlotCapacity(raw);
+    dram_store_.Retire(raw);
+    dram_live_allocs_.fetch_sub(1, std::memory_order_relaxed);
+    ReleaseDramReservation(cap);
   }
 
   const char* DirectPtr(uint64_t handle) const override {
@@ -380,6 +405,9 @@ public:
 
 private:
   static constexpr uint64_t kSsdFlag = 1ULL << 63;
+  // Grace period before a retired SSD slot returns to the allocator. Matches
+  // DramValueStore's recycle delay.
+  static constexpr int64_t kRetireDelayUs = 1000;
 
   static bool IsOnSSD(uint64_t handle) { return (handle & kSsdFlag) != 0; }
 
@@ -400,6 +428,30 @@ private:
       return false;
     }
     return actual < buf_size || buf_size >= slot_capacity;
+  }
+
+  void ReleaseDramReservation(size_t slot_capacity) {
+    uint64_t cur = dram_bytes_reserved_.load(std::memory_order_relaxed);
+    while (cur != 0 && !dram_bytes_reserved_.compare_exchange_weak(
+                           cur,
+                           cur > slot_capacity ? cur - slot_capacity : 0,
+                           std::memory_order_relaxed)) {
+    }
+  }
+
+  // Holds a retired SSD slot for a short grace period before returning it to
+  // the allocator. Entries drain on later retires, like DramValueStore's
+  // recycler; a slot still pending when the store is destroyed is released with
+  // the allocator.
+  void RetireSsdSlot(uint64_t raw) {
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(retired_mutex_);
+    retired_ssd_.emplace_back(now, raw);
+    const auto cutoff = now - std::chrono::microseconds(kRetireDelayUs);
+    while (!retired_ssd_.empty() && retired_ssd_.front().first <= cutoff) {
+      ssd_store_->Free(retired_ssd_.front().second);
+      retired_ssd_.pop_front();
+    }
   }
 
   static BaseKVConfig BuildDramConfig(const BaseKVConfig& config) {
@@ -492,6 +544,11 @@ private:
   // the cached slots belong to dram_store_, which is destroyed with this
   // object, so they are released with the allocator rather than one by one.
   std::unique_ptr<TieredReadCache> cache_;
+  // Retired SSD slots wait here for the reader grace period. The queue is
+  // drained from Retire; leftovers are released with ssd_store_.
+  std::mutex retired_mutex_;
+  std::deque<std::pair<std::chrono::steady_clock::time_point, uint64_t>>
+      retired_ssd_;
   bool ssd_static_              = false;
   uint64_t dram_capacity_bytes_ = 0;
   // Capacity available to primary placement; equals dram_capacity_bytes_ minus
