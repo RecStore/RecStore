@@ -252,9 +252,32 @@ it. The benchmark flag is `--tiered_retain_backing_copies=false`, and
 `tiered_clock_retain_backing_copies` reports the effective setting. Failed
 writeback never releases the source SSD copy.
 
-Sampled DRAM hits and individual SSD misses accumulate saturating access
-credits. CLOCK scans age credits so new hot sets can replace old ones. At most
-64 candidates are examined per promotion; the victim's slot must fit the
+`tiering.clock_frequency_admission` defaults to `false`, preserving the original
+CLOCK policy: one in 16 DRAM fast-path hits adds 16 heat credits, SSD misses add
+one, and the CLOCK scanner halves resident heat when it gives a second chance
+or rejects a candidate. This keeps the original sampled read path.
+
+Set `tiering.clock_frequency_admission=true` (benchmark flag
+`--tiered_clock_frequency_admission=true`) to enable shared-epoch frequency
+admission. `tiered_clock_frequency_admission` reports the effective setting.
+In this mode, DRAM fast-path hits add one saturating frequency credit while the
+aged frequency is below 64. At 64 or above, approximately one hit in 16 adds 16 credits,
+selected by the upper bits of a per-reader Weyl sequence. Low-frequency residents
+return to exact counting after aging; slow reads, including SSD misses, always
+add one credit. Every hit still sets the reference bit, and every read contributes
+to the access clock independently of frequency sampling. Both tiers age credits
+in the same access-count epochs; rejected admission scans do not reduce resident
+frequency. Readers publish their access counts in groups of 1024, and an epoch
+spans approximately four reads per allocated metadata slot (at least 1024 reads).
+A candidate needs a frequency advantage of at least
+`max(1, floor(resident_frequency / 4))` credits; equal frequencies do not trigger exchange.
+After the minimum-miss gate, one recent SSD credit can replace an unused resident
+even when earlier miss credits have aged out. This mode protects resident
+frequency from repeated rejected candidates, but reduced throughput in the
+measured Criteo workload, so it remains opt-in. Compare both modes on the intended
+trace; more stable frequency estimates do not guarantee higher throughput.
+
+In either mode, at most 64 candidates are examined per promotion; the victim's slot must fit the
 incoming value. Logical handles remain stable across exchange and keyed
 updates, with generation checks rejecting stale handles after metadata reuse.
 
@@ -262,6 +285,19 @@ updates, with generation checks rejecting stale handles after metadata reuse.
 replacement work but delays adaptation to a new hot set. The storage benchmark
 exposes it as `--tiered_cache_promote_min_misses`; compare throughput and SSD
 misses on the intended trace before choosing a larger value.
+
+For an existing historical profile, place its hottest keys first during initial
+load rather than waiting for synchronous exchanges to repair arbitrary placement.
+The storage benchmark accepts `--load_order=<path>`, a headerless binary uint64
+permutation of every key in `[0, record_count)`, hottest first. It rejects missing,
+duplicate and out-of-range keys before creating the engine. The first loader-count
+keys are loaded serially; the remainder uses concurrent priority dispatch, so up
+to `load_threads - 1` earlier keys can be in flight at the placement boundary.
+Value contents and read requests do not change. Build the order only from past
+requests; account for profile construction separately and keep evaluation requests
+out of it. Known-distribution oracle ordering is a diagnostic, not an online
+algorithm result. Keep the same value DRAM budget and report metadata, buffers and
+RSS separately when comparing placement policies.
 
 DRAM hits use a compact snapshot and a per-thread reader hazard rather than
 a per-value mutex. Updates, frees and eviction revoke that snapshot and wait
