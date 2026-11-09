@@ -186,13 +186,21 @@ public:
     for (size_t begin = 0; begin < num_rows; begin += 64) {
       BatchReadGuard guard(reader);
       const size_t end = std::min(num_rows, begin + 64);
+      std::array<Fast*, 64> snapshots;
+      for (size_t i = begin; i < end; ++i) {
+        Fast* fast = handles[i] == kValueHandleNone ? nullptr
+                                                   : LocateFast(handles[i]);
+        snapshots[i - begin] = fast;
+        if (fast)
+          __builtin_prefetch(fast, 0, 1);
+      }
       for (size_t i = begin; i < end; ++i) {
         if (handles[i] == kValueHandleNone) {
           std::memset(out + i * row_bytes, 0, row_bytes);
           ++missing;
           continue;
         }
-        if (Fast* fast = LocateFast(handles[i])) {
+        if (Fast* fast = snapshots[i - begin]) {
           if (fast->readable.load() == handles[i]) {
             if (fast->size != row_bytes)
               return false;
@@ -446,10 +454,11 @@ private:
   struct alignas(64) Reader {
     std::atomic<Fast*> active{nullptr};
     std::atomic<uint64_t> batch_epoch{0};
-    Counters stats;
+    // Keep owner-only hit state beside publication fields in the first line.
     uint64_t hit_sequence = 0;
     uint32_t accesses = 0;
     const std::thread::id owner = std::this_thread::get_id();
+    Counters stats;
   };
   struct ReadGuard {
     Reader& reader;
@@ -463,12 +472,16 @@ private:
   };
   struct BatchReadGuard {
     Reader& reader;
-    explicit BatchReadGuard(Reader& state) : reader(state) {
-      reader.batch_epoch.fetch_add(1);
+    const uint64_t end_epoch;
+    explicit BatchReadGuard(Reader& state)
+        : reader(state),
+          end_epoch(state.batch_epoch.load(std::memory_order_relaxed) + 2) {
+      reader.batch_epoch.store(end_epoch - 1);
     }
     ~BatchReadGuard() {
       reader.stats.hits.store(reader.hit_sequence, std::memory_order_relaxed);
-      reader.batch_epoch.fetch_add(1, std::memory_order_release);
+      // The owner is the only writer; leaving needs no read-modify-write.
+      reader.batch_epoch.store(end_epoch, std::memory_order_release);
     }
   };
   Reader& GetReader() const {
