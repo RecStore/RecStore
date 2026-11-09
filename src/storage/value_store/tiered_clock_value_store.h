@@ -1,7 +1,10 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <cstring>
 #include <mutex>
 #include <sstream>
@@ -23,7 +26,11 @@ public:
       size_t shards,
       uint32_t min_misses,
       bool retain_backing_copies = true,
-      bool frequency_admission = false)
+      bool frequency_admission = false,
+      bool cost_aware = false,
+      bool async_exchange = false,
+      size_t queue_entries = 256,
+      size_t queue_bytes = 4 * 1024 * 1024)
       : dram_(dram),
         ssd_(ssd),
         limit_(dram_limit),
@@ -32,15 +39,31 @@ public:
         fixed_(!ssd->GetLayoutId().plain()),
         retain_backing_(retain_backing_copies),
         frequency_admission_(frequency_admission),
+        cost_aware_(cost_aware),
+        async_exchange_(async_exchange),
+        queue_entry_limit_(queue_entries),
+        queue_byte_limit_(queue_bytes),
         chunks_(new std::atomic<Chunk*>[kChunkCount]) {
     if (fixed_ && !retain_backing_)
       throw std::invalid_argument(
           "releasing CLOCK backing copies requires a plain SSD layout");
+    if (async_exchange_ && (queue_entry_limit_ == 0 || queue_byte_limit_ == 0))
+      throw std::invalid_argument("CLOCK exchange queue limits must be positive");
     for (size_t i = 0; i < kChunkCount; ++i)
       chunks_[i].store(nullptr);
+    if (async_exchange_)
+      exchange_worker_ = std::thread([this] { RunExchangeWorker(); });
   }
 
   ~TieredClockValueStore() override {
+    if (exchange_worker_.joinable()) {
+      {
+        std::lock_guard<std::mutex> lock(exchange_mutex_);
+        exchange_stopping_ = true;
+      }
+      exchange_ready_.notify_one();
+      exchange_worker_.join();
+    }
     for (size_t i = 0; i < kChunkCount; ++i)
       delete chunks_[i].load();
   }
@@ -352,20 +375,20 @@ public:
   LayoutId GetLayoutId() const override { return ssd_->GetLayoutId(); }
 
   std::string ExtraResultFields() const override {
-    uint64_t dram = 0, ssd = 0, backed = 0;
+    const uint64_t residency = residency_.load(std::memory_order_relaxed);
+    const uint64_t dram = residency & UINT32_MAX, ssd = residency >> 32;
+    const uint64_t backed = backed_values_.load(std::memory_order_relaxed);
+    size_t pending, pending_bytes, inflight, peak_entries, peak_bytes;
+    {
+      std::lock_guard<std::mutex> lock(exchange_mutex_);
+      pending = exchange_pending_.size();
+      pending_bytes = exchange_pending_bytes_;
+      inflight = exchange_inflight_;
+      peak_entries = exchange_peak_entries_;
+      peak_bytes = exchange_peak_bytes_;
+    }
     Counters stats;
     const uint64_t count = std::min<uint64_t>(next_slot_.load(), UINT32_MAX);
-    for (uint64_t i = 0; i < count; ++i) {
-      Entry* entry = Locate(i + 1);
-      if (!entry)
-        continue;
-      std::lock_guard<ValueMutex> lock(entry->mutex);
-      if (entry->alive) {
-        entry->ssd ? ++ssd : ++dram;
-        if (entry->backing != kValueHandleNone)
-          ++backed;
-      }
-    }
     {
       std::lock_guard<std::mutex> lock(readers_mutex_);
       for (const auto& reader : readers_) {
@@ -384,7 +407,23 @@ public:
     out << " tiered_cache_policy=clock tiered_clock_promote_min_misses="
         << min_misses_ << " tiered_clock_retain_backing_copies="
         << retain_backing_ << " tiered_clock_frequency_admission="
-        << frequency_admission_ << " tiered_dram_live_allocs=" << dram
+        << frequency_admission_ << " tiered_clock_cost_aware=" << cost_aware_
+        << " tiered_clock_async_exchange=" << async_exchange_
+        << " tiered_clock_exchange_queue_entries=" << queue_entry_limit_
+        << " tiered_clock_exchange_queue_bytes=" << queue_byte_limit_
+        << " tiered_clock_exchange_pending=" << pending
+        << " tiered_clock_exchange_pending_bytes=" << pending_bytes
+        << " tiered_clock_exchange_inflight=" << inflight
+        << " tiered_clock_exchange_peak_entries=" << peak_entries
+        << " tiered_clock_exchange_peak_bytes=" << peak_bytes
+        << " tiered_clock_exchange_enqueued=" << exchange_stats_.enqueued.load()
+        << " tiered_clock_exchange_completed=" << exchange_stats_.completed.load()
+        << " tiered_clock_exchange_dropped=" << exchange_stats_.dropped.load()
+        << " tiered_clock_exchange_deduplicated=" << exchange_stats_.deduplicated.load()
+        << " tiered_clock_exchange_busy=" << exchange_stats_.busy.load()
+        << " tiered_clock_exchange_stale=" << exchange_stats_.stale.load()
+        << " tiered_clock_exchange_failures=" << exchange_stats_.failures.load()
+        << " tiered_dram_live_allocs=" << dram
         << " tiered_ssd_live_allocs=" << ssd
         << " tiered_live_allocs=" << dram + ssd << " tiered_ssd_live_ratio="
         << (dram + ssd ? double(ssd) / (dram + ssd) : 0)
@@ -446,6 +485,14 @@ private:
     bool writeback;
     std::unique_lock<ValueMutex> cold_lock;
     std::unique_lock<ValueMutex> hot_lock;
+  };
+  struct PendingExchange {
+    uint64_t handle = 0, version = 0;
+    std::string data;
+  };
+  struct ExchangeCounters {
+    std::atomic<uint64_t> enqueued{0}, completed{0}, dropped{0},
+        deduplicated{0}, busy{0}, stale{0}, failures{0};
   };
   // Readers publish a hazard before checking readable. Writers revoke
   // readable, then wait for existing hazards before changing the DRAM bytes
@@ -560,8 +607,10 @@ private:
     // Guards publish the owning thread's total once per read section.
     const uint64_t hits = ++reader.hit_sequence;
     if (!frequency_admission_) {
-      // Preserve the original sampled resident path without an access clock.
-      if ((hits & 15) == 1)
+      // Mix adjacent counter bits before sampling so periodic batches do not
+      // repeatedly credit the same position. No shared access clock is needed.
+      const uint64_t sample = hits - 1;
+      if ((((sample ^ (sample >> 4)) * 0x9e3779b97f4a7c15ULL) >> 60) == 0)
         LegacyTouch(entry, 16);
       return;
     }
@@ -786,6 +835,9 @@ private:
       throw;
     }
     entry->alive = true;
+    residency_.fetch_add(entry->ssd ? kSsdResident : 1, std::memory_order_relaxed);
+    if (entry->backing != kValueHandleNone)
+      backed_values_.fetch_add(1, std::memory_order_relaxed);
     return entry;
   }
 
@@ -810,6 +862,9 @@ private:
     if (entry.keyed)
       shard.keys.erase(entry.key);
     entry.alive = false;
+    residency_.fetch_sub(entry.ssd ? kSsdResident : 1, std::memory_order_relaxed);
+    if (entry.backing != kValueHandleNone)
+      backed_values_.fetch_sub(1, std::memory_order_relaxed);
     // Retire a slot permanently rather than wrap its generation (ABA).
     if ((entry.handle >> 32) < UINT32_MAX)
       shard.free_slots.push_back(static_cast<uint32_t>(entry.handle));
@@ -831,8 +886,12 @@ private:
       }
       std::lock_guard<std::mutex> lock(shards_[entry.shard].mutex);
       Release(entry);
-      if (!entry.ssd)
+      if (!entry.ssd) {
         UnlinkClock(shards_[entry.shard], entry);
+        residency_.fetch_add(kSsdResident - 1, std::memory_order_relaxed);
+      }
+      if (entry.backing == kValueHandleNone)
+        backed_values_.fetch_add(1, std::memory_order_relaxed);
       entry.raw      = raw;
       entry.backing  = raw;
       entry.direct   = nullptr;
@@ -878,8 +937,158 @@ private:
       ++entry.misses;
     if (entry.misses < min_misses_)
       ++GetReader().stats.rejects;
-    else if (size == entry.size)
-      Promote(entry, data, exchanges, scheduled);
+    else if (size == entry.size) {
+      if (async_exchange_)
+        QueueExchange(entry, data, size);
+      else
+        Promote(entry, data, exchanges, scheduled);
+    }
+  }
+
+  void QueueExchange(const Entry& entry, const void* data, size_t size) {
+    std::unique_lock<std::mutex> lock(exchange_mutex_, std::try_to_lock);
+    if (!lock) {
+      ++exchange_stats_.busy;
+      return;
+    }
+    if (exchange_pending_.count(entry.handle)) {
+      ++exchange_stats_.deduplicated;
+      return;
+    }
+    if (exchange_stopping_ || exchange_pending_.size() >= queue_entry_limit_ ||
+        size > queue_byte_limit_ - exchange_pending_bytes_) {
+      ++exchange_stats_.dropped;
+      return;
+    }
+    try {
+      exchange_pending_.insert(entry.handle);
+      try {
+        exchange_queue_.push_back({
+            entry.handle, entry.version,
+            std::string(static_cast<const char*>(data), size)});
+      } catch (...) {
+        exchange_pending_.erase(entry.handle);
+        throw;
+      }
+      exchange_pending_bytes_ += size;
+      exchange_peak_entries_ =
+          std::max(exchange_peak_entries_, exchange_pending_.size());
+      exchange_peak_bytes_ = std::max(exchange_peak_bytes_, exchange_pending_bytes_);
+      ++exchange_stats_.enqueued;
+    } catch (...) {
+      ++exchange_stats_.failures;
+      ++GetReader().stats.failures;
+      return;
+    }
+    lock.unlock();
+    exchange_ready_.notify_one();
+  }
+
+  void ProcessExchangeBatch(std::array<PendingExchange, 64>& jobs, size_t count) {
+    Counters& counters = GetReader().stats;
+    const uint64_t before = counters.failures.load(std::memory_order_relaxed);
+    std::vector<Exchange> exchanges;
+    std::unordered_set<Entry*> scheduled;
+    try {
+      exchanges.reserve(count);
+      scheduled.reserve(count * 2);
+      for (size_t i = 0; i < count; ++i) {
+        const auto& job = jobs[i];
+        Entry* entry = Locate(job.handle);
+        if (!entry) {
+          ++exchange_stats_.stale;
+          continue;
+        }
+        if (scheduled.count(entry)) {
+          ++exchange_stats_.busy;
+          continue;
+        }
+        // Wait for the enqueuing reader only while no other value is locked.
+        // Later jobs must not form a lock cycle with a concurrent BatchRead.
+        std::unique_lock<ValueMutex> lock(entry->mutex, std::defer_lock);
+        if (exchanges.empty())
+          lock.lock();
+        else if (!lock.try_lock()) {
+          ++exchange_stats_.busy;
+          continue;
+        }
+        if (!Matches(*entry, job.handle) || !entry->initialized || !entry->ssd ||
+            entry->version != job.version || entry->size != job.data.size()) {
+          ++exchange_stats_.stale;
+          continue;
+        }
+        const size_t previous = exchanges.size();
+        // The request already counted this miss; only admission runs here.
+        Promote(*entry, job.data.data(), &exchanges, &scheduled);
+        if (exchanges.size() != previous) {
+          exchanges.back().hot_lock = std::move(lock);
+          scheduled.insert(entry);
+          scheduled.insert(exchanges.back().cold);
+        }
+      }
+      FlushExchanges(exchanges);
+    } catch (...) {
+      size_t failed = 0;
+      for (const auto& exchange : exchanges)
+        if (exchange.hot->ssd)
+          ++failed;
+      counters.failures.fetch_add(
+          std::max<size_t>(1, failed), std::memory_order_relaxed);
+    }
+    for (auto& exchange : exchanges) {
+      if (!exchange.allocated)
+        continue;
+      try {
+        ssd_->Free(exchange.dest);
+      } catch (...) {
+        ++counters.failures;
+      }
+    }
+    exchange_stats_.failures.fetch_add(
+        counters.failures.load(std::memory_order_relaxed) - before,
+        std::memory_order_relaxed);
+  }
+
+  void RunExchangeWorker() {
+    for (;;) {
+      std::array<PendingExchange, 64> jobs;
+      size_t count = 0;
+      try {
+        {
+          std::unique_lock<std::mutex> lock(exchange_mutex_);
+          exchange_ready_.wait(lock, [this] {
+            return exchange_stopping_ || !exchange_queue_.empty();
+          });
+          if (exchange_queue_.empty() && exchange_stopping_)
+            return;
+          count = std::min(jobs.size(), exchange_queue_.size());
+          for (size_t i = 0; i < count; ++i) {
+            jobs[i] = std::move(exchange_queue_.front());
+            exchange_queue_.pop_front();
+          }
+          exchange_inflight_ += count;
+        }
+        ProcessExchangeBatch(jobs, count);
+      } catch (...) {
+        // Promotion is best-effort, but a worker failure must remain visible.
+        ++exchange_stats_.failures;
+        try {
+          ++GetReader().stats.failures;
+        } catch (...) {
+          // The independent queue counter also covers reader allocation failure.
+        }
+      }
+      // ProcessExchangeBatch releases every value lock before queue bookkeeping.
+      std::lock_guard<std::mutex> lock(exchange_mutex_);
+      for (size_t i = 0; i < count; ++i) {
+        const size_t bytes = jobs[i].data.size();
+        std::string{}.swap(jobs[i].data);
+        exchange_pending_.erase(jobs[i].handle);
+        exchange_pending_bytes_ -= bytes;
+      }
+      exchange_inflight_ -= count;
+      exchange_stats_.completed.fetch_add(count, std::memory_order_relaxed);
+    }
   }
 
   void Promote(Entry& hot,
@@ -898,8 +1107,9 @@ private:
         hot.raw              = free_dram;
         hot.capacity         = dram_->SlotCapacity(free_dram);
         hot.ssd              = false;
+        residency_.fetch_sub(kSsdResident - 1, std::memory_order_relaxed);
         hot.fast->referenced = true;
-        hot.misses           = 0;
+        hot.misses = 0;
         ++GetReader().stats.promotions;
         ReleasePromotedBacking(hot);
         return;
@@ -908,37 +1118,49 @@ private:
       // ponytail: bounded, shard-local CLOCK. Add cross-shard balancing only
       // if traces show usable victims concentrated in other shards.
       const size_t scans = std::min<size_t>(64, size_t(shard.clock_size) * 2);
+      Entry* victim = nullptr;
+      unsigned victim_heat = 0;
+      bool victim_writeback = false;
+      const uint32_t scan_epoch = cost_aware_ && frequency_admission_
+          ? heat_epoch_.load(std::memory_order_relaxed) & kHeatEpochMask
+          : 0;
+      std::unique_lock<ValueMutex> victim_lock;
       for (size_t i = 0; i < scans; ++i) {
         Entry& cold = *Locate(shard.clock_head);
         shard.clock_head = cold.next;
-        if (scheduled && scheduled->count(&cold))
+        if (&cold == victim || (scheduled && scheduled->count(&cold)))
           continue;
         std::unique_lock<ValueMutex> cold_lock(cold.mutex, std::try_to_lock);
         if (!cold_lock || !cold.initialized || cold.capacity < hot.size)
           continue;
+        const bool writeback = cold.dirty || cold.backing == kValueHandleNone;
+        unsigned cold_heat = 0;
         if (!frequency_admission_) {
           if (cold.fast->referenced) {
-            cold.fast->referenced = false;
-            cold.fast->heat.store(
-                cold.fast->heat.load(std::memory_order_relaxed) / 2,
-                std::memory_order_relaxed);
+            // Cost lookahead must not consume another resident's second chance.
+            if (!victim) {
+              cold.fast->referenced = false;
+              cold.fast->heat.store(
+                  cold.fast->heat.load(std::memory_order_relaxed) / 2,
+                  std::memory_order_relaxed);
+            }
             continue;
           }
-          if (cold.fast->heat.load(std::memory_order_relaxed) >=
-              hot.fast->heat.load(std::memory_order_relaxed)) {
-            cold.fast->heat.store(
-                cold.fast->heat.load(std::memory_order_relaxed) / 2,
-                std::memory_order_relaxed);
+          cold_heat = cold.fast->heat.load(std::memory_order_relaxed);
+          if (cold_heat >= hot.fast->heat.load(std::memory_order_relaxed)) {
+            if (!victim)
+              cold.fast->heat.store(cold_heat / 2, std::memory_order_relaxed);
             continue;
           }
         } else {
-          if (cold.fast->referenced.exchange(false, std::memory_order_relaxed))
+          if (victim ? cold.fast->referenced.load(std::memory_order_relaxed)
+                     : cold.fast->referenced.exchange(false, std::memory_order_relaxed))
             continue;
           // Age both tiers in the same access window. Failed admission scans
           // must not erase a resident's history or preserve stale SSD heat.
-          const uint32_t epoch =
-              heat_epoch_.load(std::memory_order_relaxed) & kHeatEpochMask;
-          const unsigned cold_heat =
+          const uint32_t epoch = cost_aware_ ? scan_epoch
+              : heat_epoch_.load(std::memory_order_relaxed) & kHeatEpochMask;
+          cold_heat =
               HeatAt(cold.fast->frequency.load(std::memory_order_relaxed), epoch);
           const unsigned hot_heat =
               HeatAt(hot.fast->frequency.load(std::memory_order_relaxed), epoch);
@@ -947,47 +1169,65 @@ private:
           if (hot_heat < cold_heat + std::max(1U, cold_heat / 4))
             continue;
         }
-        // Keep only the two value locks during I/O. Other residents in this
-        // shard remain readable/writable while the cold value is written.
-        shard_lock.unlock();
-        uint64_t dest        = cold.backing;
-        const bool writeback = cold.dirty || dest == kValueHandleNone;
-        const bool allocated =
-            writeback && !fixed_ &&
-            (dest == kValueHandleNone || ssd_->SlotCapacity(dest) < cold.size);
-        if (writeback) {
-          if (fixed_)
-            dest = cold.key + 1;
-          else if (allocated)
-            dest = ssd_->Alloc(cold.size);
-          if (dest == kValueHandleNone) {
-            ++GetReader().stats.failures;
-            return;
-          }
+        if (cost_aware_) {
+          // Prefer the coldest eligible resident; write cost breaks heat ties.
+          if (victim && (cold_heat > victim_heat ||
+                         (cold_heat == victim_heat &&
+                          (writeback || !victim_writeback))))
+            continue;
+          victim_heat = cold_heat;
+          victim_writeback = writeback;
         }
-        Exchange exchange{
-            &hot,
-            &cold,
-            data,
-            dest,
-            allocated,
-            writeback,
-            std::move(cold_lock)};
-        if (exchanges) {
-          // BatchRead reserves one slot per miss before entering this path.
-          exchanges->push_back(std::move(exchange));
+        victim = &cold;
+        victim_lock = std::move(cold_lock);
+        if (!cost_aware_ || (victim_heat == 0 && !victim_writeback))
+          break;
+      }
+      if (!victim)
+        return;
+      Entry& cold = *victim;
+      // Continue after the chosen victim, not the end of the lookahead scan.
+      // Otherwise a full circle repeatedly gives the same slots priority.
+      shard.clock_head = cold.next;
+      // Only the selected value locks survive I/O. The retained victim never
+      // crosses threads and is skipped if the bounded scan revisits it.
+      shard_lock.unlock();
+      uint64_t dest        = cold.backing;
+      const bool writeback = cold.dirty || dest == kValueHandleNone;
+      const bool allocated =
+          writeback && !fixed_ &&
+          (dest == kValueHandleNone || ssd_->SlotCapacity(dest) < cold.size);
+      if (writeback) {
+        if (fixed_)
+          dest = cold.key + 1;
+        else if (allocated)
+          dest = ssd_->Alloc(cold.size);
+        if (dest == kValueHandleNone) {
+          ++GetReader().stats.failures;
           return;
         }
-        try {
-          if (writeback)
-            ssd_->Write(dest, cold.direct, cold.size);
-          CommitExchange(exchange);
-        } catch (...) {
-          if (exchange.allocated)
-            ssd_->Free(dest);
-          throw;
-        }
+      }
+      Exchange exchange{
+          &hot,
+          &cold,
+          data,
+          dest,
+          allocated,
+          writeback,
+          std::move(victim_lock)};
+      if (exchanges) {
+        // Both foreground and worker batches reserve a slot per candidate.
+        exchanges->push_back(std::move(exchange));
         return;
+      }
+      try {
+        if (writeback)
+          ssd_->Write(dest, cold.direct, cold.size);
+        CommitExchange(exchange);
+      } catch (...) {
+        if (exchange.allocated)
+          ssd_->Free(dest);
+        throw;
       }
     } catch (const std::exception&) {
       ++GetReader().stats.failures;
@@ -1015,6 +1255,8 @@ private:
     if (exchange.writeback) {
       if (exchange.allocated && cold.backing != kValueHandleNone)
         ssd_->Free(cold.backing);
+      if (cold.backing == kValueHandleNone)
+        backed_values_.fetch_add(1, std::memory_order_relaxed);
       cold.backing       = exchange.dest;
       exchange.allocated = false;
       cold.dirty         = false;
@@ -1031,14 +1273,15 @@ private:
     cold.raw             = exchange.dest;
     cold.capacity        = ssd_capacity;
     cold.ssd             = true;
-    cold.misses          = 0;
     hot.direct           = cold.direct;
     cold.direct          = nullptr;
     hot.raw              = raw;
     hot.capacity         = capacity;
     hot.ssd              = false;
     hot.fast->referenced = true;
-    hot.misses           = 0;
+    // Cost ranking must not bypass the per-residency readmission gate.
+    cold.misses = 0;
+    hot.misses = 0;
     ReplaceClock(shards_[hot.shard], cold, hot);
     ++GetReader().stats.demotions;
     ++GetReader().stats.promotions;
@@ -1052,6 +1295,7 @@ private:
     if (!retain_backing_ && hot.backing != kValueHandleNone) {
       ssd_->Free(hot.backing);
       hot.backing = kValueHandleNone;
+      backed_values_.fetch_sub(1, std::memory_order_relaxed);
     }
   }
 
@@ -1063,6 +1307,21 @@ private:
   const bool fixed_;
   const bool retain_backing_;
   const bool frequency_admission_;
+  const bool cost_aware_;
+  const bool async_exchange_;
+  const size_t queue_entry_limit_, queue_byte_limit_;
+  // Each half fits because no more than UINT32_MAX metadata slots exist.
+  static constexpr uint64_t kSsdResident = 1ULL << 32;
+  std::atomic<uint64_t> residency_{0}, backed_values_{0};
+  mutable std::mutex exchange_mutex_;
+  std::condition_variable exchange_ready_;
+  std::deque<PendingExchange> exchange_queue_;
+  std::unordered_set<uint64_t> exchange_pending_;
+  size_t exchange_pending_bytes_ = 0, exchange_inflight_ = 0;
+  size_t exchange_peak_entries_ = 0, exchange_peak_bytes_ = 0;
+  bool exchange_stopping_ = false;
+  ExchangeCounters exchange_stats_;
+  std::thread exchange_worker_;
   std::unique_ptr<std::atomic<Chunk*>[]> chunks_;
   std::mutex directory_mutex_;
   std::atomic<uint64_t> next_slot_{0}, allocation_shard_{0}, dram_bytes_{0};

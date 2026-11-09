@@ -87,12 +87,22 @@ public:
           high_watermark_ratio_ > 1.0) {
         throw std::invalid_argument("CLOCK high_watermark_ratio must be in [0, 1]");
       }
+      const int64_t queue_entries = tiering.value(
+          "clock_exchange_queue_entries", static_cast<int64_t>(256));
+      const int64_t queue_bytes = tiering.value(
+          "clock_exchange_queue_bytes", static_cast<int64_t>(4 * 1024 * 1024));
+      if (queue_entries <= 0 || static_cast<uint64_t>(queue_entries) > SIZE_MAX ||
+          queue_bytes <= 0 || static_cast<uint64_t>(queue_bytes) > SIZE_MAX)
+        throw std::invalid_argument("CLOCK exchange queue limits must be positive and fit size_t");
       clock_ = std::make_unique<TieredClockValueStore>(
           &dram_store_, ssd_store_.get(),
           static_cast<uint64_t>(high_watermark_ratio_ * dram_capacity_bytes_),
           static_cast<size_t>(shard_count), static_cast<uint32_t>(promote_min_misses),
           tiering.value("retain_backing_copies", true),
-          tiering.value("clock_frequency_admission", false));
+          tiering.value("clock_frequency_admission", false),
+          tiering.value("clock_cost_aware", false),
+          tiering.value("clock_async_exchange", false),
+          static_cast<size_t>(queue_entries), static_cast<size_t>(queue_bytes));
       return;
     }
     // This optional load-time estimate includes allocator size-class rounding.
