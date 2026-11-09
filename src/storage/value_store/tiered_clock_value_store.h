@@ -311,6 +311,10 @@ public:
         ssd_->BatchRead(raw_handles, fetched);
       if (fetched.size() != indices.size())
         throw std::runtime_error("CLOCK batch result size mismatch");
+      // Shared locks still protect the value versions read by this batch.
+      // Promotion lock contention must not discard successful SSD demand.
+      for (size_t i : indices)
+        RecordSsdDemand(*Locate(handles[i]));
       // Readers share miss locks during I/O. Recheck versions after acquiring
       // exclusive promotion locks, then group demand-driven cold writebacks.
       locks.clear();
@@ -323,10 +327,8 @@ public:
           const size_t i = indices[j];
           Entry& entry   = *Locate(handles[i]);
           auto& data     = fetched[j].data;
-          if (scheduled.count(&entry)) {
-            Touch(*entry.fast);
+          if (scheduled.count(&entry))
             continue;
-          }
           std::unique_lock<ValueMutex> lock(entry.mutex, std::try_to_lock);
           if (!lock)
             continue;
@@ -472,7 +474,7 @@ private:
     uint64_t handle = 0, raw = 0, key = 0, version = 0;
     size_t capacity = 0, shard = 0;
     bool alive = false, ssd = false, keyed = false, initialized = false;
-    uint32_t misses = 0;
+    std::atomic<uint32_t> misses{0};
     // Circular CLOCK links are metadata slot IDs, protected by shard.mutex.
     uint32_t previous = 0, next = 0;
   };
@@ -802,7 +804,7 @@ private:
     entry->dirty              = true;
     entry->initialized        = false;
     entry->fast->referenced   = false;
-    entry->misses             = 0;
+    entry->misses.store(0, std::memory_order_relaxed);
     entry->fast->heat         = 0;
     entry->fast->frequency    = 0;
     entry->raw                = TryDram(size);
@@ -902,7 +904,7 @@ private:
     entry.size             = size;
     entry.fast->referenced = entry.initialized;
     entry.initialized      = true;
-    entry.misses           = 0;
+    entry.misses.store(0, std::memory_order_relaxed);
     ++entry.version;
   }
 
@@ -923,8 +925,23 @@ private:
     if (frequency_admission_)
       RecordAccess(GetReader());
     const size_t actual = ssd_->Read(entry.raw, out, bytes);
+    RecordSsdDemand(entry);
     FinishRead(entry, out, actual);
     return actual;
+  }
+
+  void RecordSsdDemand(Entry& entry) {
+    Touch(*entry.fast);
+    uint32_t misses = entry.misses.load(std::memory_order_relaxed);
+    while (misses < min_misses_) {
+      if (entry.misses.compare_exchange_weak(
+              misses, misses + 1, std::memory_order_relaxed)) {
+        ++misses;
+        break;
+      }
+    }
+    if (misses < min_misses_)
+      ++GetReader().stats.rejects;
   }
 
   void FinishRead(Entry& entry,
@@ -932,17 +949,13 @@ private:
                   size_t size,
                   std::vector<Exchange>* exchanges            = nullptr,
                   const std::unordered_set<Entry*>* scheduled = nullptr) {
-    Touch(*entry.fast);
-    if (entry.misses < min_misses_)
-      ++entry.misses;
-    if (entry.misses < min_misses_)
-      ++GetReader().stats.rejects;
-    else if (size == entry.size) {
-      if (async_exchange_)
-        QueueExchange(entry, data, size);
-      else
-        Promote(entry, data, exchanges, scheduled);
-    }
+    if (entry.misses.load(std::memory_order_relaxed) < min_misses_ ||
+        size != entry.size)
+      return;
+    if (async_exchange_)
+      QueueExchange(entry, data, size);
+    else
+      Promote(entry, data, exchanges, scheduled);
   }
 
   void QueueExchange(const Entry& entry, const void* data, size_t size) {
@@ -1109,7 +1122,7 @@ private:
         hot.ssd              = false;
         residency_.fetch_sub(kSsdResident - 1, std::memory_order_relaxed);
         hot.fast->referenced = true;
-        hot.misses = 0;
+        hot.misses.store(0, std::memory_order_relaxed);
         ++GetReader().stats.promotions;
         ReleasePromotedBacking(hot);
         return;
@@ -1280,8 +1293,8 @@ private:
     hot.ssd              = false;
     hot.fast->referenced = true;
     // Cost ranking must not bypass the per-residency readmission gate.
-    cold.misses = 0;
-    hot.misses = 0;
+    cold.misses.store(0, std::memory_order_relaxed);
+    hot.misses.store(0, std::memory_order_relaxed);
     ReplaceClock(shards_[hot.shard], cold, hot);
     ++GetReader().stats.demotions;
     ++GetReader().stats.promotions;

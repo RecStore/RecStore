@@ -284,7 +284,11 @@ updates, with generation checks rejecting stale handles after metadata reuse.
 `tiering.promote_min_misses` (default 2) controls admission. Raising it reduces
 replacement work but delays adaptation to a new hot set. The storage benchmark
 exposes it as `--tiered_cache_promote_min_misses`; compare throughput and SSD
-misses on the intended trace before choosing a larger value.
+misses on the intended trace before choosing a larger value. Successful SSD batch
+reads update heat and the admission gate before releasing their shared value
+locks. A busy promotion lock can skip an exchange without losing the completed
+read's demand; failed I/O earns no admission credit. Writes and slot reuse reset
+the gate while holding the value's exclusive lock.
 
 `tiering.clock_cost_aware=true` selects the lowest-heat eligible resident and
 prefers a clean SSD backing copy only when heat is equal. The search examines at
@@ -294,8 +298,8 @@ After finding the first eligible victim, further cost comparisons only read othe
 residents' heat and reference bits; they do not accelerate CLOCK aging. The CLOCK
 hand resumes after the selected victim so lookahead does not repeatedly favor
 the same ring positions.
-Every promotion still requires `promote_min_misses` misses since the previous
-promotion or eviction. Write cost does not override this gate or the heat ranking:
+Every promotion still requires `promote_min_misses` successful SSD reads since
+the previous write, promotion, or eviction. Write cost does not override this gate or the heat ranking:
 repeatedly evicting hotter clean values can trap a new hot set in a small clean
 pool while unused dirty values retain DRAM capacity. Historical initial placement
 does not pin keys in DRAM. Cost here means whether an actual SSD write or

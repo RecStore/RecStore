@@ -2652,6 +2652,142 @@ TEST_F(StaticLayoutValueTest, ClockBatchReadersShareSsdValues) {
   EXPECT_EQ(second.get(), value);
 }
 
+TEST_F(StaticLayoutValueTest, ClockBatchDemandSurvivesPromotionLockContention) {
+  for (bool frequency : {false, true}) {
+    SCOPED_TRACE(frequency);
+    auto config = ClockConfig(root_, frequency ? "clock-demand-frequency"
+                                               : "clock-demand-legacy",
+                              1, kCachedValueSize, frequency);
+    config.json_config_["value"]["tiering"]["promote_min_misses"] = 3;
+    HybridValueStore store(config);
+    const auto values = FillClockValues(store, 2);
+    ASSERT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_entry_bytes"),
+              160);
+    g_read_paused.store(false);
+    g_release_read.store(false);
+    g_pause_next_read.store(true);
+    auto first = std::async(std::launch::async, [&] {
+      std::vector<ValueStore::ReadResult> results;
+      store.BatchRead({values[1].handle}, results);
+      return results;
+    });
+    struct ReleaseReadOnExit {
+      ~ReleaseReadOnExit() { g_release_read.store(true); }
+    } release;
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (!g_read_paused.load() && std::chrono::steady_clock::now() < deadline)
+      std::this_thread::yield();
+    ASSERT_TRUE(g_read_paused.load());
+
+    // The first reader keeps its shared value lock. The second can finish
+    // its small SSD read, but cannot acquire an exclusive promotion lock.
+    auto second = std::async(std::launch::async, [&] {
+      std::vector<ValueStore::ReadResult> results;
+      store.BatchRead({values[1].handle, values[1].handle}, results);
+      return results;
+    });
+    const auto state = second.wait_for(std::chrono::seconds(3));
+    if (state != std::future_status::ready)
+      g_release_read.store(true);
+    const auto completed = second.get();
+    EXPECT_EQ(state, std::future_status::ready);
+    ASSERT_EQ(completed.size(), 2);
+    for (const auto& result : completed)
+      EXPECT_EQ(std::string(result.data.begin(), result.data.end()),
+                values[1].payload);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_misses"), 3);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+
+    g_release_read.store(true);
+    const auto resumed = first.get();
+    ASSERT_EQ(resumed.size(), 1);
+    EXPECT_EQ(std::string(resumed[0].data.begin(), resumed[0].data.end()),
+              values[1].payload);
+    // All three successful demands must count, including the two whose
+    // promotion locks were busy. The last reader can now admit the hot key.
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+    const auto reads = g_read_entries.load();
+    std::string value;
+    store.ReadValue(values[1].handle, value);
+    EXPECT_EQ(value, values[1].payload);
+    EXPECT_EQ(g_read_entries.load(), reads);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_failures"), 0);
+  }
+}
+
+TEST_F(StaticLayoutValueTest, ClockFailedBatchReadDoesNotEarnAdmissionCredit) {
+  for (bool frequency : {false, true}) {
+    SCOPED_TRACE(frequency);
+    HybridValueStore store(ClockConfig(
+        root_, frequency ? "clock-failed-demand-frequency"
+                         : "clock-failed-demand-legacy",
+        1, kCachedValueSize, frequency));
+    const auto values = FillClockValues(store, 2);
+    std::vector<ValueStore::ReadResult> results;
+    g_fail_next_read.store(true);
+    EXPECT_THROW(store.BatchRead({values[1].handle}, results), std::runtime_error);
+    for (int successful_reads = 1; successful_reads <= 2; ++successful_reads) {
+      store.BatchRead({values[1].handle}, results);
+      ASSERT_EQ(results.size(), 1);
+      EXPECT_EQ(std::string(results[0].data.begin(), results[0].data.end()),
+                values[1].payload);
+      EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"),
+                successful_reads == 2 ? 1 : 0);
+    }
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_misses"), 3);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(),
+                         "tiered_clock_admission_rejects"), 1);
+  }
+}
+
+TEST_F(StaticLayoutValueTest, ClockBatchDemandResetsOnWriteAndSlotReuse) {
+  for (bool frequency : {false, true}) {
+    SCOPED_TRACE(frequency);
+    auto config = ClockConfig(root_, frequency ? "clock-demand-reset-frequency"
+                                               : "clock-demand-reset-legacy",
+                              1, kCachedValueSize, frequency);
+    config.json_config_["value"]["tiering"]["promote_min_misses"] = 3;
+    HybridValueStore store(config);
+    const auto values = FillClockValues(store, 2);
+    std::vector<ValueStore::ReadResult> results;
+    store.BatchRead({values[1].handle, values[1].handle}, results);
+    ASSERT_EQ(results.size(), 2);
+    for (const auto& result : results)
+      EXPECT_EQ(std::string(result.data.begin(), result.data.end()),
+                values[1].payload);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+
+    const std::string updated(kCachedValueSize, 'w');
+    store.Write(values[1].handle, updated.data(), updated.size());
+    store.BatchRead({values[1].handle}, results);
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(std::string(results[0].data.begin(), results[0].data.end()), updated);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+
+    store.Free(values[1].handle);
+    const std::string replacement(kCachedValueSize, 'r');
+    const auto reused = store.AllocAndWrite(2, replacement.data(),
+                                           replacement.size());
+    ASSERT_NE(reused, values[1].handle);
+    // The stale logical handle earns no credit, and each valid duplicate
+    // earns exactly one. Neither the write nor slot reuse retains old credit.
+    store.BatchRead({values[1].handle, reused, reused}, results);
+    ASSERT_EQ(results.size(), 3);
+    EXPECT_TRUE(results[0].data.empty());
+    for (size_t i = 1; i < results.size(); ++i)
+      EXPECT_EQ(std::string(results[i].data.begin(), results[i].data.end()),
+                replacement);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 0);
+    store.BatchRead({reused}, results);
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(std::string(results[0].data.begin(), results[0].data.end()),
+              replacement);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_promotions"), 1);
+    EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_clock_failures"), 0);
+  }
+}
+
 TEST_F(StaticLayoutValueTest, SsdBatchWriteReleasesBuffersOnIoFailure) {
   SsdValueStore store(TieredStoreConfig(root_, "batch-write-failure", {{"cache_policy", "none"}}));
   const std::string value(512, 'a');
