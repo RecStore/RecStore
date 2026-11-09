@@ -1151,4 +1151,38 @@ TEST_F(StaticLayoutValueTest, TieredReadCacheConcurrentWriteStaysCoherent) {
   EXPECT_EQ(out, last);
 }
 
+TEST_F(StaticLayoutValueTest, TieredReadCacheRetireDefersSsdSlotReuse) {
+  // The engine publishes a new handle before retiring the old one, so a reader
+  // that already loaded the old handle may still be copying from its slot.
+  // Retire must not return the slot to the allocator at once: the next
+  // same-size allocation would land on it and overwrite the bytes.
+  HybridValueStore store(
+      TieredStoreConfig(root_, "retire", LruTieringConfig(0.5, 4)));
+  const auto ssd = FillUntilSsd(store, 1);
+  ASSERT_EQ(ssd.size(), 1U);
+  constexpr uint64_t kSsdFlag = 1ULL << 63;
+  const uint64_t handle       = ssd.front().handle;
+  const uint64_t raw          = handle & ~kSsdFlag;
+
+  std::string out(kCachedValueSize, '\0');
+  ASSERT_EQ(store.Read(handle, out.data(), out.size()), kCachedValueSize);
+  EXPECT_EQ(out, ssd.front().payload);
+
+  store.Retire(handle);
+  const std::string overwrite(kCachedValueSize, 'Z');
+  const uint64_t replacement =
+      store.AllocAndWrite(overwrite.data(), overwrite.size());
+  ASSERT_NE(replacement, kValueHandleNone);
+  ASSERT_NE(replacement & kSsdFlag, 0ULL);
+  // With an immediate free the allocator would hand out the retired slot.
+  EXPECT_NE(replacement & ~kSsdFlag, raw);
+  out.assign(kCachedValueSize, '\0');
+  EXPECT_EQ(store.Read(handle, out.data(), out.size()), kCachedValueSize);
+  EXPECT_EQ(out, ssd.front().payload);
+
+  // Let the grace period pass, then drain the retired slot.
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  store.Retire(replacement);
+}
+
 } // namespace
