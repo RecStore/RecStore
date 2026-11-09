@@ -70,6 +70,14 @@ DEFINE_int64(tiered_cache_promote_min_misses, 2,
              "SSD misses before a value is eligible for promotion");
 DEFINE_bool(tiered_clock_frequency_admission, false,
             "use shared-epoch frequency admission instead of legacy CLOCK heat");
+DEFINE_bool(tiered_clock_cost_aware, false,
+            "break eligible victim heat ties by SSD write cost");
+DEFINE_bool(tiered_clock_async_exchange, false,
+            "move CLOCK exchanges to a bounded background queue");
+DEFINE_int64(tiered_clock_exchange_queue_entries, 256,
+             "maximum queued and active CLOCK exchange candidates");
+DEFINE_int64(tiered_clock_exchange_queue_bytes, 4 * 1024 * 1024,
+             "maximum queued and active CLOCK candidate payload bytes");
 DEFINE_bool(tiered_retain_backing_copies, true,
             "retain SSD copies of promoted CLOCK values (plain layouts only when false)");
 DEFINE_int32(ssd_completion_poll_spins, 8192,
@@ -464,6 +472,10 @@ BaseKVConfig BuildConfig() {
         {"cache_budget_ratio", FLAGS_tiered_cache_budget_ratio},
         {"promote_min_misses", FLAGS_tiered_cache_promote_min_misses},
         {"clock_frequency_admission", FLAGS_tiered_clock_frequency_admission},
+        {"clock_cost_aware", FLAGS_tiered_clock_cost_aware},
+        {"clock_async_exchange", FLAGS_tiered_clock_async_exchange},
+        {"clock_exchange_queue_entries", FLAGS_tiered_clock_exchange_queue_entries},
+        {"clock_exchange_queue_bytes", FLAGS_tiered_clock_exchange_queue_bytes},
         {"retain_backing_copies", FLAGS_tiered_retain_backing_copies},
         {"expected_dram_bytes", FLAGS_tiered_cache_expected_dram_bytes}};
   }
@@ -964,9 +976,27 @@ int RunBenchmark(int argc, char* argv[]) {
     for (uint64_t sample = 0; sample < 1024; ++sample)
       verify_value(sample * FLAGS_record_count / 1024);
   };
+  auto wait_for_exchanges = [&]() {
+    if (!FLAGS_tiered_clock_async_exchange)
+      return 0.0;
+    const auto begin = std::chrono::steady_clock::now();
+    const std::string field = " tiered_clock_exchange_pending=";
+    for (;;) {
+      const std::string info = kv->ExtraResultFields();
+      const auto pos = info.find(field);
+      if (pos == std::string::npos)
+        return 0.0; // The adaptive policy may select the direct DRAM path.
+      if (std::stoull(info.substr(pos + field.size())) == 0)
+        return SecondsSince(begin, std::chrono::steady_clock::now());
+      if (SecondsSince(begin, std::chrono::steady_clock::now()) >= 30.0)
+        throw std::runtime_error("CLOCK background exchange did not drain");
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  };
   if (FLAGS_run && FLAGS_load) {
     verify_values();
     std::printf("YCSB_VERIFY samples=1024 ok=1\n");
+    wait_for_exchanges();
     std::printf("YCSB_AFTER_LOAD%s\n", kv->ExtraResultFields().c_str());
   }
 
@@ -982,6 +1012,7 @@ int RunBenchmark(int argc, char* argv[]) {
           0x100000000ULL,
           warmup_trace.empty() ? nullptr : &warmup_trace);
     }
+    wait_for_exchanges();
     std::printf("YCSB_BEFORE_RUN%s\n", kv->ExtraResultFields().c_str());
     const auto begin     = std::chrono::steady_clock::now();
     PhaseStats run_stats = RunTransactions(
@@ -1013,6 +1044,12 @@ int RunBenchmark(int argc, char* argv[]) {
         throughput,
         run_stats.read_ops,
         run_stats.update_ops);
+    const double drain_seconds = wait_for_exchanges();
+    if (FLAGS_tiered_clock_async_exchange)
+      std::printf("YCSB_RUN_MAINTENANCE drain_seconds=%.6f "
+                  "throughput_including_drain=%.6f\n",
+                  drain_seconds,
+                  static_cast<double>(run_stats.total_ops) / (seconds + drain_seconds));
     std::printf("YCSB_AFTER_RUN%s\n", kv->ExtraResultFields().c_str());
     if (FLAGS_load && workload == "c") {
       verify_values();
