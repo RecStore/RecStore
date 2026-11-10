@@ -68,7 +68,8 @@ public:
     return buffer;
   }
   void FreeBuffer(char* buf) override {
-    if (buf != nullptr) --g_scratch_buffers;
+    if (buf != nullptr)
+      --g_scratch_buffers;
     delete[] buf;
   }
   void submit() override {}
@@ -90,7 +91,8 @@ public:
         g_write_cv.wait(lock, [] { return !g_block_writes; });
       }
     }
-    if (g_fail_writes.load()) throw std::runtime_error("injected SSD write failure");
+    if (g_fail_writes.load())
+      throw std::runtime_error("injected SSD write failure");
     IOBackend::BatchWritePages(entries);
   }
 
@@ -188,14 +190,23 @@ protected:
     BaseKVConfig config;
     config.num_threads_ = 4;
     config.json_config_ = {
-        {"capacity", 128}, {"index", {{"type", "DRAM_UNORDERED_MAP"}}},
-        {"value", {{"type", "TIERED_VALUE_STORE"}, {"default_value_size_hint", 128},
-         {"dram_allocator", {{"type", "CONCURRENT_SLAB_MEMORY_POOL"},
-                             {"capacity_bytes", 64 << 20}, {"path", (root_/"online_dram").string()}}},
-         {"ssd_allocator", {{"type", "SSD_SLAB"}, {"capacity_bytes", 64ULL << 20},
-                            {"path", (root_/"online_ssd").string()},
-                            {"io", {{"type", "INMEMORY"}, {"base_offset_bytes", 0}}}}},
-         {"tiering", {{"dram_keys_path", profile.string()}, {"online_admission", true}}}}}};
+        {"capacity", 128},
+        {"index", {{"type", "DRAM_UNORDERED_MAP"}}},
+        {"value",
+         {{"type", "TIERED_VALUE_STORE"},
+          {"default_value_size_hint", 128},
+          {"dram_allocator",
+           {{"type", "CONCURRENT_SLAB_MEMORY_POOL"},
+            {"capacity_bytes", 64 << 20},
+            {"path", (root_ / "online_dram").string()}}},
+          {"ssd_allocator",
+           {{"type", "SSD_SLAB"},
+            {"capacity_bytes", 64ULL << 20},
+            {"path", (root_ / "online_ssd").string()},
+            {"io", {{"type", "INMEMORY"}, {"base_offset_bytes", 0}}}}},
+          {"tiering",
+           {{"dram_keys_path", profile.string()},
+            {"online_admission", true}}}}}};
     return config;
   }
 };
@@ -384,7 +395,7 @@ TEST_F(StaticLayoutValueTest, HybridBatchAllocationCoalescesSsdWrites) {
 }
 
 TEST_F(StaticLayoutValueTest, HybridProfileControlsKeyedPlacement) {
-  const auto profile = root_ / "dram_keys.bin";
+  const auto profile       = root_ / "dram_keys.bin";
   const uint64_t fused_key = (uint64_t{1} << 30) + 4;
   const std::array<uint64_t, 2> hot_keys{2, fused_key};
   {
@@ -392,7 +403,7 @@ TEST_F(StaticLayoutValueTest, HybridProfileControlsKeyedPlacement) {
     out.write(reinterpret_cast<const char*>(hot_keys.data()), sizeof(hot_keys));
   }
   for (const char* strategy : {"plain", "bandana"}) {
-    auto artifact = Bandana();
+    auto artifact        = Bandana();
     artifact.keys.back() = fused_key;
     auto config = Config(Save(artifact), strategy, "TIERED_VALUE_STORE");
     auto& value = config.json_config_["value"];
@@ -425,7 +436,7 @@ TEST_F(StaticLayoutValueTest, HybridProfileControlsKeyedPlacement) {
               std::string::npos);
     store.Free(handles[2]);
     const float updated = 9;
-    handles[2] = store.AllocAndWrite(2, &updated, sizeof(updated));
+    handles[2]          = store.AllocAndWrite(2, &updated, sizeof(updated));
     ASSERT_NE(store.DirectPtr(handles[2]), nullptr);
     float out = 0;
     ASSERT_EQ(store.Read(handles[2], &out, sizeof(out)), sizeof(out));
@@ -441,14 +452,17 @@ TEST_F(StaticLayoutValueTest, HybridProfileControlsKeyedPlacement) {
       {"capacity_bytes", 64 << 20},
       {"path", (root_ / "bad_profile_dram").string()}};
   config.json_config_["value"]["ssd_allocator"] = {
-      {"type", "SSD_SLAB"}, {"capacity_bytes", 64ULL << 20},
+      {"type", "SSD_SLAB"},
+      {"capacity_bytes", 64ULL << 20},
       {"path", (root_ / "bad_profile_ssd.db").string()}};
-  config.json_config_["value"]["tiering"] = {{"dram_keys_path", profile.string()}};
-  for (const auto& invalid : {std::array<uint64_t, 2>{4, 2},
-                              std::array<uint64_t, 2>{2, 2}}) {
+  config.json_config_["value"]["tiering"] = {
+      {"dram_keys_path", profile.string()}};
+  for (const auto& invalid :
+       {std::array<uint64_t, 2>{4, 2}, std::array<uint64_t, 2>{2, 2}}) {
     {
       std::ofstream file(profile, std::ios::binary | std::ios::trunc);
-      file.write(reinterpret_cast<const char*>(invalid.data()), sizeof(invalid));
+      file.write(reinterpret_cast<const char*>(invalid.data()),
+                 sizeof(invalid));
     }
     EXPECT_THROW(HybridValueStore{config}, std::invalid_argument);
   }
@@ -458,7 +472,8 @@ TEST_F(StaticLayoutValueTest, HybridProfileControlsKeyedPlacement) {
   EXPECT_THROW(HybridValueStore{config}, std::invalid_argument);
 }
 
-TEST_F(StaticLayoutValueTest, OnlineAdmissionPreservesValuesAndRollsBackFailure) {
+TEST_F(StaticLayoutValueTest,
+       OnlineAdmissionPreservesValuesAndRollsBackFailure) {
   auto config = OnlineConfig(3);
   KVEngineComposite engine(config);
   std::vector<uint64_t> keys{0, 1, 2, 3, 4};
@@ -471,22 +486,34 @@ TEST_F(StaticLayoutValueTest, OnlineAdmissionPreservesValuesAndRollsBackFailure)
   engine.BatchPut(base::ConstArray<uint64_t>(keys), &values, 0);
   const std::vector<uint64_t> repeated{4, 4};
   std::array<float, 64> flat;
-  ASSERT_TRUE(engine.BatchGetFlat(base::ConstArray<uint64_t>(repeated), flat.data(), 2, 32, 0));
-  EXPECT_NE(engine.ExtraResultFields().find("online_promoted_rows=0 "), std::string::npos);
+  ASSERT_TRUE(engine.BatchGetFlat(
+      base::ConstArray<uint64_t>(repeated), flat.data(), 2, 32, 0));
+  EXPECT_NE(engine.ExtraResultFields().find("online_promoted_rows=0 "),
+            std::string::npos);
   g_fail_writes.store(true);
-  EXPECT_THROW(engine.BatchGetFlat(base::ConstArray<uint64_t>(repeated), flat.data(), 2, 32, 0), std::runtime_error);
+  EXPECT_THROW(engine.BatchGetFlat(
+                   base::ConstArray<uint64_t>(repeated), flat.data(), 2, 32, 0),
+               std::runtime_error);
   g_fail_writes.store(false);
-  EXPECT_NE(engine.ExtraResultFields().find("tiered_live_allocs=5 "), std::string::npos);
-  EXPECT_NE(engine.ExtraResultFields().find("tiered_ssd_live_ratio=0.400000 "), std::string::npos);
-  ASSERT_TRUE(engine.BatchGetFlat(base::ConstArray<uint64_t>(repeated), flat.data(), 2, 32, 0));
-  for (float item : flat) EXPECT_FLOAT_EQ(item, 5);
-  EXPECT_NE(engine.ExtraResultFields().find("online_promoted_rows=1 "), std::string::npos);
+  EXPECT_NE(engine.ExtraResultFields().find("tiered_live_allocs=5 "),
+            std::string::npos);
+  EXPECT_NE(engine.ExtraResultFields().find("tiered_ssd_live_ratio=0.400000 "),
+            std::string::npos);
+  ASSERT_TRUE(engine.BatchGetFlat(
+      base::ConstArray<uint64_t>(repeated), flat.data(), 2, 32, 0));
+  for (float item : flat)
+    EXPECT_FLOAT_EQ(item, 5);
+  EXPECT_NE(engine.ExtraResultFields().find("online_promoted_rows=1 "),
+            std::string::npos);
 
   data[1].fill(77);
-  engine.Put(1, std::string_view(reinterpret_cast<const char*>(data[1].data()), 128), 0);
+  engine.Put(
+      1,
+      std::string_view(reinterpret_cast<const char*>(data[1].data()), 128),
+      0);
   std::string result;
   engine.Get(0, result, 0);
-  engine.Get(0, result, 0);  // Evict the updated row 1.
+  engine.Get(0, result, 0); // Evict the updated row 1.
   engine.Get(1, result, 0);
   ASSERT_EQ(result.size(), 128U);
   EXPECT_EQ(std::memcmp(result.data(), data[1].data(), 128), 0);
@@ -498,10 +525,11 @@ TEST_F(StaticLayoutValueTest, OnlineAdmissionPreservesValuesAndRollsBackFailure)
   engine.Get(3, result, 0);
   engine.Get(3, result, 0);
   ASSERT_EQ(borrowed[0].Size(), 32);
-  for (float value : borrowed[0]) EXPECT_FLOAT_EQ(value, 3);
+  for (float value : borrowed[0])
+    EXPECT_FLOAT_EQ(value, 3);
   EXPECT_EQ(engine.GetRDMABackingRegion().data, nullptr);
   EXPECT_THROW(engine.Put(0, "bad size", 0), std::invalid_argument);
-  const auto checkpoint = (root_/"online.ckpt").string();
+  const auto checkpoint = (root_ / "online.ckpt").string();
   ASSERT_TRUE(engine.SaveCheckpoint(checkpoint, "online"));
   KVEngineComposite restored(config);
   ASSERT_TRUE(restored.LoadCheckpoint(checkpoint, "online"));
@@ -510,40 +538,56 @@ TEST_F(StaticLayoutValueTest, OnlineAdmissionPreservesValuesAndRollsBackFailure)
     ASSERT_EQ(result.size(), 128U);
     EXPECT_EQ(std::memcmp(result.data(), data[i].data(), 128), 0);
   }
-  EXPECT_NE(restored.ExtraResultFields().find("tiered_ssd_live_ratio=0.400000 "), std::string::npos);
+  EXPECT_NE(
+      restored.ExtraResultFields().find("tiered_ssd_live_ratio=0.400000 "),
+      std::string::npos);
 }
 
-TEST_F(StaticLayoutValueTest, OnlineAdmissionDoesNotOverwriteConcurrentUpdates) {
+TEST_F(StaticLayoutValueTest,
+       OnlineAdmissionDoesNotOverwriteConcurrentUpdates) {
   KVEngineComposite engine(OnlineConfig(30));
   for (uint64_t key = 0; key < 50; ++key) {
     std::array<float, 32> row;
     row.fill(key);
-    engine.Put(key, std::string_view(reinterpret_cast<const char*>(row.data()), 128), 0);
+    engine.Put(key,
+               std::string_view(reinterpret_cast<const char*>(row.data()), 128),
+               0);
   }
   std::atomic<bool> start{false}, failed{false};
   std::vector<std::thread> threads;
   threads.emplace_back([&] {
-    while (!start.load()) std::this_thread::yield();
+    while (!start.load())
+      std::this_thread::yield();
     for (int version = 1; version <= 300; ++version) {
       std::array<float, 32> row;
       row.fill(version);
-      engine.Put(49, std::string_view(reinterpret_cast<const char*>(row.data()), 128), 2);
+      engine.Put(
+          49,
+          std::string_view(reinterpret_cast<const char*>(row.data()), 128),
+          2);
     }
   });
-  for (unsigned tid = 0; tid < 2; ++tid) threads.emplace_back([&, tid] {
-    while (!start.load()) std::this_thread::yield();
-    for (uint64_t i = 0; i < 500; ++i) {
-      std::vector<uint64_t> query{49, i % 49};
-      std::array<float, 64> flat;
-      if (!engine.BatchGetFlat(base::ConstArray<uint64_t>(query), flat.data(), 2, 32, tid)) failed.store(true);
-      for (size_t column = 1; column < 32; ++column) {
-        if (flat[column] != flat[0] || flat[column + 32] != flat[32]) failed.store(true);
+  for (unsigned tid = 0; tid < 2; ++tid)
+    threads.emplace_back([&, tid] {
+      while (!start.load())
+        std::this_thread::yield();
+      for (uint64_t i = 0; i < 500; ++i) {
+        std::vector<uint64_t> query{49, i % 49};
+        std::array<float, 64> flat;
+        if (!engine.BatchGetFlat(
+                base::ConstArray<uint64_t>(query), flat.data(), 2, 32, tid))
+          failed.store(true);
+        for (size_t column = 1; column < 32; ++column) {
+          if (flat[column] != flat[0] || flat[column + 32] != flat[32])
+            failed.store(true);
+        }
+        if (flat[32] != i % 49)
+          failed.store(true);
       }
-      if (flat[32] != i % 49) failed.store(true);
-    }
-  });
+    });
   start.store(true);
-  for (auto& thread : threads) thread.join();
+  for (auto& thread : threads)
+    thread.join();
   EXPECT_FALSE(failed.load());
   std::string result;
   engine.Get(49, result, 0);
@@ -551,9 +595,12 @@ TEST_F(StaticLayoutValueTest, OnlineAdmissionDoesNotOverwriteConcurrentUpdates) 
   expected.fill(300);
   ASSERT_EQ(result.size(), 128U);
   EXPECT_EQ(std::memcmp(result.data(), expected.data(), 128), 0);
-  EXPECT_NE(engine.ExtraResultFields().find("tiered_live_allocs=50 "), std::string::npos);
-  EXPECT_NE(engine.ExtraResultFields().find("tiered_ssd_live_ratio=0.400000 "), std::string::npos);
-  EXPECT_EQ(engine.ExtraResultFields().find("online_promoted_rows=0 "), std::string::npos);
+  EXPECT_NE(engine.ExtraResultFields().find("tiered_live_allocs=50 "),
+            std::string::npos);
+  EXPECT_NE(engine.ExtraResultFields().find("tiered_ssd_live_ratio=0.400000 "),
+            std::string::npos);
+  EXPECT_EQ(engine.ExtraResultFields().find("online_promoted_rows=0 "),
+            std::string::npos);
 }
 
 TEST_F(StaticLayoutValueTest, OnlineAdmissionRequiresStagingHeadroom) {
@@ -564,7 +611,9 @@ TEST_F(StaticLayoutValueTest, OnlineAdmissionRequiresStagingHeadroom) {
   std::array<float, 32> row;
   row.fill(7);
   for (uint64_t key = 0; key < 5; ++key) {
-    engine.Put(key, std::string_view(reinterpret_cast<const char*>(row.data()), 128), 0);
+    engine.Put(key,
+               std::string_view(reinterpret_cast<const char*>(row.data()), 128),
+               0);
   }
   std::string result;
   engine.Get(4, result, 0);
@@ -581,34 +630,46 @@ TEST_F(StaticLayoutValueTest, OnlineAdmissionRequiresStagingHeadroom) {
 TEST_F(StaticLayoutValueTest, SgdPersistsColdRowsAndDuplicateGradients) {
   for (int mode : {0, 1, 2}) {
     const bool online = mode != 0;
-    auto config = OnlineConfig(3);
+    auto config       = OnlineConfig(3);
     config.json_config_["value"]["tiering"]["online_admission"] = online;
-    config.json_config_["value"]["tiering"]["async_admission"] = mode == 2;
+    config.json_config_["value"]["tiering"]["async_admission"]  = mode == 2;
     KVEngineComposite engine(config);
     std::array<float, 32> initial;
     initial.fill(5);
     for (uint64_t key = 0; key < 5; ++key) {
-      engine.Put(key, std::string_view(reinterpret_cast<const char*>(initial.data()), 128), 0);
+      engine.Put(
+          key,
+          std::string_view(reinterpret_cast<const char*>(initial.data()), 128),
+          0);
     }
     std::string value;
-    engine.Get(4, value, 0);  // First probation observation.
+    engine.Get(4, value, 0); // First probation observation.
     const std::vector<uint64_t> keys{4, 4, 0, 5, 5};
     std::array<float, 160> grads;
     for (size_t row = 0; row < keys.size(); ++row) {
       std::fill_n(grads.data() + row * 32, 32, row + 1);
     }
-    ASSERT_TRUE(engine.ApplySgdUpdateFlat(base::ConstArray<uint64_t>(keys),
-                                         grads.data(), keys.size(), 32, .5, 0, 0));
+    ASSERT_TRUE(engine.ApplySgdUpdateFlat(
+        base::ConstArray<uint64_t>(keys),
+        grads.data(),
+        keys.size(),
+        32,
+        .5,
+        0,
+        0));
     engine.DrainBackgroundWork();
-    for (const auto expected : {std::pair<uint64_t, float>{4, 3.5f}, {0, 3.5f}, {5, -4.5f}}) {
+    for (const auto expected :
+         {std::pair<uint64_t, float>{4, 3.5f}, {0, 3.5f}, {5, -4.5f}}) {
       engine.Get(expected.first, value, 0);
       ASSERT_EQ(value.size(), 128U);
       std::array<float, 32> row;
       std::memcpy(row.data(), value.data(), value.size());
-      for (float item : row) EXPECT_FLOAT_EQ(item, expected.second);
+      for (float item : row)
+        EXPECT_FLOAT_EQ(item, expected.second);
     }
     if (online) {
-      EXPECT_EQ(engine.ExtraResultFields().find("online_promoted_rows=0 "), std::string::npos);
+      EXPECT_EQ(engine.ExtraResultFields().find("online_promoted_rows=0 "),
+                std::string::npos);
     }
   }
 }
@@ -618,35 +679,42 @@ TEST_F(StaticLayoutValueTest, OnlineAdmissionHandlesCombinedLargeRequests) {
   std::array<float, 32> row;
   for (uint64_t key = 0; key < 1000; ++key) {
     row.fill(key);
-    engine.Put(key, std::string_view(reinterpret_cast<const char*>(row.data()), 128), 0);
+    engine.Put(key,
+               std::string_view(reinterpret_cast<const char*>(row.data()), 128),
+               0);
   }
   std::vector<uint64_t> query(1000);
-  for (size_t i = 0; i < query.size(); ++i) query[i] = 600 + i % 20;
+  for (size_t i = 0; i < query.size(); ++i)
+    query[i] = 600 + i % 20;
   std::vector<float> flat(query.size() * 32);
   for (int call = 0; call < 2; ++call) {
-    ASSERT_TRUE(engine.BatchGetFlat(base::ConstArray<uint64_t>(query),
-                                    flat.data(), query.size(), 32, 0));
+    ASSERT_TRUE(engine.BatchGetFlat(
+        base::ConstArray<uint64_t>(query), flat.data(), query.size(), 32, 0));
   }
   // A combined request must admit all twenty repeatedly accessed rows,
   // rather than inherit a sixteen-row limit intended for 500-key calls.
   g_read_entries.store(0);
-  ASSERT_TRUE(engine.BatchGetFlat(base::ConstArray<uint64_t>(query),
-                                  flat.data(), query.size(), 32, 0));
+  ASSERT_TRUE(engine.BatchGetFlat(
+      base::ConstArray<uint64_t>(query), flat.data(), query.size(), 32, 0));
   EXPECT_EQ(g_read_entries.load(), 0U);
   for (size_t i = 0; i < query.size(); ++i) {
     EXPECT_FLOAT_EQ(flat[i * 32], query[i]);
   }
-  EXPECT_NE(engine.ExtraResultFields().find("tiered_ssd_live_ratio=0.400000 "), std::string::npos);
+  EXPECT_NE(engine.ExtraResultFields().find("tiered_ssd_live_ratio=0.400000 "),
+            std::string::npos);
 }
 
-TEST_F(StaticLayoutValueTest, AsyncAdmissionReleasesGuardAndRejectsStaleCopies) {
-  auto config = OnlineConfig(3);
+TEST_F(StaticLayoutValueTest,
+       AsyncAdmissionReleasesGuardAndRejectsStaleCopies) {
+  auto config                                                = OnlineConfig(3);
   config.json_config_["value"]["tiering"]["async_admission"] = true;
   KVEngineComposite engine(config);
   std::array<float, 32> row;
   for (uint64_t key = 0; key < 5; ++key) {
     row.fill(key);
-    engine.Put(key, std::string_view(reinterpret_cast<const char*>(row.data()), 128), 0);
+    engine.Put(key,
+               std::string_view(reinterpret_cast<const char*>(row.data()), 128),
+               0);
   }
   std::string result;
   engine.Get(4, result, 0);
@@ -658,16 +726,20 @@ TEST_F(StaticLayoutValueTest, AsyncAdmissionReleasesGuardAndRejectsStaleCopies) 
   bool entered;
   {
     std::unique_lock<std::mutex> lock(g_write_mu);
-    entered = g_write_cv.wait_for(lock, std::chrono::seconds(5), [] { return g_write_entered; });
+    entered = g_write_cv.wait_for(lock, std::chrono::seconds(5), [] {
+      return g_write_entered;
+    });
   }
   // Update the selected DRAM victim while the SSD write is blocked.
   auto update = std::async(std::launch::async, [&] {
     std::array<float, 32> grad;
     grad.fill(2);
     const std::vector<uint64_t> key{0};
-    return engine.ApplySgdUpdateFlat(base::ConstArray<uint64_t>(key), grad.data(), 1, 32, .5, 0, 0);
+    return engine.ApplySgdUpdateFlat(
+        base::ConstArray<uint64_t>(key), grad.data(), 1, 32, .5, 0, 0);
   });
-  const bool updated = update.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+  const bool updated =
+      update.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
   {
     std::lock_guard<std::mutex> lock(g_write_mu);
     g_block_writes = false;
@@ -677,16 +749,20 @@ TEST_F(StaticLayoutValueTest, AsyncAdmissionReleasesGuardAndRejectsStaleCopies) 
   EXPECT_TRUE(updated);
   EXPECT_TRUE(update.get());
   engine.DrainBackgroundWork();
-  EXPECT_NE(engine.ExtraResultFields().find("online_stale_jobs=1 "), std::string::npos);
-  EXPECT_NE(engine.ExtraResultFields().find("online_promoted_rows=0 "), std::string::npos);
+  EXPECT_NE(engine.ExtraResultFields().find("online_stale_jobs=1 "),
+            std::string::npos);
+  EXPECT_NE(engine.ExtraResultFields().find("online_promoted_rows=0 "),
+            std::string::npos);
   engine.Get(4, result, 0);
   engine.DrainBackgroundWork();
-  EXPECT_NE(engine.ExtraResultFields().find("online_promoted_rows=1 "), std::string::npos);
+  EXPECT_NE(engine.ExtraResultFields().find("online_promoted_rows=1 "),
+            std::string::npos);
   for (uint64_t key = 0; key < 5; ++key) {
     engine.Get(key, result, 0);
     ASSERT_EQ(result.size(), 128U);
     std::memcpy(row.data(), result.data(), 128);
-    for (float value : row) EXPECT_FLOAT_EQ(value, key == 0 ? -1.0f : static_cast<float>(key));
+    for (float value : row)
+      EXPECT_FLOAT_EQ(value, key == 0 ? -1.0f : static_cast<float>(key));
   }
   engine.DrainBackgroundWork();
   const auto fields = engine.ExtraResultFields();
@@ -696,12 +772,14 @@ TEST_F(StaticLayoutValueTest, AsyncAdmissionReleasesGuardAndRejectsStaleCopies) 
 
 TEST_F(StaticLayoutValueTest, AsyncAdmissionPropagatesFailure) {
   const auto buffers_before = g_scratch_buffers.load();
-  auto config = OnlineConfig(3);
+  auto config               = OnlineConfig(3);
   config.json_config_["value"]["tiering"]["async_admission"] = true;
   KVEngineComposite engine(config);
   std::array<float, 32> row{};
   for (uint64_t key = 0; key < 5; ++key) {
-    engine.Put(key, std::string_view(reinterpret_cast<const char*>(row.data()), 128), 0);
+    engine.Put(key,
+               std::string_view(reinterpret_cast<const char*>(row.data()), 128),
+               0);
   }
   std::string result;
   engine.Get(4, result, 0);
@@ -720,18 +798,28 @@ TEST_F(StaticLayoutValueTest, AsyncAdmissionDrainsCombinedReadOnlyRequests) {
   std::array<float, 32> row;
   for (uint64_t key = 0; key < 1000; ++key) {
     row.fill(key);
-    engine.Put(key, std::string_view(reinterpret_cast<const char*>(row.data()), 128), 0);
+    engine.Put(key,
+               std::string_view(reinterpret_cast<const char*>(row.data()), 128),
+               0);
   }
   std::vector<std::thread> readers;
-  for (unsigned tid = 0; tid < 4; ++tid) readers.emplace_back([&, tid] {
-    const std::vector<uint64_t> query(500, 600 + tid);
-    std::vector<float> output(query.size() * 32);
-    for (int call = 0; call < 5; ++call) {
-      EXPECT_TRUE(engine.BatchGetFlat(base::ConstArray<uint64_t>(query), output.data(), query.size(), 32, tid));
-      for (float value : output) EXPECT_FLOAT_EQ(value, 600 + tid);
-    }
-  });
-  for (auto& reader : readers) reader.join();
+  for (unsigned tid = 0; tid < 4; ++tid)
+    readers.emplace_back([&, tid] {
+      const std::vector<uint64_t> query(500, 600 + tid);
+      std::vector<float> output(query.size() * 32);
+      for (int call = 0; call < 5; ++call) {
+        EXPECT_TRUE(engine.BatchGetFlat(
+            base::ConstArray<uint64_t>(query),
+            output.data(),
+            query.size(),
+            32,
+            tid));
+        for (float value : output)
+          EXPECT_FLOAT_EQ(value, 600 + tid);
+      }
+    });
+  for (auto& reader : readers)
+    reader.join();
   engine.DrainBackgroundWork();
   // A final request admits any row that raced with an earlier publication.
   for (uint64_t key = 600; key < 604; ++key) {
@@ -742,9 +830,11 @@ TEST_F(StaticLayoutValueTest, AsyncAdmissionDrainsCombinedReadOnlyRequests) {
   g_read_entries.store(0);
   const std::vector<uint64_t> query{600, 601, 602, 603};
   std::array<float, 128> output;
-  EXPECT_TRUE(engine.BatchGetFlat(base::ConstArray<uint64_t>(query), output.data(), 4, 32, 0));
+  EXPECT_TRUE(engine.BatchGetFlat(
+      base::ConstArray<uint64_t>(query), output.data(), 4, 32, 0));
   EXPECT_EQ(g_read_entries.load(), 0U);
-  EXPECT_NE(engine.ExtraResultFields().find("tiered_ssd_live_ratio=0.400000 "), std::string::npos);
+  EXPECT_NE(engine.ExtraResultFields().find("tiered_ssd_live_ratio=0.400000 "),
+            std::string::npos);
 }
 
 TEST_F(StaticLayoutValueTest, HybridWatermarkAndReplicaUpdate) {
@@ -1553,40 +1643,48 @@ TEST_F(StaticLayoutValueTest, TieredReadCacheConcurrentReadsStayCoherent) {
 
 TEST_F(StaticLayoutValueTest, FailedSingleHybridWriteRestoresLiveAccounting) {
   for (bool profiled : {false, true}) {
-    auto config = OnlineConfig(3);
-    auto& tiering = config.json_config_["value"]["tiering"];
-    tiering["online_admission"] = false;
+    auto config                     = OnlineConfig(3);
+    auto& tiering                   = config.json_config_["value"]["tiering"];
+    tiering["online_admission"]     = false;
     tiering["high_watermark_ratio"] = 0.0;
-    if (!profiled) tiering.erase("dram_keys_path");
+    if (!profiled)
+      tiering.erase("dram_keys_path");
     HybridValueStore store(config);
     std::array<float, 32> payload;
     payload.fill(7);
     g_fail_writes.store(true);
-    EXPECT_THROW(store.AllocAndWrite(payload.data(), sizeof(payload)), std::runtime_error);
-    EXPECT_THROW(store.AllocAndWrite(4, payload.data(), sizeof(payload)), std::runtime_error);
+    EXPECT_THROW(store.AllocAndWrite(payload.data(), sizeof(payload)),
+                 std::runtime_error);
+    EXPECT_THROW(store.AllocAndWrite(4, payload.data(), sizeof(payload)),
+                 std::runtime_error);
     g_fail_writes.store(false);
     const auto fields = store.ExtraResultFields();
     EXPECT_NE(fields.find("tiered_live_allocs=0 "), std::string::npos);
     EXPECT_NE(fields.find("tiered_dram_live_allocs=0 "), std::string::npos);
     EXPECT_NE(fields.find("tiered_ssd_live_allocs=0 "), std::string::npos);
-    const uint64_t handle = store.AllocAndWrite(4, payload.data(), sizeof(payload));
+    const uint64_t handle =
+        store.AllocAndWrite(4, payload.data(), sizeof(payload));
     ASSERT_NE(handle, kValueHandleNone);
     std::array<float, 32> output;
-    EXPECT_EQ(store.Read(handle, output.data(), sizeof(output)), sizeof(output));
+    EXPECT_EQ(store.Read(handle, output.data(), sizeof(output)),
+              sizeof(output));
     EXPECT_EQ(output, payload);
     store.Free(handle);
   }
 }
 
-TEST_F(StaticLayoutValueTest, InvalidDuplicateBatchDoesNotOverwriteEarlierRows) {
+TEST_F(StaticLayoutValueTest,
+       InvalidDuplicateBatchDoesNotOverwriteEarlierRows) {
   for (bool async : {false, true}) {
     auto config = OnlineConfig(3);
     config.json_config_["value"]["tiering"]["async_admission"] = async;
     KVEngineComposite engine(config);
     std::array<float, 32> initial;
     initial.fill(5);
-    engine.Put(0, std::string_view(reinterpret_cast<const char*>(initial.data()),
-                                 sizeof(initial)), 0);
+    engine.Put(0,
+               std::string_view(reinterpret_cast<const char*>(initial.data()),
+                                sizeof(initial)),
+               0);
     std::array<float, 32> replacement;
     replacement.fill(17);
     const float wrong_width = 9;
@@ -1610,22 +1708,32 @@ TEST_F(StaticLayoutValueTest, OnlineRangeApisUseTheOwnedCopyFallback) {
     KVEngineComposite engine(config);
     std::array<float, 32> initial;
     initial.fill(5);
-    engine.Put(0, std::string_view(reinterpret_cast<const char*>(initial.data()),
-                                 sizeof(initial)), 0);
+    engine.Put(0,
+               std::string_view(reinterpret_cast<const char*>(initial.data()),
+                                sizeof(initial)),
+               0);
     std::vector<uint64_t> keys{0};
     std::array<float, 32> output;
     output.fill(-1);
-    EXPECT_FALSE(engine.BatchGetFlatRange(base::ConstArray<uint64_t>(keys),
-                                         output.data(), 1, 32, 0, 32, 0));
+    EXPECT_FALSE(engine.BatchGetFlatRange(
+        base::ConstArray<uint64_t>(keys), output.data(), 1, 32, 0, 32, 0));
     uint64_t position = 9;
     BaseKV::MissingPositionsOutput missing{&position, 1, 1};
-    EXPECT_FALSE(engine.BatchGetFlatRangeWithMissing(base::ConstArray<uint64_t>(keys),
-                 output.data(), 1, 32, 0, 32, 0, &missing));
+    EXPECT_FALSE(engine.BatchGetFlatRangeWithMissing(
+        base::ConstArray<uint64_t>(keys),
+        output.data(),
+        1,
+        32,
+        0,
+        32,
+        0,
+        &missing));
     EXPECT_EQ(missing.count, 0U);
     EXPECT_EQ(position, 9U);
-    for (float value : output) EXPECT_FLOAT_EQ(value, -1);
-    ASSERT_TRUE(engine.BatchGetFlat(base::ConstArray<uint64_t>(keys),
-                                   output.data(), 1, 32, 0));
+    for (float value : output)
+      EXPECT_FLOAT_EQ(value, -1);
+    ASSERT_TRUE(engine.BatchGetFlat(
+        base::ConstArray<uint64_t>(keys), output.data(), 1, 32, 0));
     EXPECT_EQ(output, initial);
     engine.DrainBackgroundWork();
   }

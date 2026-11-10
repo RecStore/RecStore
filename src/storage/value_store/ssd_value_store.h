@@ -157,7 +157,8 @@ public:
     std::vector<uint64_t> handles;
     handles.reserve(specs.size());
     try {
-      for (size_t begin = 0; begin < specs.size(); begin += kMaxBatchIoEntries) {
+      for (size_t begin = 0; begin < specs.size();
+           begin += kMaxBatchIoEntries) {
         const size_t end = std::min(begin + kMaxBatchIoEntries, specs.size());
         std::vector<SsdBlockAllocator::WriteEntry> entries;
         entries.reserve(end - begin);
@@ -173,7 +174,8 @@ public:
         }
       }
     } catch (...) {
-      for (uint64_t handle : handles) Free(handle);
+      for (uint64_t handle : handles)
+        Free(handle);
       throw;
     }
     return handles;

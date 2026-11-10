@@ -82,7 +82,9 @@ DEFINE_int64(record_count, 100000000, "YCSB record count");
 DEFINE_string(workload,
               "c",
               "YCSB workload: a/b/c or workloada/workloadb/workloadc");
-DEFINE_string(distribution, "uniform", "key distribution: uniform/zipfian/trace");
+DEFINE_string(distribution,
+              "uniform",
+              "key distribution: uniform/zipfian/trace");
 DEFINE_string(read_trace_path, "", "text query log for distribution=trace");
 DEFINE_double(zipfian_alpha, 0.9, "Zipfian alpha");
 DEFINE_bool(
@@ -94,9 +96,15 @@ DEFINE_bool(
 DEFINE_string(read_mode, "exists", "read mode: exists/get/batch_get_flat");
 DEFINE_int32(batch_keys, 500, "keys per BatchGetFlat operation");
 DEFINE_int32(load_batch_keys, 1, "keys per load BatchPut; 1 uses Put");
-DEFINE_string(tiered_dram_keys_path, "", "sorted native uint64 DRAM key profile");
-DEFINE_bool(tiered_online_admission, false, "enable bounded second-miss tiered admission");
-DEFINE_bool(tiered_async_admission, false, "prepare online tier exchanges in a bounded background queue");
+DEFINE_string(tiered_dram_keys_path,
+              "",
+              "sorted native uint64 DRAM key profile");
+DEFINE_bool(tiered_online_admission,
+            false,
+            "enable bounded second-miss tiered admission");
+DEFINE_bool(tiered_async_admission,
+            false,
+            "prepare online tier exchanges in a bounded background queue");
 DEFINE_bool(load, true, "run load phase");
 DEFINE_bool(run, true, "run transaction phase");
 DEFINE_bool(print_util, false, "print KVEngine utilization after load");
@@ -174,7 +182,7 @@ public:
                uint64_t record_count,
                double zipfian_alpha,
                uint64_t seed,
-               bool scramble = false,
+               bool scramble                      = false,
                const std::vector<uint32_t>* trace = nullptr)
       : distribution_(std::move(distribution)),
         record_count_(record_count),
@@ -186,7 +194,8 @@ public:
     }
     if (distribution_ == "trace") {
       if (trace_ == nullptr || trace_->empty()) {
-        throw std::invalid_argument("trace distribution requires nonempty keys");
+        throw std::invalid_argument(
+            "trace distribution requires nonempty keys");
       }
       trace_index_ = rng_.Uniform(trace_->size());
     } else if (distribution_ == "zipfian") {
@@ -202,7 +211,8 @@ public:
         scramble_stride_ = ChooseCoprimeStride(record_count_);
       }
     } else if (distribution_ != "uniform") {
-      throw std::invalid_argument("distribution must be uniform, zipfian, or trace");
+      throw std::invalid_argument(
+          "distribution must be uniform, zipfian, or trace");
     }
   }
 
@@ -265,7 +275,7 @@ private:
   uint64_t scramble_stride_ = 0;
   FastRandom rng_;
   const std::vector<uint32_t>* trace_ = nullptr;
-  size_t trace_index_ = 0;
+  size_t trace_index_                 = 0;
 };
 
 std::string NormalizeWorkload(std::string workload) {
@@ -461,11 +471,13 @@ BaseKVConfig BuildConfig() {
           FLAGS_tiered_dram_keys_path;
     }
     if (FLAGS_tiered_online_admission) {
-      config.json_config_["value"]["tiering"]["online_admission"] = true;
+      config.json_config_["value"]["tiering"]["online_admission"]     = true;
       config.json_config_["value"]["tiering"]["high_watermark_ratio"] = 0.90;
     }
     if (FLAGS_tiered_async_admission) {
-      if (!FLAGS_tiered_online_admission) throw std::invalid_argument("async admission requires online admission");
+      if (!FLAGS_tiered_online_admission)
+        throw std::invalid_argument(
+            "async admission requires online admission");
       config.json_config_["value"]["tiering"]["async_admission"] = true;
     }
   }
@@ -494,7 +506,8 @@ BaseKVConfig BuildConfig() {
 PhaseStats LoadRecords(BaseKV* kv, int load_threads, uint64_t record_count) {
   if (FLAGS_load_batch_keys <= 0 ||
       (FLAGS_load_batch_keys > 1 && FLAGS_value_size % sizeof(float) != 0)) {
-    throw std::invalid_argument("invalid load_batch_keys or non-float row size");
+    throw std::invalid_argument(
+        "invalid load_batch_keys or non-float row size");
   }
   std::vector<std::thread> threads;
   std::vector<uint64_t> counts(load_threads, 0);
@@ -510,12 +523,14 @@ PhaseStats LoadRecords(BaseKV* kv, int load_threads, uint64_t record_count) {
         std::vector<uint64_t> keys;
         std::vector<base::ConstArray<float>> values;
         for (uint64_t key = begin; key < end;) {
-          const size_t count = std::min<uint64_t>(FLAGS_load_batch_keys, end - key);
+          const size_t count =
+              std::min<uint64_t>(FLAGS_load_batch_keys, end - key);
           keys.resize(count);
           std::iota(keys.begin(), keys.end(), key);
-          values.assign(count, base::ConstArray<float>(
-                                   reinterpret_cast<float*>(value.data()),
-                                   FLAGS_value_size / sizeof(float)));
+          values.assign(
+              count,
+              base::ConstArray<float>(reinterpret_cast<float*>(value.data()),
+                                      FLAGS_value_size / sizeof(float)));
           kv->BatchPut(base::ConstArray<uint64_t>(keys), &values, tid);
           key += count;
           counts[tid] += count;
@@ -597,8 +612,8 @@ PhaseStats RunTransactions(
                                        static_cast<size_t>(embedding_dim));
         std::vector<base::ConstArray<float>> write_values(
             static_cast<size_t>(FLAGS_batch_keys),
-            base::ConstArray<float>(reinterpret_cast<float*>(value.data()),
-                                    embedding_dim));
+            base::ConstArray<float>(
+                reinterpret_cast<float*>(value.data()), embedding_dim));
         PhaseStats local;
         while (!start.load(std::memory_order_acquire)) {
         }
@@ -662,8 +677,8 @@ PhaseStats RunTransactions(
               for (auto& key : batch_keys) {
                 key = key_gen.NextKey();
               }
-              kv->BatchPut(base::ConstArray<uint64_t>(batch_keys),
-                           &write_values, tid);
+              kv->BatchPut(
+                  base::ConstArray<uint64_t>(batch_keys), &write_values, tid);
               local.update_ops += batch_keys.size();
               local.total_ops += batch_keys.size();
               continue;
@@ -928,11 +943,13 @@ int RunBenchmark(int argc, char* argv[]) {
         seconds > 0.0 ? static_cast<double>(run_stats.total_ops) / seconds
                       : 0.0;
     struct rusage usage {};
-    const long peak_rss_kb = getrusage(RUSAGE_SELF, &usage) == 0 ? usage.ru_maxrss : -1;
+    const long peak_rss_kb =
+        getrusage(RUSAGE_SELF, &usage) == 0 ? usage.ru_maxrss : -1;
     std::printf(
         "YCSB_RESULT workload=%s distribution=%s zipfian_alpha=%.6f "
         "read_mode=%s threads=%d records=%ld runtime_s=%.6f ops=%lu "
-        "throughput_ops_sec=%.6f read_ops=%lu update_ops=%lu process_peak_rss_kb=%ld%s\n",
+        "throughput_ops_sec=%.6f read_ops=%lu update_ops=%lu "
+        "process_peak_rss_kb=%ld%s\n",
         workload.c_str(),
         FLAGS_distribution.c_str(),
         FLAGS_zipfian_alpha,

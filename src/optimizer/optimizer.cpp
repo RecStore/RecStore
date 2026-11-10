@@ -180,16 +180,22 @@ void SGD::Update(
   if (embedding_dim <= 0) {
     throw std::runtime_error("SGD requires a positive embedding dimension");
   }
-  if (size == 0) return;
-  std::vector<float> flat_grads(static_cast<size_t>(size) * embedding_dim, 0.0f);
+  if (size == 0)
+    return;
+  std::vector<float> flat_grads(
+      static_cast<size_t>(size) * embedding_dim, 0.0f);
   for (int i = 0; i < size; ++i) {
-    const auto* item = reader->item(i);
+    const auto* item    = reader->item(i);
     const int64_t count = std::min<int64_t>(embedding_dim, item->dim);
     std::copy_n(item->data(), count, flat_grads.data() + i * embedding_dim);
   }
   // Use the same explicit SSD writeback path as flat transport updates.
-  UpdateFlat(table, base::ConstArray<uint64_t>(keys), flat_grads.data(),
-             size, embedding_dim, tid);
+  UpdateFlat(table,
+             base::ConstArray<uint64_t>(keys),
+             flat_grads.data(),
+             size,
+             embedding_dim,
+             tid);
 }
 
 void SGD::UpdateFlat(

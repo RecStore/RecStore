@@ -71,20 +71,25 @@ public:
       throw std::runtime_error("failed to create KVEngine components");
     }
     auto* hybrid = dynamic_cast<HybridValueStore*>(value_store_.get());
-    const bool async_admission = j.at("value").contains("tiering") &&
+    const bool async_admission =
+        j.at("value").contains("tiering") &&
         j.at("value").at("tiering").value("async_admission", false);
-    if (async_admission && (hybrid == nullptr || !hybrid->OnlinePlacementEnabled())) {
+    if (async_admission &&
+        (hybrid == nullptr || !hybrid->OnlinePlacementEnabled())) {
       throw std::invalid_argument("async admission requires online admission");
     }
     if (hybrid != nullptr && hybrid->OnlinePlacementEnabled()) {
-      if (default_value_size_hint_ == 0 || default_value_size_hint_ % sizeof(float) != 0) {
-        throw std::invalid_argument("online admission requires fixed-size float rows");
+      if (default_value_size_hint_ == 0 ||
+          default_value_size_hint_ % sizeof(float) != 0) {
+        throw std::invalid_argument(
+            "online admission requires fixed-size float rows");
       }
-      online_store_ = hybrid;
-      online_residents_ = hybrid->DramProfileKeys();
+      online_store_       = hybrid;
+      online_residents_   = hybrid->DramProfileKeys();
       online_ghost_limit_ = std::max<size_t>(online_residents_.size() / 20, 1);
-      online_async_ = async_admission;
-      if (online_async_) background_thread_ = std::thread([this] { BackgroundLoop(); });
+      online_async_       = async_admission;
+      if (online_async_)
+        background_thread_ = std::thread([this] { BackgroundLoop(); });
     }
   }
 
@@ -103,10 +108,14 @@ public:
   }
 
   void DrainBackgroundWork() override {
-    if (!online_async_) return;
+    if (!online_async_)
+      return;
     std::unique_lock<std::mutex> lock(background_mu_);
-    background_cv_.wait(lock, [this] { return !background_active_ && !background_pending_; });
-    if (background_error_) std::rethrow_exception(background_error_);
+    background_cv_.wait(lock, [this] {
+      return !background_active_ && !background_pending_;
+    });
+    if (background_error_)
+      std::rethrow_exception(background_error_);
   }
 
   void Get(const uint64_t key, std::string& value, unsigned tid) override {
@@ -115,7 +124,7 @@ public:
     uint64_t generation = 0;
     {
       auto online_lock = LockOnlineRead();
-      Value_t handle = kValueHandleNone;
+      Value_t handle   = kValueHandleNone;
       ReadValue(key, value, &cold, &handle);
       CaptureSnapshot(snapshots, key, handle, value.data(), value.size(), 1);
       generation = online_generation_;
@@ -262,9 +271,10 @@ public:
         continue;
       }
       if (const char* ptr = value_store_->DirectPtr(handles[i])) {
-        const size_t bytes = online_store_ != nullptr
-                                 ? default_value_size_hint_
-                                 : value_store_->SlotCapacity(handles[i]);
+        const size_t bytes =
+            online_store_ != nullptr
+                ? default_value_size_hint_
+                : value_store_->SlotCapacity(handles[i]);
         if (online_store_ != nullptr) {
           buffers[i].resize(bytes / sizeof(float));
           std::memcpy(buffers[i].data(), ptr, bytes);
@@ -303,8 +313,13 @@ public:
       std::vector<OnlineSnapshot> snapshots;
       for (size_t row : batch_indices) {
         cold_keys.push_back(keys[row]);
-        CaptureSnapshot(snapshots, keys[row], handles[row],
-                        (*values)[row].Data(), (*values)[row].Size() * sizeof(float), keys.Size());
+        CaptureSnapshot(
+            snapshots,
+            keys[row],
+            handles[row],
+            (*values)[row].Data(),
+            (*values)[row].Size() * sizeof(float),
+            keys.Size());
       }
       const uint64_t generation = online_generation_;
       online_lock.unlock();
@@ -322,7 +337,7 @@ public:
         keys.Size() != static_cast<size_t>(num_rows)) {
       return false;
     }
-    auto online_lock = LockOnlineRead();
+    auto online_lock       = LockOnlineRead();
     const size_t row_bytes = static_cast<size_t>(embedding_dim) * sizeof(float);
     thread_local std::vector<Value_t> handles;
     handles.assign(keys.Size(), kValueHandleNone);
@@ -433,8 +448,13 @@ public:
       std::vector<OnlineSnapshot> snapshots;
       for (size_t row : batch_rows) {
         cold_keys.push_back(keys[row]);
-        CaptureSnapshot(snapshots, keys[row], handles[row],
-                        values + row * embedding_dim, row_bytes, keys.Size());
+        CaptureSnapshot(
+            snapshots,
+            keys[row],
+            handles[row],
+            values + row * embedding_dim,
+            row_bytes,
+            keys.Size());
       }
       const uint64_t generation = online_generation_;
       online_lock.unlock();
@@ -586,7 +606,7 @@ public:
         embedding_dim <= 0) {
       return false;
     }
-    using clock = std::chrono::steady_clock;
+    using clock      = std::chrono::steady_clock;
     auto online_lock = LockOnlineWrite();
     BumpOnlineGeneration();
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
@@ -623,13 +643,25 @@ public:
             stats != nullptr ? &get_stats : nullptr)) {
       std::vector<uint64_t> cold_keys;
       std::vector<OnlineSnapshot> snapshots;
-      ApplySgdMixedRows(tagged_keys, grads, embedding_dim, learning_rate, tid,
-                        &cold_keys, &snapshots, stats);
+      ApplySgdMixedRows(
+          tagged_keys,
+          grads,
+          embedding_dim,
+          learning_rate,
+          tid,
+          &cold_keys,
+          &snapshots,
+          stats);
       const uint64_t generation = online_generation_;
       checkpoint_lock.unlock();
-      if (online_lock.owns_lock()) online_lock.unlock();
+      if (online_lock.owns_lock())
+        online_lock.unlock();
       if (online_store_ != nullptr && !cold_keys.empty()) {
-        MaybeAdmit(cold_keys, tid, tagged_keys.size(), std::move(snapshots), generation);
+        MaybeAdmit(cold_keys,
+                   tid,
+                   tagged_keys.size(),
+                   std::move(snapshots),
+                   generation);
       }
       return true;
     }
@@ -1126,18 +1158,23 @@ public:
 
   std::string ExtraResultFields() const override {
     auto online_lock = LockOnlineRead();
-    const std::string fields = (value_store_ ? value_store_->ExtraResultFields() : "") +
+    const std::string fields =
+        (value_store_ ? value_store_->ExtraResultFields() : "") +
         sgd_read_time_.Fields("tier_sgd_read") +
         sgd_write_time_.Fields("tier_sgd_write") +
         migration_read_time_.Fields("tier_migration_read") +
         migration_prepare_time_.Fields("tier_migration_prepare") +
         migration_publish_time_.Fields("tier_migration_publish");
-    if (online_store_ == nullptr) return fields;
+    if (online_store_ == nullptr)
+      return fields;
     return fields +
            " online_promoted_rows=" + std::to_string(online_promoted_rows_) +
-           " online_migration_read_rows=" + std::to_string(online_migration_read_rows_) +
-           " online_exchange_batches=" + std::to_string(online_exchange_batches_) +
-           " online_capacity_rejects=" + std::to_string(online_capacity_rejects_) +
+           " online_migration_read_rows=" +
+           std::to_string(online_migration_read_rows_) +
+           " online_exchange_batches=" +
+           std::to_string(online_exchange_batches_) +
+           " online_capacity_rejects=" +
+           std::to_string(online_capacity_rejects_) +
            " online_async=" + std::to_string(online_async_) +
            " online_submitted_jobs=" + std::to_string(online_submitted_jobs_) +
            " online_stale_jobs=" + std::to_string(online_stale_jobs_) +
@@ -1155,10 +1192,10 @@ public:
     migration_prepare_time_.Reset();
     migration_publish_time_.Reset();
     if (online_store_ != nullptr) {
-      online_promoted_rows_ = 0;
+      online_promoted_rows_       = 0;
       online_migration_read_rows_ = 0;
-      online_exchange_batches_ = 0;
-      online_capacity_rejects_ = 0;
+      online_exchange_batches_    = 0;
+      online_capacity_rejects_    = 0;
       online_submitted_jobs_ = online_stale_jobs_ = online_queue_drops_ = 0;
     }
     if (value_store_) {
@@ -1281,12 +1318,15 @@ private:
     void Record(std::chrono::steady_clock::time_point begin) {
       const uint64_t elapsed = static_cast<uint64_t>(
           std::chrono::duration_cast<std::chrono::nanoseconds>(
-              std::chrono::steady_clock::now() - begin).count());
+              std::chrono::steady_clock::now() - begin)
+              .count());
       total_ns.fetch_add(elapsed, std::memory_order_relaxed);
       calls.fetch_add(1, std::memory_order_relaxed);
       uint64_t maximum = max_ns.load(std::memory_order_relaxed);
-      while (maximum < elapsed && !max_ns.compare_exchange_weak(
-                 maximum, elapsed, std::memory_order_relaxed)) {}
+      while (maximum < elapsed &&
+             !max_ns.compare_exchange_weak(
+                 maximum, elapsed, std::memory_order_relaxed)) {
+      }
     }
 
     void Reset() {
@@ -1296,20 +1336,21 @@ private:
     }
 
     std::string Fields(const std::string& name) const {
-      return " " + name + "_ns=" + std::to_string(total_ns.load()) +
-          " " + name + "_max_ns=" + std::to_string(max_ns.load()) +
-          " " + name + "_calls=" + std::to_string(calls.load());
+      return " " + name + "_ns=" + std::to_string(total_ns.load()) + " " +
+             name + "_max_ns=" + std::to_string(max_ns.load()) + " " + name +
+             "_calls=" + std::to_string(calls.load());
     }
   };
 
-  void ApplySgdMixedRows(const std::vector<uint64_t>& keys,
-                         const float* grads,
-                         int64_t dim,
-                         float learning_rate,
-                         unsigned tid,
-                         std::vector<uint64_t>* cold_keys,
-                         std::vector<OnlineSnapshot>* snapshots,
-                         UpdateFlatStats* stats) {
+  void ApplySgdMixedRows(
+      const std::vector<uint64_t>& keys,
+      const float* grads,
+      int64_t dim,
+      float learning_rate,
+      unsigned tid,
+      std::vector<uint64_t>* cold_keys,
+      std::vector<OnlineSnapshot>* snapshots,
+      UpdateFlatStats* stats) {
     const size_t row_bytes = static_cast<size_t>(dim) * sizeof(float);
     ValidateOnlineRowSize(row_bytes);
     std::vector<uint64_t> unique_keys;
@@ -1318,11 +1359,13 @@ private:
     positions.reserve(keys.size());
     for (uint64_t key : keys) {
       const auto inserted = positions.emplace(key, unique_keys.size());
-      if (inserted.second) unique_keys.push_back(key);
+      if (inserted.second)
+        unique_keys.push_back(key);
       row_indices.push_back(inserted.first->second);
     }
     std::vector<Value_t> handles(unique_keys.size(), kValueHandleNone);
-    index_->BatchGet(base::ConstArray<uint64_t>(unique_keys), handles.data(), tid);
+    index_->BatchGet(
+        base::ConstArray<uint64_t>(unique_keys), handles.data(), tid);
     std::vector<float*> pointers(unique_keys.size());
     std::vector<std::vector<float>> missing(unique_keys.size());
     std::vector<uint64_t> ssd_handles;
@@ -1348,17 +1391,19 @@ private:
       value_store_->BatchRead(ssd_handles, ssd_values);
       sgd_read_time_.Record(begin);
     }
-    if (ssd_values.size() != ssd_rows.size()) throw std::runtime_error("SGD read count mismatch");
+    if (ssd_values.size() != ssd_rows.size())
+      throw std::runtime_error("SGD read count mismatch");
     std::vector<std::vector<float>> ssd_floats(ssd_rows.size());
     for (size_t i = 0; i < ssd_rows.size(); ++i) {
-      if (ssd_values[i].data.size() != row_bytes) throw std::runtime_error("SGD SSD row size mismatch");
+      if (ssd_values[i].data.size() != row_bytes)
+        throw std::runtime_error("SGD SSD row size mismatch");
       ssd_floats[i].resize(static_cast<size_t>(dim));
       std::memcpy(ssd_floats[i].data(), ssd_values[i].data.data(), row_bytes);
       pointers[ssd_rows[i]] = ssd_floats[i].data();
     }
     // Duplicate keys share a destination and apply gradients in input order.
     for (size_t row = 0; row < keys.size(); ++row) {
-      float* value = pointers[row_indices[row]];
+      float* value      = pointers[row_indices[row]];
       const float* grad = grads + row * dim;
 #pragma omp simd
       for (int64_t column = 0; column < dim; ++column) {
@@ -1366,7 +1411,8 @@ private:
       }
     }
     std::vector<ValueStore::WriteSpec> updates;
-    for (const auto& value : ssd_floats) updates.push_back({value.data(), row_bytes});
+    for (const auto& value : ssd_floats)
+      updates.push_back({value.data(), row_bytes});
     // BatchGet's SSD results are copies, so every modified cold row needs
     // explicit writeback before a subsequent read or promotion can see it.
     if (!ssd_handles.empty()) {
@@ -1375,14 +1421,21 @@ private:
       sgd_write_time_.Record(begin);
     }
     for (size_t i = 0; i < unique_keys.size(); ++i) {
-      if (handles[i] != kValueHandleNone) continue;
+      if (handles[i] != kValueHandleNone)
+        continue;
       PutInternal(unique_keys[i], missing[i].data(), row_bytes, tid, false);
-      if (stats != nullptr) ++stats->missing_rows;
+      if (stats != nullptr)
+        ++stats->missing_rows;
     }
     for (size_t i = 0; i < ssd_rows.size(); ++i) {
       const size_t row = ssd_rows[i];
-      CaptureSnapshot(*snapshots, unique_keys[row], handles[row],
-                      ssd_floats[i].data(), row_bytes, keys.size());
+      CaptureSnapshot(
+          *snapshots,
+          unique_keys[row],
+          handles[row],
+          ssd_floats[i].data(),
+          row_bytes,
+          keys.size());
     }
   }
 
@@ -1405,28 +1458,39 @@ private:
   }
 
   void RethrowBackgroundError() const {
-    if (!online_async_) return;
+    if (!online_async_)
+      return;
     std::lock_guard<std::mutex> lock(background_mu_);
-    if (background_error_) std::rethrow_exception(background_error_);
+    if (background_error_)
+      std::rethrow_exception(background_error_);
   }
 
   void BumpOnlineGeneration() {
-    if (online_store_ != nullptr) ++online_generation_;
+    if (online_store_ != nullptr)
+      ++online_generation_;
   }
 
   static size_t AdmissionBudget(size_t rows) {
     return std::min<size_t>(256, 16 * std::max<size_t>(1, (rows + 499) / 500));
   }
 
-  void CaptureSnapshot(std::vector<OnlineSnapshot>& snapshots, uint64_t key,
-                       uint64_t handle, const void* data, size_t size,
-                       size_t request_rows) const {
+  void CaptureSnapshot(
+      std::vector<OnlineSnapshot>& snapshots,
+      uint64_t key,
+      uint64_t handle,
+      const void* data,
+      size_t size,
+      size_t request_rows) const {
     if (!online_async_ || handle == kValueHandleNone ||
         snapshots.size() >= AdmissionBudget(request_rows) ||
         online_ghost_.count(key) == 0 ||
-        value_store_->DirectPtr(handle) != nullptr) return;
-    if (size != default_value_size_hint_) throw std::runtime_error("online snapshot size mismatch");
-    for (const auto& snapshot : snapshots) if (snapshot.key == key) return;
+        value_store_->DirectPtr(handle) != nullptr)
+      return;
+    if (size != default_value_size_hint_)
+      throw std::runtime_error("online snapshot size mismatch");
+    for (const auto& snapshot : snapshots)
+      if (snapshot.key == key)
+        return;
     const char* begin = static_cast<const char*>(data);
     snapshots.push_back({key, handle, std::vector<char>(begin, begin + size)});
   }
@@ -1436,9 +1500,12 @@ private:
       std::unique_ptr<OnlineJob> job;
       {
         std::unique_lock<std::mutex> lock(background_mu_);
-        background_cv_.wait(lock, [this] { return background_stop_ || background_pending_; });
-        if (!background_pending_) return;
-        job = std::move(background_pending_);
+        background_cv_.wait(lock, [this] {
+          return background_stop_ || background_pending_;
+        });
+        if (!background_pending_)
+          return;
+        job                = std::move(background_pending_);
         background_active_ = true;
       }
       try {
@@ -1463,22 +1530,34 @@ private:
     std::vector<std::vector<char>> victim_data;
     {
       auto lock = LockOnlineWrite();
-      if (job.generation != online_generation_) { ++online_stale_jobs_; return; }
-      job.hot.erase(std::remove_if(job.hot.begin(), job.hot.end(), [&](const auto& hot) {
-        Value_t current = kValueHandleNone;
-        index_->Get(hot.key, current, 0);
-        return current != hot.handle;
-      }), job.hot.end());
-      if (job.hot.empty()) { ++online_stale_jobs_; return; }
+      if (job.generation != online_generation_) {
+        ++online_stale_jobs_;
+        return;
+      }
+      job.hot.erase(std::remove_if(job.hot.begin(),
+                                   job.hot.end(),
+                                   [&](const auto& hot) {
+                                     Value_t current = kValueHandleNone;
+                                     index_->Get(hot.key, current, 0);
+                                     return current != hot.handle;
+                                   }),
+                    job.hot.end());
+      if (job.hot.empty()) {
+        ++online_stale_jobs_;
+        return;
+      }
       for (size_t scanned = 0; scanned < online_residents_.size() &&
-                               victim_keys.size() < job.hot.size(); ++scanned) {
-        const size_t slot = online_cursor_++ % online_residents_.size();
+                               victim_keys.size() < job.hot.size();
+           ++scanned) {
+        const size_t slot  = online_cursor_++ % online_residents_.size();
         const uint64_t key = online_residents_[slot];
-        Value_t handle = kValueHandleNone;
+        Value_t handle     = kValueHandleNone;
         index_->Get(key, handle, 0);
-        if (handle == kValueHandleNone) continue;
+        if (handle == kValueHandleNone)
+          continue;
         const char* ptr = value_store_->DirectPtr(handle);
-        if (ptr == nullptr) continue;
+        if (ptr == nullptr)
+          continue;
         victim_slots.push_back(slot);
         victim_keys.push_back(key);
         old_handles.push_back(handle);
@@ -1486,9 +1565,11 @@ private:
       }
     }
     const size_t count = victim_keys.size();
-    if (count == 0) return;
+    if (count == 0)
+      return;
     std::vector<ValueStore::WriteSpec> victim_specs, hot_specs;
-    for (const auto& value : victim_data) victim_specs.push_back({value.data(), value.size()});
+    for (const auto& value : victim_data)
+      victim_specs.push_back({value.data(), value.size()});
     for (size_t i = 0; i < count; ++i) {
       hot_keys.push_back(job.hot[i].key);
       old_handles.push_back(job.hot[i].handle);
@@ -1514,12 +1595,17 @@ private:
         for (size_t i = 0; i < keys.size(); ++i) {
           Value_t current = kValueHandleNone;
           index_->Get(keys[i], current, 0);
-          if (current != old_handles[i]) throw std::logic_error("online generation missed a mutation");
+          if (current != old_handles[i])
+            throw std::logic_error("online generation missed a mutation");
         }
         std::vector<Value_t> retired(keys.size(), kValueHandleNone);
         const auto publish_begin = std::chrono::steady_clock::now();
         online_store_->ExchangeDramKeys(victim_keys, hot_keys);
-        index_->BatchPutWithOld(base::ConstArray<uint64_t>(keys), replacements.data(), retired.data(), 0);
+        index_->BatchPutWithOld(
+            base::ConstArray<uint64_t>(keys),
+            replacements.data(),
+            retired.data(),
+            0);
         published = true;
         // A completed migration preserves values. Only foreground mutations
         // invalidate other snapshots; source handles detect moved rows.
@@ -1529,59 +1615,76 @@ private:
           online_residents_[victim_slots[i]] = hot_keys[i];
           online_ghost_.erase(hot_keys[i]);
         }
-        for (uint64_t handle : retired) value_store_->Retire(handle);
+        for (uint64_t handle : retired)
+          value_store_->Retire(handle);
         online_promoted_rows_ += count;
         ++online_exchange_batches_;
         migration_publish_time_.Record(publish_begin);
       }
     } catch (...) {
-      if (!published) for (uint64_t handle : replacements) value_store_->Free(handle);
+      if (!published)
+        for (uint64_t handle : replacements)
+          value_store_->Free(handle);
       throw;
     }
-    if (!published) for (uint64_t handle : replacements) value_store_->Free(handle);
+    if (!published)
+      for (uint64_t handle : replacements)
+        value_store_->Free(handle);
   }
 
   void ValidateOnlineRowSize(size_t size) const {
     if (online_store_ != nullptr && size != default_value_size_hint_) {
-      throw std::invalid_argument("online admission requires the configured fixed row size");
+      throw std::invalid_argument(
+          "online admission requires the configured fixed row size");
     }
   }
 
-  void ReadValue(uint64_t key, std::string& value, bool* cold = nullptr,
-                  Value_t* out_handle = nullptr) {
+  void ReadValue(uint64_t key,
+                 std::string& value,
+                 bool* cold          = nullptr,
+                 Value_t* out_handle = nullptr) {
     Value_t handle = kValueHandleNone;
     index_->Get(key, handle);
-    if (out_handle != nullptr) *out_handle = handle;
+    if (out_handle != nullptr)
+      *out_handle = handle;
     if (handle == kValueHandleNone) {
       value.clear();
       return;
     }
     if (const char* ptr = value_store_->DirectPtr(handle)) {
-      value.resize(online_store_ != nullptr ? default_value_size_hint_
-                                           : value_store_->SlotCapacity(handle));
+      value.resize(online_store_ != nullptr
+                       ? default_value_size_hint_
+                       : value_store_->SlotCapacity(handle));
       std::memcpy(value.data(), ptr, value.size());
       return;
     }
-    if (cold != nullptr) *cold = true;
+    if (cold != nullptr)
+      *cold = true;
     value.resize(value_store_->SlotCapacity(handle));
     value.resize(value_store_->Read(handle, value.data(), value.size()));
   }
 
-  void MaybeAdmit(const std::vector<uint64_t>& cold_keys, unsigned tid, size_t request_rows,
-                  std::vector<OnlineSnapshot> snapshots = {}, uint64_t generation = 0) {
+  void MaybeAdmit(const std::vector<uint64_t>& cold_keys,
+                  unsigned tid,
+                  size_t request_rows,
+                  std::vector<OnlineSnapshot> snapshots = {},
+                  uint64_t generation                   = 0) {
     auto online_lock = LockOnlineWrite();
     // LOCAL_SHM may combine many 500-row windows into a single request.
     const size_t budget = AdmissionBudget(request_rows);
     std::vector<uint64_t> hot_keys, hot_handles;
     std::unordered_set<uint64_t> seen;
     for (uint64_t key : cold_keys) {
-      if (!seen.insert(key).second || online_store_->DramKeyEligible(key)) continue;
+      if (!seen.insert(key).second || online_store_->DramKeyEligible(key))
+        continue;
       Value_t handle = kValueHandleNone;
       index_->Get(key, handle, tid);
-      if (handle == kValueHandleNone || value_store_->DirectPtr(handle) != nullptr) continue;
+      if (handle == kValueHandleNone ||
+          value_store_->DirectPtr(handle) != nullptr)
+        continue;
       if (online_ghost_.count(key) == 0) {
         const uint64_t token = ++online_ghost_token_;
-        online_ghost_[key] = token;
+        online_ghost_[key]   = token;
         online_ghost_fifo_.emplace_back(key, token);
         while (online_ghost_fifo_.size() > online_ghost_limit_) {
           const auto expired = online_ghost_fifo_.front();
@@ -1595,34 +1698,47 @@ private:
       }
       hot_keys.push_back(key);
       hot_handles.push_back(handle);
-      if (hot_keys.size() == budget) break;
+      if (hot_keys.size() == budget)
+        break;
     }
-    if (hot_keys.empty()) return;
+    if (hot_keys.empty())
+      return;
     if (online_async_) {
       if (generation != online_generation_) {
         ++online_stale_jobs_;
         return;
       }
-      auto job = std::make_unique<OnlineJob>();
+      auto job        = std::make_unique<OnlineJob>();
       job->generation = generation;
       for (size_t i = 0; i < hot_keys.size(); ++i) {
-        auto found = std::find_if(snapshots.begin(), snapshots.end(), [&](const auto& snapshot) {
-          return snapshot.key == hot_keys[i] && snapshot.handle == hot_handles[i];
-        });
-        if (found != snapshots.end()) job->hot.push_back(std::move(*found));
+        auto found = std::find_if(
+            snapshots.begin(), snapshots.end(), [&](const auto& snapshot) {
+              return snapshot.key == hot_keys[i] &&
+                     snapshot.handle == hot_handles[i];
+            });
+        if (found != snapshots.end())
+          job->hot.push_back(std::move(*found));
       }
-      if (job->hot.empty()) return;
+      if (job->hot.empty())
+        return;
       {
         std::lock_guard<std::mutex> lock(background_mu_);
-        if (background_pending_ && background_pending_->generation != generation) {
+        if (background_pending_ &&
+            background_pending_->generation != generation) {
           background_pending_.reset();
           ++online_stale_jobs_;
         }
         if (background_pending_) {
           for (auto& hot : job->hot) {
             auto& pending = background_pending_->hot;
-            if (pending.size() == 256) { ++online_queue_drops_; break; }
-            if (std::none_of(pending.begin(), pending.end(), [&](const auto& row) { return row.key == hot.key; })) {
+            if (pending.size() == 256) {
+              ++online_queue_drops_;
+              break;
+            }
+            if (std::none_of(
+                    pending.begin(), pending.end(), [&](const auto& row) {
+                      return row.key == hot.key;
+                    })) {
               pending.push_back(std::move(hot));
             }
           }
@@ -1639,21 +1755,25 @@ private:
     std::vector<size_t> victim_slots;
     std::vector<std::vector<char>> victim_data;
     for (size_t scanned = 0; scanned < online_residents_.size() &&
-                             victim_keys.size() < hot_keys.size(); ++scanned) {
-      const size_t slot = online_cursor_++ % online_residents_.size();
+                             victim_keys.size() < hot_keys.size();
+         ++scanned) {
+      const size_t slot  = online_cursor_++ % online_residents_.size();
       const uint64_t key = online_residents_[slot];
-      Value_t handle = kValueHandleNone;
+      Value_t handle     = kValueHandleNone;
       index_->Get(key, handle, tid);
-      if (handle == kValueHandleNone) continue;
+      if (handle == kValueHandleNone)
+        continue;
       const char* ptr = value_store_->DirectPtr(handle);
-      if (ptr == nullptr) continue;
+      if (ptr == nullptr)
+        continue;
       victim_slots.push_back(slot);
       victim_keys.push_back(key);
       victim_handles.push_back(handle);
       victim_data.emplace_back(ptr, ptr + default_value_size_hint_);
     }
     const size_t count = victim_keys.size();
-    if (count == 0) return;
+    if (count == 0)
+      return;
     hot_keys.resize(count);
     hot_handles.resize(count);
     std::vector<ValueStore::ReadResult> hot_data;
@@ -1663,11 +1783,13 @@ private:
     const auto read_begin = std::chrono::steady_clock::now();
     value_store_->BatchRead(hot_handles, hot_data);
     migration_read_time_.Record(read_begin);
-    if (hot_data.size() != count) throw std::runtime_error("online read count mismatch");
+    if (hot_data.size() != count)
+      throw std::runtime_error("online read count mismatch");
     std::vector<uint64_t> keys = victim_keys;
     keys.insert(keys.end(), hot_keys.begin(), hot_keys.end());
     std::vector<ValueStore::WriteSpec> specs;
-    for (const auto& value : victim_data) specs.push_back({value.data(), value.size()});
+    for (const auto& value : victim_data)
+      specs.push_back({value.data(), value.size()});
     for (const auto& value : hot_data) {
       if (value.data.size() != default_value_size_hint_) {
         throw std::runtime_error("online value size mismatch");
@@ -1687,17 +1809,20 @@ private:
     migration_prepare_time_.Record(prepare_begin);
     bool valid = replacements.size() == keys.size();
     for (size_t i = 0; i < replacements.size(); ++i) {
-      valid = valid && replacements[i] != kValueHandleNone &&
-              (value_store_->DirectPtr(replacements[i]) != nullptr) == (i >= count);
+      valid =
+          valid && replacements[i] != kValueHandleNone &&
+          (value_store_->DirectPtr(replacements[i]) != nullptr) == (i >= count);
     }
     if (!valid) {
-      for (uint64_t handle : replacements) value_store_->Free(handle);
+      for (uint64_t handle : replacements)
+        value_store_->Free(handle);
       online_store_->ExchangeDramKeys(hot_keys, victim_keys);
       online_capacity_rejects_ += count;
       return;
     }
     const auto publish_begin = std::chrono::steady_clock::now();
-    index_->BatchPutWithOld(base::ConstArray<uint64_t>(keys), replacements.data(), old.data(), tid);
+    index_->BatchPutWithOld(
+        base::ConstArray<uint64_t>(keys), replacements.data(), old.data(), tid);
     for (size_t i = 0; i < count; ++i) {
       CHECK_EQ(old[i], victim_handles[i]);
       CHECK_EQ(old[i + count], hot_handles[i]);
@@ -1706,7 +1831,8 @@ private:
     }
     // Both new copies are complete before publication. All readers hold a
     // shared guard through their copy, so retiring these handles is safe.
-    for (uint64_t handle : old) value_store_->Retire(handle);
+    for (uint64_t handle : old)
+      value_store_->Retire(handle);
     online_promoted_rows_ += count;
     ++online_exchange_batches_;
     migration_publish_time_.Record(publish_begin);
@@ -1907,7 +2033,7 @@ private:
   mutable folly::SharedMutex online_mu_;
   // ponytail: a single pending batch and one worker bound temporary payloads;
   // use per-row versions only if global-generation retries limit admission.
-  bool online_async_ = false;
+  bool online_async_          = false;
   uint64_t online_generation_ = 0;
   std::thread background_thread_;
   mutable std::mutex background_mu_;
@@ -1916,18 +2042,20 @@ private:
   bool background_active_ = false, background_stop_ = false;
   std::exception_ptr background_error_;
   std::vector<uint64_t> online_residents_;
-  size_t online_cursor_ = 0;
-  size_t online_ghost_limit_ = 0;
+  size_t online_cursor_        = 0;
+  size_t online_ghost_limit_   = 0;
   uint64_t online_ghost_token_ = 0;
   std::unordered_map<uint64_t, uint64_t> online_ghost_;
   std::deque<std::pair<uint64_t, uint64_t>> online_ghost_fifo_;
-  uint64_t online_promoted_rows_ = 0;
+  uint64_t online_promoted_rows_       = 0;
   uint64_t online_migration_read_rows_ = 0;
-  uint64_t online_exchange_batches_ = 0;
-  uint64_t online_capacity_rejects_ = 0;
-  uint64_t online_submitted_jobs_ = 0, online_stale_jobs_ = 0, online_queue_drops_ = 0;
+  uint64_t online_exchange_batches_    = 0;
+  uint64_t online_capacity_rejects_    = 0;
+  uint64_t online_submitted_jobs_ = 0, online_stale_jobs_ = 0,
+           online_queue_drops_ = 0;
   TieringTime sgd_read_time_, sgd_write_time_;
-  TieringTime migration_read_time_, migration_prepare_time_, migration_publish_time_;
+  TieringTime migration_read_time_, migration_prepare_time_,
+      migration_publish_time_;
   mutable std::shared_mutex checkpoint_mu_;
   std::vector<std::vector<uint64_t>> checkpoint_keys_by_thread_;
 };
