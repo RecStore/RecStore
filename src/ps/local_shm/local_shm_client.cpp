@@ -292,6 +292,7 @@ int LocalShmPSClient::SubmitGetParameterFlat(
   header->table_name_len    = 0;
   header->key_count         = static_cast<uint32_t>(num_rows);
   header->embedding_dim     = static_cast<uint32_t>(embedding_dim);
+  header->learning_rate     = 0.0f;
   header->input_bytes       = input_bytes;
   header->output_bytes      = 0;
   header->server_seen_epoch = region_.control()->server_epoch;
@@ -501,6 +502,7 @@ int LocalShmPSClient::PutParameterFlat(
   header->table_name_len    = 0;
   header->key_count         = static_cast<uint32_t>(num_rows);
   header->embedding_dim     = static_cast<uint32_t>(embedding_dim);
+  header->learning_rate     = 0.0f;
   header->input_bytes       = input_bytes;
   header->output_bytes      = 0;
   header->server_seen_epoch = region_.control()->server_epoch;
@@ -547,9 +549,11 @@ int LocalShmPSClient::PutParameterFlat(
   return ok ? 0 : -1;
 }
 
-int LocalShmPSClient::UpdateParameter(const std::string& table_name,
-                                      const base::ConstArray<uint64_t>& keys,
-                                      const base::RecTensor& grads) {
+int LocalShmPSClient::UpdateParameter(
+    const std::string& table_name,
+    const base::ConstArray<uint64_t>& keys,
+    const base::RecTensor& grads,
+    float learning_rate) {
   if (!IsFloatEmbeddingValues(grads, static_cast<int64_t>(keys.Size()))) {
     return -1;
   }
@@ -573,7 +577,8 @@ int LocalShmPSClient::UpdateParameter(const std::string& table_name,
         std::min<int64_t>(static_cast<int64_t>(max_keys), n - start);
     base::ConstArray<uint64_t> chunk_keys(
         keys.Data() + start, static_cast<int>(chunk));
-    if (UpdateParameterFlat(table_name, chunk_keys, g + start * D, chunk, D) !=
+    if (UpdateParameterFlat(
+            table_name, chunk_keys, g + start * D, chunk, D, learning_rate) !=
         0) {
       return -1;
     }
@@ -586,7 +591,8 @@ int LocalShmPSClient::UpdateParameterFlat(
     const base::ConstArray<uint64_t>& keys,
     const float* grads,
     int64_t num_rows,
-    int64_t embedding_dim) {
+    int64_t embedding_dim,
+    float learning_rate) {
   if (!region_.IsOpen() || grads == nullptr || num_rows < 0 ||
       embedding_dim <= 0 || keys.Size() != static_cast<size_t>(num_rows)) {
     return -1;
@@ -627,6 +633,7 @@ int LocalShmPSClient::UpdateParameterFlat(
   header->table_name_len    = static_cast<uint32_t>(table_name.size());
   header->key_count         = static_cast<uint32_t>(keys.Size());
   header->embedding_dim     = static_cast<uint32_t>(embedding_dim);
+  header->learning_rate     = learning_rate;
   header->input_bytes       = input_bytes;
   header->output_bytes      = 0;
   header->server_seen_epoch = region_.control()->server_epoch;

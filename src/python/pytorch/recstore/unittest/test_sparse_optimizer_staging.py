@@ -82,10 +82,12 @@ class TestSparseOptimizerStaging(KVClientIsolationMixin, unittest.TestCase):
             def __getattr__(self, name):
                 return getattr(self._inner, name)
 
-            def update_async(self, name, ids, grads):
+            def update_async(self, name, ids, grads, learning_rate=0.0):
                 handle = self._next_handle
                 self._next_handle += 1
-                self.update_async_calls.append((name, ids.clone(), grads.clone(), handle))
+                self.update_async_calls.append(
+                    (name, ids.clone(), grads.clone(), handle, learning_rate)
+                )
                 return handle
 
             def wait(self, handle):
@@ -106,6 +108,7 @@ class TestSparseOptimizerStaging(KVClientIsolationMixin, unittest.TestCase):
         optimizer.flush()
 
         self.assertEqual(len(proxy_client.update_async_calls), 1)
+        self.assertEqual(proxy_client.update_async_calls[0][4], 0.1)
         self.assertEqual(proxy_client.wait_calls, [100])
         self.assertEqual(fake.update_calls, [])
 

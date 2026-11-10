@@ -130,7 +130,9 @@ nav:
     - 性能分析:
       - Profiling 与瓶颈分析: performance/profiling.md
       - 监控与 Grafana: performance/monitoring.md
-    - 性能报告: performance/reports.md
+    - 性能报告:
+      - 总览: performance/reports.md
+      - 混合存储（DRAM+SSD）: performance/tiered-e2e.md
   - API:
     - api/index.md
     - Python:

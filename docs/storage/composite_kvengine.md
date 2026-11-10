@@ -117,6 +117,8 @@ SSD 索引创建 `IOBackend` 前的配置映射：
 
 **Tiering**：`HybridValueStore` 在 `dram_bytes_reserved + size <= capacity * high_watermark_ratio`（默认 `0.85`）时优先 DRAM，否则 SSD；handle 最高位标记介质。**没有后台冷热迁移线程**；可选的读缓存（`tiering.cache_policy`）只把读到的 SSD value 在同步路径上提升进 DRAM，见下文。
 
+不同 SSD 比例下的端到端吞吐与拆分见[混合存储（DRAM+SSD）端到端基准](../performance/tiered-e2e.md)。
+
 ---
 
 ## IOBackend（`*.io.type`）
