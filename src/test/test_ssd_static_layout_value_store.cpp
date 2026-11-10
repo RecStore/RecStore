@@ -1058,4 +1058,131 @@ TEST_F(StaticLayoutValueTest, TieredReadCacheConcurrentReadsStayCoherent) {
             TieredField(info, "tiered_cache_budget_bytes"));
 }
 
+TEST_F(StaticLayoutValueTest, TieredReadCacheConcurrentWriteStaysCoherent) {
+  // Readers and a writer share one SSD handle while the cache is too small to
+  // hold the working set, so the read path keeps falling back to SSD and
+  // re-promoting. That is the interleaving the write barrier exists for: a
+  // reader that fetched the pre-write value must not insert it after the write
+  // landed, or the cache serves a stale copy until the key is written again.
+  // TieredReadCacheRejectsPromotionRacingWrite pins the interleaving
+  // deterministically; this test runs the same guard from two real threads.
+  constexpr size_t kHandles  = 200;
+  constexpr int kReaders     = 4;
+  constexpr int kWriterLoops = 20000;
+  HybridValueStore store(
+      TieredStoreConfig(root_, "concurrent-write", LruTieringConfig(0.02, 4)));
+  const auto ssd = FillUntilSsd(store, kHandles);
+  ASSERT_EQ(ssd.size(), kHandles);
+
+  const std::string first(kCachedValueSize, 'x');
+  const std::string second(kCachedValueSize, 'y');
+  const std::string last(kCachedValueSize, 'z');
+
+  std::atomic<bool> stopped{false};
+  std::atomic<int> mismatches{0};
+  std::atomic<int> reads_done{0};
+  std::atomic<int> readers_ready{0};
+
+  std::vector<std::thread> readers;
+  readers.reserve(kReaders);
+  for (int t = 0; t < kReaders; ++t) {
+    readers.emplace_back([&, t] {
+      std::string out(kCachedValueSize, '\0');
+      int reads = 0;
+      readers_ready.fetch_add(1, std::memory_order_release);
+      for (int i = 0; i < 1000000 && !stopped.load(std::memory_order_acquire);
+           ++i) {
+        const size_t index = static_cast<size_t>(t + i) % ssd.size();
+        const bool whole =
+            store.Read(ssd[index].handle, out.data(), out.size()) ==
+            kCachedValueSize;
+        // A read racing a write may see either value, but never a mixture of
+        // the two (the store writes whole rows under a page lock).
+        const bool coherent =
+            index == 0 ? (out == ssd[0].payload || out == first ||
+                          out == second || out == last)
+                       : out == ssd[index].payload;
+        if (!whole || !coherent) {
+          mismatches.fetch_add(1, std::memory_order_relaxed);
+        }
+        ++reads;
+      }
+      reads_done.fetch_add(reads, std::memory_order_relaxed);
+    });
+  }
+
+  std::thread writer([&] {
+    // Start writing only once the readers are running, so the two paths are
+    // guaranteed to overlap instead of racing thread startup.
+    while (readers_ready.load(std::memory_order_acquire) < kReaders) {
+      std::this_thread::yield();
+    }
+    for (int i = 0; i < kWriterLoops; ++i) {
+      const std::string& value = (i % 2 == 0) ? first : second;
+      store.Write(ssd.front().handle, value.data(), value.size());
+    }
+    // Leave behind a value that differs from both racing ones, then let the
+    // readers drain so that no read is still in flight afterwards.
+    store.Write(ssd.front().handle, last.data(), last.size());
+    stopped.store(true, std::memory_order_release);
+  });
+  writer.join();
+  for (auto& thread : readers) {
+    thread.join();
+  }
+  EXPECT_EQ(mismatches.load(), 0);
+  EXPECT_GT(reads_done.load(), 0);
+
+  // Every read performs exactly one cache lookup, whichever way it ends.
+  const std::string info = store.ExtraResultFields();
+  EXPECT_EQ(TieredField(info, "tiered_cache_hits") +
+                TieredField(info, "tiered_cache_misses"),
+            static_cast<double>(reads_done.load()));
+  // The reads must have gone back to SSD and re-promoted, otherwise this is
+  // just the read-only hit test again.
+  EXPECT_GT(TieredField(info, "tiered_cache_misses"), 0.0);
+  EXPECT_GT(TieredField(info, "tiered_cache_promotions"), 0.0);
+
+  // The writer's last value must be what the store serves now; a promotion
+  // that outlived its barrier would have left the previous copy cached.
+  std::string out(kCachedValueSize, '\0');
+  ASSERT_EQ(store.Read(ssd.front().handle, out.data(), out.size()),
+            kCachedValueSize);
+  EXPECT_EQ(out, last);
+}
+
+TEST_F(StaticLayoutValueTest, TieredReadCacheRetireDefersSsdSlotReuse) {
+  // The engine publishes a new handle before retiring the old one, so a reader
+  // that already loaded the old handle may still be copying from its slot.
+  // Retire must not return the slot to the allocator at once: the next
+  // same-size allocation would land on it and overwrite the bytes.
+  HybridValueStore store(
+      TieredStoreConfig(root_, "retire", LruTieringConfig(0.5, 4)));
+  const auto ssd = FillUntilSsd(store, 1);
+  ASSERT_EQ(ssd.size(), 1U);
+  constexpr uint64_t kSsdFlag = 1ULL << 63;
+  const uint64_t handle       = ssd.front().handle;
+  const uint64_t raw          = handle & ~kSsdFlag;
+
+  std::string out(kCachedValueSize, '\0');
+  ASSERT_EQ(store.Read(handle, out.data(), out.size()), kCachedValueSize);
+  EXPECT_EQ(out, ssd.front().payload);
+
+  store.Retire(handle);
+  const std::string overwrite(kCachedValueSize, 'Z');
+  const uint64_t replacement =
+      store.AllocAndWrite(overwrite.data(), overwrite.size());
+  ASSERT_NE(replacement, kValueHandleNone);
+  ASSERT_NE(replacement & kSsdFlag, 0ULL);
+  // With an immediate free the allocator would hand out the retired slot.
+  EXPECT_NE(replacement & ~kSsdFlag, raw);
+  out.assign(kCachedValueSize, '\0');
+  EXPECT_EQ(store.Read(handle, out.data(), out.size()), kCachedValueSize);
+  EXPECT_EQ(out, ssd.front().payload);
+
+  // Let the grace period pass, then drain the retired slot.
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  store.Retire(replacement);
+}
+
 } // namespace
