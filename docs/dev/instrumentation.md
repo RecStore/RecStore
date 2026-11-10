@@ -1,66 +1,86 @@
 # 性能埋点
 
-RecStore 的 Grafana 看板基于 `report()` 函数上报链路，完整链路为：
+所有埋点走同一个入口：调用点调 `report(table_name, unique_id, metric_name, value)`，由
+`src/base/report/report_client.cpp` 组装成一条 `MetricRecord`，再按配置分发给各个 sink。
 
-`RecStore (C++/Python 调用 report)` -> `HTTP report_API` -> `ClickHouse` -> `Grafana`
+```text
+report()
+  └─ MetricRecord（附带 host / pid / run_id / rank / shard 维度）
+      ├─ remote  → 异步 HTTP → report_API → ClickHouse → Grafana
+      ├─ csv     → 长表追加（每行一个指标）
+      ├─ jsonl   → 一行一个事件
+      ├─ glog    → REPORT_LOCAL_EVENT 日志行
+      └─ MetricSink → RegisterMetricSink() 注册的自定义 exporter
+```
 
-## 上报协议与入口
+内置 sink 由 `observability` 配置选择，配置字段和环境变量见[配置字段参考](../config.md) 的「观测上报配置」一节；
+自定义 sink 走 C++ 接口，不经过配置。sink 的选择不影响调用点，也不改变远端 payload 的格式。
 
-- 上报接口由 `recstore_config.json` 中 `report_API` 指定（默认：`http://127.0.0.1:8081/report`）。
-- `report()` 会构造 JSON 并异步发送，核心字段如下：
+## MetricRecord 字段
 
+| 字段 | 来源 | 说明 |
+| --- | --- | --- |
+| `timestamp_us` | 采集时刻 | Unix 微秒 |
+| `host` | `gethostname()` | 节点名 |
+| `pid` | `getpid()` | 进程号 |
+| `run_id` | `RECSTORE_RUN_ID` | 一次运行的标识，每次 `report()` 重读 |
+| `rank` | `RANK`，回退 `LOCAL_RANK` | 训练 rank，未设置时为 `-1` |
+| `shard` | `RECSTORE_SHARD_ID`，回退 `SHARD_ID` | PS 分片，未设置时为 `-1` |
+| `table_name` / `unique_id` / `metric_name` | 调用点 | 指标定位 |
+| `metric_value` | 调用点 | 指标数值 |
+| `source` | 调用点 | 默认 `report` |
 
-| 字段名            | 含义           | 示例                                     |
-| -------------- | ------------ | -------------------------------------- |
-| `table_name`   | 目标报表/逻辑表名    | `op_latency`                           |
-| `unique_id`    | 单次请求或链路标识    | `embread_debug` + 时间戳 |
-| `metric_name`  | 指标名称         | `recstore_us`                          |
-| `metric_value` | 指标数值（double） | `532.0`                                |
+远端上报只发送 `table_name`、`unique_id`、`metric_name`、`metric_value`、`timestamp_us`、`source`
+六个字段，与历史 payload 保持兼容，避免部署方的 `report_service` 因未知字段拒绝；`host` / `pid` /
+`run_id` / `rank` / `shard` 只出现在 CSV 和自定义 sink 里。
 
+## CSV 形态
 
-对应实现可参考：
+长表，一行一个指标，列固定为：
 
-- `src/base/report/report_client.cpp`
-- `src/base/report/report_client.h`
+```csv
+timestamp_us,host,pid,run_id,rank,shard,table_name,unique_id,metric_name,metric_value,source
+```
+
+追加写，文件为空时写一次表头；字段含逗号、引号或换行时按 RFC 4180 加引号。默认路径
+`recstore_metrics_{host}_{pid}.csv`，`{host}` / `{pid}` 用来把 PS server 和各训练 rank 分开。
+离线 pivot 可以直接用 `tools/benchmarks/aggregate.py`。
 
 ## 常见 report 表与指标
 
+| 表名 | 常见指标名 | 说明 |
+| --- | --- | --- |
+| `op_latency` | `recstore_us`、`recserver_us` | 端到端或服务端处理耗时 |
+| `embread_stages` | `duration_us`、`request_size`、`cache_lookup_us`、`deserialize_duration_us` | EmbRead 细分阶段耗时与规模 |
+| `ps_client_latency` | `latency_us` | PS 客户端侧延迟 |
+| `ps_server_latency` | `latency_us` | PS 服务端侧延迟 |
+| `emb_read_flame_map` | `level`、`value`、`self`、`start` | 火焰图分层结构数据 |
 
-| 表名                   | 常见指标名                                                                    | 说明                |
-| -------------------- | ------------------------------------------------------------------------ | ----------------- |
-| `op_latency`         | `recstore_us`、`recserver_us`                                             | 端到端或服务端处理耗时       |
-| `embread_stages`     | `duration_us`、`request_size`、`cache_lookup_us`、`deserialize_duration_us` | EmbRead 细分阶段耗时与规模 |
-| `ps_client_latency`  | `latency_us`                                                             | PS 客户端侧延迟         |
-| `ps_server_latency`  | `latency_us`                                                             | PS 服务端侧延迟         |
-| `emb_read_flame_map` | `level`、`value`、`self`、`start`                                           | 火焰图分层结构数据         |
+## 自定义 sink
 
-??? note "旧版 txt 埋点（历史）"
+```cpp
+class MyExporter : public recstore::MetricSink {
+public:
+  void Emit(const recstore::MetricRecord& record) override {
+    // record 只在本次调用内有效，需要保留就拷贝。
+  }
+  void Flush() override {}
+};
 
-    RecStore 使用 `xmh::Timer`（位于 `src/base/timer.h`）进行全链路的耗时打点。数据流向如下：
+recstore::RegisterMetricSink(std::make_unique<MyExporter>());
+```
 
-    ### 写路径自顶向下
+`Emit` 会被多个线程并发调用，实现必须自己保证线程安全。注册发生在第一次 `report()` 之前才能收到全部样本，
+之后再注册只收到后续事件。自定义 sink 与内置 sink 并行，不受 `observability.sinks` 影响。
 
-    | 层级 (Layer) | Timer 名称 | 说明 | 代码位置 |
-    | :--- | :--- | :--- | :--- |
-    | **PyTorch OP** | `OP.EmbWrite.Total` | Python 端调用 C++ OP 的总耗时 | `src/framework/pytorch/op_torch.cc` |
-    | | `OP.EmbWrite.Call` | 核心逻辑调用耗时 | |
-    | **C++ Client** | `ClientOp.EmbWrite.Total` | 客户端操作总耗时 | `src/framework/op.cc` |
-    | | `ClientOp.EmbWrite.BuildVector` | Tensor 转 C++ Vector 的开销 | |
-    | **gRPC Client** | `Client.PutParameter.Total` | RPC 请求总耗时 | `src/ps/grpc/dist_grpc_ps_client.cpp` |
-    | | `Client.PutParameter.Serialize` | 序列化 Data Request 耗时 | |
-    | | `Client.PutParameter.RPC` | 网络传输 + 服务端处理总耗时 | |
-    | **Server** | `PS.PutParameter.Handle` | 服务端处理总耗时 | `src/ps/grpc/grpc_ps_server.cpp` |
-    | | `PS.PutParameter.KVPutAll` | 写入底层 KV 存储的耗时 | |
+## 与 stdout 周期表的关系
 
-    ### 读路径自顶向下
+`xmh::Reporter::StartReportThread()` 每 5 s 往 stdout 打一张 P50/P99 文本表，由 `ps_server` 和
+`recstore_pytorch` 启动。`report()` 里 `metric_name` 为 `duration_ns` / `latency_ns` / `duration_us` /
+`latency_us` 的样本会同时通过 `xmh::Timer::ManualRecordNs` 计入这张表，其余指标只走 sink。
+关掉 sink 不影响 stdout 表，反过来也一样。
 
-    | 层级 (Layer) | Timer 名称 | 说明 | 代码位置 |
-    | :--- | :--- | :--- | :--- |
-    | **PyTorch OP** | `OP.EmbRead.Total` | Python 端调用 C++ OP 的总耗时 | `src/framework/pytorch/op_torch.cc` |
-    | | `OP.EmbRead.ToCPUKeys` | Embedding Key 从 GPU 拷贝到 CPU 的耗时 | |
-    | **gRPC Client** | `Client.GetParameter.Total` | RPC 请求总耗时 | `src/ps/grpc/dist_grpc_ps_client.cpp` |
-    | | `Client.GetParameter.AsyncWait` | 异步等待网络回包的耗时（反映服务端处理+网络延迟） | |
-    | **Server** | `KV BatchGet` | 底层 KV 引擎批量读取耗时 | `docs/storage/composite_kvengine.md` |
+## 构建开关
 
-    ??? tip "什么是 Timer?"
-        `xmh::Timer` 是一个高性能的 C++ 计时器工具类。它通过 `Timer::Start("Name")` 和 `Timer::Stop("Name")` 记录代码块耗时，并自动统计 P50、P99 等分位数值，定期输出到日志文件中。
+`USE_PERF_REPORT`（默认 `OFF`）控制 `ENABLE_PERF_REPORT` 宏：打开后 Release 构建也会保留各处的
+`report()` 调用点并链接 `report_client`，不再要求 Debug；关闭时调用点被编译掉，不会产生样本。
