@@ -33,6 +33,8 @@ graph TD
 
 **读路径**：`Index::Get` / `BatchGet` → `DirectPtr` 或 `Read` / `BatchRead`。
 
+`BatchPut` 遇到同一批次内重复 key 时退回逐条 `Put`，避免覆盖顺序不确定。
+
 ## 配置骨架
 
 ```json
