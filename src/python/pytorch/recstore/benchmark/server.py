@@ -97,6 +97,18 @@ def normalize_allocator_type(allocator: str) -> str:
     return allocator
 
 
+def normalize_cache_policy(cache_policy: str) -> str:
+    policy = str(cache_policy).strip().lower()
+    if policy == "lru":
+        return "LRU"
+    if policy == "none":
+        return "none"
+    raise ValueError(
+        "unsupported tiering.cache_policy: "
+        f"{cache_policy!r} (expected 'LRU' or 'none')"
+    )
+
+
 def _build_ssd_allocator(capacity_bytes: int) -> dict:
     return {
         "type": "SSD_SLAB",
@@ -143,6 +155,7 @@ def _build_recstore_base_kv_config(
     allocator: str,
     index_type: str,
     tiered_dram_capacity_multiplier: float,
+    tiered_cache_policy: str = "LRU",
 ) -> dict:
     dram_capacity = capacity * value_size_hint * 2
     value: dict = {
@@ -171,7 +184,7 @@ def _build_recstore_base_kv_config(
                 "path": f"{kv_data_path}/dram",
             },
             "ssd_allocator": _build_ssd_allocator(ssd_capacity),
-            "tiering": {"cache_policy": "LRU"},
+            "tiering": {"cache_policy": normalize_cache_policy(tiered_cache_policy)},
         }
         value["ssd_allocator"]["path"] = tiered_ssd_path
     return {
@@ -218,6 +231,7 @@ def build_base_kv_config_for_backend(
     value_size_hint: int,
     index_type: str,
     tiered_dram_capacity_multiplier: float = 2.0,
+    tiered_cache_policy: str = "LRU",
 ) -> dict:
     backend = ps_kv_backend.strip().lower()
     kv_data_path = resolve_kv_data_path(
@@ -236,6 +250,7 @@ def build_base_kv_config_for_backend(
             allocator=allocator,
             index_type=index_type,
             tiered_dram_capacity_multiplier=tiered_dram_capacity_multiplier,
+            tiered_cache_policy=tiered_cache_policy,
         )
     if backend in {"hps_hash_map", "hps_rocksdb"}:
         return _build_hps_base_kv_config(
@@ -289,6 +304,7 @@ def build_runtime_config(
     index_type: str = "DRAM_EXTENDIBLE_HASH",
     ps_kv_backend: str = "recstore_dram",
     tiered_dram_capacity_multiplier: float = 2.0,
+    tiered_cache_policy: str = "LRU",
 ) -> dict:
     cfg = copy.deepcopy(base_cfg)
     cfg.setdefault("cache_ps", {})
@@ -338,6 +354,7 @@ def build_runtime_config(
         value_size_hint=value_size_hint,
         index_type=index_type,
         tiered_dram_capacity_multiplier=tiered_dram_capacity_multiplier,
+        tiered_cache_policy=tiered_cache_policy,
     )
     _prepare_base_kv_paths(base_kv)
     cfg["cache_ps"]["base_kv_config"] = base_kv
@@ -504,6 +521,7 @@ def make_runtime_dir(
     index_type: str = "DRAM_EXTENDIBLE_HASH",
     ps_kv_backend: str = "recstore_dram",
     tiered_dram_capacity_multiplier: float = 2.0,
+    tiered_cache_policy: str = "LRU",
 ) -> tuple[Path, Path]:
     unique_tag = f"{time.time_ns()}_{uuid.uuid4().hex[:8]}"
     output_root_path = Path(output_root).resolve()
@@ -522,6 +540,7 @@ def make_runtime_dir(
         index_type=index_type,
         ps_kv_backend=ps_kv_backend,
         tiered_dram_capacity_multiplier=tiered_dram_capacity_multiplier,
+        tiered_cache_policy=tiered_cache_policy,
     )
     runtime_dir = output_root_path / "runtime" / run_id / unique_tag
     runtime_dir.mkdir(parents=True, exist_ok=True)
