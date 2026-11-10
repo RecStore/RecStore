@@ -2779,17 +2779,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#kvenginecomposite" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        KVEngineComposite 读写路径（默认）
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2919,20 +2908,7 @@
 </table>
 <p>服务端 JSON 字段总表见 <a href="../config/">config.md</a> 的 <code>base_kv_config</code> 一节。</p>
 <h2 id="cacheps-basekv">CachePS 与 BaseKV<a class="headerlink" href="#cacheps-basekv" title="Permanent link">&para;</a></h2>
-<p><code>CachePS</code> 在构造时读取 <code>cache_ps</code> 配置：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">BaseKVConfig</span><span class="w"> </span><span class="n">kv_config</span><span class="p">;</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">kv_config</span><span class="p">.</span><span class="n">num_threads_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">config</span><span class="p">[</span><span class="s">"num_threads"</span><span class="p">];</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">kv_config</span><span class="p">.</span><span class="n">json_config_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">config</span><span class="p">[</span><span class="s">"base_kv_config"</span><span class="p">];</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">resolved</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ResolveEngine</span><span class="p">(</span><span class="n">kv_config</span><span class="p">);</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">base_kv_</span><span class="p">.</span><span class="n">reset</span><span class="p">(</span><span class="n">base</span><span class="o">::</span><span class="n">Factory</span><span class="o">&lt;</span><span class="n">BaseKV</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">BaseKVConfig</span><span class="o">&amp;&gt;::</span><span class="n">NewInstance</span><span class="p">(</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="n">resolved</span><span class="p">.</span><span class="n">engine</span><span class="p">,</span><span class="w"> </span><span class="n">resolved</span><span class="p">.</span><span class="n">cfg</span><span class="p">));</span>
-</code></pre></div>
-<ul>
-<li><code>num_threads_</code> 传入引擎，供批量与组件内部并行使用。</li>
-<li><code>json_config_</code> 原样交给具体引擎；<strong>字段合法性由各引擎及其子组件构造时检查</strong>。</li>
-<li>省略 <code>engine_type</code> 时，<code>ResolveEngine</code> 默认 <code>KVEngineComposite</code>。</li>
-</ul>
-<p>典型调用链：</p>
+<p><code>CachePS</code> 把 <code>cache_ps.base_kv_config</code> 原样交给引擎：<code>num_threads_</code> 供内部并行，其余字段由引擎与组件在构造时校验；省略 <code>engine_type</code> 时默认 <code>KVEngineComposite</code>。</p>
 <table>
 <thead>
 <tr>
@@ -2959,21 +2935,7 @@
 </tr>
 </tbody>
 </table>
-<h2 id="kvenginecomposite">KVEngineComposite 读写路径（默认）<a class="headerlink" href="#kvenginecomposite" title="Permanent link">&para;</a></h2>
-<p>写入（<code>Put</code> / <code>BatchPut</code>）：</p>
-<ol>
-<li><code>CachePS</code> 收到 key 与 float 数据，调用 <code>BaseKV::Put</code> 或 <code>BatchPut</code>。</li>
-<li><code>KVEngineComposite</code> 在 <code>ValueStore</code> 上 <code>AllocAndWrite</code> 新 slot。</li>
-<li><code>Index::Put</code> 更新 key 的 handle，返回旧 handle。</li>
-<li>对旧 handle 调用 <code>ValueStore::Retire</code>（延迟回收）。</li>
-</ol>
-<p>读取（<code>Get</code> / <code>BatchGet</code>）：</p>
-<ol>
-<li><code>Index</code> 解析 key → handle；未命中为 <code>kValueHandleNone</code>，对外表现为空值。</li>
-<li>若 <code>ValueStore::DirectPtr</code> 可用（DRAM），<code>BatchGet</code> 可返回指向底层存储的 <code>ConstArray&lt;float&gt;</code> 视图。</li>
-<li>否则 <code>Read</code> / <code>BatchRead</code>（SSD 或 tiered 的 SSD 部分）拷贝到线程局部 buffer。</li>
-</ol>
-<p><code>BatchPut</code> 对同一批次内重复 key 会退回逐条 <code>Put</code>，避免覆盖顺序不确定。其他引擎的语义以各自实现为准，见 <a href="basekv/">basekv.md</a>。</p>
+<p>构造代码、<code>ResolveEngine</code> 行为与接口语义见 <a href="basekv/">basekv.md</a>；默认组合的读写顺序见 <a href="composite_kvengine/">composite_kvengine.md</a>。</p>
 <h2 id="_3">文档索引<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
