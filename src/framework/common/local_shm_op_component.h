@@ -32,10 +32,12 @@ void ReleaseLocalShmLookupFlat(BasePSClient* client,
                                const std::string& backend_name,
                                LocalShmFlatGetHandle* handle);
 
-void LocalShmUpdateFlat(BasePSClient* client,
-                        const std::string& backend_name,
-                        const std::string& table_name,
-                        const base::RecTensor& keys,
-                        const base::RecTensor& grads);
+void LocalShmUpdateFlat(
+    BasePSClient* client,
+    const std::string& backend_name,
+    const std::string& table_name,
+    const base::RecTensor& keys,
+    const base::RecTensor& grads,
+    float learning_rate);
 
 } // namespace recstore

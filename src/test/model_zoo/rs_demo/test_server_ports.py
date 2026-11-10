@@ -166,6 +166,35 @@ class TestChooseAvailablePorts(unittest.TestCase):
                 int(20_000 * 512 * 0.02),
             )
 
+    def test_make_runtime_dir_applies_tiered_cache_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _runtime_dir, runtime_cfg_path = self._make_runtime_dir(
+                tmpdir,
+                run_id="case-tiered-cache-off",
+                ps_type="GRPC",
+                kv_capacity=20_000,
+                value_size_bytes=512,
+                ps_kv_backend="recstore_tiered",
+                tiered_cache_policy="none",
+            )
+            runtime_cfg = json.loads(runtime_cfg_path.read_text(encoding="utf-8"))
+            base_kv = runtime_cfg["cache_ps"]["base_kv_config"]
+
+            self.assertEqual(base_kv["value"]["tiering"], {"cache_policy": "none"})
+
+    def test_make_runtime_dir_rejects_unknown_tiered_cache_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(ValueError):
+                self._make_runtime_dir(
+                    tmpdir,
+                    run_id="case-tiered-cache-bogus",
+                    ps_type="GRPC",
+                    kv_capacity=20_000,
+                    value_size_bytes=512,
+                    ps_kv_backend="recstore_tiered",
+                    tiered_cache_policy="bogus",
+                )
+
     def test_make_runtime_dir_writes_hps_rocksdb_base_kv_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             _runtime_dir, runtime_cfg_path = self._make_runtime_dir(

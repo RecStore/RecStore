@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <vector>
 
 #include "base/factory.h"
@@ -19,12 +20,6 @@ public:
     size_t data_size;
   };
 
-  struct UpdateEntry {
-    uint64_t handle;
-    const void* data;
-    size_t data_size;
-  };
-
   virtual ~SsdBlockAllocator() = default;
 
   virtual uint64_t Alloc(size_t data_size)                                = 0;
@@ -34,10 +29,13 @@ public:
   virtual uint64_t AllocAndWrite(const void* data, size_t data_size)      = 0;
   virtual size_t SlotCapacity(uint64_t handle) const                      = 0;
 
-  virtual void BatchWrite(const std::vector<UpdateEntry>& entries) {
-    for (const auto& entry : entries) {
-      Write(entry.handle, entry.data, entry.data_size);
-    }
+  virtual void BatchWrite(const std::vector<uint64_t>& handles,
+                          const std::vector<WriteEntry>& entries) {
+    if (handles.size() != entries.size())
+      throw std::invalid_argument("SSD batch write size mismatch");
+    for (size_t i = 0; i < handles.size(); ++i)
+      if (handles[i] != kInvalidHandle)
+        Write(handles[i], entries[i].data, entries[i].data_size);
   }
 
   virtual void BatchRead(const std::vector<ReadEntry>& entries,

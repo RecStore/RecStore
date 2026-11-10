@@ -100,7 +100,7 @@ bool LocalShmRegion::Create(const std::string& region_name,
     header->table_name_len    = 0;
     header->key_count         = 0;
     header->embedding_dim     = 0;
-    header->reserved0         = 0;
+    header->learning_rate     = 0.0f;
     header->input_bytes       = 0;
     header->output_bytes      = 0;
     header->server_seen_epoch = ctrl->server_epoch;

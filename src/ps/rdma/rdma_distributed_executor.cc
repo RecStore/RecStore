@@ -535,7 +535,8 @@ std::uint64_t RdmaDistributedExecutor::SubmitUpdateParameterFlat(
     const float* grads,
     std::size_t embedding_dim,
     const std::vector<shard_routing::ShardChunk>& chunks,
-    std::size_t max_in_flight) {
+    std::size_t max_in_flight,
+    float learning_rate) {
   if ((keys.Size() > 0 && grads == nullptr) || embedding_dim == 0 ||
       max_in_flight == 0) {
     throw std::invalid_argument("invalid RDMA flat UPDATE request");
@@ -565,7 +566,8 @@ std::uint64_t RdmaDistributedExecutor::SubmitUpdateParameterFlat(
                     table_name,
                     base::ConstArray<std::uint64_t>(chunk.keys),
                     grads + chunk.positions.front() * embedding_dim,
-                    embedding_dim)
+                    embedding_dim,
+                    learning_rate)
               : client->SubmitUpdateParameterFlatGather(
                     table_name,
                     keys.Data(),
@@ -573,7 +575,8 @@ std::uint64_t RdmaDistributedExecutor::SubmitUpdateParameterFlat(
                     keys.Size(),
                     embedding_dim,
                     chunk.positions.data(),
-                    chunk.positions.size());
+                    chunk.positions.size(),
+                    learning_rate);
       if (rpc_id < 0) {
         throw std::runtime_error("failed to submit RDMA embedding update");
       }

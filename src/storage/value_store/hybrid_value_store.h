@@ -1,17 +1,23 @@
 #pragma once
 
-#include <algorithm>
 #include <atomic>
-#include <cmath>
+#include <algorithm>
+#include <chrono>
 #include <fstream>
+#include <unordered_set>
+#include <cmath>
+#include <cstdint>
+#include <deque>
 #include <iomanip>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
-#include <unordered_set>
+#include <utility>
 
 #include "base/factory.h"
 #include "storage/cache/tiered_read_cache.h"
+#include "storage/value_store/tiered_clock_value_store.h"
 #include "storage/value_store/dram_value_store.h"
 #include "storage/value_store/ssd_static_layout_value_store.h"
 #include "storage/value_store/ssd_value_store.h"
@@ -67,16 +73,20 @@ public:
       online_dram_keys_.reserve(dram_profile_.size());
       online_dram_keys_.insert(dram_profile_.begin(), dram_profile_.end());
     }
-    const std::string cache_policy = tiering.value("cache_policy", "none");
+    std::string cache_policy = tiering.value("cache_policy", "none");
+    const bool adaptive =
+        cache_policy == "adaptive" || cache_policy == "ADAPTIVE";
     if (cache_policy.empty() || cache_policy == "none") {
       return;
     }
-    if (cache_policy != "lru" && cache_policy != "LRU") {
+    if (cache_policy != "lru" && cache_policy != "LRU" &&
+        cache_policy != "clock" && cache_policy != "CLOCK" && !adaptive) {
       throw std::invalid_argument(
           "unsupported tiering.cache_policy: " + cache_policy);
     }
-    const double budget_ratio = tiering.value("cache_budget_ratio", 0.05);
-    if (budget_ratio <= 0.0 || budget_ratio > 1.0) {
+    double budget_ratio = tiering.value("cache_budget_ratio", 0.05);
+    if (!adaptive && cache_policy != "clock" && cache_policy != "CLOCK" &&
+        (budget_ratio <= 0.0 || budget_ratio > 1.0)) {
       throw std::invalid_argument(
           "tiering.cache_budget_ratio must be in (0, 1]");
     }
@@ -87,8 +97,73 @@ public:
     }
     const int64_t promote_min_misses =
         tiering.value("promote_min_misses", static_cast<int64_t>(2));
-    if (promote_min_misses < 1) {
+    if (promote_min_misses < 1 || promote_min_misses > UINT32_MAX) {
       throw std::invalid_argument("tiering.promote_min_misses must be >= 1");
+    }
+    const int64_t expected_dram_bytes =
+        tiering.value("expected_dram_bytes", static_cast<int64_t>(0));
+    if (expected_dram_bytes < 0) {
+      throw std::invalid_argument("tiering.expected_dram_bytes must be >= 0");
+    }
+    if (adaptive) {
+      if (!std::isfinite(high_watermark_ratio_) ||
+          high_watermark_ratio_ < 0.0 || high_watermark_ratio_ > 1.0)
+        throw std::invalid_argument(
+            "adaptive high_watermark_ratio must be in [0, 1]");
+      const double limit = high_watermark_ratio_ * dram_capacity_bytes_;
+      cache_policy       = "clock";
+      if (expected_dram_bytes > 0) {
+        if (expected_dram_bytes <= limit)
+          return;
+        const double overflow = expected_dram_bytes - limit;
+        // For <= 0.1% overflow, avoid per-resident migration metadata. A
+        // small LRU keeps SSD hot rows while original DRAM reads stay direct.
+        // Unknown or larger working sets use full CLOCK replacement.
+        if (limit > 0 && overflow / expected_dram_bytes <= 0.001) {
+          cache_policy = "lru";
+          budget_ratio = overflow / limit;
+        }
+      }
+    }
+    if (cache_policy == "clock" || cache_policy == "CLOCK") {
+      if (profiled_placement_) {
+        throw std::invalid_argument(
+            "DRAM key profiles cannot be combined with CLOCK placement");
+      }
+      if (!std::isfinite(high_watermark_ratio_) ||
+          high_watermark_ratio_ < 0.0 || high_watermark_ratio_ > 1.0) {
+        throw std::invalid_argument(
+            "CLOCK high_watermark_ratio must be in [0, 1]");
+      }
+      const int64_t queue_entries = tiering.value(
+          "clock_exchange_queue_entries", static_cast<int64_t>(256));
+      const int64_t queue_bytes = tiering.value(
+          "clock_exchange_queue_bytes", static_cast<int64_t>(4 * 1024 * 1024));
+      if (queue_entries <= 0 ||
+          static_cast<uint64_t>(queue_entries) > SIZE_MAX || queue_bytes <= 0 ||
+          static_cast<uint64_t>(queue_bytes) > SIZE_MAX)
+        throw std::invalid_argument(
+            "CLOCK exchange queue limits must be positive and fit size_t");
+      clock_ = std::make_unique<TieredClockValueStore>(
+          &dram_store_,
+          ssd_store_.get(),
+          static_cast<uint64_t>(high_watermark_ratio_ * dram_capacity_bytes_),
+          static_cast<size_t>(shard_count),
+          static_cast<uint32_t>(promote_min_misses),
+          tiering.value("retain_backing_copies", true),
+          tiering.value("clock_frequency_admission", false),
+          tiering.value("clock_cost_aware", false),
+          tiering.value("clock_async_exchange", false),
+          static_cast<size_t>(queue_entries),
+          static_cast<size_t>(queue_bytes));
+      return;
+    }
+    // This optional load-time estimate includes allocator size-class rounding.
+    // Omit the estimate for unknown or growing working sets.
+    if (expected_dram_bytes > 0 &&
+        static_cast<double>(expected_dram_bytes) <=
+            high_watermark_ratio_ * static_cast<double>(dram_capacity_bytes_)) {
+      return;
     }
     const uint64_t budget_bytes = static_cast<uint64_t>(
         budget_ratio * static_cast<double>(dram_capacity_bytes_));
@@ -181,10 +256,16 @@ public:
   }
 
   uint64_t Alloc(size_t size) override {
+    if (clock_)
+      return clock_->Alloc(size);
     return AllocPlain(size, !profiled_placement_);
   }
 
   void Write(uint64_t handle, const void* data, size_t size) override {
+    if (clock_) {
+      clock_->Write(handle, data, size);
+      return;
+    }
     if (handle == kValueHandleNone) {
       return;
     }
@@ -200,6 +281,8 @@ public:
   }
 
   uint64_t AllocAndWrite(const void* data, size_t size) override {
+    if (clock_)
+      return clock_->AllocAndWrite(data, size);
     const uint64_t handle = Alloc(size);
     if (handle != kValueHandleNone) {
       try {
@@ -213,6 +296,8 @@ public:
   }
 
   uint64_t AllocAndWrite(uint64_t key, const void* data, size_t size) override {
+    if (clock_)
+      return clock_->AllocAndWrite(key, data, size);
     if (!ssd_static_) {
       if (profiled_placement_) {
         const uint64_t handle = AllocPlain(size, KeyUsesDram(key));
@@ -237,12 +322,16 @@ public:
 
   std::vector<uint64_t>
   BatchAllocAndWrite(const std::vector<WriteSpec>& specs) override {
+    if (clock_)
+      return ValueStore::BatchAllocAndWrite(specs);
     return BatchAllocAndWritePlain(nullptr, specs);
   }
 
   std::vector<uint64_t>
   BatchAllocAndWrite(const std::vector<uint64_t>& keys,
                      const std::vector<WriteSpec>& specs) override {
+    if (clock_)
+      return clock_->BatchAllocAndWrite(keys, specs);
     if (keys.size() != specs.size()) {
       throw std::invalid_argument("tiered batch key/spec size mismatch");
     }
@@ -258,20 +347,73 @@ public:
     return handles;
   }
 
+  void ReadValue(uint64_t handle, std::string& value) override {
+    if (clock_)
+      clock_->ReadValue(handle, value);
+    else if (IsOnSSD(handle))
+      ValueStore::ReadValue(handle, value);
+    else
+      dram_store_.ReadValue(DramRawHandle(handle), value);
+  }
+
+  bool ReadFlatFixedRows(const uint64_t* handles,
+                         size_t num_rows,
+                         void* out_buf,
+                         size_t row_bytes,
+                         uint64_t* missing_rows) const override {
+    if (clock_)
+      return clock_->ReadFlatFixedRows(
+          handles, num_rows, out_buf, row_bytes, missing_rows);
+    if (ssd_static_ || !handles || !out_buf || row_bytes == 0)
+      return false;
+    auto* out        = static_cast<char*>(out_buf);
+    uint64_t missing = 0;
+    std::vector<uint64_t> pending;
+    std::vector<size_t> rows;
+    for (size_t i = 0; i < num_rows; ++i) {
+      if (handles[i] == kValueHandleNone) {
+        std::memset(out + i * row_bytes, 0, row_bytes);
+        ++missing;
+      } else if (!IsOnSSD(handles[i])) {
+        // Legacy placement never migrates DRAM rows. As in DramValueStore,
+        // the caller's fixed-width hint permits copying directly to output.
+        std::memcpy(out + i * row_bytes,
+                    dram_store_.DirectPtr(DramRawHandle(handles[i])),
+                    row_bytes);
+      } else {
+        pending.push_back(handles[i]);
+        rows.push_back(i);
+      }
+    }
+    if (!pending.empty()) {
+      std::vector<ReadResult> fetched;
+      const_cast<HybridValueStore*>(this)->BatchRead(pending, fetched);
+      for (size_t i = 0; i < rows.size(); ++i) {
+        if (fetched[i].data.size() != row_bytes)
+          return false;
+        std::memcpy(
+            out + rows[i] * row_bytes, fetched[i].data.data(), row_bytes);
+      }
+    }
+    if (missing_rows)
+      *missing_rows = missing;
+    return true;
+  }
+
   size_t Read(uint64_t handle, void* out_buf, size_t buf_size) override {
+    if (clock_)
+      return clock_->Read(handle, out_buf, buf_size);
     if (handle == kValueHandleNone) {
       return 0;
     }
     if (IsOnSSD(handle)) {
-      const uint64_t raw    = SsdRawHandle(handle);
-      const size_t capacity = ssd_store_->SlotCapacity(raw);
-      uint64_t barrier      = 0;
+      const uint64_t raw = SsdRawHandle(handle);
+      uint64_t barrier   = 0;
       if (cache_) {
         size_t copied = 0;
-        if (cache_->CopyOut(raw, out_buf, buf_size, &copied)) {
+        if (cache_->CopyOut(raw, out_buf, buf_size, &copied, &barrier)) {
           return copied;
         }
-        barrier = cache_->WriteBarrier(raw);
       }
       ssd_read_rows_.fetch_add(1, std::memory_order_relaxed);
       const size_t actual = ssd_store_->Read(raw, out_buf, buf_size);
@@ -281,7 +423,8 @@ public:
       // short read or from a buffer that could hold the whole slot: comparing
       // `actual` with `SlotCapacity` would be a length-vs-capacity comparison
       // and would reject every value smaller than its slab or buddy slot.
-      if (cache_ && ReadCompleted(actual, buf_size, capacity)) {
+      if (cache_ &&
+          ReadCompleted(actual, buf_size, ssd_store_->SlotCapacity(raw))) {
         cache_->Promote(raw, out_buf, actual, barrier);
       }
       return actual;
@@ -290,6 +433,10 @@ public:
   }
 
   void Free(uint64_t handle) override {
+    if (clock_) {
+      clock_->Free(handle);
+      return;
+    }
     if (handle == kValueHandleNone) {
       return;
     }
@@ -306,29 +453,57 @@ public:
     const size_t cap   = dram_store_.SlotCapacity(raw);
     dram_store_.Free(raw);
     dram_live_allocs_.fetch_sub(1, std::memory_order_relaxed);
-    uint64_t cur = dram_bytes_reserved_.load(std::memory_order_relaxed);
-    while (cur != 0 &&
-           !dram_bytes_reserved_.compare_exchange_weak(
-               cur, cur > cap ? cur - cap : 0, std::memory_order_relaxed)) {
+    ReleaseDramReservation(cap);
+  }
+
+  // The engine publishes the new handle before retiring the old one, so a
+  // reader that already loaded the old handle may still be copying from its
+  // slot. Free would hand that slot back for reuse immediately; defer it by the
+  // same short grace period DramValueStore uses for its own slots.
+  void Retire(uint64_t handle) override {
+    if (clock_) {
+      clock_->Retire(handle);
+      return;
     }
+    if (handle == kValueHandleNone) {
+      return;
+    }
+    if (IsOnSSD(handle)) {
+      const uint64_t raw = SsdRawHandle(handle);
+      if (cache_) {
+        cache_->Invalidate(raw);
+      }
+      RetireSsdSlot(raw);
+      ssd_live_allocs_.fetch_sub(1, std::memory_order_relaxed);
+      return;
+    }
+    const uint64_t raw = DramRawHandle(handle);
+    const size_t cap   = dram_store_.SlotCapacity(raw);
+    dram_store_.Retire(raw);
+    dram_live_allocs_.fetch_sub(1, std::memory_order_relaxed);
+    ReleaseDramReservation(cap);
   }
 
   const char* DirectPtr(uint64_t handle) const override {
-    if (handle == kValueHandleNone || IsOnSSD(handle)) {
+    if (clock_ || handle == kValueHandleNone || IsOnSSD(handle)) {
       return nullptr;
     }
     return dram_store_.DirectPtr(DramRawHandle(handle));
   }
 
   char* RDMABackingData() const override {
-    return online_placement_ ? nullptr : dram_store_.RDMABackingData();
+    return clock_ || online_placement_
+             ? nullptr
+             : dram_store_.RDMABackingData();
   }
 
   size_t RDMABackingSize() const override {
-    return online_placement_ ? 0 : dram_store_.RDMABackingSize();
+    return clock_ || online_placement_ ? 0 : dram_store_.RDMABackingSize();
   }
 
   size_t SlotCapacity(uint64_t handle) const override {
+    if (clock_)
+      return clock_->SlotCapacity(handle);
     if (handle == kValueHandleNone) {
       return 0;
     }
@@ -340,6 +515,10 @@ public:
 
   void BatchWrite(const std::vector<uint64_t>& handles,
                   const std::vector<WriteSpec>& specs) override {
+    if (clock_) {
+      clock_->BatchWrite(handles, specs);
+      return;
+    }
     if (handles.size() != specs.size()) {
       throw std::invalid_argument("HybridValueStore::BatchWrite size mismatch");
     }
@@ -379,6 +558,10 @@ public:
 
   void BatchRead(const std::vector<uint64_t>& handles,
                  std::vector<ReadResult>& out_results) override {
+    if (clock_) {
+      clock_->BatchRead(handles, out_results);
+      return;
+    }
     out_results.clear();
     out_results.resize(handles.size());
 
@@ -398,16 +581,18 @@ public:
         const uint64_t raw    = SsdRawHandle(handle);
         const size_t capacity = ssd_store_->SlotCapacity(raw);
         out_results[i].data.resize(capacity);
-        size_t copied = 0;
-        if (cache_ && cache_->CopyOut(
-                          raw, out_results[i].data.data(), capacity, &copied)) {
+        size_t copied    = 0;
+        uint64_t barrier = 0;
+        if (cache_ &&
+            cache_->CopyOut(
+                raw, out_results[i].data.data(), capacity, &copied, &barrier)) {
           out_results[i].data.resize(copied);
           continue;
         }
         // Captured before the batch read reaches SSD, checked again by
         // Promote(): a write racing the read must not leave the old value
         // cached.
-        ssd_barriers.push_back(cache_ ? cache_->WriteBarrier(raw) : 0);
+        ssd_barriers.push_back(barrier);
         ssd_handles.push_back(raw);
         ssd_indices.push_back(i);
         continue;
@@ -443,6 +628,8 @@ public:
   }
 
   std::string GetInfo() const override {
+    if (clock_)
+      return "HybridValueStore(" + ExtraResultFields() + ")";
     std::ostringstream os;
     os << "HybridValueStore(dram_reserved="
        << dram_bytes_reserved_.load(std::memory_order_relaxed)
@@ -453,13 +640,14 @@ public:
   }
 
   void ResetStats() override {
-    ssd_read_rows_.store(0, std::memory_order_relaxed);
     if (ssd_store_) {
       ssd_store_->ResetStats();
     }
   }
 
   std::string ExtraResultFields() const override {
+    if (clock_)
+      return clock_->ExtraResultFields() + ssd_store_->ExtraResultFields();
     const uint64_t dram_live =
         dram_live_allocs_.load(std::memory_order_relaxed);
     const uint64_t ssd_live = ssd_live_allocs_.load(std::memory_order_relaxed);
@@ -482,8 +670,12 @@ public:
        << ssd_live << " tiered_live_allocs=" << live
        << " tiered_ssd_live_ratio=" << live_ratio
        << " tiered_dram_total_allocs=" << dram_total
-       << " tiered_ssd_total_allocs=" << ssd_total << " tiered_total_allocs="
-       << total << " tiered_ssd_total_ratio=" << total_ratio;
+       << " tiered_ssd_total_allocs=" << ssd_total
+       << " tiered_total_allocs=" << total
+       << " tiered_ssd_total_ratio=" << total_ratio << " tiered_dram_bytes="
+       << dram_bytes_reserved_.load(std::memory_order_relaxed)
+       << " tiered_dram_limit_bytes="
+       << static_cast<uint64_t>(high_watermark_ratio_ * dram_capacity_bytes_);
     if (cache_) {
       const uint64_t hits   = cache_->Hits();
       const uint64_t misses = cache_->Misses();
@@ -589,6 +781,9 @@ private:
   }
 
   static constexpr uint64_t kSsdFlag = 1ULL << 63;
+  // Grace period before a retired SSD slot returns to the allocator. Matches
+  // DramValueStore's recycle delay.
+  static constexpr int64_t kRetireDelayUs = 1000;
 
   static bool IsOnSSD(uint64_t handle) { return (handle & kSsdFlag) != 0; }
 
@@ -609,6 +804,30 @@ private:
       return false;
     }
     return actual < buf_size || buf_size >= slot_capacity;
+  }
+
+  void ReleaseDramReservation(size_t slot_capacity) {
+    uint64_t cur = dram_bytes_reserved_.load(std::memory_order_relaxed);
+    while (cur != 0 && !dram_bytes_reserved_.compare_exchange_weak(
+                           cur,
+                           cur > slot_capacity ? cur - slot_capacity : 0,
+                           std::memory_order_relaxed)) {
+    }
+  }
+
+  // Holds a retired SSD slot for a short grace period before returning it to
+  // the allocator. Entries drain on later retires, like DramValueStore's
+  // recycler; a slot still pending when the store is destroyed is released with
+  // the allocator.
+  void RetireSsdSlot(uint64_t raw) {
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(retired_mutex_);
+    retired_ssd_.emplace_back(now, raw);
+    const auto cutoff = now - std::chrono::microseconds(kRetireDelayUs);
+    while (!retired_ssd_.empty() && retired_ssd_.front().first <= cutoff) {
+      ssd_store_->Free(retired_ssd_.front().second);
+      retired_ssd_.pop_front();
+    }
   }
 
   static BaseKVConfig BuildDramConfig(const BaseKVConfig& config) {
@@ -714,11 +933,17 @@ private:
   // the cached slots belong to dram_store_, which is destroyed with this
   // object, so they are released with the allocator rather than one by one.
   std::unique_ptr<TieredReadCache> cache_;
-  bool ssd_static_         = false;
+  std::unique_ptr<TieredClockValueStore> clock_;
+  // Retired SSD slots wait here for the reader grace period. The queue is
+  // drained from Retire; leftovers are released with ssd_store_.
+  std::mutex retired_mutex_;
+  std::deque<std::pair<std::chrono::steady_clock::time_point, uint64_t>>
+      retired_ssd_;
   bool profiled_placement_ = false;
   bool online_placement_   = false;
   std::vector<uint64_t> dram_profile_;
   std::unordered_set<uint64_t> online_dram_keys_;
+  bool ssd_static_              = false;
   uint64_t dram_capacity_bytes_ = 0;
   // Capacity available to primary placement; equals dram_capacity_bytes_ minus
   // the reserved read-cache budget.

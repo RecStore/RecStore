@@ -99,7 +99,8 @@ public:
 
   int UpdateParameter(const std::string& table_name,
                       const base::ConstArray<uint64_t>& keys,
-                      const base::RecTensor& grads) override;
+                      const base::RecTensor& grads,
+                      float learning_rate = 0.0f) override;
 
   int InitEmbeddingTable(const std::string& table_name,
                          const recstore::EmbeddingTableConfig& config) override;
