@@ -7,6 +7,11 @@ workload for final acceptance and retained synthetic YCSB results as boundary
 evidence. Under that accepted scope, the implemented asynchronous exchange
 meets both thresholds; the final evidence is in
 `results/tiered_acceptance_11101709/`.
+The measurements below were collected before integration with the newer
+main-line APIs and optional LRU read cache. They used no SSD read cache.
+The integration checks cover correctness and do not provide new throughput
+measurements.
+
 SSD residency and the fraction of requests served from SSD are different
 quantities. Index memory, allocator overhead, staging buffers, and any DRAM
 cache must be reported separately. Fixed-size rows permit a row-count residency
@@ -37,11 +42,14 @@ no numerical result from those papers is used as a RecStore acceptance result.
 
 ## Current implementation
 
-`HybridValueStore` encodes DRAM or SSD placement in each value handle. It fills
-DRAM up to a watermark and spills subsequent allocations to SSD. The
-`tiering.cache_policy=LRU` configuration does not implement read-driven promotion
-or eviction. A later copy-on-write update can change placement as a side effect
-of the available capacity, without choosing a cold victim.
+`HybridValueStore` encodes DRAM or SSD placement in each value handle and
+reserves DRAM slot bytes up to the placement watermark. The independent LRU
+read cache, now available on main, remains disabled by default. Enabling it
+reserves part of the configured DRAM capacity for cached SSD copies and reduces
+the primary placement budget; see [the configuration guide](composite_kvengine.md).
+Online exchange uses its own opt-in policy and changes primary placement rather
+than adding cached copies. Comparisons against the measurements below must keep
+the read cache disabled and verify the final residency.
 
 The implemented increments:
 
