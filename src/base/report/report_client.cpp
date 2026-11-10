@@ -1,24 +1,30 @@
 #include "report_client.h"
+
 #include "base/config.h"
 #include "base/timer.h"
-#include <glog/logging.h>
-#include <curl/curl.h>
-#include <nlohmann/json.hpp>
 
-#include <thread>
-#include <mutex>
-#include <queue>
-#include <condition_variable>
-#include <filesystem>
-#include <cstdlib>
+#include <curl/curl.h>
+#include <glog/logging.h>
+#include <nlohmann/json.hpp>
+#include <unistd.h>
+
 #include <algorithm>
 #include <cctype>
 #include <charconv>
-#include <cstring>
-#include <system_error>
-#include <fstream>
-
 #include <chrono>
+#include <condition_variable>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <shared_mutex>
+#include <string>
+#include <thread>
+#include <vector>
 
 using json = nlohmann::json;
 
@@ -26,61 +32,42 @@ namespace recstore {
 thread_local uint64_t g_trace_id = 0;
 }
 
-static std::string GetApiUrl() {
-  std::string default_url = "http://127.0.0.1:8081/report";
-  try {
-    const auto config_file = base::FindRecStoreConfigPath();
-    if (!config_file.has_value()) {
-      return default_url;
-    }
-    std::ifstream ifs(*config_file);
-    if (ifs.is_open()) {
-      nlohmann::json j;
-      ifs >> j;
-      if (j.contains("report_API")) {
-        return j["report_API"];
-      }
-    }
-  } catch (const std::exception& e) {
-    LOG(WARNING) << "Error reading recstore_config.json: " << e.what();
-  }
-  return default_url;
-}
+size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp);
 
 namespace {
 
-enum class ReportMode {
-  kRemote,
-  kLocal,
-};
+constexpr const char* kDefaultApiUrl    = "http://127.0.0.1:8081/report";
+constexpr const char* kDefaultJsonlPath = "recstore_report_events.jsonl";
+// The placeholders keep per-process files apart: a PS server and every training
+// rank call report() in the same run.
+constexpr const char* kDefaultCsvPath = "recstore_metrics_{host}_{pid}.csv";
+constexpr const char* kCsvHeader =
+    "timestamp_us,host,pid,run_id,rank,shard,table_name,unique_id,"
+    "metric_name,metric_value,source";
 
-enum class LocalSinkMode {
-  kGlog,
-  kJsonl,
-  kBoth,
-};
+// Everything one report() call needs to decide where a sample goes. Resolved
+// from recstore_config.json plus environment overrides.
+struct ObservabilityConfig {
+  bool remote = false;
+  bool csv    = false;
+  bool jsonl  = false;
+  bool glog   = true; // Legacy default: every event is also logged.
 
-struct LocalReportConfig {
-  LocalSinkMode sink_mode;
-  std::string jsonl_path;
-  size_t flush_every_n;
-};
+  std::string remote_endpoint = kDefaultApiUrl;
+  long remote_timeout_ms      = 3000;
+  size_t remote_queue_max     = 10000;
 
-struct StructuredReportEvent {
-  const char* table_name;
-  const char* unique_id;
-  const char* metric_name;
-  double metric_value;
-  uint64_t timestamp_us;
-  const char* source;
-};
+  std::string csv_path     = kDefaultCsvPath;
+  size_t csv_flush_every_n = 1;
 
-const LocalReportConfig& ResolveLocalReportConfig();
+  std::string jsonl_path     = kDefaultJsonlPath;
+  size_t jsonl_flush_every_n = 1;
+};
 
 std::string ToLower(std::string value) {
   std::transform(
       value.begin(), value.end(), value.begin(), [](unsigned char c) {
-        return std::tolower(c);
+        return static_cast<char>(std::tolower(c));
       });
   return value;
 }
@@ -98,71 +85,72 @@ bool ParseRemoteReportMode(const std::string& value) {
          normalized == "on" || normalized == "true" || normalized == "1";
 }
 
-bool IsLocalJsonlEnabled() {
-  const auto mode = ResolveLocalReportConfig().sink_mode;
-  return mode == LocalSinkMode::kJsonl || mode == LocalSinkMode::kBoth;
-}
-
-LocalSinkMode ResolveLocalSinkModeFromEnvValue(const char* value) {
-  if (value[0] != '\0') {
-    const std::string mode = ToLower(value);
-    if (mode == "jsonl") {
-      return LocalSinkMode::kJsonl;
-    }
-    if (mode == "both") {
-      return LocalSinkMode::kBoth;
-    }
+size_t ParsePositiveSize(const char* value, size_t fallback) {
+  if (value == nullptr || value[0] == '\0') {
+    return fallback;
   }
-  return LocalSinkMode::kGlog;
-}
-
-size_t ResolveLocalFlushEveryNFromEnvValue(const char* value) {
-  if (value[0] != '\0') {
-    char* end                  = nullptr;
-    const unsigned long parsed = std::strtoul(value, &end, 10);
-    if (end != value && *end == '\0' && parsed > 0) {
-      return static_cast<size_t>(parsed);
-    }
-    LOG(WARNING) << "Invalid RECSTORE_REPORT_FLUSH_EVERY_N=" << value
-                 << ", fallback to 1.";
+  char* end                  = nullptr;
+  const unsigned long parsed = std::strtoul(value, &end, 10);
+  if (end != value && *end == '\0' && parsed > 0) {
+    return static_cast<size_t>(parsed);
   }
-  return 1;
+  LOG(WARNING) << "Invalid positive integer '" << value << "', fallback to "
+               << fallback << ".";
+  return fallback;
 }
 
-const LocalReportConfig& ResolveLocalReportConfig() {
-  thread_local bool initialized = false;
-  thread_local std::string cached_sink_env;
-  thread_local std::string cached_path_env;
-  thread_local std::string cached_flush_env;
-  thread_local LocalReportConfig cached_config{
-      LocalSinkMode::kGlog, "recstore_report_events.jsonl", 1};
-
-  const char* sink_env    = std::getenv("RECSTORE_REPORT_LOCAL_SINK");
-  const char* path_env    = std::getenv("RECSTORE_REPORT_JSONL_PATH");
-  const char* flush_env   = std::getenv("RECSTORE_REPORT_FLUSH_EVERY_N");
-  const char* sink_value  = sink_env == nullptr ? "" : sink_env;
-  const char* path_value  = path_env == nullptr ? "" : path_env;
-  const char* flush_value = flush_env == nullptr ? "" : flush_env;
-
-  if (!initialized || cached_sink_env != sink_value ||
-      cached_path_env != path_value || cached_flush_env != flush_value) {
-    cached_config.sink_mode = ResolveLocalSinkModeFromEnvValue(sink_value);
-    cached_config.jsonl_path =
-        path_value[0] == '\0' ? "recstore_report_events.jsonl" : path_value;
-    cached_config.flush_every_n =
-        ResolveLocalFlushEveryNFromEnvValue(flush_value);
-    cached_sink_env  = sink_value;
-    cached_path_env  = path_value;
-    cached_flush_env = flush_value;
-    initialized      = true;
-  }
-  return cached_config;
-}
-
-uint64_t GetTimestampUs() {
+int64_t GetTimestampUs() {
   return std::chrono::duration_cast<std::chrono::microseconds>(
              std::chrono::system_clock::now().time_since_epoch())
       .count();
+}
+
+const char* HostName() {
+  static const std::string name = []() {
+    char buffer[256] = {0};
+    if (::gethostname(buffer, sizeof(buffer) - 1) != 0) {
+      return std::string("unknown");
+    }
+    return std::string(buffer);
+  }();
+  return name.c_str();
+}
+
+int32_t ProcessId() {
+  static const int32_t pid = static_cast<int32_t>(::getpid());
+  return pid;
+}
+
+const char* RunId() {
+  // Re-read per call: tests and launchers set RECSTORE_RUN_ID around a run,
+  // and a process-wide cache would freeze whatever was present at first use.
+  thread_local std::string run_id;
+  const char* value = std::getenv("RECSTORE_RUN_ID");
+  run_id.assign(value == nullptr ? "" : value);
+  return run_id.c_str();
+}
+
+int32_t EnvInt(const char* name) {
+  const char* value = std::getenv(name);
+  if (value == nullptr || value[0] == '\0') {
+    return -1;
+  }
+  char* end    = nullptr;
+  const long v = std::strtol(value, &end, 10);
+  if (end == value || *end != '\0') {
+    return -1;
+  }
+  return static_cast<int32_t>(v);
+}
+
+int32_t EnvRank() {
+  const int32_t rank = EnvInt("RANK");
+  return rank >= 0 ? rank : EnvInt("LOCAL_RANK");
+}
+
+int32_t EnvShard() {
+  const int32_t shard = EnvInt("RECSTORE_SHARD_ID");
+  return shard >= 0 ? shard : EnvInt("SHARD_ID");
 }
 
 void AppendJsonString(std::string& output, const char* value) {
@@ -218,182 +206,310 @@ void AppendNumber(std::string& output, T value) {
   }
 }
 
-std::string ToJsonLine(const StructuredReportEvent& event) {
+// Wire format for the remote report service. Kept byte-compatible with the
+// historical payload so existing ClickHouse ingestion does not need to change;
+// the extra dimensions live in the CSV sink and in MetricSink implementations.
+std::string ToJsonLine(const recstore::MetricRecord& record) {
   std::string output;
   output.reserve(
-      160 + std::strlen(event.table_name) + std::strlen(event.unique_id) +
-      std::strlen(event.metric_name) + std::strlen(event.source));
+      160 + std::strlen(record.table_name) + std::strlen(record.unique_id) +
+      std::strlen(record.metric_name) + std::strlen(record.source));
   output.append("{\"table_name\":");
-  AppendJsonString(output, event.table_name);
+  AppendJsonString(output, record.table_name);
   output.append(",\"unique_id\":");
-  AppendJsonString(output, event.unique_id);
+  AppendJsonString(output, record.unique_id);
   output.append(",\"metric_name\":");
-  AppendJsonString(output, event.metric_name);
+  AppendJsonString(output, record.metric_name);
   output.append(",\"metric_value\":");
-  AppendNumber(output, event.metric_value);
+  AppendNumber(output, record.metric_value);
   output.append(",\"timestamp_us\":");
-  AppendNumber(output, event.timestamp_us);
+  AppendNumber(output, record.timestamp_us);
   output.append(",\"source\":");
-  AppendJsonString(output, event.source);
+  AppendJsonString(output, record.source);
   output.push_back('}');
   return output;
 }
 
-bool IsJsonlSinkMode(LocalSinkMode mode) {
-  return mode == LocalSinkMode::kJsonl || mode == LocalSinkMode::kBoth;
+void AppendCsvField(std::string& output, const char* value) {
+  bool needs_quotes = false;
+  for (const char* p = value; *p != '\0'; ++p) {
+    if (*p == ',' || *p == '"' || *p == '\n' || *p == '\r') {
+      needs_quotes = true;
+      break;
+    }
+  }
+  if (!needs_quotes) {
+    output.append(value);
+    return;
+  }
+  output.push_back('"');
+  for (const char* p = value; *p != '\0'; ++p) {
+    if (*p == '"') {
+      output.append("\"\"");
+    } else {
+      output.push_back(*p);
+    }
+  }
+  output.push_back('"');
 }
 
-bool IsGlogSinkMode(LocalSinkMode mode) {
-  return mode == LocalSinkMode::kGlog || mode == LocalSinkMode::kBoth;
+std::string ExpandCsvPath(const std::string& pattern) {
+  std::string path      = pattern;
+  const std::string pid = std::to_string(ProcessId());
+  const std::pair<const char*, const std::string> replacements[] = {
+      {"{host}", HostName()},
+      {"{pid}", pid},
+  };
+  for (const auto& [token, value] : replacements) {
+    size_t pos             = 0;
+    const size_t token_len = std::strlen(token);
+    while ((pos = path.find(token, pos)) != std::string::npos) {
+      path.replace(pos, token_len, value);
+      pos += value.size();
+    }
+  }
+  return path;
 }
 
-class LocalJsonlSink {
-public:
-  static LocalJsonlSink& GetInstance() {
-    static LocalJsonlSink instance;
-    return instance;
-  }
+// ── Config resolution ──────────────────────────────────────────────────────
 
-  void WriteLine(const LocalReportConfig& config, const std::string& line) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    ConfigureIfNeeded(config);
-    if (!ofs_.is_open()) {
-      return;
-    }
-    ofs_ << line << '\n';
-    ++writes_since_flush_;
-    if (writes_since_flush_ >= config.flush_every_n) {
-      ofs_.flush();
-      writes_since_flush_ = 0;
-    }
-  }
-
-private:
-  LocalJsonlSink() = default;
-
-  ~LocalJsonlSink() {
-    std::lock_guard<std::mutex> lock(mtx_);
-    if (ofs_.is_open()) {
-      ofs_.flush();
-      ofs_.close();
-    }
-  }
-
-  void ConfigureIfNeeded(const LocalReportConfig& config) {
-    if (configured_ && jsonl_path_ == config.jsonl_path &&
-        flush_every_n_ == config.flush_every_n) {
-      return;
-    }
-
-    if (ofs_.is_open()) {
-      ofs_.flush();
-      ofs_.close();
-    }
-    writes_since_flush_ = 0;
-
-    const std::filesystem::path output_path(config.jsonl_path);
-    const auto parent = output_path.parent_path();
-    if (!parent.empty()) {
-      std::filesystem::create_directories(parent);
-    }
-    ofs_.open(output_path, std::ios::app);
-    if (!ofs_.is_open()) {
-      LOG(ERROR) << "Failed to open local report JSONL sink: "
-                 << config.jsonl_path;
-    }
-
-    configured_    = true;
-    jsonl_path_    = config.jsonl_path;
-    flush_every_n_ = config.flush_every_n;
-  }
-
-  std::mutex mtx_;
-  std::ofstream ofs_;
-  bool configured_ = false;
-  std::string jsonl_path_;
-  size_t flush_every_n_      = 1;
-  size_t writes_since_flush_ = 0;
+struct ConfigState {
+  bool initialized = false;
+  std::filesystem::path path;
+  std::filesystem::file_time_type mtime{};
+  ObservabilityConfig base;
+  bool path_resolved = false;
+  std::filesystem::path resolved_path;
 };
 
-void WriteLocalStructuredEvent(const std::string& serialized) {
-  const auto config = ResolveLocalReportConfig();
-
-  if (IsGlogSinkMode(config.sink_mode)) {
-    LOG(INFO) << "REPORT_LOCAL_EVENT " << serialized;
-  }
-
-  if (IsJsonlSinkMode(config.sink_mode)) {
-    LocalJsonlSink::GetInstance().WriteLine(config, serialized);
-  }
+ConfigState& State() {
+  static ConfigState state;
+  return state;
 }
 
-bool TryRecordLatencyMetricToTimer(const StructuredReportEvent& event) {
-  double value_ns = 0.0;
-  if (std::strcmp(event.metric_name, "duration_ns") == 0 ||
-      std::strcmp(event.metric_name, "latency_ns") == 0) {
-    value_ns = event.metric_value;
-  } else if (std::strcmp(event.metric_name, "duration_us") == 0 ||
-             std::strcmp(event.metric_name, "latency_us") == 0) {
-    value_ns = event.metric_value * 1000.0;
-  } else {
-    return false;
-  }
-
-  thread_local std::string cached_table;
-  thread_local std::string cached_metric;
-  thread_local std::string cached_timer_name;
-  if (cached_table != event.table_name || cached_metric != event.metric_name) {
-    cached_table      = event.table_name;
-    cached_metric     = event.metric_name;
-    cached_timer_name = cached_table + "." + cached_metric;
-  }
-  xmh::Timer::ManualRecordNs(cached_timer_name, value_ns);
-  return true;
+std::mutex& StateMutex() {
+  static std::mutex mutex;
+  return mutex;
 }
 
-ReportMode ResolveReportMode() {
-  if (const char* env_mode = std::getenv("RECSTORE_REPORT_MODE");
-      env_mode != nullptr) {
-    thread_local bool initialized = false;
-    thread_local std::string cached_env_mode;
-    thread_local ReportMode cached_mode = ReportMode::kRemote;
-    if (!initialized || cached_env_mode != env_mode) {
-      const std::string mode = env_mode;
-      if (ParseLocalReportMode(mode)) {
-        cached_env_mode = env_mode;
-        cached_mode     = ReportMode::kLocal;
-      } else if (ParseRemoteReportMode(mode)) {
-        cached_env_mode = env_mode;
-        cached_mode     = ReportMode::kRemote;
-      } else {
-        LOG(WARNING) << "Unknown RECSTORE_REPORT_MODE=" << mode
-                     << ", fallback to report_API based behavior.";
-        const std::string api_url = GetApiUrl();
-        return api_url.empty() ? ReportMode::kLocal : ReportMode::kRemote;
-      }
-      initialized = true;
+void ApplySinkList(const std::string& list, ObservabilityConfig& config) {
+  size_t start = 0;
+  while (start <= list.size()) {
+    const size_t comma      = list.find(',', start);
+    const std::string token = ToLower(list.substr(
+        start, comma == std::string::npos ? std::string::npos : comma - start));
+    if (token == "remote") {
+      config.remote = true;
+    } else if (token == "csv") {
+      config.csv = true;
+    } else if (token == "jsonl") {
+      config.jsonl = true;
+    } else if (token == "glog") {
+      config.glog = true;
+    } else if (!token.empty() && token != "none" && token != "null") {
+      LOG(WARNING) << "Unknown observability sink '" << token << "'.";
     }
-    return cached_mode;
+    if (comma == std::string::npos) {
+      break;
+    }
+    start = comma + 1;
+  }
+}
+
+void ApplyObservabilityBlock(const json& block, ObservabilityConfig& config) {
+  if (block.contains("sinks") && block["sinks"].is_array()) {
+    config.remote = false;
+    config.csv    = false;
+    config.jsonl  = false;
+    config.glog   = false;
+    for (const auto& entry : block["sinks"]) {
+      if (!entry.is_string()) {
+        continue;
+      }
+      const std::string name = ToLower(entry.get<std::string>());
+      if (name == "remote") {
+        config.remote = true;
+      } else if (name == "csv") {
+        config.csv = true;
+      } else if (name == "jsonl") {
+        config.jsonl = true;
+      } else if (name == "glog") {
+        config.glog = true;
+      } else if (name != "none" && !name.empty()) {
+        LOG(WARNING) << "Unknown observability sink '" << name << "'.";
+      }
+    }
   }
 
-  const std::string api_url = GetApiUrl();
-  if (api_url.empty()) {
-    return ReportMode::kLocal;
+  if (block.contains("remote") && block["remote"].is_object()) {
+    const auto& remote = block["remote"];
+    if (remote.contains("endpoint") && remote["endpoint"].is_string()) {
+      const std::string endpoint = remote["endpoint"].get<std::string>();
+      if (!endpoint.empty()) {
+        config.remote_endpoint = endpoint;
+      }
+    }
+    if (remote.contains("timeout_ms") && remote["timeout_ms"].is_number()) {
+      const long timeout = remote["timeout_ms"].get<long>();
+      if (timeout > 0) {
+        config.remote_timeout_ms = timeout;
+      }
+    }
+    if (remote.contains("queue_max") && remote["queue_max"].is_number()) {
+      const long limit = remote["queue_max"].get<long>();
+      if (limit > 0) {
+        config.remote_queue_max = static_cast<size_t>(limit);
+      }
+    }
   }
 
-  return ReportMode::kRemote;
+  if (block.contains("csv") && block["csv"].is_object()) {
+    const auto& csv = block["csv"];
+    if (csv.contains("path") && csv["path"].is_string()) {
+      const std::string path = csv["path"].get<std::string>();
+      if (!path.empty()) {
+        config.csv_path = path;
+      }
+    }
+    if (csv.contains("flush_every_n") && csv["flush_every_n"].is_number()) {
+      const long n = csv["flush_every_n"].get<long>();
+      if (n > 0) {
+        config.csv_flush_every_n = static_cast<size_t>(n);
+      }
+    }
+  }
+
+  if (block.contains("jsonl") && block["jsonl"].is_object()) {
+    const auto& jsonl = block["jsonl"];
+    if (jsonl.contains("path") && jsonl["path"].is_string()) {
+      const std::string path = jsonl["path"].get<std::string>();
+      if (!path.empty()) {
+        config.jsonl_path = path;
+      }
+    }
+    if (jsonl.contains("flush_every_n") && jsonl["flush_every_n"].is_number()) {
+      const long n = jsonl["flush_every_n"].get<long>();
+      if (n > 0) {
+        config.jsonl_flush_every_n = static_cast<size_t>(n);
+      }
+    }
+  }
 }
 
-bool IsRemoteReportEnabled() {
-  return ResolveReportMode() == ReportMode::kRemote;
+void ApplyConfigFile(const std::filesystem::path& path,
+                     ObservabilityConfig& config) {
+  std::ifstream ifs(path);
+  if (!ifs.is_open()) {
+    return;
+  }
+  json root;
+  try {
+    ifs >> root;
+  } catch (const std::exception& e) {
+    LOG(WARNING) << "Error reading " << path << ": " << e.what();
+    return;
+  }
+
+  if (root.contains("observability") && root["observability"].is_object()) {
+    ApplyObservabilityBlock(root["observability"], config);
+    return;
+  }
+
+  // Legacy layout: report_API alone decides whether the remote sink is on.
+  const std::string api = root.value("report_API", std::string());
+  config.remote         = !api.empty();
+  if (!api.empty()) {
+    config.remote_endpoint = api;
+  }
 }
 
-} // namespace
+void ApplyEnvOverrides(ObservabilityConfig& config) {
+  if (const char* list = std::getenv("RECSTORE_REPORT_SINKS");
+      list != nullptr && list[0] != '\0') {
+    config.remote = false;
+    config.csv    = false;
+    config.jsonl  = false;
+    config.glog   = false;
+    ApplySinkList(list, config);
+  } else {
+    if (const char* mode = std::getenv("RECSTORE_REPORT_MODE");
+        mode != nullptr && mode[0] != '\0') {
+      if (ParseLocalReportMode(mode)) {
+        config.remote = false;
+      } else if (ParseRemoteReportMode(mode)) {
+        config.remote = true;
+      }
+    }
+    // Legacy local sink selector. `csv` is new; the other three keep their
+    // original meaning.
+    if (const char* sink = std::getenv("RECSTORE_REPORT_LOCAL_SINK");
+        sink != nullptr && sink[0] != '\0') {
+      const std::string mode = ToLower(sink);
+      if (mode == "jsonl" || mode == "both" || mode == "csv") {
+        config.glog  = mode == "both";
+        config.jsonl = mode == "jsonl" || mode == "both";
+        config.csv   = mode == "csv";
+      }
+    }
+  }
 
-size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp) {
-  ((std::string*)userp)->append((char*)contents, size * nmemb);
-  return size * nmemb;
+  if (const char* path = std::getenv("RECSTORE_REPORT_JSONL_PATH");
+      path != nullptr && path[0] != '\0') {
+    config.jsonl_path = path;
+  }
+  config.jsonl_flush_every_n = ParsePositiveSize(
+      std::getenv("RECSTORE_REPORT_FLUSH_EVERY_N"), config.jsonl_flush_every_n);
+  if (const char* path = std::getenv("RECSTORE_REPORT_CSV_PATH");
+      path != nullptr && path[0] != '\0') {
+    config.csv_path = path;
+  }
+  config.csv_flush_every_n =
+      ParsePositiveSize(std::getenv("RECSTORE_REPORT_CSV_FLUSH_EVERY_N"),
+                        config.csv_flush_every_n);
 }
+
+const std::filesystem::path& ConfigPath() {
+  auto& state = State();
+  if (!state.path_resolved) {
+    state.path_resolved = true;
+    const auto found    = base::FindRecStoreConfigPath();
+    if (found.has_value()) {
+      state.resolved_path = *found;
+    }
+  }
+  return state.resolved_path;
+}
+
+ObservabilityConfig ResolveConfig() {
+  std::lock_guard<std::mutex> lock(StateMutex());
+  auto& state = State();
+
+  const std::filesystem::path& path = ConfigPath();
+  std::filesystem::file_time_type mtime{};
+  if (!path.empty()) {
+    std::error_code ec;
+    mtime = std::filesystem::last_write_time(path, ec);
+    if (ec) {
+      mtime = {};
+    }
+  }
+
+  if (!state.initialized || state.path != path || state.mtime != mtime) {
+    state.base = ObservabilityConfig{};
+    if (!path.empty()) {
+      ApplyConfigFile(path, state.base);
+    }
+    state.path        = path;
+    state.mtime       = mtime;
+    state.initialized = true;
+  }
+
+  ObservabilityConfig effective = state.base;
+  ApplyEnvOverrides(effective);
+  return effective;
+}
+
+// ── Sinks ─────────────────────────────────────────────────────────────────
 
 class AsyncReportQueue {
 public:
@@ -403,9 +519,10 @@ public:
   }
 
   void Enqueue(const std::string& payload) {
+    const size_t limit = ResolveConfig().remote_queue_max;
     {
       std::lock_guard<std::mutex> lock(mtx_);
-      if (queue_.size() >= 10000) {
+      if (queue_.size() >= limit) {
         queue_.pop();
       }
       queue_.push(payload);
@@ -436,18 +553,11 @@ private:
     if (!curl)
       return;
 
-    std::string api_url = GetApiUrl();
-
     struct curl_slist* headers =
         curl_slist_append(nullptr, "Content-Type: application/json");
-    curl_easy_setopt(curl, CURLOPT_URL, api_url.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 3L);
 
     std::string response_buffer;
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_buffer);
+    std::string current_url;
 
     while (true) {
       std::string payload;
@@ -463,10 +573,26 @@ private:
         queue_.pop();
       }
 
+      const ObservabilityConfig config = ResolveConfig();
+      if (current_url != config.remote_endpoint) {
+        current_url = config.remote_endpoint;
+        curl_easy_setopt(curl, CURLOPT_URL, current_url.c_str());
+      }
+      curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+      curl_easy_setopt(
+          curl,
+          CURLOPT_TIMEOUT,
+          config.remote_timeout_ms / 1000 > 0
+              ? config.remote_timeout_ms / 1000
+              : 1L);
+
       response_buffer.clear();
+      curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+      curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_buffer);
       curl_easy_setopt(curl, CURLOPT_POST, 1L);
       curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
-      curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, payload.length());
+      curl_easy_setopt(
+          curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(payload.length()));
 
       CURLcode res = curl_easy_perform(curl);
       if (res != CURLE_OK) {
@@ -474,13 +600,9 @@ private:
       } else {
         long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        if (http_code >= 200 && http_code < 300) {
-          LOG(INFO) << "Report HTTP API success (HTTP Code: " << http_code
-                    << ").";
-        } else {
+        if (http_code < 200 || http_code >= 300) {
           LOG(ERROR) << "API failed (HTTP Code: " << http_code << ").";
         }
-        DLOG(INFO) << "Server response: " << response_buffer;
       }
     }
 
@@ -495,44 +617,336 @@ private:
   std::thread worker_;
 };
 
+class CsvSink {
+public:
+  static CsvSink& GetInstance() {
+    static CsvSink instance;
+    return instance;
+  }
+
+  void Emit(const recstore::MetricRecord& record,
+            const ObservabilityConfig& config) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ConfigureIfNeeded(config);
+    if (!ofs_.is_open()) {
+      return;
+    }
+
+    std::string line;
+    line.reserve(160);
+    AppendNumber(line, record.timestamp_us);
+    line.push_back(',');
+    AppendCsvField(line, record.host);
+    line.push_back(',');
+    AppendNumber(line, record.pid);
+    line.push_back(',');
+    AppendCsvField(line, record.run_id);
+    line.push_back(',');
+    AppendNumber(line, record.rank);
+    line.push_back(',');
+    AppendNumber(line, record.shard);
+    line.push_back(',');
+    AppendCsvField(line, record.table_name);
+    line.push_back(',');
+    AppendCsvField(line, record.unique_id);
+    line.push_back(',');
+    AppendCsvField(line, record.metric_name);
+    line.push_back(',');
+    AppendNumber(line, record.metric_value);
+    line.push_back(',');
+    AppendCsvField(line, record.source);
+
+    ofs_ << line << '\n';
+    ++writes_since_flush_;
+    if (writes_since_flush_ >= config.csv_flush_every_n) {
+      ofs_.flush();
+      writes_since_flush_ = 0;
+    }
+  }
+
+  void Flush() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (ofs_.is_open()) {
+      ofs_.flush();
+    }
+  }
+
+private:
+  CsvSink() = default;
+
+  ~CsvSink() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (ofs_.is_open()) {
+      ofs_.flush();
+      ofs_.close();
+    }
+  }
+
+  void ConfigureIfNeeded(const ObservabilityConfig& config) {
+    if (configured_ && path_ == config.csv_path &&
+        flush_every_n_ == config.csv_flush_every_n) {
+      return;
+    }
+
+    if (ofs_.is_open()) {
+      ofs_.flush();
+      ofs_.close();
+    }
+    writes_since_flush_ = 0;
+    path_               = config.csv_path;
+    flush_every_n_      = config.csv_flush_every_n;
+
+    const std::filesystem::path output_path(ExpandCsvPath(config.csv_path));
+    const auto parent = output_path.parent_path();
+    std::error_code ec;
+    if (!parent.empty()) {
+      std::filesystem::create_directories(parent, ec);
+    }
+    ofs_.open(output_path, std::ios::app);
+    if (!ofs_.is_open()) {
+      LOG(ERROR) << "Failed to open report CSV sink: " << output_path;
+    } else if (ofs_.tellp() == 0) {
+      ofs_ << kCsvHeader << '\n';
+    }
+    configured_ = true;
+  }
+
+  std::mutex mutex_;
+  std::ofstream ofs_;
+  bool configured_ = false;
+  std::string path_;
+  size_t flush_every_n_      = 1;
+  size_t writes_since_flush_ = 0;
+};
+
+class JsonlSink {
+public:
+  static JsonlSink& GetInstance() {
+    static JsonlSink instance;
+    return instance;
+  }
+
+  void Emit(const std::string& line, const ObservabilityConfig& config) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ConfigureIfNeeded(config);
+    if (!ofs_.is_open()) {
+      return;
+    }
+    ofs_ << line << '\n';
+    ++writes_since_flush_;
+    if (writes_since_flush_ >= config.jsonl_flush_every_n) {
+      ofs_.flush();
+      writes_since_flush_ = 0;
+    }
+  }
+
+  void Flush() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (ofs_.is_open()) {
+      ofs_.flush();
+    }
+  }
+
+private:
+  JsonlSink() = default;
+
+  ~JsonlSink() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (ofs_.is_open()) {
+      ofs_.flush();
+      ofs_.close();
+    }
+  }
+
+  void ConfigureIfNeeded(const ObservabilityConfig& config) {
+    if (configured_ && path_ == config.jsonl_path &&
+        flush_every_n_ == config.jsonl_flush_every_n) {
+      return;
+    }
+
+    if (ofs_.is_open()) {
+      ofs_.flush();
+      ofs_.close();
+    }
+    writes_since_flush_ = 0;
+    path_               = config.jsonl_path;
+    flush_every_n_      = config.jsonl_flush_every_n;
+
+    const std::filesystem::path output_path(config.jsonl_path);
+    const auto parent = output_path.parent_path();
+    std::error_code ec;
+    if (!parent.empty()) {
+      std::filesystem::create_directories(parent, ec);
+    }
+    ofs_.open(output_path, std::ios::app);
+    if (!ofs_.is_open()) {
+      LOG(ERROR) << "Failed to open local report JSONL sink: "
+                 << config.jsonl_path;
+    }
+    configured_ = true;
+  }
+
+  std::mutex mutex_;
+  std::ofstream ofs_;
+  bool configured_ = false;
+  std::string path_;
+  size_t flush_every_n_      = 1;
+  size_t writes_since_flush_ = 0;
+};
+
+class Dispatcher {
+public:
+  static Dispatcher& GetInstance() {
+    static Dispatcher instance;
+    return instance;
+  }
+
+  void AddSink(std::unique_ptr<recstore::MetricSink> sink) {
+    if (!sink) {
+      return;
+    }
+    std::unique_lock<std::shared_mutex> lock(user_mutex_);
+    user_sinks_.push_back(std::move(sink));
+  }
+
+  void Emit(const recstore::MetricRecord& record) {
+    const ObservabilityConfig config = ResolveConfig();
+
+    std::string payload;
+    auto json_payload = [&payload, &record]() -> const std::string& {
+      if (payload.empty()) {
+        payload = ToJsonLine(record);
+      }
+      return payload;
+    };
+
+    if (config.remote) {
+      AsyncReportQueue::GetInstance().Enqueue(json_payload());
+    }
+    if (config.jsonl) {
+      JsonlSink::GetInstance().Emit(json_payload(), config);
+    }
+    if (config.glog) {
+      LOG(INFO) << "REPORT_LOCAL_EVENT " << json_payload();
+    }
+    if (config.csv) {
+      CsvSink::GetInstance().Emit(record, config);
+    }
+
+    std::shared_lock<std::shared_mutex> lock(user_mutex_);
+    for (auto& sink : user_sinks_) {
+      sink->Emit(record);
+    }
+  }
+
+  void Flush() {
+    CsvSink::GetInstance().Flush();
+    JsonlSink::GetInstance().Flush();
+    std::shared_lock<std::shared_mutex> lock(user_mutex_);
+    for (auto& sink : user_sinks_) {
+      sink->Flush();
+    }
+  }
+
+private:
+  Dispatcher() = default;
+  std::shared_mutex user_mutex_;
+  std::vector<std::unique_ptr<recstore::MetricSink>> user_sinks_;
+};
+
+bool TryRecordLatencyMetricToTimer(const recstore::MetricRecord& record) {
+  double value_ns = 0.0;
+  if (std::strcmp(record.metric_name, "duration_ns") == 0 ||
+      std::strcmp(record.metric_name, "latency_ns") == 0) {
+    value_ns = record.metric_value;
+  } else if (std::strcmp(record.metric_name, "duration_us") == 0 ||
+             std::strcmp(record.metric_name, "latency_us") == 0) {
+    value_ns = record.metric_value * 1000.0;
+  } else {
+    return false;
+  }
+
+  thread_local std::string cached_table;
+  thread_local std::string cached_metric;
+  thread_local std::string cached_timer_name;
+  if (cached_table != record.table_name ||
+      cached_metric != record.metric_name) {
+    cached_table      = record.table_name;
+    cached_metric     = record.metric_name;
+    cached_timer_name = cached_table + "." + cached_metric;
+  }
+  xmh::Timer::ManualRecordNs(cached_timer_name, value_ns);
+  return true;
+}
+
+recstore::MetricRecord
+MakeRecord(const char* table_name,
+           const char* unique_id,
+           const char* metric_name,
+           double metric_value,
+           const char* source) {
+  recstore::MetricRecord record;
+  record.timestamp_us = GetTimestampUs();
+  record.host         = HostName();
+  record.pid          = ProcessId();
+  record.run_id       = RunId();
+  record.rank         = EnvRank();
+  record.shard        = EnvShard();
+  record.table_name   = table_name;
+  record.unique_id    = unique_id;
+  record.metric_name  = metric_name;
+  record.metric_value = metric_value;
+  record.source       = source;
+  return record;
+}
+
+} // namespace
+
+size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp) {
+  ((std::string*)userp)->append((char*)contents, size * nmemb);
+  return size * nmemb;
+}
+
 bool send_json_request(const std::string& json_payload) {
-  if (!IsRemoteReportEnabled()) {
-    DLOG(INFO) << "REPORT_LIB INFO: Remote reporting disabled; drop payload.";
+  if (!ResolveConfig().remote) {
     return true;
   }
   AsyncReportQueue::GetInstance().Enqueue(json_payload);
   return true;
 }
 
-bool is_report_remote_enabled_for_test() { return IsRemoteReportEnabled(); }
+bool is_report_remote_enabled_for_test() { return ResolveConfig().remote; }
 
-bool is_report_local_jsonl_enabled_for_test() { return IsLocalJsonlEnabled(); }
+bool is_report_local_jsonl_enabled_for_test() { return ResolveConfig().jsonl; }
+
+bool is_report_csv_enabled_for_test() { return ResolveConfig().csv; }
+
+void ResetReportConfigForTest() {
+  std::lock_guard<std::mutex> lock(StateMutex());
+  State()               = ConfigState{};
+  State().path_resolved = false;
+  State().resolved_path.clear();
+}
+
+namespace recstore {
+
+void RegisterMetricSink(std::unique_ptr<MetricSink> sink) {
+  Dispatcher::GetInstance().AddSink(std::move(sink));
+}
+
+} // namespace recstore
 
 extern "C" bool
 report(const char* table_name,
        const char* unique_id,
        const char* metric_name,
        double metric_value) {
-  const StructuredReportEvent event = {
-      .table_name   = table_name,
-      .unique_id    = unique_id,
-      .metric_name  = metric_name,
-      .metric_value = metric_value,
-      .timestamp_us = GetTimestampUs(),
-      .source       = "report"};
+  const recstore::MetricRecord record =
+      MakeRecord(table_name, unique_id, metric_name, metric_value, "report");
 
-  std::string json_payload = ToJsonLine(event);
-
-  WriteLocalStructuredEvent(json_payload);
-  TryRecordLatencyMetricToTimer(event);
-
-  bool success = send_json_request(json_payload);
-  if (success) {
-    DLOG(INFO) << "REPORT_LIB INFO: Data for ID [" << unique_id
-               << "] enqueued successfully.";
-  }
-
-  return success;
+  TryRecordLatencyMetricToTimer(record);
+  Dispatcher::GetInstance().Emit(record);
+  return true;
 }
 
 extern "C" bool report_flame_graph(
@@ -555,10 +969,6 @@ extern "C" bool report_flame_graph(
   report(table_name, combined_uid.c_str(), "value", data.value);
   report(table_name, combined_uid.c_str(), "self", data.self);
   report(table_name, combined_uid.c_str(), "start", adjusted_start);
-
-  DLOG(INFO) << "REPORT_LIB INFO: Flame Graph Data for ID [" << unique_id
-             << ", Label " << data.label << "] enqueued successfully as '"
-             << combined_uid << "'. Adjusted start: " << adjusted_start;
 
   return true;
 }
