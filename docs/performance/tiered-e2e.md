@@ -73,9 +73,10 @@ usable DRAM rows = floor(0.85 * DRAM tier bytes / 512)
 
 ### 读缓存（#343 之后）
 
-`tiering.cache_policy` 的库默认值是 `none`，但 `rs_demo` / benchmark server 生成的配置模板写的是 `lru`
-（`src/python/pytorch/recstore/benchmark/server.py`），所以 e2e 实际默认开着缓存。本页扫描为了与旧数据可比，
-显式设回 `none`；下面用同机 loopback、同样 15% 行在 SSD（16.3% 访问走 SSD）的两轮交错复测给出 cache-on 结果。
+`tiering.cache_policy` 的库默认值是 `none`，但 `rs_demo` 生成的配置模板默认写 `lru`
+（`src/python/pytorch/recstore/benchmark/server.py`），所以 e2e 实际默认开着缓存；要复现本页基线需显式
+`--tiered-cache-policy none`。本页扫描为了与旧数据可比，显式设回 `none`；下面用同机 loopback、
+同样 15% 行在 SSD（16.3% 访问走 SSD）的两轮交错复测给出 cache-on 结果。
 
 每轮 64 steps、排除 5 步 warmup、3 次重复；下表是每次重复的 `step` 均值和中位数指标
 （`results/e2e_cache_recheck_11062048/`、`results/e2e_cache_recheck_11071449/`）：
@@ -225,7 +226,8 @@ python3 model_zoo/rs_demo/run_mock_stress.py \
 - 每次重复都要重启 PS / 换 namespace：RDMA lane 的会合协议没有实例标识，复用旧 server 会
   `peer_unreachable`。
 - PS 的 `dram` / `ssd.db` 每次用新目录，跑完删除，避免上一次的 tier 状态污染。
-- 本页比例扫描显式写了 `"tiering": {"cache_policy": "none"}`；配置模板默认是 `lru`，直接复用模板会开启读缓存。
+- 本页比例扫描显式写了 `"tiering": {"cache_policy": "none"}`；改用 `rs_demo` 时对应
+  `--tiered-cache-policy none`，默认仍是 `lru`，直接复用模板会开启读缓存。
 
 本次的 per-step CSV、生命周期 JSON、runner 日志和一次性 harness 保存在运行产物目录
 `results/tiered_e2e_11052043/`（不随仓库提交）；需要原始数据时可通过 PR 附件或联系作者获取。
