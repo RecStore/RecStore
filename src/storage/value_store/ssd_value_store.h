@@ -23,11 +23,12 @@ public:
     const auto& ssd = v.at("ssd_allocator");
     const auto& io  = ssd.at("io");
 
-    BaseKVConfig io_cfg  = config;
-    auto& j              = io_cfg.json_config_;
-    j["io_backend_type"] = io.value("type", "IOURING");
-    j["file_path"]       = v.at("path").get<std::string>();
-    j["queue_cnt"]       = io.value("queue_depth", 512);
+    BaseKVConfig io_cfg        = config;
+    auto& j                    = io_cfg.json_config_;
+    j["io_backend_type"]       = io.value("type", "IOURING");
+    j["file_path"]             = v.at("path").get<std::string>();
+    j["queue_cnt"]             = io.value("queue_depth", 512);
+    j["completion_poll_spins"] = io.value("completion_poll_spins", 8192);
     j["page_id_offset"] =
         io.value("base_offset_bytes", static_cast<uint64_t>(0)) / PAGE_SIZE;
 
@@ -102,17 +103,21 @@ public:
     if (handles.size() != specs.size()) {
       throw std::invalid_argument("SsdValueStore::BatchWrite size mismatch");
     }
+    std::vector<uint64_t> raw_handles;
+    std::vector<SsdBlockAllocator::WriteEntry> entries;
     for (size_t i = 0; i < handles.size(); ++i) {
       if (handles[i] == kValueHandleNone) {
         continue;
       }
-      allocator_->Write(handles[i], specs[i].data, specs[i].size);
+      raw_handles.push_back(handles[i]);
+      entries.push_back({specs[i].data, specs[i].size});
     }
+    allocator_->BatchWrite(raw_handles, entries);
   }
 
   void BatchRead(const std::vector<uint64_t>& handles,
                  std::vector<ReadResult>& out_results) override {
-    constexpr size_t kMaxBatchIoEntries = 1024;
+    constexpr size_t kMaxBatchIoEntries = 32768;
     out_results.resize(handles.size());
     std::vector<SsdBlockAllocator::ReadEntry> entries;
     std::vector<size_t> indices;
@@ -178,6 +183,10 @@ public:
     std::ostringstream out;
     out << " layout_strategy=plain" << " layout_page_reads=" << stats.page_reads
         << " layout_bytes_read=" << stats.bytes_read;
+    if (const auto* slab =
+            dynamic_cast<const SsdSlabAllocator*>(allocator_.get()))
+      out << " ssd_joined_read_pages=" << slab->JoinedReadPages()
+          << " ssd_inflight_read_pages=" << slab->InflightReadPages();
     return out.str();
   }
 

@@ -66,12 +66,13 @@ public:
       throw std::invalid_argument(
           "SSD layout base offset must be page aligned");
     }
-    page_id_offset_         = base_offset / PAGE_SIZE;
-    json["io_backend_type"] = io.value("type", "IOURING");
-    json["file_path"]       = value.at("path").get<std::string>();
-    json["queue_cnt"]       = io.value("queue_depth", 512);
-    json["page_id_offset"]  = page_id_offset_;
-    using IOF               = base::Factory<IOBackend, const BaseKVConfig&>;
+    page_id_offset_               = base_offset / PAGE_SIZE;
+    json["io_backend_type"]       = io.value("type", "IOURING");
+    json["file_path"]             = value.at("path").get<std::string>();
+    json["queue_cnt"]             = io.value("queue_depth", 512);
+    json["completion_poll_spins"] = io.value("completion_poll_spins", 8192);
+    json["page_id_offset"]        = page_id_offset_;
+    using IOF = base::Factory<IOBackend, const BaseKVConfig&>;
     io_backend_.reset(IOF::NewInstance(json.at("io_backend_type"), io_config));
     io_backend_->init();
   }

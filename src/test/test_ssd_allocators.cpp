@@ -242,6 +242,29 @@ TEST(SsdBuddyAllocatorTest, AllocWriteReadAndReuse) {
   EXPECT_EQ(h2, h1);
 }
 
+TEST(SsdBuddyAllocatorTest, CapacityAndFreeDoNotDependOnPayloadHeader) {
+  InMemoryIOBackend backend;
+  SsdBuddyAllocator alloc(&backend, 128, 4, 2048, 0);
+  const std::string payload(64, 'a');
+
+  // This allocator has room for one 1024-byte block.
+  for (bool write_payload : {false, true}) {
+    const auto handle = alloc.Alloc(512);
+    ASSERT_NE(handle, SsdBlockAllocator::kInvalidHandle);
+    EXPECT_EQ(alloc.SlotCapacity(handle), 1016);
+    if (write_payload) {
+      alloc.Write(handle, payload.data(), payload.size());
+      EXPECT_EQ(alloc.SlotCapacity(handle), 1016);
+      std::string actual(payload.size(), '\0');
+      EXPECT_EQ(alloc.Read(handle, actual.data(), actual.size()),
+                payload.size());
+      EXPECT_EQ(actual, payload);
+    }
+    alloc.Free(handle);
+  }
+  EXPECT_NE(alloc.Alloc(512), SsdBlockAllocator::kInvalidHandle);
+}
+
 // Buddy blocks are 256 B here, so 16 of them share one 4 KiB page. Unlike the
 // slab allocator, buddy serializes every device read and write behind io_mu_,
 // so its page read-modify-write cycle is already atomic; this test pins that
