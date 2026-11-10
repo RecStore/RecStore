@@ -19,6 +19,12 @@ public:
     size_t data_size;
   };
 
+  struct UpdateEntry {
+    uint64_t handle;
+    const void* data;
+    size_t data_size;
+  };
+
   virtual ~SsdBlockAllocator() = default;
 
   virtual uint64_t Alloc(size_t data_size)                                = 0;
@@ -27,6 +33,12 @@ public:
   virtual size_t Read(uint64_t handle, void* out_buf, size_t buf_size)    = 0;
   virtual uint64_t AllocAndWrite(const void* data, size_t data_size)      = 0;
   virtual size_t SlotCapacity(uint64_t handle) const                      = 0;
+
+  virtual void BatchWrite(const std::vector<UpdateEntry>& entries) {
+    for (const auto& entry : entries) {
+      Write(entry.handle, entry.data, entry.data_size);
+    }
+  }
 
   virtual void BatchRead(const std::vector<ReadEntry>& entries,
                          std::vector<size_t>& out_sizes) {

@@ -102,12 +102,15 @@ public:
     if (handles.size() != specs.size()) {
       throw std::invalid_argument("SsdValueStore::BatchWrite size mismatch");
     }
+    std::vector<SsdBlockAllocator::UpdateEntry> entries;
+    entries.reserve(handles.size());
     for (size_t i = 0; i < handles.size(); ++i) {
       if (handles[i] == kValueHandleNone) {
         continue;
       }
-      allocator_->Write(handles[i], specs[i].data, specs[i].size);
+      entries.push_back({handles[i], specs[i].data, specs[i].size});
     }
+    allocator_->BatchWrite(entries);
   }
 
   void BatchRead(const std::vector<uint64_t>& handles,
@@ -153,20 +156,25 @@ public:
     constexpr size_t kMaxBatchIoEntries = 1024;
     std::vector<uint64_t> handles;
     handles.reserve(specs.size());
-    for (size_t begin = 0; begin < specs.size(); begin += kMaxBatchIoEntries) {
-      const size_t end = std::min(begin + kMaxBatchIoEntries, specs.size());
-      std::vector<SsdBlockAllocator::WriteEntry> entries;
-      entries.reserve(end - begin);
-      for (size_t i = begin; i < end; ++i) {
-        entries.push_back({specs[i].data, specs[i].size});
+    try {
+      for (size_t begin = 0; begin < specs.size(); begin += kMaxBatchIoEntries) {
+        const size_t end = std::min(begin + kMaxBatchIoEntries, specs.size());
+        std::vector<SsdBlockAllocator::WriteEntry> entries;
+        entries.reserve(end - begin);
+        for (size_t i = begin; i < end; ++i) {
+          entries.push_back({specs[i].data, specs[i].size});
+        }
+        std::vector<uint64_t> chunk_handles =
+            allocator_->BatchAllocAndWrite(entries);
+        for (uint64_t handle : chunk_handles) {
+          handles.push_back(handle == SsdBlockAllocator::kInvalidHandle
+                                ? kValueHandleNone
+                                : handle);
+        }
       }
-      std::vector<uint64_t> chunk_handles =
-          allocator_->BatchAllocAndWrite(entries);
-      for (uint64_t handle : chunk_handles) {
-        handles.push_back(handle == SsdBlockAllocator::kInvalidHandle
-                              ? kValueHandleNone
-                              : handle);
-      }
+    } catch (...) {
+      for (uint64_t handle : handles) Free(handle);
+      throw;
     }
     return handles;
   }

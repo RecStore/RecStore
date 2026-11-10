@@ -172,7 +172,8 @@ TEST_F(IOBackendTest, SyncReadWriteRoundTrip) {
 }
 
 TEST_F(IOBackendTest, BatchReadWriteRoundTrip) {
-  constexpr int kNumPages = 8;
+  // queue_cnt=64 permits 32 in flight: exercise three full windows and a tail.
+  constexpr int kNumPages = 97;
 
   std::vector<IOBackend::IOEntry> write_entries;
   std::vector<char*> write_buffers;

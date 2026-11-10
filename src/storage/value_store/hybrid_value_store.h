@@ -1,10 +1,14 @@
 #pragma once
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
+#include <fstream>
 #include <iomanip>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 
 #include "base/factory.h"
 #include "storage/cache/tiered_read_cache.h"
@@ -28,6 +32,39 @@ public:
     const auto& tiering =
         v.contains("tiering") ? v.at("tiering") : json::object();
     high_watermark_ratio_ = tiering.value("high_watermark_ratio", 0.85);
+    if (!std::isfinite(high_watermark_ratio_) || high_watermark_ratio_ < 0 ||
+        high_watermark_ratio_ > 1) {
+      throw std::invalid_argument("tiered high_watermark_ratio must be in [0, 1]");
+    }
+    const std::string profile_path = tiering.value("dram_keys_path", "");
+    if (!profile_path.empty()) {
+      std::ifstream input(profile_path, std::ios::binary | std::ios::ate);
+      if (!input) {
+        throw std::invalid_argument("cannot open tiered DRAM key profile");
+      }
+      const std::streamoff bytes = input.tellg();
+      if (bytes < 0 || bytes % sizeof(uint64_t) != 0) {
+        throw std::invalid_argument("invalid tiered DRAM key profile size");
+      }
+      dram_profile_.resize(static_cast<size_t>(bytes) / sizeof(uint64_t));
+      input.seekg(0);
+      if (!input.read(reinterpret_cast<char*>(dram_profile_.data()), bytes) ||
+          !std::is_sorted(dram_profile_.begin(), dram_profile_.end()) ||
+          std::adjacent_find(dram_profile_.begin(), dram_profile_.end()) !=
+              dram_profile_.end()) {
+        throw std::invalid_argument("tiered DRAM key profile must be sorted and unique");
+      }
+      profiled_placement_ = true;
+    }
+    online_placement_ = tiering.value("online_admission", false);
+    if (online_placement_) {
+      if (!profiled_placement_ || ssd_static_ || dram_profile_.empty()) {
+        throw std::invalid_argument(
+            "online admission requires a nonempty DRAM profile and plain SSD layout");
+      }
+      online_dram_keys_.reserve(dram_profile_.size());
+      online_dram_keys_.insert(dram_profile_.begin(), dram_profile_.end());
+    }
     const std::string cache_policy = tiering.value("cache_policy", "none");
     if (cache_policy.empty() || cache_policy == "none") {
       return;
@@ -68,24 +105,75 @@ public:
         static_cast<uint32_t>(promote_min_misses));
   }
 
-  uint64_t Alloc(size_t size) override {
-    if (ShouldUseDram(size)) {
-      const uint64_t raw = dram_store_.Alloc(size);
-      if (raw != kValueHandleNone) {
-        dram_bytes_reserved_.fetch_add(
-            dram_store_.SlotCapacity(raw), std::memory_order_relaxed);
-        dram_live_allocs_.fetch_add(1, std::memory_order_relaxed);
-        dram_total_allocs_.fetch_add(1, std::memory_order_relaxed);
-        return MakeDramHandle(raw);
+  bool OnlinePlacementEnabled() const { return online_placement_; }
+  bool DramKeyEligible(uint64_t key) const { return KeyUsesDram(key); }
+  const std::vector<uint64_t>& DramProfileKeys() const { return dram_profile_; }
+
+  // Private destinations are not visible through the index or eligibility set.
+  // The caller publishes them only after validating its source versions.
+  std::vector<uint64_t> PrepareExchange(
+      const std::vector<WriteSpec>& victims,
+      const std::vector<WriteSpec>& hot) {
+    if (!online_placement_ || victims.size() != hot.size()) {
+      throw std::invalid_argument("invalid prepared tier exchange");
+    }
+    const size_t count = hot.size();
+    std::vector<uint64_t> handles(count * 2, kValueHandleNone);
+    try {
+      for (size_t i = 0; i < count; ++i) {
+        const uint64_t raw = TryAllocDram(hot[i].size);
+        if (raw == kValueHandleNone) {
+          for (uint64_t handle : handles) Free(handle);
+          return {};
+        }
+        handles[count + i] = MakeDramHandle(raw);
+        dram_store_.Write(raw, hot[i].data, hot[i].size);
+      }
+      const auto cold = ssd_store_->BatchAllocAndWrite(victims);
+      if (cold.size() != count) throw std::runtime_error("prepared SSD count mismatch");
+      bool valid = true;
+      for (size_t i = 0; i < count; ++i) {
+        if (cold[i] == kValueHandleNone) { valid = false; continue; }
+        handles[i] = MakeSsdHandle(cold[i]);
+        ssd_live_allocs_.fetch_add(1, std::memory_order_relaxed);
+        ssd_total_allocs_.fetch_add(1, std::memory_order_relaxed);
+      }
+      if (!valid) {
+        for (uint64_t handle : handles) Free(handle);
+        return {};
+      }
+    } catch (...) {
+      for (uint64_t handle : handles) Free(handle);
+      throw;
+    }
+    return handles;
+  }
+
+  // The engine must exclude readers and writers while changing eligibility.
+  // Reuse nodes so a validated, fixed-size exchange needs no new allocation.
+  void ExchangeDramKeys(const std::vector<uint64_t>& from,
+                        const std::vector<uint64_t>& to) {
+    if (!online_placement_ || from.size() != to.size()) {
+      throw std::invalid_argument("invalid online DRAM key exchange");
+    }
+    std::unordered_set<uint64_t> seen_from, seen_to;
+    for (size_t i = 0; i < from.size(); ++i) {
+      if (!seen_from.insert(from[i]).second ||
+          !seen_to.insert(to[i]).second ||
+          online_dram_keys_.count(from[i]) == 0 ||
+          online_dram_keys_.count(to[i]) != 0) {
+        throw std::invalid_argument("online DRAM key exchange membership mismatch");
       }
     }
-    const uint64_t raw = ssd_store_->Alloc(size);
-    if (raw == kValueHandleNone) {
-      return kValueHandleNone;
+    for (size_t i = 0; i < from.size(); ++i) {
+      auto node = online_dram_keys_.extract(from[i]);
+      node.value() = to[i];
+      online_dram_keys_.insert(std::move(node));
     }
-    ssd_live_allocs_.fetch_add(1, std::memory_order_relaxed);
-    ssd_total_allocs_.fetch_add(1, std::memory_order_relaxed);
-    return MakeSsdHandle(raw);
+  }
+
+  uint64_t Alloc(size_t size) override {
+    return AllocPlain(size, !profiled_placement_);
   }
 
   void Write(uint64_t handle, const void* data, size_t size) override {
@@ -106,13 +194,30 @@ public:
   uint64_t AllocAndWrite(const void* data, size_t size) override {
     const uint64_t handle = Alloc(size);
     if (handle != kValueHandleNone) {
-      Write(handle, data, size);
+      try {
+        Write(handle, data, size);
+      } catch (...) {
+        Free(handle);
+        throw;
+      }
     }
     return handle;
   }
 
   uint64_t AllocAndWrite(uint64_t key, const void* data, size_t size) override {
     if (!ssd_static_) {
+      if (profiled_placement_) {
+        const uint64_t handle = AllocPlain(size, KeyUsesDram(key));
+        if (handle != kValueHandleNone) {
+          try {
+            Write(handle, data, size);
+          } catch (...) {
+            Free(handle);
+            throw;
+          }
+        }
+        return handle;
+      }
       return AllocAndWrite(data, size);
     }
     const uint64_t handle = PlaceStatic(key, size);
@@ -120,6 +225,29 @@ public:
       Write(handle, data, size);
     }
     return handle;
+  }
+
+  std::vector<uint64_t>
+  BatchAllocAndWrite(const std::vector<WriteSpec>& specs) override {
+    return BatchAllocAndWritePlain(nullptr, specs);
+  }
+
+  std::vector<uint64_t> BatchAllocAndWrite(
+      const std::vector<uint64_t>& keys,
+      const std::vector<WriteSpec>& specs) override {
+    if (keys.size() != specs.size()) {
+      throw std::invalid_argument("tiered batch key/spec size mismatch");
+    }
+    if (!ssd_static_) {
+      return BatchAllocAndWritePlain(keys.data(), specs);
+    }
+    std::vector<uint64_t> handles;
+    handles.reserve(keys.size());
+    for (size_t i = 0; i < keys.size(); ++i) {
+      handles.push_back(PlaceStatic(keys[i], specs[i].size));
+    }
+    BatchWrite(handles, specs);
+    return handles;
   }
 
   size_t Read(uint64_t handle, void* out_buf, size_t buf_size) override {
@@ -137,6 +265,7 @@ public:
         }
         barrier = cache_->WriteBarrier(raw);
       }
+      ssd_read_rows_.fetch_add(1, std::memory_order_relaxed);
       const size_t actual = ssd_store_->Read(raw, out_buf, buf_size);
       // Only cache a value that was read in full; a truncated read would put a
       // short value in the cache and every later hit would return it. The
@@ -184,11 +313,11 @@ public:
   }
 
   char* RDMABackingData() const override {
-    return dram_store_.RDMABackingData();
+    return online_placement_ ? nullptr : dram_store_.RDMABackingData();
   }
 
   size_t RDMABackingSize() const override {
-    return dram_store_.RDMABackingSize();
+    return online_placement_ ? 0 : dram_store_.RDMABackingSize();
   }
 
   size_t SlotCapacity(uint64_t handle) const override {
@@ -288,6 +417,7 @@ public:
     }
 
     std::vector<ReadResult> ssd_results;
+    ssd_read_rows_.fetch_add(ssd_handles.size(), std::memory_order_relaxed);
     ssd_store_->BatchRead(ssd_handles, ssd_results);
     if (ssd_results.size() != ssd_indices.size()) {
       throw std::runtime_error(
@@ -315,6 +445,7 @@ public:
   }
 
   void ResetStats() override {
+    ssd_read_rows_.store(0, std::memory_order_relaxed);
     if (ssd_store_) {
       ssd_store_->ResetStats();
     }
@@ -371,6 +502,14 @@ public:
     } else {
       os << " tiered_cache_policy=none";
     }
+    os
+       << " tiered_profile_enabled=" << profiled_placement_
+       << " tiered_dram_profile_keys=" << dram_profile_.size()
+       << " tiered_dram_profile_bytes=" << dram_profile_.size() * sizeof(uint64_t)
+       << " tiered_online_enabled=" << online_placement_
+       << " tiered_online_dram_keys=" << online_dram_keys_.size()
+       << " tiered_ssd_read_rows="
+       << ssd_read_rows_.load(std::memory_order_relaxed);
     return os.str() + ssd_store_->ExtraResultFields();
   }
 
@@ -379,6 +518,66 @@ public:
   }
 
 private:
+  bool KeyUsesDram(uint64_t key) const {
+    if (online_placement_) {
+      return online_dram_keys_.count(key) != 0;
+    }
+    return !profiled_placement_ ||
+           std::binary_search(dram_profile_.begin(), dram_profile_.end(), key);
+  }
+
+  uint64_t AllocPlain(size_t size, bool use_dram) {
+    const uint64_t dram = use_dram ? TryAllocDram(size) : kValueHandleNone;
+    if (dram != kValueHandleNone) {
+      return MakeDramHandle(dram);
+    }
+    const uint64_t raw = ssd_store_->Alloc(size);
+    if (raw == kValueHandleNone) {
+      return kValueHandleNone;
+    }
+    ssd_live_allocs_.fetch_add(1, std::memory_order_relaxed);
+    ssd_total_allocs_.fetch_add(1, std::memory_order_relaxed);
+    return MakeSsdHandle(raw);
+  }
+  std::vector<uint64_t> BatchAllocAndWritePlain(
+      const uint64_t* keys, const std::vector<WriteSpec>& specs) {
+    std::vector<uint64_t> handles(specs.size(), kValueHandleNone);
+    std::vector<WriteSpec> ssd_specs;
+    std::vector<size_t> ssd_indices;
+    try {
+      for (size_t i = 0; i < specs.size(); ++i) {
+        const bool use_dram =
+            !profiled_placement_ || (keys != nullptr && KeyUsesDram(keys[i]));
+        const uint64_t raw =
+            use_dram ? TryAllocDram(specs[i].size) : kValueHandleNone;
+        if (raw != kValueHandleNone) {
+          handles[i] = MakeDramHandle(raw);
+          dram_store_.Write(raw, specs[i].data, specs[i].size);
+        } else {
+          ssd_specs.push_back(specs[i]);
+          ssd_indices.push_back(i);
+        }
+      }
+      if (!ssd_specs.empty()) {
+        const auto ssd_handles = ssd_store_->BatchAllocAndWrite(ssd_specs);
+        if (ssd_handles.size() != ssd_indices.size()) {
+          throw std::runtime_error("tiered batch allocation result size mismatch");
+        }
+        for (size_t i = 0; i < ssd_indices.size(); ++i) {
+          if (ssd_handles[i] != kValueHandleNone) {
+            handles[ssd_indices[i]] = MakeSsdHandle(ssd_handles[i]);
+            ssd_live_allocs_.fetch_add(1, std::memory_order_relaxed);
+            ssd_total_allocs_.fetch_add(1, std::memory_order_relaxed);
+          }
+        }
+      }
+    } catch (...) {
+      for (uint64_t handle : handles) Free(handle);
+      throw;
+    }
+    return handles;
+  }
+
   static constexpr uint64_t kSsdFlag = 1ULL << 63;
 
   static bool IsOnSSD(uint64_t handle) { return (handle & kSsdFlag) != 0; }
@@ -452,15 +651,32 @@ private:
     return out;
   }
 
-  bool ShouldUseDram(size_t size) const {
-    if (dram_placement_bytes_ == 0) {
-      return false;
+  uint64_t TryAllocDram(size_t size) {
+    const uint64_t limit = static_cast<uint64_t>(
+        static_cast<long double>(dram_placement_bytes_) * high_watermark_ratio_);
+    uint64_t current = dram_bytes_reserved_.load(std::memory_order_relaxed);
+    if (current >= limit || size > limit - current) {
+      return kValueHandleNone;
     }
-    const double next =
-        static_cast<double>(
-            dram_bytes_reserved_.load(std::memory_order_relaxed) + size) /
-        static_cast<double>(dram_placement_bytes_);
-    return next <= high_watermark_ratio_;
+    const uint64_t raw = dram_store_.Alloc(size);
+    if (raw == kValueHandleNone) {
+      return raw;
+    }
+    const size_t capacity = dram_store_.SlotCapacity(raw);
+    // Reserve the actual slot size atomically: concurrent load workers must
+    // not all pass the watermark check and overfill the DRAM tier.
+    for (;;) {
+      if (current > limit || capacity > limit - current) {
+        dram_store_.Free(raw);
+        return kValueHandleNone;
+      }
+      if (dram_bytes_reserved_.compare_exchange_weak(
+              current, current + capacity, std::memory_order_relaxed)) {
+        dram_live_allocs_.fetch_add(1, std::memory_order_relaxed);
+        dram_total_allocs_.fetch_add(1, std::memory_order_relaxed);
+        return raw;
+      }
+    }
   }
 
   uint64_t PlaceStatic(uint64_t key, size_t size) {
@@ -471,15 +687,9 @@ private:
     if (size != row_size) {
       throw std::invalid_argument("static SSD layout value size mismatch");
     }
-    if (ShouldUseDram(size)) {
-      const uint64_t raw = dram_store_.Alloc(size);
-      if (raw != kValueHandleNone) {
-        dram_bytes_reserved_.fetch_add(
-            dram_store_.SlotCapacity(raw), std::memory_order_relaxed);
-        dram_live_allocs_.fetch_add(1, std::memory_order_relaxed);
-        dram_total_allocs_.fetch_add(1, std::memory_order_relaxed);
-        return MakeDramHandle(raw);
-      }
+    const uint64_t raw = KeyUsesDram(key) ? TryAllocDram(size) : kValueHandleNone;
+    if (raw != kValueHandleNone) {
+      return MakeDramHandle(raw);
     }
     ssd_live_allocs_.fetch_add(1, std::memory_order_relaxed);
     ssd_total_allocs_.fetch_add(1, std::memory_order_relaxed);
@@ -493,6 +703,10 @@ private:
   // object, so they are released with the allocator rather than one by one.
   std::unique_ptr<TieredReadCache> cache_;
   bool ssd_static_              = false;
+  bool profiled_placement_      = false;
+  bool online_placement_        = false;
+  std::vector<uint64_t> dram_profile_;
+  std::unordered_set<uint64_t> online_dram_keys_;
   uint64_t dram_capacity_bytes_ = 0;
   // Capacity available to primary placement; equals dram_capacity_bytes_ minus
   // the reserved read-cache budget.
@@ -503,6 +717,7 @@ private:
   std::atomic<uint64_t> ssd_live_allocs_{0};
   std::atomic<uint64_t> dram_total_allocs_{0};
   std::atomic<uint64_t> ssd_total_allocs_{0};
+  std::atomic<uint64_t> ssd_read_rows_{0};
 };
 
 FACTORY_REGISTER(

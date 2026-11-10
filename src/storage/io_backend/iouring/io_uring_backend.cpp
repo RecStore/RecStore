@@ -238,7 +238,11 @@ public:
         inflight++;
         submitted++;
       }
-      submit();
+      // The bounded window fits in the CQ. Wait for the window together to
+      // avoid both busy polling and a separate wakeup for each completed I/O.
+      const int wait_ret = io_uring_submit_and_wait(ring, inflight);
+      CHECK_GE(wait_ret, 0)
+          << "Failed to wait for batch write: " << strerror(-wait_ret);
       struct io_uring_cqe* cqe;
       while (inflight > 0 && io_uring_peek_cqe(ring, &cqe) == 0) {
         CHECK_GE(cqe->res, 0)
@@ -270,7 +274,9 @@ public:
         inflight++;
         submitted++;
       }
-      submit();
+      const int wait_ret = io_uring_submit_and_wait(ring, inflight);
+      CHECK_GE(wait_ret, 0)
+          << "Failed to wait for batch read: " << strerror(-wait_ret);
       struct io_uring_cqe* cqe;
       while (inflight > 0 && io_uring_peek_cqe(ring, &cqe) == 0) {
         CHECK_GE(cqe->res, 0)

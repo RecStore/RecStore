@@ -181,7 +181,12 @@ public:
   uint64_t AllocAndWrite(const void* data, size_t data_size) override {
     const uint64_t handle = Alloc(data_size);
     if (handle != kInvalidHandle) {
-      Write(handle, data, data_size);
+      try {
+        Write(handle, data, data_size);
+      } catch (...) {
+        Free(handle);
+        throw;
+      }
     }
     return handle;
   }
@@ -190,9 +195,8 @@ public:
                  std::vector<size_t>& out_sizes) override {
     out_sizes.assign(entries.size(), 0);
     struct PendingRead {
-      size_t index      = 0;
-      uint64_t page_off = 0;
-      size_t buf_size   = 0;
+      uint64_t byte_off = 0;
+      size_t buf_size = 0;
     };
     std::vector<IOBackend::IOEntry> io_entries;
     std::vector<PendingRead> pending;
@@ -210,14 +214,28 @@ public:
       const uint64_t page_off = byte_off % PAGE_SIZE;
       const uint64_t total    = page_off + slab.slot_size;
       const uint64_t spans    = (total + PAGE_SIZE - 1) / PAGE_SIZE;
-      char* buf               = backend_->AllocateBuffer(spans);
-      io_entries.push_back({start, buf, spans});
       pending.push_back(PendingRead{
-          i,
-          page_off,
+          byte_off,
           entries[i].out_buf == nullptr ? 0 : slab.slot_size - kHeaderSize});
       for (uint64_t page = 0; page < spans; ++page) {
         pages.push_back(start + page);
+      }
+    }
+    if (pages.empty()) {
+      return;
+    }
+    SortUnique(pages);
+    auto free_buffer = [this](char* ptr) { backend_->FreeBuffer(ptr); };
+    std::unique_ptr<char, decltype(free_buffer)> buffer(
+        backend_->AllocateBuffer(pages.size()), free_buffer);
+    // Keep unique pages in physical order, so even a slot crossing a page
+    // boundary is contiguous in the scratch buffer. Read each page only once.
+    for (size_t i = 0; i < pages.size(); ++i) {
+      if (!io_entries.empty() &&
+          io_entries.back().page_id + io_entries.back().page_count == pages[i]) {
+        ++io_entries.back().page_count;
+      } else {
+        io_entries.push_back({pages[i], buffer.get() + i * PAGE_SIZE, 1});
       }
     }
     // Readers share the page stripes with writers so a read cannot observe a
@@ -227,17 +245,20 @@ public:
     backend_->BatchReadPages(io_entries);
     for (size_t i = 0; i < pending.size(); ++i) {
       const auto& item = pending[i];
-      const auto& io   = io_entries[i];
+      const size_t page_index = static_cast<size_t>(
+          std::lower_bound(pages.begin(), pages.end(), item.byte_off / PAGE_SIZE) -
+          pages.begin());
+      const char* src = buffer.get() + page_index * PAGE_SIZE +
+                        item.byte_off % PAGE_SIZE;
       uint32_t n       = 0;
-      std::memcpy(&n, io.buffer + item.page_off, sizeof(n));
+      std::memcpy(&n, src, sizeof(n));
       const size_t actual = std::min(item.buf_size, static_cast<size_t>(n));
       if (actual > 0) {
-        std::memcpy(entries[item.index].out_buf,
-                    io.buffer + item.page_off + kHeaderSize,
+        std::memcpy(entries[i].out_buf,
+                    src + kHeaderSize,
                     actual);
       }
-      out_sizes[item.index] = actual;
-      backend_->FreeBuffer(io.buffer);
+      out_sizes[i] = actual;
     }
   }
 
@@ -250,25 +271,52 @@ public:
     std::vector<uint32_t> lengths(entries.size(), 0);
     std::vector<PagePatch> patches;
     patches.reserve(entries.size() * 2);
+    try {
+      for (size_t i = 0; i < entries.size(); ++i) {
+        const uint64_t handle = Alloc(entries[i].data_size);
+        handles.push_back(handle);
+        if (handle == kInvalidHandle) {
+          continue;
+        }
+        uint16_t slab_idx;
+        uint64_t local_slot_id;
+        Decode(handle, slab_idx, local_slot_id);
+        const uint64_t byte_off = ResolveSlotByteOffset(slab_idx, local_slot_id);
+        lengths[i]              = static_cast<uint32_t>(entries[i].data_size);
+        AddPagePatch(patches, byte_off, &lengths[i], sizeof(lengths[i]));
+        AddPagePatch(patches,
+                     byte_off + kHeaderSize,
+                     entries[i].data,
+                     entries[i].data_size);
+      }
+      WritePages(patches);
+    } catch (...) {
+      for (uint64_t handle : handles) {
+        if (handle != kInvalidHandle) Free(handle);
+      }
+      throw;
+    }
+    return handles;
+  }
+
+  void BatchWrite(const std::vector<UpdateEntry>& entries) override {
+    std::vector<uint32_t> lengths(entries.size());
+    std::vector<PagePatch> patches;
+    patches.reserve(entries.size() * 2);
     for (size_t i = 0; i < entries.size(); ++i) {
-      const uint64_t handle = Alloc(entries[i].data_size);
-      handles.push_back(handle);
-      if (handle == kInvalidHandle) {
-        continue;
+      const auto& entry = entries[i];
+      if (entry.data_size > SlotCapacity(entry.handle)) {
+        throw std::invalid_argument("SSD batch update exceeds slot capacity");
       }
       uint16_t slab_idx;
       uint64_t local_slot_id;
-      Decode(handle, slab_idx, local_slot_id);
-      const uint64_t byte_off = ResolveSlotByteOffset(slab_idx, local_slot_id);
-      lengths[i]              = static_cast<uint32_t>(entries[i].data_size);
-      AddPagePatch(patches, byte_off, &lengths[i], sizeof(lengths[i]));
-      AddPagePatch(patches,
-                   byte_off + kHeaderSize,
-                   entries[i].data,
-                   entries[i].data_size);
+      Decode(entry.handle, slab_idx, local_slot_id);
+      const uint64_t offset = ResolveSlotByteOffset(slab_idx, local_slot_id);
+      lengths[i] = static_cast<uint32_t>(entry.data_size);
+      AddPagePatch(patches, offset, &lengths[i], sizeof(lengths[i]));
+      AddPagePatch(patches, offset + kHeaderSize, entry.data, entry.data_size);
     }
     WritePages(patches);
-    return handles;
   }
 
   size_t SlotCapacity(uint64_t handle) const override {
@@ -295,23 +343,6 @@ private:
     const char* src = nullptr;
     size_t size     = 0;
   };
-
-  struct ThreadLocalBuffer {
-    char* ptr      = nullptr;
-    uint64_t pages = 0;
-  };
-
-  char* AcquireThreadBuffer(uint64_t pages) {
-    static thread_local ThreadLocalBuffer tls;
-    if (tls.ptr == nullptr || tls.pages < pages) {
-      if (tls.ptr != nullptr) {
-        backend_->FreeBuffer(tls.ptr);
-      }
-      tls.ptr   = backend_->AllocateBuffer(pages);
-      tls.pages = pages;
-    }
-    return tls.ptr;
-  }
 
   struct Block {
     uint64_t byte_offset = 0;
@@ -468,12 +499,15 @@ private:
     }
     std::vector<IOBackend::IOEntry> io_entries;
     io_entries.reserve(runs.size());
-    // A single contiguous run is the common case (one slot, or one packed
-    // batch): reuse the thread-local buffer instead of allocating per write.
-    const bool thread_buffer = runs.size() == 1;
+    // One owned buffer covers every run and is released on failures and
+    // worker shutdown, without retaining a backend pointer in thread-local state.
+    auto free_buffer = [this](char* ptr) { backend_->FreeBuffer(ptr); };
+    std::unique_ptr<char, decltype(free_buffer)> buffer(
+        backend_->AllocateBuffer(pages.size()), free_buffer);
+    size_t cursor = 0;
     for (auto& run : runs) {
-      run.buf = thread_buffer ? AcquireThreadBuffer(run.page_count)
-                              : backend_->AllocateBuffer(run.page_count);
+      run.buf = buffer.get() + cursor * PAGE_SIZE;
+      cursor += run.page_count;
       io_entries.push_back({run.first_page, run.buf, run.page_count});
     }
     backend_->BatchReadPages(io_entries);
@@ -487,11 +521,6 @@ private:
       std::memcpy(dst, patch.src, patch.size);
     }
     backend_->BatchWritePages(io_entries);
-    if (!thread_buffer) {
-      for (auto& run : runs) {
-        backend_->FreeBuffer(run.buf);
-      }
-    }
   }
 
   uint16_t SelectSlab(size_t data_size) const {
@@ -520,7 +549,10 @@ private:
     const uint64_t page_off = byte_offset % PAGE_SIZE;
     const uint64_t total    = page_off + slot_size;
     const uint64_t pages    = (total + PAGE_SIZE - 1) / PAGE_SIZE;
-    char* buf               = AcquireThreadBuffer(pages);
+    auto free_buffer = [this](char* ptr) { backend_->FreeBuffer(ptr); };
+    std::unique_ptr<char, decltype(free_buffer)> buffer(
+        backend_->AllocateBuffer(pages), free_buffer);
+    char* buf = buffer.get();
     std::vector<uint64_t> touched;
     touched.reserve(pages);
     for (uint64_t page = 0; page < pages; ++page) {
@@ -531,8 +563,12 @@ private:
     backend_->BatchReadPages({{start, buf, pages}});
     uint32_t n = 0;
     std::memcpy(&n, buf + page_off, sizeof(n));
-    const size_t actual = std::min(buf_size, static_cast<size_t>(n));
-    std::memcpy(out_buf, buf + page_off + kHeaderSize, actual);
+    const size_t actual = out_buf == nullptr ? 0 :
+        std::min({buf_size, static_cast<size_t>(n),
+                  static_cast<size_t>(slot_size - kHeaderSize)});
+    if (actual != 0) {
+      std::memcpy(out_buf, buf + page_off + kHeaderSize, actual);
+    }
     return actual;
   }
 
