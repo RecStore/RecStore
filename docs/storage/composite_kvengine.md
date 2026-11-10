@@ -117,7 +117,7 @@ SSD 索引创建 `IOBackend` 前的配置映射：
 | `SSD_VALUE_STORE` | `ssd_allocator` 必填；不接受 `dram_allocator`；文件路径为 `value.path` |
 | `TIERED_VALUE_STORE` | 两者必填；SSD 路径在 `ssd_allocator.path`；DRAM 路径可选 `dram_allocator.path`（常为 `/dev/shm/...`） |
 
-**Tiering**：默认按 DRAM 高水位优先安放，超出部分进入 SSD。`lru` 提供 SSD 读缓存，`clock` 支持冷热交换和可选的后台回写，`adaptive` 按工作集估计选择策略，见[分层安放与读缓存](#分层安放与读缓存)。
+**Tiering**：默认按 DRAM 高水位优先安放，超出部分进入 SSD。`lru` 提供 SSD 读缓存，`clock` 支持冷热交换和可选的后台回写，`adaptive` 按工作集估计选择策略，见[分层安放与读缓存](#tiered-placement-cache)。
 
 不同 SSD 比例下的端到端吞吐与拆分见[混合存储（DRAM+SSD）端到端基准](../performance/tiered-e2e.md)。
 
@@ -192,7 +192,7 @@ Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 c
 
 `TIERED_VALUE_STORE` 可以把静态 store 当作 SSD 子 store。DRAM 选择仍是现有高水位：`dram_bytes_reserved + size <= capacity * high_watermark_ratio`。
 
-## 分层安放与读缓存
+## 分层安放与读缓存 { #tiered-placement-cache }
 
 通过 `value.tiering.cache_policy` 选择策略：
 
