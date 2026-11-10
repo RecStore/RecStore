@@ -525,7 +525,8 @@ public:
             tid,
             &rows,
             stats != nullptr ? &get_stats : nullptr)) {
-      ApplySgdMixedRows(tagged_keys, grads, embedding_dim, learning_rate, tid, stats);
+      ApplySgdMixedRows(
+          tagged_keys, grads, embedding_dim, learning_rate, tid, stats);
       return true;
     }
     if (stats != nullptr) {
@@ -1119,12 +1120,13 @@ private:
     return true;
   }
 
-  void ApplySgdMixedRows(const std::vector<uint64_t>& keys,
-                         const float* grads,
-                         int64_t dim,
-                         float learning_rate,
-                         unsigned tid,
-                         UpdateFlatStats* stats) {
+  void ApplySgdMixedRows(
+      const std::vector<uint64_t>& keys,
+      const float* grads,
+      int64_t dim,
+      float learning_rate,
+      unsigned tid,
+      UpdateFlatStats* stats) {
     const size_t row_bytes = static_cast<size_t>(dim) * sizeof(float);
     std::vector<uint64_t> unique_keys;
     std::vector<size_t> row_indices;
@@ -1132,11 +1134,13 @@ private:
     positions.reserve(keys.size());
     for (uint64_t key : keys) {
       const auto inserted = positions.emplace(key, unique_keys.size());
-      if (inserted.second) unique_keys.push_back(key);
+      if (inserted.second)
+        unique_keys.push_back(key);
       row_indices.push_back(inserted.first->second);
     }
     std::vector<Value_t> handles(unique_keys.size(), kValueHandleNone);
-    index_->BatchGet(base::ConstArray<uint64_t>(unique_keys), handles.data(), tid);
+    index_->BatchGet(
+        base::ConstArray<uint64_t>(unique_keys), handles.data(), tid);
     std::vector<float*> pointers(unique_keys.size());
     std::vector<std::vector<float>> missing(unique_keys.size());
     std::vector<uint64_t> ssd_handles;
@@ -1159,17 +1163,19 @@ private:
     if (!ssd_handles.empty()) {
       value_store_->BatchRead(ssd_handles, ssd_values);
     }
-    if (ssd_values.size() != ssd_rows.size()) throw std::runtime_error("SGD read count mismatch");
+    if (ssd_values.size() != ssd_rows.size())
+      throw std::runtime_error("SGD read count mismatch");
     std::vector<std::vector<float>> ssd_floats(ssd_rows.size());
     for (size_t i = 0; i < ssd_rows.size(); ++i) {
-      if (ssd_values[i].data.size() != row_bytes) throw std::runtime_error("SGD SSD row size mismatch");
+      if (ssd_values[i].data.size() != row_bytes)
+        throw std::runtime_error("SGD SSD row size mismatch");
       ssd_floats[i].resize(static_cast<size_t>(dim));
       std::memcpy(ssd_floats[i].data(), ssd_values[i].data.data(), row_bytes);
       pointers[ssd_rows[i]] = ssd_floats[i].data();
     }
     // Duplicate keys share a destination and apply gradients in input order.
     for (size_t row = 0; row < keys.size(); ++row) {
-      float* value = pointers[row_indices[row]];
+      float* value      = pointers[row_indices[row]];
       const float* grad = grads + row * dim;
 #pragma omp simd
       for (int64_t column = 0; column < dim; ++column) {
@@ -1177,16 +1183,19 @@ private:
       }
     }
     std::vector<ValueStore::WriteSpec> updates;
-    for (const auto& value : ssd_floats) updates.push_back({value.data(), row_bytes});
+    for (const auto& value : ssd_floats)
+      updates.push_back({value.data(), row_bytes});
     // BatchGet's SSD results are copies, so every modified cold row needs
     // explicit writeback before a subsequent read or promotion can see it.
     if (!ssd_handles.empty()) {
       value_store_->BatchWrite(ssd_handles, updates);
     }
     for (size_t i = 0; i < unique_keys.size(); ++i) {
-      if (handles[i] != kValueHandleNone) continue;
+      if (handles[i] != kValueHandleNone)
+        continue;
       PutInternal(unique_keys[i], missing[i].data(), row_bytes, tid, false);
-      if (stats != nullptr) ++stats->missing_rows;
+      if (stats != nullptr)
+        ++stats->missing_rows;
     }
   }
 

@@ -33,7 +33,8 @@ public:
   bool fail_writes = false;
 
   void BatchWritePages(const std::vector<IOEntry>& entries) override {
-    if (fail_writes) throw std::runtime_error("injected SSD write failure");
+    if (fail_writes)
+      throw std::runtime_error("injected SSD write failure");
     IOBackend::BatchWritePages(entries);
   }
 
@@ -822,8 +823,9 @@ TEST(SsdSlabAllocatorTest, FailedSingleWriteReleasesItsSlot) {
   ASSERT_NE(expected, SsdBlockAllocator::kInvalidHandle);
   alloc.Free(expected);
   backend.fail_writes = true;
-  EXPECT_THROW(alloc.AllocAndWrite(payload.data(), payload.size()), std::runtime_error);
-  backend.fail_writes = false;
+  EXPECT_THROW(alloc.AllocAndWrite(payload.data(), payload.size()),
+               std::runtime_error);
+  backend.fail_writes   = false;
   const uint64_t reused = alloc.AllocAndWrite(payload.data(), payload.size());
   EXPECT_EQ(reused, expected);
   alloc.Free(reused);
@@ -836,7 +838,7 @@ TEST(SsdSlabAllocatorTest, CorruptLengthCannotReadTheNextSlot) {
   payload.fill('v');
   const uint64_t handle = alloc.AllocAndWrite(payload.data(), payload.size());
   ASSERT_NE(handle, SsdBlockAllocator::kInvalidHandle);
-  char* page = static_cast<char*>(backend.GetPage(0));
+  char* page                    = static_cast<char*>(backend.GetPage(0));
   const uint32_t corrupt_length = 129;
   std::memcpy(page, &corrupt_length, sizeof(corrupt_length));
   backend.Unpin(0, page, true);
