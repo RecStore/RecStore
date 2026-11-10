@@ -10,6 +10,8 @@
 #include <thread>
 #include <string>
 #include <iostream>
+#include <memory>
+#include <vector>
 #include <nlohmann/json.hpp>
 
 using namespace std::chrono_literals;
@@ -78,6 +80,7 @@ TEST(ReportTest, TimelineBasic) {
 }
 
 TEST(ReportTest, ReportModeCanBeDisabledByEnvVar) {
+  ResetReportConfigForTest();
   std::lock_guard<std::mutex> lock(EnvTestMutex());
   ScopedEnvVar report_mode("RECSTORE_REPORT_MODE", "local");
   xmh::Timer::Init();
@@ -90,6 +93,7 @@ TEST(ReportTest, ReportModeCanBeDisabledByEnvVar) {
 }
 
 TEST(ReportTest, EmptyReportApiDisablesRemoteReporting) {
+  ResetReportConfigForTest();
   std::lock_guard<std::mutex> lock(EnvTestMutex());
   ScopedEnvVar report_mode("RECSTORE_REPORT_MODE", nullptr);
 
@@ -114,6 +118,7 @@ TEST(ReportTest, EmptyReportApiDisablesRemoteReporting) {
 }
 
 TEST(ReportTest, JsonlSinkWritesStructuredEvent) {
+  ResetReportConfigForTest();
   std::lock_guard<std::mutex> lock(EnvTestMutex());
   ScopedEnvVar report_mode("RECSTORE_REPORT_MODE", "local");
   ScopedEnvVar sink_mode("RECSTORE_REPORT_LOCAL_SINK", "both");
@@ -147,6 +152,7 @@ TEST(ReportTest, JsonlSinkWritesStructuredEvent) {
 }
 
 TEST(ReportTest, JsonlSinkEscapesStructuredEventStrings) {
+  ResetReportConfigForTest();
   std::lock_guard<std::mutex> lock(EnvTestMutex());
   ScopedEnvVar report_mode("RECSTORE_REPORT_MODE", "local");
   ScopedEnvVar sink_mode("RECSTORE_REPORT_LOCAL_SINK", "jsonl");
@@ -190,4 +196,304 @@ TEST(ReportTest, FlameGraphData) {
 
   std::this_thread::sleep_for(500ms);
   SUCCEED();
+}
+
+namespace {
+
+// Minimal CSV reader: handles the quoting the sink emits (doubled quotes
+// inside a quoted field). Enough to verify the long-format rows.
+std::vector<std::string> SplitCsvLine(const std::string& line) {
+  std::vector<std::string> fields;
+  std::string current;
+  bool quoted = false;
+  for (size_t i = 0; i < line.size(); ++i) {
+    const char c = line[i];
+    if (quoted) {
+      if (c == '"' && i + 1 < line.size() && line[i + 1] == '"') {
+        current.push_back('"');
+        ++i;
+      } else if (c == '"') {
+        quoted = false;
+      } else {
+        current.push_back(c);
+      }
+    } else if (c == '"') {
+      quoted = true;
+    } else if (c == ',') {
+      fields.push_back(current);
+      current.clear();
+    } else {
+      current.push_back(c);
+    }
+  }
+  fields.push_back(current);
+  return fields;
+}
+
+std::vector<std::string> ReadLines(const std::filesystem::path& path) {
+  std::vector<std::string> lines;
+  std::ifstream ifs(path);
+  std::string line;
+  while (std::getline(ifs, line)) {
+    lines.push_back(line);
+  }
+  return lines;
+}
+
+struct CapturingSink : public recstore::MetricSink {
+  void Emit(const recstore::MetricRecord& record) override {
+    table     = record.table_name;
+    unique_id = record.unique_id;
+    metric    = record.metric_name;
+    value     = record.metric_value;
+    source    = record.source;
+    has_host  = record.host != nullptr && record.host[0] != '\0';
+    has_pid   = record.pid > 0;
+    ++calls;
+  }
+  void Flush() override { ++flushes; }
+
+  static int calls;
+  static int flushes;
+  static std::string table;
+  static std::string unique_id;
+  static std::string metric;
+  static std::string source;
+  static double value;
+  static bool has_host;
+  static bool has_pid;
+};
+
+int CapturingSink::calls   = 0;
+int CapturingSink::flushes = 0;
+std::string CapturingSink::table;
+std::string CapturingSink::unique_id;
+std::string CapturingSink::metric;
+std::string CapturingSink::source;
+double CapturingSink::value  = 0.0;
+bool CapturingSink::has_host = false;
+bool CapturingSink::has_pid  = false;
+
+// The CSV sink keeps one file per process, so tests point it at a unique path.
+class ScopedCsvTestEnv {
+public:
+  ScopedCsvTestEnv(const std::filesystem::path& path,
+                   const char* sinks  = "csv",
+                   const char* run_id = "csv-test-run")
+      : sinks_("RECSTORE_REPORT_SINKS", sinks),
+        csv_path_("RECSTORE_REPORT_CSV_PATH", path.c_str()),
+        run_id_("RECSTORE_RUN_ID", run_id),
+        rank_("RANK", nullptr),
+        local_rank_("LOCAL_RANK", nullptr),
+        shard_("RECSTORE_SHARD_ID", nullptr),
+        legacy_shard_("SHARD_ID", nullptr) {
+    ResetReportConfigForTest();
+  }
+
+  ~ScopedCsvTestEnv() { ResetReportConfigForTest(); }
+
+private:
+  ScopedEnvVar sinks_;
+  ScopedEnvVar csv_path_;
+  ScopedEnvVar run_id_;
+  ScopedEnvVar rank_;
+  ScopedEnvVar local_rank_;
+  ScopedEnvVar shard_;
+  ScopedEnvVar legacy_shard_;
+};
+
+} // namespace
+
+TEST(ReportTest, CsvSinkWritesLongFormatRows) {
+  std::lock_guard<std::mutex> lock(EnvTestMutex());
+  const std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path() / "recstore_test_report_csv";
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+  const std::filesystem::path output_path = temp_dir / "metrics.csv";
+
+  {
+    ScopedCsvTestEnv env(output_path);
+    EXPECT_TRUE(is_report_csv_enabled_for_test());
+    EXPECT_FALSE(is_report_remote_enabled_for_test());
+
+    EXPECT_TRUE(report("csv_table", "uid_one", "duration_us", 1.5));
+    EXPECT_TRUE(report("csv_table", "uid,two\"quoted", "latency_ns", 2000.0));
+  }
+
+  const auto lines = ReadLines(output_path);
+  ASSERT_EQ(lines.size(), 3U);
+  EXPECT_EQ(lines[0],
+            "timestamp_us,host,pid,run_id,rank,shard,table_name,unique_id,"
+            "metric_name,metric_value,source");
+
+  const auto first = SplitCsvLine(lines[1]);
+  ASSERT_EQ(first.size(), 11U);
+  EXPECT_FALSE(first[0].empty());
+  EXPECT_FALSE(first[1].empty());
+  EXPECT_EQ(first[3], "csv-test-run");
+  EXPECT_EQ(first[4], "-1");
+  EXPECT_EQ(first[5], "-1");
+  EXPECT_EQ(first[6], "csv_table");
+  EXPECT_EQ(first[7], "uid_one");
+  EXPECT_EQ(first[8], "duration_us");
+  EXPECT_EQ(first[9], "1.5");
+  EXPECT_EQ(first[10], "report");
+
+  const auto second = SplitCsvLine(lines[2]);
+  ASSERT_EQ(second.size(), 11U);
+  EXPECT_EQ(second[7], "uid,two\"quoted");
+  EXPECT_EQ(second[8], "latency_ns");
+  EXPECT_EQ(second[9], "2000");
+
+  std::filesystem::remove_all(temp_dir);
+}
+
+TEST(ReportTest, CsvSinkAppendsWithoutRepeatingHeader) {
+  std::lock_guard<std::mutex> lock(EnvTestMutex());
+  const std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path() /
+      "recstore_test_report_csv_append";
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+  const std::filesystem::path output_path = temp_dir / "metrics.csv";
+  {
+    std::ofstream seed(output_path);
+    seed << "timestamp_us,host,pid,run_id,rank,shard,table_name,unique_id,"
+            "metric_name,metric_value,source\n";
+  }
+
+  {
+    ScopedCsvTestEnv env(output_path);
+    EXPECT_TRUE(report("csv_table", "uid_append", "duration_us", 3.0));
+  }
+
+  const auto lines = ReadLines(output_path);
+  ASSERT_EQ(lines.size(), 2U);
+  EXPECT_EQ(lines[0].rfind("timestamp_us,", 0), 0U);
+
+  std::filesystem::remove_all(temp_dir);
+}
+
+TEST(ReportTest, CsvSinkReadsObservabilityConfigBlock) {
+  std::lock_guard<std::mutex> lock(EnvTestMutex());
+  const std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path() /
+      "recstore_test_report_csv_config";
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+  const std::filesystem::path output_path = temp_dir / "from_config.csv";
+
+  {
+    std::ofstream ofs(temp_dir / "recstore_config.json");
+    ofs << "{\n"
+           "  \"observability\": {\n"
+           "    \"sinks\": [\"csv\"],\n"
+           "    \"csv\": {\"path\": \""
+        << output_path.string()
+        << "\"}\n"
+           "  }\n"
+           "}\n";
+  }
+
+  {
+    ScopedEnvVar sinks("RECSTORE_REPORT_SINKS", nullptr);
+    ScopedEnvVar mode("RECSTORE_REPORT_MODE", nullptr);
+    ScopedEnvVar local_sink("RECSTORE_REPORT_LOCAL_SINK", nullptr);
+    ScopedEnvVar csv_path("RECSTORE_REPORT_CSV_PATH", nullptr);
+    ScopedCurrentPath cwd(temp_dir);
+    ResetReportConfigForTest();
+
+    EXPECT_TRUE(is_report_csv_enabled_for_test());
+    EXPECT_FALSE(is_report_remote_enabled_for_test());
+    EXPECT_FALSE(is_report_local_jsonl_enabled_for_test());
+    EXPECT_TRUE(report("config_table", "uid_config", "metric", 7.0));
+  }
+  ResetReportConfigForTest();
+
+  const auto lines = ReadLines(output_path);
+  ASSERT_EQ(lines.size(), 2U);
+  EXPECT_EQ(SplitCsvLine(lines[1])[6], "config_table");
+
+  std::filesystem::remove_all(temp_dir);
+}
+
+TEST(ReportTest, EnvSinkListOverridesConfigFile) {
+  std::lock_guard<std::mutex> lock(EnvTestMutex());
+  const std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path() / "recstore_test_report_sink_env";
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+
+  {
+    std::ofstream ofs(temp_dir / "recstore_config.json");
+    ofs << "{\n"
+           "  \"observability\": {\"sinks\": [\"csv\"]}\n"
+           "}\n";
+  }
+
+  {
+    ScopedEnvVar sinks("RECSTORE_REPORT_SINKS", "jsonl");
+    ScopedEnvVar jsonl_path(
+        "RECSTORE_REPORT_JSONL_PATH", (temp_dir / "events.jsonl").c_str());
+    ScopedCurrentPath cwd(temp_dir);
+    ResetReportConfigForTest();
+
+    EXPECT_FALSE(is_report_csv_enabled_for_test());
+    EXPECT_TRUE(is_report_local_jsonl_enabled_for_test());
+    EXPECT_TRUE(report("env_table", "uid_env", "metric", 1.0));
+  }
+  ResetReportConfigForTest();
+
+  std::filesystem::remove_all(temp_dir);
+}
+
+TEST(ReportTest, RegisteredSinkReceivesFullRecord) {
+  std::lock_guard<std::mutex> lock(EnvTestMutex());
+  CapturingSink::calls = 0;
+
+  recstore::RegisterMetricSink(std::make_unique<CapturingSink>());
+
+  const std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path() / "recstore_test_report_user_sink";
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+  {
+    ScopedEnvVar sinks("RECSTORE_REPORT_SINKS", "none");
+    ResetReportConfigForTest();
+    EXPECT_TRUE(report("user_table", "uid_user", "duration_us", 42.0));
+  }
+  ResetReportConfigForTest();
+
+  EXPECT_EQ(CapturingSink::calls, 1);
+  EXPECT_EQ(CapturingSink::table, "user_table");
+  EXPECT_EQ(CapturingSink::unique_id, "uid_user");
+  EXPECT_EQ(CapturingSink::metric, "duration_us");
+  EXPECT_DOUBLE_EQ(CapturingSink::value, 42.0);
+  EXPECT_EQ(CapturingSink::source, "report");
+  EXPECT_TRUE(CapturingSink::has_host);
+  EXPECT_TRUE(CapturingSink::has_pid);
+
+  std::filesystem::remove_all(temp_dir);
+}
+
+TEST(ReportTest, CsvSinkIsOffByDefault) {
+  std::lock_guard<std::mutex> lock(EnvTestMutex());
+  const std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path() / "recstore_test_report_csv_off";
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+
+  {
+    ScopedEnvVar sinks("RECSTORE_REPORT_SINKS", nullptr);
+    ScopedEnvVar mode("RECSTORE_REPORT_MODE", "local");
+    ScopedEnvVar local_sink("RECSTORE_REPORT_LOCAL_SINK", nullptr);
+    ScopedEnvVar csv_path("RECSTORE_REPORT_CSV_PATH", nullptr);
+    ScopedCurrentPath cwd(temp_dir);
+    ResetReportConfigForTest();
+    EXPECT_FALSE(is_report_csv_enabled_for_test());
+  }
+  ResetReportConfigForTest();
+
+  std::filesystem::remove_all(temp_dir);
 }

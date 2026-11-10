@@ -1032,7 +1032,7 @@ target_link_libraries(test_storage_cache_lru PUBLIC
 add_test(NAME test_storage_cache_lru COMMAND test_storage_cache_lru)
 
 # report 单元测试
-if(CMAKE_BUILD_TYPE MATCHES "Debug" AND USE_PERF_REPORT)
+if(USE_PERF_REPORT)
     add_executable(test_report test_report.cpp)
     target_link_libraries(test_report PUBLIC
         report_client

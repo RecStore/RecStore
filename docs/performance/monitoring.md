@@ -1,14 +1,16 @@
 # 监控与 Grafana
 
-编译时开启性能上报宏：
+编译时开启性能上报宏，Debug / Release 都可以：
 
-```bash linenums="1" hl_lines="2 3"
+```bash linenums="1" hl_lines="3"
 cmake .. \
-    -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_BUILD_TYPE=Release \
     -DUSE_PERF_REPORT=ON
 ```
 
-运行时确保 `recstore_config.json` 中 `report_API` 指向可写入 ClickHouse 的 report 服务，然后启动训练/服务端即可自动上报，可在 Grafana 端口查看看板。
+运行时在 `recstore_config.json` 的 `observability.sinks` 里加 `remote`，并让 `observability.remote.endpoint`
+（或等价的旧字段 `report_API`）指向可写入 ClickHouse 的 report 服务，然后启动训练/服务端即可自动上报，
+可在 Grafana 端口看板查看。字段与本地 CSV 见[配置字段参考](../config.md)。
 
 ## 启用服务
 
