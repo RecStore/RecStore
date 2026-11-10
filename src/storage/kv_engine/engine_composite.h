@@ -2,8 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
+#include <deque>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -11,10 +15,12 @@
 #include <shared_mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <folly/SharedMutex.h>
 
 #include "base/factory.h"
 #include "storage/index/dram/extendible_hash_index.h"
@@ -27,6 +33,16 @@
 #include "storage/value_store/ssd_value_store.h"
 
 class KVEngineComposite : public BaseKV {
+  struct OnlineSnapshot {
+    uint64_t key;
+    uint64_t handle;
+    std::vector<char> data;
+  };
+  struct OnlineJob {
+    uint64_t generation;
+    std::vector<OnlineSnapshot> hot;
+  };
+
 public:
   KVEngineComposite(std::unique_ptr<Index> index,
                     std::unique_ptr<ValueStore> value_store,
@@ -54,25 +70,59 @@ public:
     if (!index_ || !value_store_) {
       throw std::runtime_error("failed to create KVEngine components");
     }
+    auto* hybrid = dynamic_cast<HybridValueStore*>(value_store_.get());
+    const bool async_admission = j.at("value").contains("tiering") &&
+        j.at("value").at("tiering").value("async_admission", false);
+    if (async_admission && (hybrid == nullptr || !hybrid->OnlinePlacementEnabled())) {
+      throw std::invalid_argument("async admission requires online admission");
+    }
+    if (hybrid != nullptr && hybrid->OnlinePlacementEnabled()) {
+      if (default_value_size_hint_ == 0 || default_value_size_hint_ % sizeof(float) != 0) {
+        throw std::invalid_argument("online admission requires fixed-size float rows");
+      }
+      online_store_ = hybrid;
+      online_residents_ = hybrid->DramProfileKeys();
+      online_ghost_limit_ = std::max<size_t>(online_residents_.size() / 20, 1);
+      online_async_ = async_admission;
+      if (online_async_) background_thread_ = std::thread([this] { BackgroundLoop(); });
+    }
+  }
+
+  ~KVEngineComposite() override {
+    if (background_thread_.joinable()) {
+      {
+        std::lock_guard<std::mutex> lock(background_mu_);
+        background_stop_ = true;
+      }
+      background_cv_.notify_all();
+      background_thread_.join();
+      if (background_error_) {
+        LOG(ERROR) << "online admission stopped after a background failure";
+      }
+    }
+  }
+
+  void DrainBackgroundWork() override {
+    if (!online_async_) return;
+    std::unique_lock<std::mutex> lock(background_mu_);
+    background_cv_.wait(lock, [this] { return !background_active_ && !background_pending_; });
+    if (background_error_) std::rethrow_exception(background_error_);
   }
 
   void Get(const uint64_t key, std::string& value, unsigned tid) override {
-    (void)tid;
-    Value_t handle = kValueHandleNone;
-    index_->Get(key, handle);
-    if (handle == kValueHandleNone) {
-      value.clear();
-      return;
+    bool cold = false;
+    std::vector<OnlineSnapshot> snapshots;
+    uint64_t generation = 0;
+    {
+      auto online_lock = LockOnlineRead();
+      Value_t handle = kValueHandleNone;
+      ReadValue(key, value, &cold, &handle);
+      CaptureSnapshot(snapshots, key, handle, value.data(), value.size(), 1);
+      generation = online_generation_;
     }
-    if (const char* ptr = value_store_->DirectPtr(handle)) {
-      value.resize(value_store_->SlotCapacity(handle));
-      std::memcpy(value.data(), ptr, value.size());
-      return;
+    if (online_store_ != nullptr && cold) {
+      MaybeAdmit({key}, tid, 1, std::move(snapshots), generation);
     }
-    value.resize(value_store_->SlotCapacity(handle));
-    const size_t actual =
-        value_store_->Read(handle, value.data(), value.size());
-    value.resize(actual);
   }
 
   bool Exists(const uint64_t key, unsigned tid) override {
@@ -85,6 +135,8 @@ public:
   void Put(const uint64_t key,
            const std::string_view& value,
            unsigned tid) override {
+    auto online_lock = LockOnlineWrite();
+    BumpOnlineGeneration();
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     PutInternal(key, value.data(), value.size(), tid, true);
   }
@@ -99,15 +151,18 @@ public:
     if (keys.Size() == 0) {
       return;
     }
+    auto online_lock = LockOnlineWrite();
+    BumpOnlineGeneration();
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
 
     std::unordered_set<uint64_t> seen_keys;
     seen_keys.reserve(static_cast<size_t>(keys.Size()));
     bool has_duplicate_key = false;
     for (int i = 0; i < keys.Size(); ++i) {
+      const auto& item = (*values)[i];
+      ValidateOnlineRowSize(static_cast<size_t>(item.Size()) * sizeof(float));
       if (!seen_keys.insert(keys[i]).second) {
         has_duplicate_key = true;
-        break;
       }
     }
     if (has_duplicate_key) {
@@ -176,6 +231,8 @@ public:
     if (keys.Size() == 0) {
       return 0;
     }
+    auto online_lock = LockOnlineWrite();
+    BumpOnlineGeneration();
     std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     return DeleteKeysLocked(keys, tid);
   }
@@ -183,6 +240,7 @@ public:
   void BatchGet(base::ConstArray<uint64_t> keys,
                 std::vector<base::ConstArray<float>>* values,
                 unsigned tid) override {
+    auto online_lock = LockOnlineRead();
     (void)tid;
     values->resize(keys.Size());
     thread_local std::vector<Value_t> handles;
@@ -204,10 +262,18 @@ public:
         continue;
       }
       if (const char* ptr = value_store_->DirectPtr(handles[i])) {
-        const size_t bytes = value_store_->SlotCapacity(handles[i]);
-        (*values)[i]       = base::ConstArray<float>(
-            reinterpret_cast<float*>(const_cast<char*>(ptr)),
-            bytes / sizeof(float));
+        const size_t bytes = online_store_ != nullptr
+                                 ? default_value_size_hint_
+                                 : value_store_->SlotCapacity(handles[i]);
+        if (online_store_ != nullptr) {
+          buffers[i].resize(bytes / sizeof(float));
+          std::memcpy(buffers[i].data(), ptr, bytes);
+          (*values)[i] = base::ConstArray<float>(buffers[i]);
+        } else {
+          (*values)[i] = base::ConstArray<float>(
+              reinterpret_cast<float*>(const_cast<char*>(ptr)),
+              bytes / sizeof(float));
+        }
         continue;
       }
       batch_handles.push_back(handles[i]);
@@ -232,6 +298,18 @@ public:
             base::ConstArray<float>(buffers[idx].data(), buffers[idx].size());
       }
     }
+    if (online_store_ != nullptr && !batch_indices.empty()) {
+      std::vector<uint64_t> cold_keys;
+      std::vector<OnlineSnapshot> snapshots;
+      for (size_t row : batch_indices) {
+        cold_keys.push_back(keys[row]);
+        CaptureSnapshot(snapshots, keys[row], handles[row],
+                        (*values)[row].Data(), (*values)[row].Size() * sizeof(float), keys.Size());
+      }
+      const uint64_t generation = online_generation_;
+      online_lock.unlock();
+      MaybeAdmit(cold_keys, tid, keys.Size(), std::move(snapshots), generation);
+    }
   }
 
   bool BatchGetFlat(base::ConstArray<uint64_t> keys,
@@ -244,6 +322,7 @@ public:
         keys.Size() != static_cast<size_t>(num_rows)) {
       return false;
     }
+    auto online_lock = LockOnlineRead();
     const size_t row_bytes = static_cast<size_t>(embedding_dim) * sizeof(float);
     thread_local std::vector<Value_t> handles;
     handles.assign(keys.Size(), kValueHandleNone);
@@ -349,6 +428,18 @@ public:
               .count());
       stats->missing_rows = missing_rows;
     }
+    if (online_store_ != nullptr && !batch_rows.empty()) {
+      std::vector<uint64_t> cold_keys;
+      std::vector<OnlineSnapshot> snapshots;
+      for (size_t row : batch_rows) {
+        cold_keys.push_back(keys[row]);
+        CaptureSnapshot(snapshots, keys[row], handles[row],
+                        values + row * embedding_dim, row_bytes, keys.Size());
+      }
+      const uint64_t generation = online_generation_;
+      online_lock.unlock();
+      MaybeAdmit(cold_keys, tid, keys.Size(), std::move(snapshots), generation);
+    }
     return true;
   }
 
@@ -426,6 +517,9 @@ public:
       unsigned tid,
       std::vector<DirectFixedRow>* rows,
       BatchGetFlatStats* stats = nullptr) override {
+    if (online_store_ != nullptr) {
+      return false;
+    }
     if (rows == nullptr || num_rows < 0 || embedding_dim <= 0 ||
         keys.Size() != static_cast<size_t>(num_rows)) {
       return false;
@@ -493,6 +587,8 @@ public:
       return false;
     }
     using clock = std::chrono::steady_clock;
+    auto online_lock = LockOnlineWrite();
+    BumpOnlineGeneration();
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     const int tag_bits      = static_cast<int>(sizeof(tag) * 8);
     const int shift         = static_cast<int>(sizeof(uint64_t) * 8) - tag_bits;
@@ -525,7 +621,16 @@ public:
             tid,
             &rows,
             stats != nullptr ? &get_stats : nullptr)) {
-      ApplySgdMixedRows(tagged_keys, grads, embedding_dim, learning_rate, tid, stats);
+      std::vector<uint64_t> cold_keys;
+      std::vector<OnlineSnapshot> snapshots;
+      ApplySgdMixedRows(tagged_keys, grads, embedding_dim, learning_rate, tid,
+                        &cold_keys, &snapshots, stats);
+      const uint64_t generation = online_generation_;
+      checkpoint_lock.unlock();
+      if (online_lock.owns_lock()) online_lock.unlock();
+      if (online_store_ != nullptr && !cold_keys.empty()) {
+        MaybeAdmit(cold_keys, tid, tagged_keys.size(), std::move(snapshots), generation);
+      }
       return true;
     }
     if (stats != nullptr) {
@@ -600,6 +705,9 @@ public:
       int64_t update_dim,
       float learning_rate,
       unsigned tid) override {
+    if (online_store_ != nullptr) {
+      return false;
+    }
     if (grads == nullptr || keys.Size() != static_cast<size_t>(num_rows) ||
         row_dim <= 0 || update_offset < 0 || update_dim <= 0 ||
         update_offset > row_dim || update_dim > row_dim - update_offset) {
@@ -651,6 +759,8 @@ public:
     if (keys.Size() == 0) {
       return;
     }
+    auto online_lock = LockOnlineWrite();
+    BumpOnlineGeneration();
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     const char* data = reinterpret_cast<const char*>(value);
     std::vector<ValueStore::WriteSpec> specs;
@@ -704,6 +814,9 @@ public:
       int64_t value_dim,
       unsigned tid,
       BulkLoadStats* stats = nullptr) override {
+    if (online_store_ != nullptr) {
+      return false;
+    }
     using clock            = std::chrono::steady_clock;
     const auto total_start = clock::now();
     if (row_indices == nullptr || values == nullptr || num_rows < 0 ||
@@ -761,6 +874,8 @@ public:
 
   bool SaveCheckpoint(const std::string& file,
                       const std::string& metadata) override {
+    DrainBackgroundWork();
+    auto online_lock = LockOnlineWrite();
     std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     if (file.empty()) {
       LOG(ERROR) << "KVEngine checkpoint path is empty";
@@ -801,7 +916,7 @@ public:
         WriteBytes(output, metadata.data(), metadata.size());
     for (const uint64_t key : keys) {
       std::string value;
-      Get(key, value, 0);
+      ReadValue(key, value);
       if (!Exists(key, 0)) {
         LOG(ERROR) << "KVEngine checkpoint tracked key is missing: " << key;
         write_ok = false;
@@ -842,6 +957,9 @@ public:
 
   bool LoadCheckpoint(const std::string& file,
                       const std::string& expected_metadata) override {
+    DrainBackgroundWork();
+    auto online_lock = LockOnlineWrite();
+    BumpOnlineGeneration();
     std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     if (HasCheckpointRecords()) {
       LOG(ERROR) << "KVEngine checkpoint load requires an empty engine";
@@ -986,6 +1104,9 @@ public:
   }
 
   void clear() override {
+    DrainBackgroundWork();
+    auto online_lock = LockOnlineWrite();
+    BumpOnlineGeneration();
     std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     const std::vector<uint64_t> keys = CollectCheckpointKeys();
     if (!keys.empty()) {
@@ -1004,10 +1125,42 @@ public:
   }
 
   std::string ExtraResultFields() const override {
-    return value_store_ ? value_store_->ExtraResultFields() : "";
+    auto online_lock = LockOnlineRead();
+    const std::string fields = (value_store_ ? value_store_->ExtraResultFields() : "") +
+        sgd_read_time_.Fields("tier_sgd_read") +
+        sgd_write_time_.Fields("tier_sgd_write") +
+        migration_read_time_.Fields("tier_migration_read") +
+        migration_prepare_time_.Fields("tier_migration_prepare") +
+        migration_publish_time_.Fields("tier_migration_publish");
+    if (online_store_ == nullptr) return fields;
+    return fields +
+           " online_promoted_rows=" + std::to_string(online_promoted_rows_) +
+           " online_migration_read_rows=" + std::to_string(online_migration_read_rows_) +
+           " online_exchange_batches=" + std::to_string(online_exchange_batches_) +
+           " online_capacity_rejects=" + std::to_string(online_capacity_rejects_) +
+           " online_async=" + std::to_string(online_async_) +
+           " online_submitted_jobs=" + std::to_string(online_submitted_jobs_) +
+           " online_stale_jobs=" + std::to_string(online_stale_jobs_) +
+           " online_queue_drops=" + std::to_string(online_queue_drops_) +
+           " online_ghost_keys=" + std::to_string(online_ghost_.size()) +
+           " online_ghost_limit=" + std::to_string(online_ghost_limit_);
   }
 
   void ResetStats() override {
+    DrainBackgroundWork();
+    auto online_lock = LockOnlineWrite();
+    sgd_read_time_.Reset();
+    sgd_write_time_.Reset();
+    migration_read_time_.Reset();
+    migration_prepare_time_.Reset();
+    migration_publish_time_.Reset();
+    if (online_store_ != nullptr) {
+      online_promoted_rows_ = 0;
+      online_migration_read_rows_ = 0;
+      online_exchange_batches_ = 0;
+      online_capacity_rejects_ = 0;
+      online_submitted_jobs_ = online_stale_jobs_ = online_queue_drops_ = 0;
+    }
     if (value_store_) {
       value_store_->ResetStats();
     }
@@ -1027,6 +1180,9 @@ private:
       bool collect_profile) {
     if (missing != nullptr) {
       missing->count = 0;
+    }
+    if (online_store_ != nullptr) {
+      return false;
     }
     if (values == nullptr || num_rows < 0 || row_dim <= 0 || value_offset < 0 ||
         value_dim <= 0 || value_offset > row_dim ||
@@ -1119,13 +1275,43 @@ private:
     return true;
   }
 
+  struct TieringTime {
+    std::atomic<uint64_t> total_ns{0}, max_ns{0}, calls{0};
+
+    void Record(std::chrono::steady_clock::time_point begin) {
+      const uint64_t elapsed = static_cast<uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now() - begin).count());
+      total_ns.fetch_add(elapsed, std::memory_order_relaxed);
+      calls.fetch_add(1, std::memory_order_relaxed);
+      uint64_t maximum = max_ns.load(std::memory_order_relaxed);
+      while (maximum < elapsed && !max_ns.compare_exchange_weak(
+                 maximum, elapsed, std::memory_order_relaxed)) {}
+    }
+
+    void Reset() {
+      total_ns.store(0, std::memory_order_relaxed);
+      max_ns.store(0, std::memory_order_relaxed);
+      calls.store(0, std::memory_order_relaxed);
+    }
+
+    std::string Fields(const std::string& name) const {
+      return " " + name + "_ns=" + std::to_string(total_ns.load()) +
+          " " + name + "_max_ns=" + std::to_string(max_ns.load()) +
+          " " + name + "_calls=" + std::to_string(calls.load());
+    }
+  };
+
   void ApplySgdMixedRows(const std::vector<uint64_t>& keys,
                          const float* grads,
                          int64_t dim,
                          float learning_rate,
                          unsigned tid,
+                         std::vector<uint64_t>* cold_keys,
+                         std::vector<OnlineSnapshot>* snapshots,
                          UpdateFlatStats* stats) {
     const size_t row_bytes = static_cast<size_t>(dim) * sizeof(float);
+    ValidateOnlineRowSize(row_bytes);
     std::vector<uint64_t> unique_keys;
     std::vector<size_t> row_indices;
     std::unordered_map<uint64_t, size_t> positions;
@@ -1153,11 +1339,14 @@ private:
       } else {
         ssd_handles.push_back(handles[i]);
         ssd_rows.push_back(i);
+        cold_keys->push_back(unique_keys[i]);
       }
     }
     std::vector<ValueStore::ReadResult> ssd_values;
     if (!ssd_handles.empty()) {
+      const auto begin = std::chrono::steady_clock::now();
       value_store_->BatchRead(ssd_handles, ssd_values);
+      sgd_read_time_.Record(begin);
     }
     if (ssd_values.size() != ssd_rows.size()) throw std::runtime_error("SGD read count mismatch");
     std::vector<std::vector<float>> ssd_floats(ssd_rows.size());
@@ -1181,13 +1370,346 @@ private:
     // BatchGet's SSD results are copies, so every modified cold row needs
     // explicit writeback before a subsequent read or promotion can see it.
     if (!ssd_handles.empty()) {
+      const auto begin = std::chrono::steady_clock::now();
       value_store_->BatchWrite(ssd_handles, updates);
+      sgd_write_time_.Record(begin);
     }
     for (size_t i = 0; i < unique_keys.size(); ++i) {
       if (handles[i] != kValueHandleNone) continue;
       PutInternal(unique_keys[i], missing[i].data(), row_bytes, tid, false);
       if (stats != nullptr) ++stats->missing_rows;
     }
+    for (size_t i = 0; i < ssd_rows.size(); ++i) {
+      const size_t row = ssd_rows[i];
+      CaptureSnapshot(*snapshots, unique_keys[row], handles[row],
+                      ssd_floats[i].data(), row_bytes, keys.size());
+    }
+  }
+
+  std::shared_lock<folly::SharedMutex> LockOnlineRead() const {
+    std::shared_lock<folly::SharedMutex> lock(online_mu_, std::defer_lock);
+    if (online_store_ != nullptr) {
+      RethrowBackgroundError();
+      lock.lock();
+    }
+    return lock;
+  }
+
+  std::unique_lock<folly::SharedMutex> LockOnlineWrite() const {
+    std::unique_lock<folly::SharedMutex> lock(online_mu_, std::defer_lock);
+    if (online_store_ != nullptr) {
+      RethrowBackgroundError();
+      lock.lock();
+    }
+    return lock;
+  }
+
+  void RethrowBackgroundError() const {
+    if (!online_async_) return;
+    std::lock_guard<std::mutex> lock(background_mu_);
+    if (background_error_) std::rethrow_exception(background_error_);
+  }
+
+  void BumpOnlineGeneration() {
+    if (online_store_ != nullptr) ++online_generation_;
+  }
+
+  static size_t AdmissionBudget(size_t rows) {
+    return std::min<size_t>(256, 16 * std::max<size_t>(1, (rows + 499) / 500));
+  }
+
+  void CaptureSnapshot(std::vector<OnlineSnapshot>& snapshots, uint64_t key,
+                       uint64_t handle, const void* data, size_t size,
+                       size_t request_rows) const {
+    if (!online_async_ || handle == kValueHandleNone ||
+        snapshots.size() >= AdmissionBudget(request_rows) ||
+        online_ghost_.count(key) == 0 ||
+        value_store_->DirectPtr(handle) != nullptr) return;
+    if (size != default_value_size_hint_) throw std::runtime_error("online snapshot size mismatch");
+    for (const auto& snapshot : snapshots) if (snapshot.key == key) return;
+    const char* begin = static_cast<const char*>(data);
+    snapshots.push_back({key, handle, std::vector<char>(begin, begin + size)});
+  }
+
+  void BackgroundLoop() {
+    for (;;) {
+      std::unique_ptr<OnlineJob> job;
+      {
+        std::unique_lock<std::mutex> lock(background_mu_);
+        background_cv_.wait(lock, [this] { return background_stop_ || background_pending_; });
+        if (!background_pending_) return;
+        job = std::move(background_pending_);
+        background_active_ = true;
+      }
+      try {
+        RunBackgroundJob(*job);
+      } catch (...) {
+        std::lock_guard<std::mutex> lock(background_mu_);
+        background_error_ = std::current_exception();
+        background_pending_.reset();
+        background_stop_ = true;
+      }
+      {
+        std::lock_guard<std::mutex> lock(background_mu_);
+        background_active_ = false;
+      }
+      background_cv_.notify_all();
+    }
+  }
+
+  void RunBackgroundJob(OnlineJob& job) {
+    std::vector<uint64_t> victim_keys, hot_keys, old_handles;
+    std::vector<size_t> victim_slots;
+    std::vector<std::vector<char>> victim_data;
+    {
+      auto lock = LockOnlineWrite();
+      if (job.generation != online_generation_) { ++online_stale_jobs_; return; }
+      job.hot.erase(std::remove_if(job.hot.begin(), job.hot.end(), [&](const auto& hot) {
+        Value_t current = kValueHandleNone;
+        index_->Get(hot.key, current, 0);
+        return current != hot.handle;
+      }), job.hot.end());
+      if (job.hot.empty()) { ++online_stale_jobs_; return; }
+      for (size_t scanned = 0; scanned < online_residents_.size() &&
+                               victim_keys.size() < job.hot.size(); ++scanned) {
+        const size_t slot = online_cursor_++ % online_residents_.size();
+        const uint64_t key = online_residents_[slot];
+        Value_t handle = kValueHandleNone;
+        index_->Get(key, handle, 0);
+        if (handle == kValueHandleNone) continue;
+        const char* ptr = value_store_->DirectPtr(handle);
+        if (ptr == nullptr) continue;
+        victim_slots.push_back(slot);
+        victim_keys.push_back(key);
+        old_handles.push_back(handle);
+        victim_data.emplace_back(ptr, ptr + default_value_size_hint_);
+      }
+    }
+    const size_t count = victim_keys.size();
+    if (count == 0) return;
+    std::vector<ValueStore::WriteSpec> victim_specs, hot_specs;
+    for (const auto& value : victim_data) victim_specs.push_back({value.data(), value.size()});
+    for (size_t i = 0; i < count; ++i) {
+      hot_keys.push_back(job.hot[i].key);
+      old_handles.push_back(job.hot[i].handle);
+      hot_specs.push_back({job.hot[i].data.data(), job.hot[i].data.size()});
+    }
+    // Private copies need no engine guard. A foreground mutation invalidates
+    // the entire batch before it can publish either side of the exchange.
+    const auto prepare_begin = std::chrono::steady_clock::now();
+    auto replacements = online_store_->PrepareExchange(victim_specs, hot_specs);
+    migration_prepare_time_.Record(prepare_begin);
+    bool published = false;
+    try {
+      auto lock = LockOnlineWrite();
+      if (replacements.empty()) {
+        online_capacity_rejects_ += count;
+        return;
+      }
+      if (job.generation != online_generation_) {
+        ++online_stale_jobs_;
+      } else {
+        std::vector<uint64_t> keys = victim_keys;
+        keys.insert(keys.end(), hot_keys.begin(), hot_keys.end());
+        for (size_t i = 0; i < keys.size(); ++i) {
+          Value_t current = kValueHandleNone;
+          index_->Get(keys[i], current, 0);
+          if (current != old_handles[i]) throw std::logic_error("online generation missed a mutation");
+        }
+        std::vector<Value_t> retired(keys.size(), kValueHandleNone);
+        const auto publish_begin = std::chrono::steady_clock::now();
+        online_store_->ExchangeDramKeys(victim_keys, hot_keys);
+        index_->BatchPutWithOld(base::ConstArray<uint64_t>(keys), replacements.data(), retired.data(), 0);
+        published = true;
+        // A completed migration preserves values. Only foreground mutations
+        // invalidate other snapshots; source handles detect moved rows.
+        for (size_t i = 0; i < count; ++i) {
+          CHECK_EQ(retired[i], old_handles[i]);
+          CHECK_EQ(retired[i + count], old_handles[i + count]);
+          online_residents_[victim_slots[i]] = hot_keys[i];
+          online_ghost_.erase(hot_keys[i]);
+        }
+        for (uint64_t handle : retired) value_store_->Retire(handle);
+        online_promoted_rows_ += count;
+        ++online_exchange_batches_;
+        migration_publish_time_.Record(publish_begin);
+      }
+    } catch (...) {
+      if (!published) for (uint64_t handle : replacements) value_store_->Free(handle);
+      throw;
+    }
+    if (!published) for (uint64_t handle : replacements) value_store_->Free(handle);
+  }
+
+  void ValidateOnlineRowSize(size_t size) const {
+    if (online_store_ != nullptr && size != default_value_size_hint_) {
+      throw std::invalid_argument("online admission requires the configured fixed row size");
+    }
+  }
+
+  void ReadValue(uint64_t key, std::string& value, bool* cold = nullptr,
+                  Value_t* out_handle = nullptr) {
+    Value_t handle = kValueHandleNone;
+    index_->Get(key, handle);
+    if (out_handle != nullptr) *out_handle = handle;
+    if (handle == kValueHandleNone) {
+      value.clear();
+      return;
+    }
+    if (const char* ptr = value_store_->DirectPtr(handle)) {
+      value.resize(online_store_ != nullptr ? default_value_size_hint_
+                                           : value_store_->SlotCapacity(handle));
+      std::memcpy(value.data(), ptr, value.size());
+      return;
+    }
+    if (cold != nullptr) *cold = true;
+    value.resize(value_store_->SlotCapacity(handle));
+    value.resize(value_store_->Read(handle, value.data(), value.size()));
+  }
+
+  void MaybeAdmit(const std::vector<uint64_t>& cold_keys, unsigned tid, size_t request_rows,
+                  std::vector<OnlineSnapshot> snapshots = {}, uint64_t generation = 0) {
+    auto online_lock = LockOnlineWrite();
+    // LOCAL_SHM may combine many 500-row windows into a single request.
+    const size_t budget = AdmissionBudget(request_rows);
+    std::vector<uint64_t> hot_keys, hot_handles;
+    std::unordered_set<uint64_t> seen;
+    for (uint64_t key : cold_keys) {
+      if (!seen.insert(key).second || online_store_->DramKeyEligible(key)) continue;
+      Value_t handle = kValueHandleNone;
+      index_->Get(key, handle, tid);
+      if (handle == kValueHandleNone || value_store_->DirectPtr(handle) != nullptr) continue;
+      if (online_ghost_.count(key) == 0) {
+        const uint64_t token = ++online_ghost_token_;
+        online_ghost_[key] = token;
+        online_ghost_fifo_.emplace_back(key, token);
+        while (online_ghost_fifo_.size() > online_ghost_limit_) {
+          const auto expired = online_ghost_fifo_.front();
+          online_ghost_fifo_.pop_front();
+          auto found = online_ghost_.find(expired.first);
+          if (found != online_ghost_.end() && found->second == expired.second) {
+            online_ghost_.erase(found);
+          }
+        }
+        continue;
+      }
+      hot_keys.push_back(key);
+      hot_handles.push_back(handle);
+      if (hot_keys.size() == budget) break;
+    }
+    if (hot_keys.empty()) return;
+    if (online_async_) {
+      if (generation != online_generation_) {
+        ++online_stale_jobs_;
+        return;
+      }
+      auto job = std::make_unique<OnlineJob>();
+      job->generation = generation;
+      for (size_t i = 0; i < hot_keys.size(); ++i) {
+        auto found = std::find_if(snapshots.begin(), snapshots.end(), [&](const auto& snapshot) {
+          return snapshot.key == hot_keys[i] && snapshot.handle == hot_handles[i];
+        });
+        if (found != snapshots.end()) job->hot.push_back(std::move(*found));
+      }
+      if (job->hot.empty()) return;
+      {
+        std::lock_guard<std::mutex> lock(background_mu_);
+        if (background_pending_ && background_pending_->generation != generation) {
+          background_pending_.reset();
+          ++online_stale_jobs_;
+        }
+        if (background_pending_) {
+          for (auto& hot : job->hot) {
+            auto& pending = background_pending_->hot;
+            if (pending.size() == 256) { ++online_queue_drops_; break; }
+            if (std::none_of(pending.begin(), pending.end(), [&](const auto& row) { return row.key == hot.key; })) {
+              pending.push_back(std::move(hot));
+            }
+          }
+        } else {
+          background_pending_ = std::move(job);
+          ++online_submitted_jobs_;
+        }
+      }
+      background_cv_.notify_one();
+      return;
+    }
+
+    std::vector<uint64_t> victim_keys, victim_handles;
+    std::vector<size_t> victim_slots;
+    std::vector<std::vector<char>> victim_data;
+    for (size_t scanned = 0; scanned < online_residents_.size() &&
+                             victim_keys.size() < hot_keys.size(); ++scanned) {
+      const size_t slot = online_cursor_++ % online_residents_.size();
+      const uint64_t key = online_residents_[slot];
+      Value_t handle = kValueHandleNone;
+      index_->Get(key, handle, tid);
+      if (handle == kValueHandleNone) continue;
+      const char* ptr = value_store_->DirectPtr(handle);
+      if (ptr == nullptr) continue;
+      victim_slots.push_back(slot);
+      victim_keys.push_back(key);
+      victim_handles.push_back(handle);
+      victim_data.emplace_back(ptr, ptr + default_value_size_hint_);
+    }
+    const size_t count = victim_keys.size();
+    if (count == 0) return;
+    hot_keys.resize(count);
+    hot_handles.resize(count);
+    std::vector<ValueStore::ReadResult> hot_data;
+    online_migration_read_rows_ += count;
+    // Re-read after acquiring the write lock: a sparse update may have
+    // replaced the value between the foreground read and this admission.
+    const auto read_begin = std::chrono::steady_clock::now();
+    value_store_->BatchRead(hot_handles, hot_data);
+    migration_read_time_.Record(read_begin);
+    if (hot_data.size() != count) throw std::runtime_error("online read count mismatch");
+    std::vector<uint64_t> keys = victim_keys;
+    keys.insert(keys.end(), hot_keys.begin(), hot_keys.end());
+    std::vector<ValueStore::WriteSpec> specs;
+    for (const auto& value : victim_data) specs.push_back({value.data(), value.size()});
+    for (const auto& value : hot_data) {
+      if (value.data.size() != default_value_size_hint_) {
+        throw std::runtime_error("online value size mismatch");
+      }
+      specs.push_back({value.data.data(), value.data.size()});
+    }
+    std::vector<Value_t> old(keys.size(), kValueHandleNone);
+    online_store_->ExchangeDramKeys(victim_keys, hot_keys);
+    std::vector<uint64_t> replacements;
+    const auto prepare_begin = std::chrono::steady_clock::now();
+    try {
+      replacements = value_store_->BatchAllocAndWrite(keys, specs);
+    } catch (...) {
+      online_store_->ExchangeDramKeys(hot_keys, victim_keys);
+      throw;
+    }
+    migration_prepare_time_.Record(prepare_begin);
+    bool valid = replacements.size() == keys.size();
+    for (size_t i = 0; i < replacements.size(); ++i) {
+      valid = valid && replacements[i] != kValueHandleNone &&
+              (value_store_->DirectPtr(replacements[i]) != nullptr) == (i >= count);
+    }
+    if (!valid) {
+      for (uint64_t handle : replacements) value_store_->Free(handle);
+      online_store_->ExchangeDramKeys(hot_keys, victim_keys);
+      online_capacity_rejects_ += count;
+      return;
+    }
+    const auto publish_begin = std::chrono::steady_clock::now();
+    index_->BatchPutWithOld(base::ConstArray<uint64_t>(keys), replacements.data(), old.data(), tid);
+    for (size_t i = 0; i < count; ++i) {
+      CHECK_EQ(old[i], victim_handles[i]);
+      CHECK_EQ(old[i + count], hot_handles[i]);
+      online_residents_[victim_slots[i]] = hot_keys[i];
+      online_ghost_.erase(hot_keys[i]);
+    }
+    // Both new copies are complete before publication. All readers hold a
+    // shared guard through their copy, so retiring these handles is safe.
+    for (uint64_t handle : old) value_store_->Retire(handle);
+    online_promoted_rows_ += count;
+    ++online_exchange_batches_;
+    migration_publish_time_.Record(publish_begin);
   }
 
   static bool WriteBytes(std::ofstream& output, const void* data, size_t size) {
@@ -1326,6 +1848,7 @@ private:
                    unsigned tid,
                    bool emit_fence,
                    PutInternalStats* stats = nullptr) {
+    ValidateOnlineRowSize(size);
     (void)tid;
     (void)emit_fence;
     using clock = std::chrono::steady_clock;
@@ -1378,6 +1901,33 @@ private:
   std::unique_ptr<ValueStore> value_store_;
   int num_threads_                = 0;
   size_t default_value_size_hint_ = 0;
+  HybridValueStore* online_store_ = nullptr;
+  // ponytail: serialize opt-in exchange and writes; shard this guard only
+  // after measurements show contention on a changing working set.
+  mutable folly::SharedMutex online_mu_;
+  // ponytail: a single pending batch and one worker bound temporary payloads;
+  // use per-row versions only if global-generation retries limit admission.
+  bool online_async_ = false;
+  uint64_t online_generation_ = 0;
+  std::thread background_thread_;
+  mutable std::mutex background_mu_;
+  std::condition_variable background_cv_;
+  std::unique_ptr<OnlineJob> background_pending_;
+  bool background_active_ = false, background_stop_ = false;
+  std::exception_ptr background_error_;
+  std::vector<uint64_t> online_residents_;
+  size_t online_cursor_ = 0;
+  size_t online_ghost_limit_ = 0;
+  uint64_t online_ghost_token_ = 0;
+  std::unordered_map<uint64_t, uint64_t> online_ghost_;
+  std::deque<std::pair<uint64_t, uint64_t>> online_ghost_fifo_;
+  uint64_t online_promoted_rows_ = 0;
+  uint64_t online_migration_read_rows_ = 0;
+  uint64_t online_exchange_batches_ = 0;
+  uint64_t online_capacity_rejects_ = 0;
+  uint64_t online_submitted_jobs_ = 0, online_stale_jobs_ = 0, online_queue_drops_ = 0;
+  TieringTime sgd_read_time_, sgd_write_time_;
+  TieringTime migration_read_time_, migration_prepare_time_, migration_publish_time_;
   mutable std::shared_mutex checkpoint_mu_;
   std::vector<std::vector<uint64_t>> checkpoint_keys_by_thread_;
 };

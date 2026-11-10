@@ -292,5 +292,8 @@ public:
 
   virtual std::vector<uint64_t> SnapshotKeys() const { return {}; }
 
+  // Complete optional maintenance and surface its failures at a quiescent point.
+  virtual void DrainBackgroundWork() {}
+
 protected:
 };

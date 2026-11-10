@@ -115,7 +115,81 @@ SSD 索引创建 `IOBackend` 前的配置映射：
 | `SSD_VALUE_STORE` | `ssd_allocator` 必填；不接受 `dram_allocator`；文件路径为 `value.path` |
 | `TIERED_VALUE_STORE` | 两者必填；SSD 路径在 `ssd_allocator.path`；DRAM 路径可选 `dram_allocator.path`（常为 `/dev/shm/...`） |
 
-**Tiering**：`HybridValueStore` 在 `dram_bytes_reserved + size <= capacity * high_watermark_ratio`（默认 `0.85`）时优先 DRAM，否则 SSD；handle 最高位标记介质。**没有后台冷热迁移线程**；可选的读缓存（`tiering.cache_policy`）只把读到的 SSD value 在同步路径上提升进 DRAM，见下文。
+**Tiering**: `HybridValueStore` atomically reserves actual DRAM slot bytes up to
+`capacity * high_watermark_ratio` (default `0.85`, valid range `[0, 1]`), then
+spills to SSD. The highest handle bit identifies the medium. Online exchange is disabled by default. The independent read cache is
+controlled by `tiering.cache_policy` (`none` by default); see below.
+
+Optional `value.tiering.dram_keys_path` selects profile-guided placement. The
+file is a strictly increasing, unique array of native-endian `uint64_t` keys,
+without a header. Missing, malformed, unsorted, or duplicate-key files fail
+construction. An empty file admits no keys to DRAM. When configured, only
+listed keys may use DRAM, subject to the same capacity limit; unkeyed
+allocations use SSD. Without this option, placement follows allocation order.
+The immutable profile is loaded at construction and takes eight bytes per key,
+separately from the value payload budget.
+
+Profile keys must use the storage engine's namespace. In fused PS training,
+this is `(tensor_tag << 56) | (feature_id << fusion_k) | local_row_id`, with
+the master table's parameter tag. A benchmark using contiguous global IDs
+requires a different profile file. See [tiering research](tiered_memory_research.md)
+for construction, accounting, and measurement limitations.
+
+`value.tiering.online_admission=true` enables experimental second-miss
+admission on top of a nonempty profile. It requires a plain SSD layout and a
+fixed row size that is a multiple of `sizeof(float)`. The engine remembers a
+bounded set of cold keys (5% of profile rows), deduplicates observations within
+each read call, and exchanges up to 16 rows per 500 requested rows against
+FIFO victims, with an absolute cap of 256. Combined LOCAL_SHM requests retain
+the same admission budget per requested row as smaller storage calls.
+Every completed exchange preserves the number of eligible DRAM keys.
+
+The opt-in path holds a writer-priority shared guard through read copies and
+serializes writes and exchange publication. It re-reads candidates after
+obtaining exclusive ownership, completes both copies before publication, and
+then retires old handles. SSD write exceptions roll back eligibility and
+temporary allocations. `BatchGet` returns owned copies, and direct-row and
+RDMA backing views are unavailable. Unsupported slice APIs return `false`
+so callers can use their existing copy fallback. Whole-row SGD updates hold
+the write guard and explicitly persist modified SSD rows.
+
+An exchange needs temporary DRAM headroom for new copies. Insufficient
+headroom rejects the exchange while retaining both original values and their
+placement. `online_capacity_rejects` exposes this condition. The benchmark
+flag `--tiered_online_admission=true` uses watermark `.90` with the same DRAM
+allocator capacity; the profile still fixes steady logical residency. The
+key hash set, resident-key vector, and bounded ghost metadata are additional
+memory costs. The default online path performs exchanges synchronously and
+reports migration reads separately.
+
+`value.tiering.async_admission=true` additionally enables one background
+worker, with at most one queued batch and one active batch, each capped at 256
+row pairs. The pending batch merges candidates from separate small requests.
+It requires online
+admission. Hot-row snapshots come from the foreground read or completed SGD
+writeback; victim snapshots are copied under the engine guard. Private DRAM
+and SSD destinations are prepared without that guard. Publication validates
+the global data-mutation generation and both source handles before exchanging
+eligibility and index entries. Any intervening write invalidates the whole
+batch; its private handles are freed without changing the live rows. Migration
+alone preserves values and does not invalidate unrelated snapshots. This
+conservative check can discard useful work under heavy writes.
+
+`DrainBackgroundWork()` waits for pending exchanges and propagates worker
+errors. Checkpoint, clear, statistics reset, and the PS's quiescent statistics
+snapshot drain first; destruction joins the worker before releasing storage.
+After a worker error, subsequent guarded operations also throw. The benchmark
+flag is `--tiered_async_admission=true`; enable it together with online
+admission. Queue drops, stale batches, submitted batches, and preparation/
+publication timings are reported. Temporary copies use the existing DRAM
+allocator and watermark; no independent value cache is added.
+
+The current PS online mode requires SGD. Other optimizer types are rejected
+when online admission is enabled because their mutable-view update paths have
+not been adapted to owned read buffers. SGD mixed-tier updates explicitly
+write back SSD rows, share destinations for duplicate keys, and initialize
+missing rows at the configured width. Scalar transport updates use the same
+flat SGD path.
 
 ---
 
@@ -186,7 +260,9 @@ SSD 索引创建 `IOBackend` 前的配置映射：
 
 Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 checkpoint 只能恢复到 plain engine；identity 不一致时拒绝加载，不会静默退回 plain。
 
-`TIERED_VALUE_STORE` 可以把静态 store 当作 SSD 子 store。DRAM 选择仍是现有高水位：`dram_bytes_reserved + size <= capacity * high_watermark_ratio`。
+`TIERED_VALUE_STORE` can use a static store as its SSD child. The same DRAM
+slot-byte limit and optional key profile apply after static key and row-size
+validation.
 
 读缓存通过 `tiering.cache_policy` 打开，默认 `none`（关闭）。设为 `lru`（大小写不敏感）后：
 

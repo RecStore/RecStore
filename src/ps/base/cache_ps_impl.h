@@ -72,6 +72,12 @@ public:
           << "cache_ps.max_batch_keys_size is deprecated and ignored; use "
              "distributed_client.max_keys_per_request for client batching";
     }
+    const auto value_config = config.at("base_kv_config").value("value", json::object());
+    const auto tiering = value_config.value("tiering", json::object());
+    if (tiering.value("online_admission", false) &&
+        config.value("optimizer", json::object()).value("type", "SGD") != "SGD") {
+      throw std::invalid_argument("online tiered admission currently requires SGD");
+    }
     BaseKVConfig kv_config;
     kv_config.num_threads_ = config["num_threads"].get<int>();
     kv_config.json_config_ = config["base_kv_config"];
@@ -82,6 +88,11 @@ public:
   }
 
   ~CachePS() {}
+
+  std::string ExtraResultFields() const {
+    base_kv_->DrainBackgroundWork();
+    return base_kv_->ExtraResultFields();
+  }
 
   bool Initialize(const std::vector<std::string>& model_config_path,
                   const std::vector<std::string>& emb_file_path) {

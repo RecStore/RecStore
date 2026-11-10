@@ -379,6 +379,10 @@ void LocalShmParameterServer::Init(const json& config) {
 
 LocalShmParameterServer::~LocalShmParameterServer() = default;
 
+std::string LocalShmParameterServer::ExtraResultFields() const {
+  return cache_ps_ ? cache_ps_->ExtraResultFields() : std::string{};
+}
+
 void LocalShmParameterServer::Run() {
   CHECK(!runtimes_.empty());
   worker_threads_.clear();

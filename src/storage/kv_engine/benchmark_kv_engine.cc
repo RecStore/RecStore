@@ -15,6 +15,7 @@
 #include <string_view>
 #include <thread>
 #include <vector>
+#include <sys/resource.h>
 
 #include "base/bind_core.h"
 #include "base/factory.h"
@@ -23,6 +24,7 @@
 #include "memory/shm_file.h"
 #include "storage/io_backend/force_link.h"
 #include "storage/kv_engine/base_kv.h"
+#include "storage/kv_engine/engine_factory.h"
 #include "storage/kv_engine/engine_selector.h"
 #include "storage/ssd_layout/ssd_layout.h"
 
@@ -80,7 +82,8 @@ DEFINE_int64(record_count, 100000000, "YCSB record count");
 DEFINE_string(workload,
               "c",
               "YCSB workload: a/b/c or workloada/workloadb/workloadc");
-DEFINE_string(distribution, "uniform", "key distribution: uniform/zipfian");
+DEFINE_string(distribution, "uniform", "key distribution: uniform/zipfian/trace");
+DEFINE_string(read_trace_path, "", "text query log for distribution=trace");
 DEFINE_double(zipfian_alpha, 0.9, "Zipfian alpha");
 DEFINE_bool(
     zipfian_scramble,
@@ -90,6 +93,10 @@ DEFINE_bool(
     "sequential-load bias");
 DEFINE_string(read_mode, "exists", "read mode: exists/get/batch_get_flat");
 DEFINE_int32(batch_keys, 500, "keys per BatchGetFlat operation");
+DEFINE_int32(load_batch_keys, 1, "keys per load BatchPut; 1 uses Put");
+DEFINE_string(tiered_dram_keys_path, "", "sorted native uint64 DRAM key profile");
+DEFINE_bool(tiered_online_admission, false, "enable bounded second-miss tiered admission");
+DEFINE_bool(tiered_async_admission, false, "prepare online tier exchanges in a bounded background queue");
 DEFINE_bool(load, true, "run load phase");
 DEFINE_bool(run, true, "run transaction phase");
 DEFINE_bool(print_util, false, "print KVEngine utilization after load");
@@ -167,15 +174,22 @@ public:
                uint64_t record_count,
                double zipfian_alpha,
                uint64_t seed,
-               bool scramble = false)
+               bool scramble = false,
+               const std::vector<uint32_t>* trace = nullptr)
       : distribution_(std::move(distribution)),
         record_count_(record_count),
         alpha_(zipfian_alpha),
-        rng_(seed) {
+        rng_(seed),
+        trace_(trace) {
     if (record_count_ == 0) {
       throw std::invalid_argument("record_count must be positive");
     }
-    if (distribution_ == "zipfian") {
+    if (distribution_ == "trace") {
+      if (trace_ == nullptr || trace_->empty()) {
+        throw std::invalid_argument("trace distribution requires nonempty keys");
+      }
+      trace_index_ = rng_.Uniform(trace_->size());
+    } else if (distribution_ == "zipfian") {
       if (alpha_ < 0.0) {
         throw std::invalid_argument("zipfian_alpha must be non-negative");
       }
@@ -188,11 +202,18 @@ public:
         scramble_stride_ = ChooseCoprimeStride(record_count_);
       }
     } else if (distribution_ != "uniform") {
-      throw std::invalid_argument("distribution must be uniform or zipfian");
+      throw std::invalid_argument("distribution must be uniform, zipfian, or trace");
     }
   }
 
   uint64_t NextKey() {
+    if (trace_ != nullptr) {
+      const uint64_t key = (*trace_)[trace_index_++];
+      if (trace_index_ == trace_->size()) {
+        trace_index_ = 0;
+      }
+      return key;
+    }
     if (distribution_ == "uniform") {
       return rng_.Uniform(record_count_);
     }
@@ -243,6 +264,8 @@ private:
   double log_n_             = 0.0;
   uint64_t scramble_stride_ = 0;
   FastRandom rng_;
+  const std::vector<uint32_t>* trace_ = nullptr;
+  size_t trace_index_ = 0;
 };
 
 std::string NormalizeWorkload(std::string workload) {
@@ -433,6 +456,18 @@ BaseKVConfig BuildConfig() {
         {"cache_budget_ratio", FLAGS_tiering_cache_budget_ratio},
         {"cache_shards", FLAGS_tiering_cache_shards},
         {"promote_min_misses", FLAGS_tiering_promote_min_misses}};
+    if (!FLAGS_tiered_dram_keys_path.empty()) {
+      config.json_config_["value"]["tiering"]["dram_keys_path"] =
+          FLAGS_tiered_dram_keys_path;
+    }
+    if (FLAGS_tiered_online_admission) {
+      config.json_config_["value"]["tiering"]["online_admission"] = true;
+      config.json_config_["value"]["tiering"]["high_watermark_ratio"] = 0.90;
+    }
+    if (FLAGS_tiered_async_admission) {
+      if (!FLAGS_tiered_online_admission) throw std::invalid_argument("async admission requires online admission");
+      config.json_config_["value"]["tiering"]["async_admission"] = true;
+    }
   }
   if (!FLAGS_ssd_layout_strategy.empty() &&
       FLAGS_ssd_layout_strategy != "plain") {
@@ -457,6 +492,10 @@ BaseKVConfig BuildConfig() {
 }
 
 PhaseStats LoadRecords(BaseKV* kv, int load_threads, uint64_t record_count) {
+  if (FLAGS_load_batch_keys <= 0 ||
+      (FLAGS_load_batch_keys > 1 && FLAGS_value_size % sizeof(float) != 0)) {
+    throw std::invalid_argument("invalid load_batch_keys or non-float row size");
+  }
   std::vector<std::thread> threads;
   std::vector<uint64_t> counts(load_threads, 0);
   const uint64_t per_thread = (record_count + load_threads - 1) / load_threads;
@@ -467,6 +506,22 @@ PhaseStats LoadRecords(BaseKV* kv, int load_threads, uint64_t record_count) {
       std::string value(FLAGS_value_size, static_cast<char>('a' + (tid % 26)));
       const uint64_t begin = static_cast<uint64_t>(tid) * per_thread;
       const uint64_t end   = std::min(record_count, begin + per_thread);
+      if (FLAGS_load_batch_keys > 1) {
+        std::vector<uint64_t> keys;
+        std::vector<base::ConstArray<float>> values;
+        for (uint64_t key = begin; key < end;) {
+          const size_t count = std::min<uint64_t>(FLAGS_load_batch_keys, end - key);
+          keys.resize(count);
+          std::iota(keys.begin(), keys.end(), key);
+          values.assign(count, base::ConstArray<float>(
+                                   reinterpret_cast<float*>(value.data()),
+                                   FLAGS_value_size / sizeof(float)));
+          kv->BatchPut(base::ConstArray<uint64_t>(keys), &values, tid);
+          key += count;
+          counts[tid] += count;
+        }
+        return;
+      }
       for (uint64_t key = begin; key < end; ++key) {
         kv->Put(key, std::string_view(value.data(), value.size()), tid);
         ++counts[tid];
@@ -507,6 +562,14 @@ PhaseStats RunTransactions(
         "batch_get_flat requires value_size to be a multiple of sizeof(float)");
   }
   const int embedding_dim = FLAGS_value_size / sizeof(float);
+  std::vector<uint32_t> trace_keys;
+  if (distribution == "trace") {
+    auto graph = ssd_layout::ReadQueryLog(FLAGS_read_trace_path, false);
+    if (graph.vertex_count != record_count || graph.pins.empty()) {
+      throw std::invalid_argument("trace record count mismatch or empty trace");
+    }
+    trace_keys = std::move(graph.pins);
+  }
 
   std::atomic<bool> start{false};
   std::atomic<bool> stop{false};
@@ -524,13 +587,18 @@ PhaseStats RunTransactions(
             record_count,
             FLAGS_zipfian_alpha,
             0x9e3779b97f4a7c15ULL + static_cast<uint64_t>(tid),
-            FLAGS_zipfian_scramble);
+            FLAGS_zipfian_scramble,
+            distribution == "trace" ? &trace_keys : nullptr);
         std::string value(
             FLAGS_value_size, static_cast<char>('A' + (tid % 26)));
         std::string read_value;
         std::vector<uint64_t> batch_keys(static_cast<size_t>(FLAGS_batch_keys));
         std::vector<float> flat_values(static_cast<size_t>(FLAGS_batch_keys) *
                                        static_cast<size_t>(embedding_dim));
+        std::vector<base::ConstArray<float>> write_values(
+            static_cast<size_t>(FLAGS_batch_keys),
+            base::ConstArray<float>(reinterpret_cast<float*>(value.data()),
+                                    embedding_dim));
         PhaseStats local;
         while (!start.load(std::memory_order_acquire)) {
         }
@@ -590,6 +658,16 @@ PhaseStats RunTransactions(
             }
             ++local.read_ops;
           } else {
+            if (use_batch_get_flat) {
+              for (auto& key : batch_keys) {
+                key = key_gen.NextKey();
+              }
+              kv->BatchPut(base::ConstArray<uint64_t>(batch_keys),
+                           &write_values, tid);
+              local.update_ops += batch_keys.size();
+              local.total_ops += batch_keys.size();
+              continue;
+            }
             const uint64_t key = key_gen.NextKey();
             kv->Put(key, std::string_view(value.data(), value.size()), tid);
             ++local.update_ops;
@@ -619,6 +697,7 @@ PhaseStats RunTransactions(
   if (first_exception) {
     std::rethrow_exception(first_exception);
   }
+  kv->DrainBackgroundWork();
 
   PhaseStats total;
   for (const auto& each : stats) {
@@ -821,18 +900,20 @@ int RunBenchmark(int argc, char* argv[]) {
                       : 0.0;
     std::printf(
         "YCSB_LOAD_RESULT records=%ld threads=%d seconds=%.6f ops=%lu "
-        "throughput_ops_sec=%.6f\n",
+        "throughput_ops_sec=%.6f%s\n",
         FLAGS_record_count,
         load_threads,
         seconds,
         load_stats.total_ops,
-        throughput);
+        throughput,
+        kv->ExtraResultFields().c_str());
     if (FLAGS_print_util) {
       kv->Util();
     }
   }
 
   if (FLAGS_run) {
+    kv->ResetStats();
     const auto begin     = std::chrono::steady_clock::now();
     PhaseStats run_stats = RunTransactions(
         kv.get(),
@@ -846,10 +927,12 @@ int RunBenchmark(int argc, char* argv[]) {
     const double throughput =
         seconds > 0.0 ? static_cast<double>(run_stats.total_ops) / seconds
                       : 0.0;
+    struct rusage usage {};
+    const long peak_rss_kb = getrusage(RUSAGE_SELF, &usage) == 0 ? usage.ru_maxrss : -1;
     std::printf(
         "YCSB_RESULT workload=%s distribution=%s zipfian_alpha=%.6f "
         "read_mode=%s threads=%d records=%ld runtime_s=%.6f ops=%lu "
-        "throughput_ops_sec=%.6f read_ops=%lu update_ops=%lu%s\n",
+        "throughput_ops_sec=%.6f read_ops=%lu update_ops=%lu process_peak_rss_kb=%ld%s\n",
         workload.c_str(),
         FLAGS_distribution.c_str(),
         FLAGS_zipfian_alpha,
@@ -861,6 +944,7 @@ int RunBenchmark(int argc, char* argv[]) {
         throughput,
         run_stats.read_ops,
         run_stats.update_ops,
+        peak_rss_kb,
         kv->ExtraResultFields().c_str());
     if (FLAGS_report_latency) {
       PrintLatencyPercentiles(run_stats);
