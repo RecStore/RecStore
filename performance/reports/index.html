@@ -18,7 +18,7 @@
         <link rel="prev" href="../monitoring/">
       
       
-        <link rel="next" href="../../api/">
+        <link rel="next" href="../tiered-e2e/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>性能报告 - RecStore Documentation</title>
+        <title>总览 - RecStore Documentation</title>
       
     
     
@@ -110,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              性能报告
+              总览
             
           </span>
         </div>
@@ -2119,16 +2119,34 @@
   
   
   
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
+    
+    
       
         
       
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
         
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="">
+            
   
   
   <span class="md-ellipsis">
@@ -2142,7 +2160,136 @@
   
   
 
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    性能报告
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    总览
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    总览
+  
+
+    
+  </span>
+  
+  
+
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#dramssd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        混合存储（DRAM+SSD）
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tiered-e2e/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    混合存储（DRAM+SSD）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
       
     </li>
   
@@ -2648,6 +2795,25 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#dramssd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        混合存储（DRAM+SSD）
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -2672,9 +2838,9 @@
 
 
 <h1 id="_1">性能报告<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<p>以下结果分别对应 storage-only 和 PS/network 两层：存储端使用
-<code>BatchGetFlat(500 random keys)</code>，RDMA GET 使用 <code>batch_keys=500</code>。</p>
-<p>测试时 PS 使用 16 核，RDMA 网卡为 200 Gbps。各次测试的机器配置不同，数字仅用于同层对比；层级定义与指标口径见<a href="../methodology/">测试范围与指标</a>，复现入口见<a href="../#benchmark-entry">性能指南</a>。</p>
+<p>以下结果按层分组：storage-only 使用 <code>BatchGetFlat(500 random keys)</code>，PS/network 的 RDMA GET
+使用 <code>batch_keys=500</code>，端到端使用 DLRM 全链路。各次测试的机器配置不同，数字仅用于同层对比；
+层级定义与指标口径见<a href="../methodology/">测试范围与指标</a>，复现入口见<a href="../#benchmark-entry">性能指南</a>。</p>
 <table>
 <thead>
 <tr>
@@ -2696,6 +2862,51 @@
 </tr>
 </tbody>
 </table>
+<h2 id="dramssd">混合存储（DRAM+SSD）<a class="headerlink" href="#dramssd" title="Permanent link">&para;</a></h2>
+<p><code>TIERED_VALUE_STORE</code> 在双机 RDMA、<code>ps_pipeline</code> 下的 SSD 比例扫描（cache-off 基线，node190 PS + node191 client，
+200G IB，DLRM batch 1024，64 steps，3 次重复）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">访问走 SSD</th>
+<th style="text-align: right;">samples/s</th>
+<th style="text-align: right;">相对 DRAM-only</th>
+<th style="text-align: right;">step ms（均值）</th>
+<th style="text-align: right;">其中 commit ms</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">0.0%</td>
+<td style="text-align: right;">37.3K</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">27.6</td>
+<td style="text-align: right;">20.6</td>
+</tr>
+<tr>
+<td style="text-align: right;">16.3%</td>
+<td style="text-align: right;">18.7K</td>
+<td style="text-align: right;">50%</td>
+<td style="text-align: right;">55.1</td>
+<td style="text-align: right;">34.2</td>
+</tr>
+<tr>
+<td style="text-align: right;">54.1%</td>
+<td style="text-align: right;">9.7K</td>
+<td style="text-align: right;">26%</td>
+<td style="text-align: right;">105.7</td>
+<td style="text-align: right;">68.6</td>
+</tr>
+<tr>
+<td style="text-align: right;">97.2%</td>
+<td style="text-align: right;">6.3K</td>
+<td style="text-align: right;">17%</td>
+<td style="text-align: right;">162.5</td>
+<td style="text-align: right;">114.4</td>
+</tr>
+</tbody>
+</table>
+<p>完整表格、拆分口径、放置策略与复现参数见<a href="../tiered-e2e/">混合存储（DRAM+SSD）端到端基准</a>。</p>
 
 
 
@@ -2748,13 +2959,13 @@
         
         
           
-          <a href="../../api/" class="md-footer__link md-footer__link--next" aria-label="下一页: API 参考">
+          <a href="../tiered-e2e/" class="md-footer__link md-footer__link--next" aria-label="下一页: 混合存储（DRAM+SSD）">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 下一页
               </span>
               <div class="md-ellipsis">
-                API 参考
+                混合存储（DRAM+SSD）
               </div>
             </div>
             <div class="md-footer__button md-icon">

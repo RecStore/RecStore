@@ -2129,9 +2129,34 @@
   
   
   
-    <li class="md-nav__item">
-      <a href="../reports/" class="md-nav__link">
+    
+    
+      
         
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="">
+            
   
   
   <span class="md-ellipsis">
@@ -2145,7 +2170,79 @@
   
   
 
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    性能报告
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    总览
+  
+
+    
+  </span>
+  
+  
+
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tiered-e2e/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    混合存储（DRAM+SSD）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -2682,6 +2779,7 @@
 <p>结果口径：</p>
 <ul>
 <li>报告 samples/s 与 p50 ms/step，必要时拆出 sparse / lookup / dense 分项；</li>
+<li>混合存储（<code>TIERED_VALUE_STORE</code>）的 SSD 比例扫描见<a href="../tiered-e2e/">混合存储端到端基准</a>；</li>
 <li>历史结果与环境说明见<a href="../reports/">性能报告</a>；</li>
 <li>三层指标的含义与不可比性见<a href="../methodology/">测试范围与指标</a>。</li>
 </ul>

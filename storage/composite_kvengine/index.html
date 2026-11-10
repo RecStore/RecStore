@@ -2326,9 +2326,31 @@
   
   
   
-    <li class="md-nav__item">
-      <a href="../../performance/reports/" class="md-nav__link">
+    
+    
+      
         
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
   
   
   <span class="md-ellipsis">
@@ -2342,7 +2364,79 @@
   
   
 
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    性能报告
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    总览
+  
+
+    
+  </span>
+  
+  
+
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/tiered-e2e/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    混合存储（DRAM+SSD）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -3281,6 +3375,7 @@
 </tbody>
 </table>
 <p><strong>Tiering</strong>：<code>HybridValueStore</code> 在 <code>dram_bytes_reserved + size &lt;= capacity * high_watermark_ratio</code>（默认 <code>0.85</code>）时优先 DRAM，否则 SSD；handle 最高位标记介质。<strong>没有后台冷热迁移线程</strong>；可选的读缓存（<code>tiering.cache_policy</code>）只把读到的 SSD value 在同步路径上提升进 DRAM，见下文。</p>
+<p>不同 SSD 比例下的端到端吞吐与拆分见<a href="../../performance/tiered-e2e/">混合存储（DRAM+SSD）端到端基准</a>。</p>
 <hr />
 <h2 id="iobackendiotype">IOBackend（<code>*.io.type</code>）<a class="headerlink" href="#iobackendiotype" title="Permanent link">&para;</a></h2>
 <table>
