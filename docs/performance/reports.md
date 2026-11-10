@@ -11,7 +11,7 @@
 
 ## 混合存储（DRAM+SSD）
 
-`TIERED_VALUE_STORE` 在双机 RDMA、`ps_pipeline` 下的 SSD 比例扫描（node190 PS + node191 client，
+`TIERED_VALUE_STORE` 在双机 RDMA、`ps_pipeline` 下的 SSD 比例扫描（cache-off 基线，node190 PS + node191 client，
 200G IB，DLRM batch 1024，64 steps，3 次重复）：
 
 | 访问走 SSD | samples/s | 相对 DRAM-only | step ms（均值） | 其中 commit ms |
