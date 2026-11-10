@@ -66,7 +66,7 @@ class _FakeKVClient:
             return torch.empty((0, self.embedding_dim), dtype=torch.float32)
         return torch.stack(rows, dim=0)
 
-    def update_async(self, name, ids, grads):
+    def update_async(self, name, ids, grads, learning_rate=0.0):
         handle = self._next_handle
         self._next_handle += 1
         self.update_async_calls.append(

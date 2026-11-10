@@ -15,7 +15,7 @@ class _FakeKvClient:
     def __init__(self) -> None:
         self.update_calls = []
 
-    def update_async(self, name, ids, grads):
+    def update_async(self, name, ids, grads, learning_rate=0.0):
         self.update_calls.append((name, ids.clone(), grads.clone()))
         return len(self.update_calls)
 

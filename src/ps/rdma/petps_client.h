@@ -74,17 +74,20 @@ public:
                          const recstore::EmbeddingTableConfig& config) override;
   int UpdateParameter(const std::string& table_name,
                       const base::ConstArray<uint64_t>& keys,
-                      const base::RecTensor& grads) override;
+                      const base::RecTensor& grads,
+                      float learning_rate = 0.0f) override;
   void Command(recstore::PSCommand command) override;
   uint64_t PrefetchParameter(const base::ConstArray<uint64_t>& keys) override;
   bool IsPrefetchDone(uint64_t prefetch_id) override;
   void WaitForPrefetch(uint64_t prefetch_id) override;
   bool
   GetPrefetchResult(uint64_t prefetch_id, base::RecTensor& values) override;
-  int SubmitUpdateParameterFlat(const std::string& table_name,
-                                base::ConstArray<uint64_t> keys,
-                                const float* grads,
-                                std::size_t embedding_dim);
+  int SubmitUpdateParameterFlat(
+      const std::string& table_name,
+      base::ConstArray<uint64_t> keys,
+      const float* grads,
+      std::size_t embedding_dim,
+      float learning_rate = 0.0f);
   int SubmitUpdateParameterFlatGather(
       const std::string& table_name,
       const std::uint64_t* keys,
@@ -92,7 +95,8 @@ public:
       std::size_t num_rows,
       std::size_t embedding_dim,
       const std::size_t* row_indices,
-      std::size_t row_count);
+      std::size_t row_count,
+      float learning_rate = 0.0f);
   int WaitUpdateParameter(int rpc_id);
   int FakePutParameter(base::ConstArray<uint64_t> keys, float* values);
 

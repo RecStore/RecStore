@@ -630,20 +630,23 @@ int64_t RDMAPSClientAdapter::SparseGradientCommit(
   return *std::min_element(committed.begin(), committed.end());
 }
 
-int RDMAPSClientAdapter::UpdateParameter(const std::string& table_name,
-                                         const base::ConstArray<uint64_t>& keys,
-                                         const base::RecTensor& grads) {
+int RDMAPSClientAdapter::UpdateParameter(
+    const std::string& table_name,
+    const base::ConstArray<uint64_t>& keys,
+    const base::RecTensor& grads,
+    float learning_rate) {
   if (keys.Size() == 0) {
     return 0;
   }
   return WaitUpdateParameter(
-      SubmitUpdateParameterAsync(table_name, keys, grads));
+      SubmitUpdateParameterAsync(table_name, keys, grads, learning_rate));
 }
 
 uint64_t RDMAPSClientAdapter::SubmitUpdateParameterAsync(
     const std::string& table_name,
     const base::ConstArray<uint64_t>& keys,
-    const base::RecTensor& grads) {
+    const base::RecTensor& grads,
+    float learning_rate) {
   if (keys.Size() == 0) {
     throw std::invalid_argument("RDMA update requires at least one key");
   }
@@ -661,7 +664,8 @@ uint64_t RDMAPSClientAdapter::SubmitUpdateParameterAsync(
       grads.data_as<float>(),
       static_cast<std::size_t>(embedding_dim),
       BuildChunks(keys, MaxPutKeysPerRpc(embedding_dim)),
-      MaxInFlightGetRpcs());
+      MaxInFlightGetRpcs(),
+      learning_rate);
 }
 
 int RDMAPSClientAdapter::WaitUpdateParameter(uint64_t update_id) {

@@ -93,10 +93,11 @@ public:
                            base::RecTensor& values) = 0;
 
   virtual int PutParameter(const base::ConstArray<uint64_t>& keys,
-                           const base::RecTensor& values)   = 0;
+                           const base::RecTensor& values) = 0;
   virtual int UpdateParameter(const std::string& table_name,
                               const base::ConstArray<uint64_t>& keys,
-                              const base::RecTensor& grads) = 0;
+                              const base::RecTensor& grads,
+                              float learning_rate = 0.0f) = 0;
 
   virtual int InitEmbeddingTable(const std::string& table_name,
                                  const EmbeddingTableConfig& config) = 0;
@@ -130,10 +131,12 @@ public:
   virtual uint64_t SubmitUpdateParameterAsync(
       const std::string& table_name,
       const base::ConstArray<uint64_t>& keys,
-      const base::RecTensor& grads) {
+      const base::RecTensor& grads,
+      float learning_rate = 0.0f) {
     (void)table_name;
     (void)keys;
     (void)grads;
+    (void)learning_rate;
     throw std::runtime_error("Async update is not supported by this backend");
   }
   virtual int WaitUpdateParameter(uint64_t update_id) {

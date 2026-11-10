@@ -58,7 +58,8 @@ struct alignas(64) RequestDescriptor {
   std::uint32_t payload_offset = 0; // Offset from slot base to payload.
   std::uint32_t payload_bytes  = 0; // Bytes occupied by the payload.
   std::uint32_t response_bytes = 0; // Bytes expected in the response payload.
-  std::uint32_t reserved0      = 0;
+  // Client optimizer learning rate; 0 means "not advertised".
+  float learning_rate = 0.0f;
   std::uint64_t client_response_addr =
       0; // Optional client response address for verbs RC.
   std::uint32_t client_response_rkey =
