@@ -1490,10 +1490,21 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#metricrecord" class="md-nav__link">
     <span class="md-ellipsis">
       
-        上报协议与入口
+        MetricRecord 字段
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#csv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CSV 形态
       
     </span>
   </a>
@@ -1509,33 +1520,38 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="常见 report 表与指标">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sink" class="md-nav__link">
     <span class="md-ellipsis">
       
-        写路径自顶向下
+        自定义 sink
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#stdout" class="md-nav__link">
     <span class="md-ellipsis">
       
-        读路径自顶向下
+        与 stdout 周期表的关系
       
     </span>
   </a>
   
 </li>
-        
-      </ul>
-    </nav>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        构建开关
+      
+    </span>
+  </a>
   
 </li>
       
@@ -2841,10 +2857,21 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#metricrecord" class="md-nav__link">
     <span class="md-ellipsis">
       
-        上报协议与入口
+        MetricRecord 字段
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#csv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CSV 形态
       
     </span>
   </a>
@@ -2860,33 +2887,38 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="常见 report 表与指标">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sink" class="md-nav__link">
     <span class="md-ellipsis">
       
-        写路径自顶向下
+        自定义 sink
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#stdout" class="md-nav__link">
     <span class="md-ellipsis">
       
-        读路径自顶向下
+        与 stdout 周期表的关系
       
     </span>
   </a>
   
 </li>
-        
-      </ul>
-    </nav>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        构建开关
+      
+    </span>
+  </a>
   
 </li>
       
@@ -2916,49 +2948,85 @@
 
 
 <h1 id="_1">性能埋点<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<p>RecStore 的 Grafana 看板基于 <code>report()</code> 函数上报链路，完整链路为：</p>
-<p><code>RecStore (C++/Python 调用 report)</code> -&gt; <code>HTTP report_API</code> -&gt; <code>ClickHouse</code> -&gt; <code>Grafana</code></p>
-<h2 id="_2">上报协议与入口<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<ul>
-<li>上报接口由 <code>recstore_config.json</code> 中 <code>report_API</code> 指定（默认：<code>http://127.0.0.1:8081/report</code>）。</li>
-<li><code>report()</code> 会构造 JSON 并异步发送，核心字段如下：</li>
-</ul>
+<p>所有埋点走同一个入口：调用点调 <code>report(table_name, unique_id, metric_name, value)</code>，由
+<code>src/base/report/report_client.cpp</code> 组装成一条 <code>MetricRecord</code>，再按配置分发给各个 sink。</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>report()
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  └─ MetricRecord（附带 host / pid / run_id / rank / shard 维度）
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>      ├─ remote  → 异步 HTTP → report_API → ClickHouse → Grafana
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>      ├─ csv     → 长表追加（每行一个指标）
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>      ├─ jsonl   → 一行一个事件
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>      ├─ glog    → REPORT_LOCAL_EVENT 日志行
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>      └─ MetricSink → RegisterMetricSink() 注册的自定义 exporter
+</code></pre></div>
+<p>内置 sink 由 <code>observability</code> 配置选择，配置字段和环境变量见<a href="../../config/">配置字段参考</a> 的「观测上报配置」一节；
+自定义 sink 走 C++ 接口，不经过配置。sink 的选择不影响调用点，也不改变远端 payload 的格式。</p>
+<h2 id="metricrecord">MetricRecord 字段<a class="headerlink" href="#metricrecord" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>字段名</th>
-<th>含义</th>
-<th>示例</th>
+<th>字段</th>
+<th>来源</th>
+<th>说明</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>table_name</code></td>
-<td>目标报表/逻辑表名</td>
-<td><code>op_latency</code></td>
+<td><code>timestamp_us</code></td>
+<td>采集时刻</td>
+<td>Unix 微秒</td>
 </tr>
 <tr>
-<td><code>unique_id</code></td>
-<td>单次请求或链路标识</td>
-<td><code>embread_debug</code> + 时间戳</td>
+<td><code>host</code></td>
+<td><code>gethostname()</code></td>
+<td>节点名</td>
 </tr>
 <tr>
-<td><code>metric_name</code></td>
-<td>指标名称</td>
-<td><code>recstore_us</code></td>
+<td><code>pid</code></td>
+<td><code>getpid()</code></td>
+<td>进程号</td>
+</tr>
+<tr>
+<td><code>run_id</code></td>
+<td><code>RECSTORE_RUN_ID</code></td>
+<td>一次运行的标识，每次 <code>report()</code> 重读</td>
+</tr>
+<tr>
+<td><code>rank</code></td>
+<td><code>RANK</code>，回退 <code>LOCAL_RANK</code></td>
+<td>训练 rank，未设置时为 <code>-1</code></td>
+</tr>
+<tr>
+<td><code>shard</code></td>
+<td><code>RECSTORE_SHARD_ID</code>，回退 <code>SHARD_ID</code></td>
+<td>PS 分片，未设置时为 <code>-1</code></td>
+</tr>
+<tr>
+<td><code>table_name</code> / <code>unique_id</code> / <code>metric_name</code></td>
+<td>调用点</td>
+<td>指标定位</td>
 </tr>
 <tr>
 <td><code>metric_value</code></td>
-<td>指标数值（double）</td>
-<td><code>532.0</code></td>
+<td>调用点</td>
+<td>指标数值</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td>调用点</td>
+<td>默认 <code>report</code></td>
 </tr>
 </tbody>
 </table>
-<p>对应实现可参考：</p>
-<ul>
-<li><code>src/base/report/report_client.cpp</code></li>
-<li><code>src/base/report/report_client.h</code></li>
-</ul>
+<p>远端上报只发送 <code>table_name</code>、<code>unique_id</code>、<code>metric_name</code>、<code>metric_value</code>、<code>timestamp_us</code>、<code>source</code>
+六个字段，与历史 payload 保持兼容，避免部署方的 <code>report_service</code> 因未知字段拒绝；<code>host</code> / <code>pid</code> /
+<code>run_id</code> / <code>rank</code> / <code>shard</code> 只出现在 CSV 和自定义 sink 里。</p>
+<h2 id="csv">CSV 形态<a class="headerlink" href="#csv" title="Permanent link">&para;</a></h2>
+<p>长表，一行一个指标，列固定为：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>timestamp_us,host,pid,run_id,rank,shard,table_name,unique_id,metric_name,metric_value,source
+</code></pre></div>
+<p>追加写，文件为空时写一次表头；字段含逗号、引号或换行时按 RFC 4180 加引号。默认路径
+<code>recstore_metrics_{host}_{pid}.csv</code>，<code>{host}</code> / <code>{pid}</code> 用来把 PS server 和各训练 rank 分开。
+离线 pivot 可以直接用 <code>tools/benchmarks/aggregate.py</code>。</p>
 <h2 id="report">常见 report 表与指标<a class="headerlink" href="#report" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2996,124 +3064,27 @@
 </tr>
 </tbody>
 </table>
-<details class="note">
-<summary>旧版 txt 埋点（历史）</summary>
-<p>RecStore 使用 <code>xmh::Timer</code>（位于 <code>src/base/timer.h</code>）进行全链路的耗时打点。数据流向如下：</p>
-<h3 id="_3">写路径自顶向下<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th style="text-align: left;">层级 (Layer)</th>
-<th style="text-align: left;">Timer 名称</th>
-<th style="text-align: left;">说明</th>
-<th style="text-align: left;">代码位置</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: left;"><strong>PyTorch OP</strong></td>
-<td style="text-align: left;"><code>OP.EmbWrite.Total</code></td>
-<td style="text-align: left;">Python 端调用 C++ OP 的总耗时</td>
-<td style="text-align: left;"><code>src/framework/pytorch/op_torch.cc</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"></td>
-<td style="text-align: left;"><code>OP.EmbWrite.Call</code></td>
-<td style="text-align: left;">核心逻辑调用耗时</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr>
-<td style="text-align: left;"><strong>C++ Client</strong></td>
-<td style="text-align: left;"><code>ClientOp.EmbWrite.Total</code></td>
-<td style="text-align: left;">客户端操作总耗时</td>
-<td style="text-align: left;"><code>src/framework/op.cc</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"></td>
-<td style="text-align: left;"><code>ClientOp.EmbWrite.BuildVector</code></td>
-<td style="text-align: left;">Tensor 转 C++ Vector 的开销</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr>
-<td style="text-align: left;"><strong>gRPC Client</strong></td>
-<td style="text-align: left;"><code>Client.PutParameter.Total</code></td>
-<td style="text-align: left;">RPC 请求总耗时</td>
-<td style="text-align: left;"><code>src/ps/grpc/dist_grpc_ps_client.cpp</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"></td>
-<td style="text-align: left;"><code>Client.PutParameter.Serialize</code></td>
-<td style="text-align: left;">序列化 Data Request 耗时</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr>
-<td style="text-align: left;"></td>
-<td style="text-align: left;"><code>Client.PutParameter.RPC</code></td>
-<td style="text-align: left;">网络传输 + 服务端处理总耗时</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr>
-<td style="text-align: left;"><strong>Server</strong></td>
-<td style="text-align: left;"><code>PS.PutParameter.Handle</code></td>
-<td style="text-align: left;">服务端处理总耗时</td>
-<td style="text-align: left;"><code>src/ps/grpc/grpc_ps_server.cpp</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"></td>
-<td style="text-align: left;"><code>PS.PutParameter.KVPutAll</code></td>
-<td style="text-align: left;">写入底层 KV 存储的耗时</td>
-<td style="text-align: left;"></td>
-</tr>
-</tbody>
-</table>
-<h3 id="_4">读路径自顶向下<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th style="text-align: left;">层级 (Layer)</th>
-<th style="text-align: left;">Timer 名称</th>
-<th style="text-align: left;">说明</th>
-<th style="text-align: left;">代码位置</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: left;"><strong>PyTorch OP</strong></td>
-<td style="text-align: left;"><code>OP.EmbRead.Total</code></td>
-<td style="text-align: left;">Python 端调用 C++ OP 的总耗时</td>
-<td style="text-align: left;"><code>src/framework/pytorch/op_torch.cc</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"></td>
-<td style="text-align: left;"><code>OP.EmbRead.ToCPUKeys</code></td>
-<td style="text-align: left;">Embedding Key 从 GPU 拷贝到 CPU 的耗时</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr>
-<td style="text-align: left;"><strong>gRPC Client</strong></td>
-<td style="text-align: left;"><code>Client.GetParameter.Total</code></td>
-<td style="text-align: left;">RPC 请求总耗时</td>
-<td style="text-align: left;"><code>src/ps/grpc/dist_grpc_ps_client.cpp</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"></td>
-<td style="text-align: left;"><code>Client.GetParameter.AsyncWait</code></td>
-<td style="text-align: left;">异步等待网络回包的耗时（反映服务端处理+网络延迟）</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr>
-<td style="text-align: left;"><strong>Server</strong></td>
-<td style="text-align: left;"><code>KV BatchGet</code></td>
-<td style="text-align: left;">底层 KV 引擎批量读取耗时</td>
-<td style="text-align: left;"><code>docs/storage/composite_kvengine.md</code></td>
-</tr>
-</tbody>
-</table>
-<details class="tip">
-<summary>什么是 Timer?</summary>
-<p><code>xmh::Timer</code> 是一个高性能的 C++ 计时器工具类。它通过 <code>Timer::Start("Name")</code> 和 <code>Timer::Stop("Name")</code> 记录代码块耗时，并自动统计 P50、P99 等分位数值，定期输出到日志文件中。</p>
-</details>
-</details>
+<h2 id="sink">自定义 sink<a class="headerlink" href="#sink" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyExporter</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="k">public</span><span class="w"> </span><span class="n">recstore</span><span class="o">::</span><span class="n">MetricSink</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">public</span><span class="o">:</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">Emit</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">recstore</span><span class="o">::</span><span class="n">MetricRecord</span><span class="o">&amp;</span><span class="w"> </span><span class="n">record</span><span class="p">)</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="c1">// record 只在本次调用内有效，需要保留就拷贝。</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">Flush</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="p">};</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">recstore</span><span class="o">::</span><span class="n">RegisterMetricSink</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">MyExporter</span><span class="o">&gt;</span><span class="p">());</span>
+</code></pre></div>
+<p><code>Emit</code> 会被多个线程并发调用，实现必须自己保证线程安全。注册发生在第一次 <code>report()</code> 之前才能收到全部样本，
+之后再注册只收到后续事件。自定义 sink 与内置 sink 并行，不受 <code>observability.sinks</code> 影响。</p>
+<h2 id="stdout">与 stdout 周期表的关系<a class="headerlink" href="#stdout" title="Permanent link">&para;</a></h2>
+<p><code>xmh::Reporter::StartReportThread()</code> 每 5 s 往 stdout 打一张 P50/P99 文本表，由 <code>ps_server</code> 和
+<code>recstore_pytorch</code> 启动。<code>report()</code> 里 <code>metric_name</code> 为 <code>duration_ns</code> / <code>latency_ns</code> / <code>duration_us</code> /
+<code>latency_us</code> 的样本会同时通过 <code>xmh::Timer::ManualRecordNs</code> 计入这张表，其余指标只走 sink。
+关掉 sink 不影响 stdout 表，反过来也一样。</p>
+<h2 id="_2">构建开关<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p><code>USE_PERF_REPORT</code>（默认 <code>OFF</code>）控制 <code>ENABLE_PERF_REPORT</code> 宏：打开后 Release 构建也会保留各处的
+<code>report()</code> 调用点并链接 <code>report_client</code>，不再要求 Debug；关闭时调用点被编译掉，不会产生样本。</p>
 
 
 

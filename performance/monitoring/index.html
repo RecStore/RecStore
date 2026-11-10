@@ -2860,14 +2860,16 @@
 
 
 <h1 id="grafana">监控与 Grafana<a class="headerlink" href="#grafana" title="Permanent link">&para;</a></h1>
-<p>编译时开启性能上报宏：</p>
+<p>编译时开启性能上报宏，Debug / Release 都可以：</p>
 <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1">1</a></span>
 <span class="normal"><a href="#__codelineno-0-2">2</a></span>
 <span class="normal"><a href="#__codelineno-0-3">3</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1"></a>cmake<span class="w"> </span>..<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2"></a><span class="hll"><span class="w">    </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Debug<span class="w"> </span><span class="se">\</span>
-</span><a id="__codelineno-0-3" name="__codelineno-0-3"></a><span class="hll"><span class="w">    </span>-DUSE_PERF_REPORT<span class="o">=</span>ON
+<a id="__codelineno-0-2" name="__codelineno-0-2"></a><span class="w">    </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3"></a><span class="hll"><span class="w">    </span>-DUSE_PERF_REPORT<span class="o">=</span>ON
 </span></code></pre></div></td></tr></table></div>
-<p>运行时确保 <code>recstore_config.json</code> 中 <code>report_API</code> 指向可写入 ClickHouse 的 report 服务，然后启动训练/服务端即可自动上报，可在 Grafana 端口查看看板。</p>
+<p>运行时在 <code>recstore_config.json</code> 的 <code>observability.sinks</code> 里加 <code>remote</code>，并让 <code>observability.remote.endpoint</code>
+（或等价的旧字段 <code>report_API</code>）指向可写入 ClickHouse 的 report 服务，然后启动训练/服务端即可自动上报，
+可在 Grafana 端口看板查看。字段与本地 CSV 见<a href="../../config/">配置字段参考</a>。</p>
 <h2 id="_1">启用服务<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <div class="highlight"><span class="filename">启动 ClickHouse</span><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>systemctl<span class="w"> </span>is-active<span class="w"> </span>--quiet<span class="w"> </span>clickhouse-server<span class="w"> </span><span class="o">||</span><span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>clickhouse-server<span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"✅ ClickHouse is running."</span>
 </code></pre></div>
