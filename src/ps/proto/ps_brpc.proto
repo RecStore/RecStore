@@ -42,6 +42,9 @@ message PutParameterResponse{
 message UpdateParameterRequest{
   string table_name = 1;
   optional bytes gradients = 2;
+  // Client-side optimizer learning rate; the server rejects updates whose
+  // rate does not match its own optimizer. 0 means "not advertised".
+  optional float learning_rate = 3;
 };
 
 message UpdateParameterResponse{

@@ -13,5 +13,6 @@ python3 -m tools.benchmarks.e2e.custom.cli --help
 结果口径：
 
 - 报告 samples/s 与 p50 ms/step，必要时拆出 sparse / lookup / dense 分项；
+- 混合存储（`TIERED_VALUE_STORE`）的 SSD 比例扫描见[混合存储端到端基准](tiered-e2e.md)；
 - 历史结果与环境说明见[性能报告](reports.md)；
 - 三层指标的含义与不可比性见[测试范围与指标](methodology.md)。

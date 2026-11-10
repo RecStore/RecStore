@@ -117,6 +117,8 @@ SSD 索引创建 `IOBackend` 前的配置映射：
 
 **Tiering**：默认按 DRAM 高水位优先安放，超出部分进入 SSD。`lru` 提供 SSD 读缓存，`clock` 支持冷热交换和可选的后台回写，`adaptive` 按工作集估计选择策略，见[分层安放与读缓存](#分层安放与读缓存)。
 
+不同 SSD 比例下的端到端吞吐与拆分见[混合存储（DRAM+SSD）端到端基准](../performance/tiered-e2e.md)。
+
 ---
 
 ## IOBackend（`*.io.type`）

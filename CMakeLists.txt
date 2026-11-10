@@ -5,7 +5,8 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING
 
 option(ENABLE_CUDA "Build with CUDA support" ON)
 option(USE_BRPC_CPU_PROFILER "Enable bRPC builtin CPU profiler" OFF)
-option(USE_PERF_REPORT "Enable performance reporting in Debug mode" OFF)
+option(USE_PERF_REPORT
+  "Enable performance reporting (sinks selected at runtime in recstore_config.json)" OFF)
 option(RECSTORE_ENABLE_THIRD_PARTY_ENGINES
   "Build the optional FASTERKV and HPS storage engines" OFF)
 

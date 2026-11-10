@@ -393,8 +393,16 @@ void KVClientOp::EmbUpdate(const base::RecTensor& keys,
 void KVClientOp::EmbUpdate(const std::string& table_name,
                            const base::RecTensor& keys,
                            const base::RecTensor& grads) {
+  EmbUpdateWithLearningRate(table_name, keys, grads, 0.0f);
+}
+
+void KVClientOp::EmbUpdateWithLearningRate(
+    const std::string& table_name,
+    const base::RecTensor& keys,
+    const base::RecTensor& grads,
+    float learning_rate) {
   if (IsHierKVBackendName(ps_backend_name_)) {
-    GetHierKVLocalRuntime().Update(table_name, keys, grads);
+    GetHierKVLocalRuntime().Update(table_name, keys, grads, learning_rate);
     return;
   }
   if (ps_client_ == nullptr) {
@@ -446,7 +454,8 @@ void KVClientOp::EmbUpdate(const std::string& table_name,
   const uint64_t* keys_data = keys.data_as<uint64_t>();
   base::ConstArray<uint64_t> keys_array(keys_data, L);
 
-  int ret = ps_client_->UpdateParameter(table_name, keys_array, grads);
+  int ret =
+      ps_client_->UpdateParameter(table_name, keys_array, grads, learning_rate);
   if (ret != 0) {
     throw std::runtime_error("Failed to update embeddings via PS client.");
   }
@@ -543,7 +552,8 @@ uint64_t KVClientOp::EmbUpdateAsync(
     const std::string& table_name,
     const base::RecTensor& keys,
     const base::RecTensor& grads,
-    framework::CacheUpdateActions cache) {
+    framework::CacheUpdateActions cache,
+    float learning_rate) {
   if (ps_client_ == nullptr)
     throw std::runtime_error("PS client is not initialized");
   if (ps_backend_name_ != "rdma")
@@ -557,7 +567,8 @@ uint64_t KVClientOp::EmbUpdateAsync(
   auto id            = ps_client_->SubmitUpdateParameterAsync(
       table_name,
       base::ConstArray<uint64_t>(keys.data_as<uint64_t>(), rows),
-      grads);
+      grads,
+      learning_rate);
   pending_updates_.Add(id, rows, std::move(cache));
   return id;
 }
@@ -576,12 +587,13 @@ void KVClientOp::EmbUpdateCached(
     const base::RecTensor& keys,
     const base::RecTensor& grads,
     const framework::CacheUpdateActions& cache,
-    bool local) {
+    bool local,
+    float learning_rate) {
   framework::g_cache_aware_op.Update(keys.shape(0), cache, [&] {
     if (local)
-      LocalUpdateFlat(table, keys, grads);
+      LocalUpdateFlat(table, keys, grads, learning_rate);
     else
-      EmbUpdate(table, keys, grads);
+      EmbUpdateWithLearningRate(table, keys, grads, learning_rate);
   });
 }
 
