@@ -165,6 +165,7 @@ class RunConfig:
     torchrec_timing_sync_mode: str = "stage"
     torchrec_align_recstore_init: bool = False
     validation_state: bool = False
+    report_metrics: bool = False
     ps_pipeline_early_submit: bool = False
     ps_pipeline_dependency_split: bool = False
     dense_cuda_graph: bool = False
@@ -555,6 +556,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--validation-state",
         action="store_true",
         help="Export exact local embedding and dense tensors for numerical validation after training.",
+    )
+    parser.add_argument(
+        "--report-metrics",
+        action="store_true",
+        help="Also emit per-step e2e metrics (e2e_step table) through the configured sinks.",
     )
     parser.add_argument(
         "--save-checkpoint",
