@@ -227,7 +227,9 @@ python3 model_zoo/rs_demo/run_mock_stress.py \
   `peer_unreachable`。
 - PS 的 `dram` / `ssd.db` 每次用新目录，跑完删除，避免上一次的 tier 状态污染。
 - 本页比例扫描显式写了 `"tiering": {"cache_policy": "none"}`；改用 `rs_demo` 时对应
-  `--tiered-cache-policy none`，默认仍是 `lru`，直接复用模板会开启读缓存。
+  `--tiered-cache-policy none`。该参数还接受 `clock`（主放置交换，见
+  [分层安放与读缓存](../storage/composite_kvengine.md#tiered-placement-cache)）；
+  默认仍是 `lru`，直接复用模板会开启读缓存。
 
 本次的 per-step CSV、生命周期 JSON、runner 日志和一次性 harness 保存在运行产物目录
 `results/tiered_e2e_11052043/`（不随仓库提交）；需要原始数据时可通过 PR 附件或联系作者获取。
