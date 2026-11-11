@@ -30,6 +30,8 @@
 namespace {
 
 std::atomic<uint64_t> g_read_entries{0}, g_completed_writes{0};
+std::atomic<uint64_t> g_read_pages{0};
+std::atomic<bool> g_fail_writes{false};
 std::atomic<uint64_t> g_buffer_allocations{0}, g_buffer_frees{0};
 std::atomic<bool> g_fail_next_write{false};
 std::atomic<bool> g_fail_next_read{false};
@@ -84,9 +86,17 @@ public:
         std::this_thread::yield();
     }
     g_read_entries.fetch_add(entries.size(), std::memory_order_relaxed);
+    for (const auto& entry : entries)
+      g_read_pages.fetch_add(entry.page_count, std::memory_order_relaxed);
     if (fail)
       throw std::runtime_error("injected read failure");
     IOBackend::BatchReadPages(entries);
+  }
+
+  void BatchWritePages(const std::vector<IOEntry>& entries) override {
+    if (g_fail_writes.load())
+      throw std::runtime_error("injected SSD write failure");
+    IOBackend::BatchWritePages(entries);
   }
 
 protected:
@@ -145,6 +155,8 @@ protected:
     base::PMMmapRegisterCenter::GetConfig().backend =
         base::PMMmapRegisterCenter::Backend::kAnonymousDram;
     g_read_entries.store(0);
+    g_read_pages.store(0);
+    g_fail_writes.store(false);
     g_completed_writes.store(0);
     g_fail_next_write.store(false);
     g_fail_next_read.store(false);
@@ -187,6 +199,35 @@ protected:
   }
 
   std::filesystem::path root_;
+  BaseKVConfig OnlineConfig(size_t hot_rows) {
+    const auto profile = root_ / "online_keys.bin";
+    std::ofstream out(profile, std::ios::binary);
+    for (uint64_t key = 0; key < hot_rows; ++key) {
+      out.write(reinterpret_cast<const char*>(&key), sizeof(key));
+    }
+    out.close();
+    BaseKVConfig config;
+    config.num_threads_ = 4;
+    config.json_config_ = {
+        {"capacity", 128},
+        {"index", {{"type", "DRAM_UNORDERED_MAP"}}},
+        {"value",
+         {{"type", "TIERED_VALUE_STORE"},
+          {"default_value_size_hint", 128},
+          {"dram_allocator",
+           {{"type", "CONCURRENT_SLAB_MEMORY_POOL"},
+            {"capacity_bytes", 64 << 20},
+            {"path", (root_ / "online_dram").string()}}},
+          {"ssd_allocator",
+           {{"type", "SSD_SLAB"},
+            {"capacity_bytes", 64ULL << 20},
+            {"path", (root_ / "online_ssd").string()},
+            {"io", {{"type", "INMEMORY"}, {"base_offset_bytes", 0}}}}},
+          {"tiering",
+           {{"dram_keys_path", profile.string()},
+            {"online_admission", true}}}}}};
+    return config;
+  }
 };
 
 ssd_layout::Artifact Bandana() {
@@ -236,6 +277,71 @@ TEST_F(StaticLayoutValueTest, KeyHandleRoundTripAndFixedPlacement) {
   max_store->Write(ssd_layout::kMaxKey + 1, zero, 4);
   EXPECT_EQ(max_store->Read(ssd_layout::kMaxKey + 1, out.data(), out.size()),
             4U);
+}
+
+TEST_F(StaticLayoutValueTest, BatchReadUsesFewerPagesThanPlain) {
+  const char payload[] = {'a', 'b', 'c', 'd'};
+  BaseKVConfig plain_config;
+  plain_config.json_config_ = {
+      {"value",
+       {{"type", "SSD_VALUE_STORE"},
+        {"path", (root_ / "plain.db").string()},
+        {"ssd_allocator",
+         {{"type", "SSD_SLAB"},
+          {"capacity_bytes", 64ULL << 20},
+          {"size_classes", {128}},
+          {"io",
+           {{"type", "INMEMORY"},
+            {"queue_depth", 4},
+            {"base_offset_bytes", 0}}}}}}}};
+  SsdValueStore plain(plain_config);
+  std::vector<uint64_t> plain_handles;
+  // Put the six queried rows on distinct pages. Plain slab batch reads also
+  // deduplicate same-page rows, independently of a coaccess layout.
+  for (int i = 0; i <= 5 * 32; ++i) {
+    const uint64_t handle = plain.AllocAndWrite(payload, 4);
+    if (i % 32 == 0) {
+      plain_handles.push_back(handle);
+    }
+  }
+  plain.ResetStats();
+  g_read_pages.store(0);
+  std::vector<ValueStore::ReadResult> plain_out;
+  plain.BatchRead(plain_handles, plain_out);
+  const uint64_t plain_reads = g_read_pages.load();
+  EXPECT_NE(plain.ExtraResultFields().find("layout_page_reads=6"),
+            std::string::npos);
+  EXPECT_NE(plain.ExtraResultFields().find("layout_bytes_read=24576"),
+            std::string::npos);
+
+  auto bandana = std::make_unique<SsdStaticLayoutValueStore>(
+      Config(Save(Bandana()), "bandana"));
+  auto maxembed = std::make_unique<SsdStaticLayoutValueStore>(
+      Config(Save(MaxEmbed()), "maxembed"));
+  std::vector<uint64_t> handles;
+  std::vector<ValueStore::WriteSpec> specs;
+  for (uint64_t key = 0; key < 6; ++key) {
+    handles.push_back(key + 1);
+    specs.push_back({payload, 4});
+  }
+  bandana->BatchWrite(handles, specs);
+  maxembed->BatchWrite(handles, specs);
+  std::vector<ValueStore::ReadResult> bandana_out;
+  std::vector<ValueStore::ReadResult> max_out;
+  bandana->BatchRead(handles, bandana_out);
+  maxembed->BatchRead(handles, max_out);
+  EXPECT_LT(maxembed->stats().page_reads, bandana->stats().page_reads);
+  EXPECT_LT(bandana->stats().page_reads, plain_reads);
+  ASSERT_EQ(bandana_out.size(), 6U);
+  EXPECT_EQ(bandana_out.front().data, std::vector<char>(payload, payload + 4));
+  EXPECT_EQ(max_out.back().data, bandana_out.back().data);
+
+  std::vector<uint64_t> repeated = {1, 1, 1};
+  std::vector<ValueStore::ReadResult> repeated_out;
+  const auto before = maxembed->stats().page_reads;
+  maxembed->BatchRead(repeated, repeated_out);
+  EXPECT_EQ(maxembed->stats().page_reads, before + 1);
+  EXPECT_EQ(repeated_out[0].data, repeated_out[2].data);
 }
 
 TEST_F(StaticLayoutValueTest, BatchReadCoalescesPagesAcrossLayouts) {
@@ -333,6 +439,191 @@ TEST_F(StaticLayoutValueTest, SlabBatchReadSharesPagesAndPreservesRowOrder) {
   slab.BatchRead(entries, sizes);
   EXPECT_EQ(std::string(out.front().data(), sizes.front()), values[31]);
   EXPECT_EQ(std::string(out.back().data(), sizes.back()), values[31]);
+}
+
+TEST_F(StaticLayoutValueTest, HybridBatchAllocationCoalescesSsdWrites) {
+  BaseKVConfig config;
+  config.num_threads_ = 2;
+  config.json_config_ = {
+      {"value",
+       {{"type", "TIERED_VALUE_STORE"},
+        {"dram_allocator",
+         {{"type", "CONCURRENT_SLAB_MEMORY_POOL"},
+          {"capacity_bytes", 64 << 20},
+          {"path", (root_ / "dram").string()}}},
+        {"tiering", {{"high_watermark_ratio", 1024.0 / (64 << 20)}}},
+        {"ssd_allocator",
+         {{"type", "SSD_SLAB"},
+          {"capacity_bytes", 64ULL << 20},
+          {"size_classes", {128}},
+          {"path", (root_ / "ssd.db").string()},
+          {"io", {{"type", "INMEMORY"}, {"base_offset_bytes", 0}}}}}}}};
+  HybridValueStore store(config);
+  std::vector<std::string> values;
+  std::vector<ValueStore::WriteSpec> specs;
+  for (size_t i = 0; i < 64; ++i) {
+    values.emplace_back(128, static_cast<char>(i));
+  }
+  for (const auto& value : values) {
+    specs.push_back({value.data(), value.size()});
+  }
+  const auto handles = store.BatchAllocAndWrite(specs);
+  ASSERT_EQ(handles.size(), values.size());
+  EXPECT_NE(store.ExtraResultFields().find("tiered_dram_live_allocs=8 "),
+            std::string::npos);
+  EXPECT_NE(store.ExtraResultFields().find("tiered_ssd_live_allocs=56 "),
+            std::string::npos);
+  EXPECT_NE(store.ExtraResultFields().find("layout_page_reads=2 "),
+            std::string::npos);
+  std::vector<ValueStore::ReadResult> out;
+  store.BatchRead(handles, out);
+  for (size_t i = 0; i < values.size(); ++i) {
+    EXPECT_EQ(std::string(out[i].data.begin(), out[i].data.end()), values[i]);
+    store.Free(handles[i]);
+  }
+  EXPECT_NE(store.ExtraResultFields().find("tiered_live_allocs=0 "),
+            std::string::npos);
+
+  std::vector<uint64_t> allocated(1024, kValueHandleNone);
+  std::atomic<bool> start{false};
+  std::vector<std::thread> threads;
+  for (size_t tid = 0; tid < 16; ++tid) {
+    threads.emplace_back([&, tid]() {
+      while (!start.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+      }
+      for (size_t i = tid; i < allocated.size(); i += 16) {
+        allocated[i] = store.Alloc(128);
+      }
+    });
+  }
+  start.store(true, std::memory_order_release);
+  for (auto& thread : threads) {
+    thread.join();
+  }
+  size_t dram_rows = 0;
+  for (uint64_t handle : allocated) {
+    ASSERT_NE(handle, kValueHandleNone);
+    dram_rows += store.DirectPtr(handle) != nullptr;
+    store.Free(handle);
+  }
+  EXPECT_EQ(dram_rows, 8U);
+}
+
+TEST_F(StaticLayoutValueTest, HybridProfileControlsKeyedPlacement) {
+  const auto profile       = root_ / "dram_keys.bin";
+  const uint64_t fused_key = (uint64_t{1} << 30) + 4;
+  const std::array<uint64_t, 2> hot_keys{2, fused_key};
+  {
+    std::ofstream out(profile, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(hot_keys.data()), sizeof(hot_keys));
+  }
+  for (const char* strategy : {"plain", "bandana"}) {
+    auto artifact        = Bandana();
+    artifact.keys.back() = fused_key;
+    auto config = Config(Save(artifact), strategy, "TIERED_VALUE_STORE");
+    auto& value = config.json_config_["value"];
+    value["dram_allocator"] = {
+        {"type", "CONCURRENT_SLAB_MEMORY_POOL"},
+        {"capacity_bytes", 64 << 20},
+        {"path", (root_ / "profile_dram").string()}};
+    value["ssd_allocator"] = {
+        {"type", "SSD_SLAB"},
+        {"capacity_bytes", 64ULL << 20},
+        {"path", (root_ / "profile_ssd.db").string()},
+        {"io", {{"type", "INMEMORY"}, {"base_offset_bytes", 0}}}};
+    value["tiering"] = {{"dram_keys_path", profile.string()}};
+    HybridValueStore store(config);
+    std::vector<uint64_t> keys{0, 1, 2, 3, fused_key};
+    const std::array<float, 5> values{1, 2, 3, 4, 5};
+    std::vector<ValueStore::WriteSpec> specs;
+    for (const auto& item : values) {
+      specs.push_back({&item, sizeof(item)});
+    }
+    auto handles = store.BatchAllocAndWrite(keys, specs);
+    ASSERT_EQ(handles.size(), keys.size());
+    for (size_t i = 0; i < keys.size(); ++i) {
+      EXPECT_EQ(store.DirectPtr(handles[i]) != nullptr, i == 2 || i == 4);
+      float out = 0;
+      ASSERT_EQ(store.Read(handles[i], &out, sizeof(out)), sizeof(out));
+      EXPECT_FLOAT_EQ(out, values[i]);
+    }
+    EXPECT_NE(store.ExtraResultFields().find("tiered_dram_profile_keys=2 "),
+              std::string::npos);
+    store.Free(handles[2]);
+    const float updated = 9;
+    handles[2]          = store.AllocAndWrite(2, &updated, sizeof(updated));
+    ASSERT_NE(store.DirectPtr(handles[2]), nullptr);
+    float out = 0;
+    ASSERT_EQ(store.Read(handles[2], &out, sizeof(out)), sizeof(out));
+    EXPECT_FLOAT_EQ(out, updated);
+    for (uint64_t handle : handles) {
+      store.Free(handle);
+    }
+  }
+
+  auto config = Config(Save(Bandana()), "bandana", "TIERED_VALUE_STORE");
+  config.json_config_["value"]["dram_allocator"] = {
+      {"type", "CONCURRENT_SLAB_MEMORY_POOL"},
+      {"capacity_bytes", 64 << 20},
+      {"path", (root_ / "bad_profile_dram").string()}};
+  config.json_config_["value"]["ssd_allocator"] = {
+      {"type", "SSD_SLAB"},
+      {"capacity_bytes", 64ULL << 20},
+      {"path", (root_ / "bad_profile_ssd.db").string()}};
+  config.json_config_["value"]["tiering"] = {
+      {"dram_keys_path", profile.string()}};
+  for (const auto& invalid :
+       {std::array<uint64_t, 2>{4, 2}, std::array<uint64_t, 2>{2, 2}}) {
+    {
+      std::ofstream file(profile, std::ios::binary | std::ios::trunc);
+      file.write(reinterpret_cast<const char*>(invalid.data()),
+                 sizeof(invalid));
+    }
+    EXPECT_THROW(HybridValueStore{config}, std::invalid_argument);
+  }
+  std::filesystem::resize_file(profile, 1);
+  EXPECT_THROW(HybridValueStore{config}, std::invalid_argument);
+  std::filesystem::remove(profile);
+  EXPECT_THROW(HybridValueStore{config}, std::invalid_argument);
+}
+
+TEST_F(StaticLayoutValueTest, SgdPersistsColdRowsAndDuplicateGradients) {
+  auto config                                                 = OnlineConfig(3);
+  config.json_config_["value"]["tiering"]["online_admission"] = false;
+  KVEngineComposite engine(config);
+  std::array<float, 32> initial;
+  initial.fill(5);
+  for (uint64_t key = 0; key < 5; ++key) {
+    engine.Put(
+        key,
+        std::string_view(reinterpret_cast<const char*>(initial.data()), 128),
+        0);
+  }
+  std::string value;
+  engine.Get(4, value, 0); // First probation observation.
+  const std::vector<uint64_t> keys{4, 4, 0, 5, 5};
+  std::array<float, 160> grads;
+  for (size_t row = 0; row < keys.size(); ++row) {
+    std::fill_n(grads.data() + row * 32, 32, row + 1);
+  }
+  ASSERT_TRUE(engine.ApplySgdUpdateFlat(
+      base::ConstArray<uint64_t>(keys),
+      grads.data(),
+      keys.size(),
+      32,
+      .5,
+      0,
+      0));
+  for (const auto expected :
+       {std::pair<uint64_t, float>{4, 3.5f}, {0, 3.5f}, {5, -4.5f}}) {
+    engine.Get(expected.first, value, 0);
+    ASSERT_EQ(value.size(), 128U);
+    std::array<float, 32> row;
+    std::memcpy(row.data(), value.data(), value.size());
+    for (float item : row)
+      EXPECT_FLOAT_EQ(item, expected.second);
+  }
 }
 
 TEST_F(StaticLayoutValueTest, HybridWatermarkAndReplicaUpdate) {
@@ -3074,8 +3365,8 @@ TEST_F(StaticLayoutValueTest, SsdBatchWriteReleasesBuffersOnIoFailure) {
     EXPECT_THROW(store.BatchWrite({handles.front(), handles.back()},
                                   {specs.front(), specs.back()}),
                  std::runtime_error);
-    EXPECT_EQ(g_buffer_allocations.load() - allocated, 2);
-    EXPECT_EQ(g_buffer_frees.load() - freed, 2);
+    EXPECT_EQ(g_buffer_allocations.load() - allocated, 1);
+    EXPECT_EQ(g_buffer_frees.load() - freed, 1);
   }
 }
 
@@ -3492,4 +3783,109 @@ TEST_F(StaticLayoutValueTest,
   store.Free(hb);
   EXPECT_EQ(
       TieredField(store.ExtraResultFields(), "tiered_clock_backed_values"), 0);
+}
+
+TEST_F(StaticLayoutValueTest, FailedSingleHybridWriteRestoresLiveAccounting) {
+  for (bool profiled : {false, true}) {
+    auto config                     = OnlineConfig(3);
+    auto& tiering                   = config.json_config_["value"]["tiering"];
+    tiering["online_admission"]     = false;
+    tiering["high_watermark_ratio"] = 0.0;
+    if (!profiled)
+      tiering.erase("dram_keys_path");
+    HybridValueStore store(config);
+    std::array<float, 32> payload;
+    payload.fill(7);
+    g_fail_writes.store(true);
+    EXPECT_THROW(store.AllocAndWrite(payload.data(), sizeof(payload)),
+                 std::runtime_error);
+    EXPECT_THROW(store.AllocAndWrite(4, payload.data(), sizeof(payload)),
+                 std::runtime_error);
+    g_fail_writes.store(false);
+    const auto fields = store.ExtraResultFields();
+    EXPECT_NE(fields.find("tiered_live_allocs=0 "), std::string::npos);
+    EXPECT_NE(fields.find("tiered_dram_live_allocs=0 "), std::string::npos);
+    EXPECT_NE(fields.find("tiered_ssd_live_allocs=0 "), std::string::npos);
+    const uint64_t handle =
+        store.AllocAndWrite(4, payload.data(), sizeof(payload));
+    ASSERT_NE(handle, kValueHandleNone);
+    std::array<float, 32> output;
+    EXPECT_EQ(store.Read(handle, output.data(), sizeof(output)),
+              sizeof(output));
+    EXPECT_EQ(output, payload);
+    store.Free(handle);
+  }
+}
+
+TEST_F(StaticLayoutValueTest, ProfilePlacementPreservesCachePolicySelection) {
+  for (const char* policy : {"none", "lru"}) {
+    auto config                 = OnlineConfig(3);
+    auto& tiering               = config.json_config_["value"]["tiering"];
+    tiering["online_admission"] = false;
+    tiering["cache_policy"]     = policy;
+    HybridValueStore store(config);
+    std::array<float, 32> row;
+    row.fill(7);
+    std::vector<uint64_t> keys{0, 1, 2, 3, 4};
+    std::vector<ValueStore::WriteSpec> specs(
+        keys.size(), {row.data(), sizeof(row)});
+    const auto handles = store.BatchAllocAndWrite(keys, specs);
+    ASSERT_EQ(handles.size(), keys.size());
+    std::vector<ValueStore::ReadResult> output;
+    store.BatchRead(handles, output);
+    ASSERT_EQ(output.size(), keys.size());
+    for (size_t i = 0; i < handles.size(); ++i) {
+      EXPECT_EQ(store.DirectPtr(handles[i]) != nullptr, i < 3);
+      ASSERT_EQ(output[i].data.size(), sizeof(row));
+      EXPECT_EQ(std::memcmp(output[i].data.data(), row.data(), sizeof(row)), 0);
+    }
+    EXPECT_NE(store.ExtraResultFields().find("tiered_ssd_live_ratio=0.400000 "),
+              std::string::npos);
+  }
+  for (const char* policy : {"clock", "adaptive"}) {
+    auto config = OnlineConfig(3);
+    config.json_config_["value"]["tiering"]["online_admission"] = false;
+    config.json_config_["value"]["tiering"]["cache_policy"]     = policy;
+    EXPECT_THROW(HybridValueStore{config}, std::invalid_argument);
+  }
+}
+
+TEST_F(StaticLayoutValueTest, MixedSgdUpdatesRemainVisibleWithClockPlacement) {
+  auto config = TieredStoreConfig(
+      root_,
+      "sgd-clock",
+      {{"cache_policy", "clock"},
+       {"cache_shards", 1},
+       {"high_watermark_ratio", 0.001}});
+  config.json_config_["index"] = {{"type", "DRAM_UNORDERED_MAP"}};
+  KVEngineComposite engine(config);
+  std::array<float, 128> initial;
+  initial.fill(5);
+  for (uint64_t key = 0; key < 5; ++key)
+    engine.Put(key,
+               std::string_view(reinterpret_cast<const char*>(initial.data()),
+                                sizeof(initial)),
+               0);
+  const std::vector<uint64_t> keys{4, 4, 0, 5, 5};
+  std::array<float, 640> grads;
+  for (size_t row = 0; row < keys.size(); ++row)
+    std::fill_n(grads.data() + row * 128, 128, row + 1);
+  ASSERT_TRUE(engine.ApplySgdUpdateFlat(
+      base::ConstArray<uint64_t>(keys),
+      grads.data(),
+      keys.size(),
+      128,
+      0.5,
+      0,
+      0));
+  for (const auto expected :
+       {std::pair<uint64_t, float>{4, 3.5f}, {0, 3.5f}, {5, -4.5f}}) {
+    std::string value;
+    engine.Get(expected.first, value, 0);
+    ASSERT_EQ(value.size(), sizeof(initial));
+    std::array<float, 128> output;
+    std::memcpy(output.data(), value.data(), value.size());
+    for (float item : output)
+      EXPECT_FLOAT_EQ(item, expected.second);
+  }
 }

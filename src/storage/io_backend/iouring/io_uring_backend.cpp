@@ -280,7 +280,10 @@ private:
       }
       if (ret == -EAGAIN) {
         do {
-          ret = io_uring_wait_cqe(ring, &cqe);
+          // Zero spins keeps the non-polling bounded-window path. Preserve
+          // upstream's partial-submission handling and configurable polling.
+          ret = io_uring_wait_cqe_nr(
+              ring, &cqe, completion_poll_spins_ == 0 ? inflight : 1);
         } while (ret == -EINTR);
       }
       CHECK_GE(ret, 0) << "Failed to wait for batch I/O: " << strerror(-ret);

@@ -183,7 +183,12 @@ public:
   uint64_t AllocAndWrite(const void* data, size_t data_size) override {
     const uint64_t handle = Alloc(data_size);
     if (handle != kInvalidHandle) {
-      Write(handle, data, data_size);
+      try {
+        Write(handle, data, data_size);
+      } catch (...) {
+        Free(handle);
+        throw;
+      }
     }
     return handle;
   }
@@ -455,23 +460,6 @@ private:
     size_t size     = 0;
   };
 
-  struct ThreadLocalBuffer {
-    char* ptr      = nullptr;
-    uint64_t pages = 0;
-  };
-
-  char* AcquireThreadBuffer(uint64_t pages) {
-    static thread_local ThreadLocalBuffer tls;
-    if (tls.ptr == nullptr || tls.pages < pages) {
-      if (tls.ptr != nullptr) {
-        backend_->FreeBuffer(tls.ptr);
-      }
-      tls.ptr   = backend_->AllocateBuffer(pages);
-      tls.pages = pages;
-    }
-    return tls.ptr;
-  }
-
   struct Block {
     uint64_t byte_offset = 0;
     uint64_t cursor      = 0;
@@ -632,20 +620,16 @@ private:
     }
     std::vector<IOBackend::IOEntry> io_entries;
     io_entries.reserve(runs.size());
-    // A single contiguous run is the common case (one slot, or one packed
-    // batch): reuse the thread-local buffer instead of allocating per write.
-    const bool thread_buffer = runs.size() == 1;
-    auto free_buffer         = [this](char* ptr) { backend_->FreeBuffer(ptr); };
-    std::vector<std::unique_ptr<char, decltype(free_buffer)>> buffers;
-    buffers.reserve(thread_buffer ? 0 : runs.size());
+    // One owned buffer covers every run and is released on failures and
+    // worker shutdown, without retaining a backend pointer in thread-local
+    // state.
+    auto free_buffer = [this](char* ptr) { backend_->FreeBuffer(ptr); };
+    std::unique_ptr<char, decltype(free_buffer)> buffer(
+        backend_->AllocateBuffer(pages.size()), free_buffer);
+    size_t cursor = 0;
     for (auto& run : runs) {
-      if (thread_buffer) {
-        run.buf = AcquireThreadBuffer(run.page_count);
-      } else {
-        buffers.emplace_back(
-            backend_->AllocateBuffer(run.page_count), free_buffer);
-        run.buf = buffers.back().get();
-      }
+      run.buf = buffer.get() + cursor * PAGE_SIZE;
+      cursor += run.page_count;
       io_entries.push_back({run.first_page, run.buf, run.page_count});
     }
     backend_->BatchReadPages(io_entries);
@@ -687,7 +671,10 @@ private:
     const uint64_t page_off = byte_offset % PAGE_SIZE;
     const uint64_t total    = page_off + slot_size;
     const uint64_t pages    = (total + PAGE_SIZE - 1) / PAGE_SIZE;
-    char* buf               = AcquireThreadBuffer(pages);
+    auto free_buffer        = [this](char* ptr) { backend_->FreeBuffer(ptr); };
+    std::unique_ptr<char, decltype(free_buffer)> buffer(
+        backend_->AllocateBuffer(pages), free_buffer);
+    char* buf = buffer.get();
     std::vector<uint64_t> touched;
     touched.reserve(pages);
     for (uint64_t page = 0; page < pages; ++page) {
@@ -698,8 +685,15 @@ private:
     backend_->BatchReadPages({{start, buf, pages}});
     uint32_t n = 0;
     std::memcpy(&n, buf + page_off, sizeof(n));
-    const size_t actual = std::min(buf_size, static_cast<size_t>(n));
-    std::memcpy(out_buf, buf + page_off + kHeaderSize, actual);
+    const size_t actual =
+        out_buf == nullptr
+            ? 0
+            : std::min({buf_size,
+                        static_cast<size_t>(n),
+                        static_cast<size_t>(slot_size - kHeaderSize)});
+    if (actual != 0) {
+      std::memcpy(out_buf, buf + page_off + kHeaderSize, actual);
+    }
     return actual;
   }
 
