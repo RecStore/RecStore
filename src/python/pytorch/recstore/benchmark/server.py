@@ -101,11 +101,11 @@ def normalize_cache_policy(cache_policy: str) -> str:
     policy = str(cache_policy).strip().lower()
     if policy == "lru":
         return "LRU"
-    if policy == "none":
-        return "none"
+    if policy in {"none", "clock"}:
+        return policy
     raise ValueError(
         "unsupported tiering.cache_policy: "
-        f"{cache_policy!r} (expected 'LRU' or 'none')"
+        f"{cache_policy!r} (expected 'LRU', 'none', or 'clock')"
     )
 
 

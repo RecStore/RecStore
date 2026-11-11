@@ -49,6 +49,18 @@ class TestHybridConfig(unittest.TestCase):
                 for attr, value in expected.items():
                     self.assertEqual(getattr(cfg, attr), value)
 
+    def test_tiered_cache_policy_accepts_clock(self) -> None:
+        args = ["--backend", "recstore", "--ps-kv-backend", "recstore_tiered"]
+        for raw, expected in (("clock", "clock"), ("none", "none"), ("LRU", "LRU")):
+            with self.subTest(policy=raw):
+                cfg = parse_config([*args, "--tiered-cache-policy", raw])
+                validate_recstore_config(cfg)
+                self.assertEqual(cfg.tiered_cache_policy, expected)
+        with self.assertRaisesRegex(RuntimeError, "tiered-cache-policy"):
+            validate_recstore_config(
+                parse_config([*args, "--tiered-cache-policy", "bogus"])
+            )
+
     def test_dense_graph_config_roundtrip_and_supported_paths(self) -> None:
         self.assertFalse(parse_config([]).dense_cuda_graph)
         for args in (

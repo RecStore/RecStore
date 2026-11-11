@@ -337,8 +337,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default="LRU",
         help=(
-            "tiering.cache_policy for recstore_tiered: 'LRU' (read cache on) or "
-            "'none' (cache-off baseline, comparable with the sweep numbers)."
+            "tiering.cache_policy for recstore_tiered: 'LRU' (read cache on), "
+            "'none' (cache-off baseline), or 'clock' (hot-row exchange)."
         ),
     )
     parser.add_argument("--num-embeddings", type=int, default=200000)
@@ -800,9 +800,9 @@ def validate_recstore_config(cfg: RunConfig) -> None:
     if cfg.tiered_dram_capacity_multiplier < 0:
         raise RuntimeError("--tiered-dram-capacity-multiplier must be non-negative")
     policy = str(cfg.tiered_cache_policy).strip().lower()
-    if policy not in {"lru", "none"}:
-        raise RuntimeError("--tiered-cache-policy must be 'LRU' or 'none'")
-    cfg.tiered_cache_policy = "LRU" if policy == "lru" else "none"
+    if policy not in {"lru", "none", "clock"}:
+        raise RuntimeError("--tiered-cache-policy must be 'LRU', 'none', or 'clock'")
+    cfg.tiered_cache_policy = {"lru": "LRU", "none": "none", "clock": "clock"}[policy]
     if cfg.nnodes == 1:
         if cfg.single_node_ps_backend not in {"local_shm", "hierkv"}:
             raise RuntimeError(
