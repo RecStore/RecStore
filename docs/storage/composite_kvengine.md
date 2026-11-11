@@ -205,6 +205,7 @@ Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 c
 
 跨 step 重复访问明显（多 epoch、热点集中）时用 `clock`；只做一次扫描或没有复用时用 `none`。
 `lru` 只缓存 SSD 读结果、不改变主放置，收益取决于重复读能否弥补它占用的 DRAM 预算。
+`rs_demo` 的 tiered 配置默认 `clock`，库与 benchmark server 模板默认 `none`。
 
 字段位于 `value.tiering`：
 

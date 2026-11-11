@@ -51,6 +51,9 @@ class TestHybridConfig(unittest.TestCase):
 
     def test_tiered_cache_policy_accepts_clock(self) -> None:
         args = ["--backend", "recstore", "--ps-kv-backend", "recstore_tiered"]
+        cfg = parse_config(args)
+        validate_recstore_config(cfg)
+        self.assertEqual(cfg.tiered_cache_policy, "clock")
         for raw, expected in (("clock", "clock"), ("none", "none"), ("LRU", "LRU")):
             with self.subTest(policy=raw):
                 cfg = parse_config([*args, "--tiered-cache-policy", raw])

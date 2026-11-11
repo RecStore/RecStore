@@ -13,9 +13,9 @@
   49% 以后 commit 的增量大于 pull。
 - **“行占比”不等于“访问占比”**：每个特征每个样本各查一次，小表行少但访问量与 200K 大表相同；
   当前“先到先得”的放置让小表先占 DRAM，所以 32% 的行在 SSD 时只有 21.9% 的访问走 SSD。
-- **本页是 cache-off 基线，不是默认配置**：`HybridValueStore` 的 `tiering.cache_policy` 库默认值是 `none`，
-  但 `rs_demo` / benchmark server 生成的配置模板写的是 `lru`，e2e 这条路径实际会开启读缓存。
-  本页 lane 全部显式设回 `none`，所以这里没有冷热交换，数字只作对照；开启后的对比见「读缓存」。
+- **本页是 cache-off 基线，不是默认配置**：`HybridValueStore` 与 benchmark server 模板的
+  `tiering.cache_policy` 默认是 `none`，`rs_demo` 默认 `clock`（主放置交换）。
+  本页 lane 全部显式设回 `none`，所以这里没有冷热交换，数字只作对照；LRU 与 CLOCK 的对比见「读缓存」。
 - **启动成本线性增长**：全表 zero-init 使 `embedding_init` 从 3.1 s 涨到 58.7 s（约 0.57 s / 1% 行在 SSD）。
 
 ## 测试环境
@@ -73,9 +73,9 @@ usable DRAM rows = floor(0.85 * DRAM tier bytes / 512)
 
 ### 读缓存（#343 之后）
 
-`tiering.cache_policy` 的库默认值是 `none`，但 `rs_demo` 生成的配置模板默认写 `lru`
-（`src/python/pytorch/recstore/benchmark/server.py`），所以 e2e 实际默认开着缓存；要复现本页基线需显式
-`--tiered-cache-policy none`。本页扫描为了与旧数据可比，显式设回 `none`；下面用同机 loopback、
+`tiering.cache_policy` 的库默认值是 `none`，benchmark server 模板默认也是 `none`
+（`src/python/pytorch/recstore/benchmark/server.py`），`rs_demo` 默认 `clock`；要复现本页基线需显式
+`--tiered-cache-policy none`。下面用同机 loopback、
 同样 15% 行在 SSD（16.3% 访问走 SSD）的两轮交错复测给出 cache-on 结果。
 
 每轮 64 steps、排除 5 步 warmup、3 次重复；下表是每次重复的 `step` 均值和中位数指标
@@ -136,12 +136,11 @@ dense / backward / sparse 基本不变。
 小表整体挤到 SSD，访问占比从 21.9% 跳到 54.1%，step 从 74.8 ms 跳到 105.7 ms。能控制放置时，
 应优先保住小表和热点表，而不是简单按行数比例切。
 
-**本页数据是显式 cache-off，默认配置实际会开缓存。** #343 给 `HybridValueStore` 加了可选的 LRU 读缓存：
+**本页数据是显式 cache-off，默认配置会做冷热交换。** #343 给 `HybridValueStore` 加了可选的 LRU 读缓存：
 `tiering.cache_policy=lru` 时先从 `cache_budget_ratio`（默认 0.05）预留 DRAM，SSD 行在读完成且
 连续 miss 达到 `promote_min_misses`（默认 2）后提升；`Write` 写穿、`Free` 失效，没有后台线程。
-它不改变首次 `Alloc` 的放置，也不做后台冷热迁移。库默认值是 `none`，但 `rs_demo` / benchmark server
-的配置模板写的是 `lru`，所以 e2e 这条路径默认是开的；本页 lane 全部显式设回 `none`，上表的放置结论
-仍按“先到先得”读。
+它不改变首次 `Alloc` 的放置，也不做后台冷热迁移。库与 benchmark server 模板默认是 `none`，
+`rs_demo` 默认 `clock`；本页 lane 全部显式设回 `none`，上表的放置结论仍按“先到先得”读。
 
 **写回路径比读路径更早成为瓶颈。** 49% 以后 commit 增量持续大于 pull 增量；SSD 行的更新走
 `SsdValueStore` 的 `Write`/`BatchWrite`，在 server 线程里同步完成。批量、异步写回，
@@ -227,9 +226,9 @@ python3 model_zoo/rs_demo/run_mock_stress.py \
   `peer_unreachable`。
 - PS 的 `dram` / `ssd.db` 每次用新目录，跑完删除，避免上一次的 tier 状态污染。
 - 本页比例扫描显式写了 `"tiering": {"cache_policy": "none"}`；改用 `rs_demo` 时对应
-  `--tiered-cache-policy none`。该参数还接受 `clock`（主放置交换，见
+  `--tiered-cache-policy none`。该参数接受 `LRU` / `none` / `clock`（主放置交换，见
   [分层安放与读缓存](../storage/composite_kvengine.md#tiered-placement-cache)）；
-  默认仍是 `lru`，直接复用模板会开启读缓存。
+  `rs_demo` 默认 `clock`，复现本页基线要显式传 `none`。
 
 本次的 per-step CSV、生命周期 JSON、runner 日志和一次性 harness 保存在运行产物目录
 `results/tiered_e2e_11052043/`（不随仓库提交）；需要原始数据时可通过 PR 附件或联系作者获取。

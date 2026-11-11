@@ -158,7 +158,7 @@ class RunConfig:
     recstore_index_type: str = "DRAM_EXTENDIBLE_HASH"
     ps_kv_backend: str = "recstore_dram"
     tiered_dram_capacity_multiplier: float = 2.0
-    tiered_cache_policy: str = "LRU"
+    tiered_cache_policy: str = "clock"
     torchrec_profiler: bool = False
     torchrec_dist_mode: str = "replicated"
     torchrec_memory_mode: str = "hbm"
@@ -335,7 +335,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tiered-cache-policy",
         type=str,
-        default="LRU",
+        default="clock",
         help=(
             "tiering.cache_policy for recstore_tiered: 'LRU' (read cache on), "
             "'none' (cache-off baseline), or 'clock' (hot-row exchange)."
