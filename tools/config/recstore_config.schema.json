@@ -182,6 +182,76 @@
       "default": "http://127.0.0.1:8081/report",
       "description": "HTTP endpoint for async report() ingestion service (typically writes to ClickHouse for Grafana dashboards)."
     },
+    "observability": {
+      "type": "object",
+      "description": "Metric sinks for report(). When present, replaces the legacy report_API/local defaults; environment variables override these fields.",
+      "additionalProperties": false,
+      "properties": {
+        "sinks": {
+          "type": "array",
+          "description": "Built-in sinks to enable. The list replaces all defaults, so omitting a sink disables it; an empty list or [\"none\"] disables every built-in sink.",
+          "items": {
+            "type": "string",
+            "enum": ["remote", "csv", "jsonl", "glog", "none"]
+          }
+        },
+        "remote": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "endpoint": {
+              "type": "string",
+              "pattern": "^https?://.+",
+              "description": "Ingestion endpoint; same role as the legacy report_API."
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3000
+            },
+            "queue_max": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 10000,
+              "description": "Pending payloads kept before the oldest one is dropped."
+            }
+          }
+        },
+        "csv": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "default": "recstore_metrics_{host}_{pid}.csv",
+              "description": "Supports {host} and {pid} placeholders so ranks and the PS server do not share a file."
+            },
+            "flush_every_n": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          }
+        },
+        "jsonl": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "default": "recstore_report_events.jsonl"
+            },
+            "flush_every_n": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          }
+        }
+      }
+    },
     "hugectr": {
       "type": "object",
       "description": "HugeCTR frontend runtime backend selection.",
@@ -471,7 +541,23 @@
             },
             "tiering": {
               "type": "object",
-              "additionalProperties": true
+              "additionalProperties": true,
+              "properties": {
+                "cache_policy": {
+                  "type": "string",
+                  "enum": ["none", "lru", "LRU", "clock", "CLOCK", "adaptive", "ADAPTIVE"],
+                  "description": "lru reserves an SSD read cache; clock exchanges cold DRAM and hot SSD values within the full DRAM watermark; adaptive selects an overflow-sized LRU for nearly fitting known working sets, otherwise CLOCK."
+                },
+                "retain_backing_copies": {
+                  "type": "boolean",
+                  "description": "CLOCK defaults to retaining promoted values' SSD copies. False requires a plain SSD layout and releases those copies after promotion; subsequent evictions write the values again."
+                },
+                "expected_dram_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Load-time working set in DRAM slot bytes; 0 means unknown. A fitting working set skips read-cache reservation."
+                }
+              }
             }
           },
           "additionalProperties": true,

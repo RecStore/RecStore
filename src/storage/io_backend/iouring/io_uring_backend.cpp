@@ -15,6 +15,7 @@ class IoUringBackend : public IOBackend {
 private:
   std::string file_path;
   int fd;
+  int completion_poll_spins_;
 
   static char* AllocateAligned(size_t bytes) {
     void* ptr = nullptr;
@@ -126,6 +127,12 @@ private:
 public:
   IoUringBackend(const BaseKVConfig& config) : IOBackend(config), fd(-1) {
     file_path = config.json_config_.at("file_path").get<std::string>();
+    completion_poll_spins_ =
+        config.json_config_.value("completion_poll_spins", 8192);
+    if (completion_poll_spins_ < 0 || completion_poll_spins_ > 1000000) {
+      throw std::invalid_argument(
+          "completion_poll_spins must be in [0, 1000000]");
+    }
   }
   ~IoUringBackend() {
     if (fd >= 0) {
@@ -219,71 +226,72 @@ public:
   }
 
   void BatchWritePages(const std::vector<IOEntry>& entries) override {
-    if (entries.empty())
-      return;
-    struct io_uring* ring = get_thread_ring();
-    int max_inflight      = std::max(queue_cnt / 2, 1);
-    size_t submitted      = 0;
-    int inflight          = 0;
-
-    while (submitted < entries.size() || inflight > 0) {
-      while (submitted < entries.size() && inflight < max_inflight) {
-        auto& e                  = entries[submitted];
-        uint64_t total_bytes     = e.page_count * PAGE_SIZE;
-        struct io_uring_sqe* sqe = io_uring_get_sqe(ring);
-        CHECK_NE(sqe, nullptr) << "Failed to get SQE for batch write";
-        io_uring_prep_write(
-            sqe, fd, e.buffer, total_bytes, e.page_id * PAGE_SIZE);
-        sqe->user_data = 0;
-        inflight++;
-        submitted++;
-      }
-      // The bounded window fits in the CQ. Wait for the window together to
-      // avoid both busy polling and a separate wakeup for each completed I/O.
-      const int wait_ret = io_uring_submit_and_wait(ring, inflight);
-      CHECK_GE(wait_ret, 0)
-          << "Failed to wait for batch write: " << strerror(-wait_ret);
-      struct io_uring_cqe* cqe;
-      while (inflight > 0 && io_uring_peek_cqe(ring, &cqe) == 0) {
-        CHECK_GE(cqe->res, 0)
-            << "Batch write failed: " + std::string(strerror(-cqe->res));
-        io_uring_cqe_seen(ring, cqe);
-        inflight--;
-      }
-    }
+    BatchIO(entries, true);
   }
 
   void BatchReadPages(const std::vector<IOEntry>& entries) override {
-    if (entries.empty())
-      return;
     RecordRead(entries);
-    struct io_uring* ring = get_thread_ring();
-    int max_inflight      = std::max(queue_cnt / 2, 1);
-    size_t submitted      = 0;
-    int inflight          = 0;
+    BatchIO(entries, false);
+  }
 
+private:
+  void BatchIO(const std::vector<IOEntry>& entries, bool write) {
+    if (entries.empty()) {
+      return;
+    }
+    struct io_uring* ring  = get_thread_ring();
+    const int max_inflight = std::max(queue_cnt / 2, 1);
+    size_t submitted       = 0;
+    int inflight           = 0;
     while (submitted < entries.size() || inflight > 0) {
       while (submitted < entries.size() && inflight < max_inflight) {
-        auto& e                  = entries[submitted];
-        uint64_t total_bytes     = e.page_count * PAGE_SIZE;
+        const auto& e            = entries[submitted];
         struct io_uring_sqe* sqe = io_uring_get_sqe(ring);
-        CHECK_NE(sqe, nullptr) << "Failed to get SQE for batch read";
-        io_uring_prep_read(
-            sqe, fd, e.buffer, total_bytes, e.page_id * PAGE_SIZE);
+        CHECK_NE(sqe, nullptr) << "Failed to get SQE for batch I/O";
+        if (write) {
+          io_uring_prep_write(
+              sqe,
+              fd,
+              e.buffer,
+              e.page_count * PAGE_SIZE,
+              e.page_id * PAGE_SIZE);
+        } else {
+          io_uring_prep_read(
+              sqe,
+              fd,
+              e.buffer,
+              e.page_count * PAGE_SIZE,
+              e.page_id * PAGE_SIZE);
+        }
         sqe->user_data = 0;
-        inflight++;
-        submitted++;
+        ++submitted;
+        ++inflight;
       }
-      const int wait_ret = io_uring_submit_and_wait(ring, inflight);
-      CHECK_GE(wait_ret, 0)
-          << "Failed to wait for batch read: " << strerror(-wait_ret);
-      struct io_uring_cqe* cqe;
-      while (inflight > 0 && io_uring_peek_cqe(ring, &cqe) == 0) {
-        CHECK_GE(cqe->res, 0)
-            << "Batch read failed: " + std::string(strerror(-cqe->res));
+      // A partial submission leaves SQ entries pending. Never submit an empty
+      // queue while waiting for completions.
+      while (io_uring_sq_ready(ring) > 0) {
+        submit();
+      }
+      struct io_uring_cqe* cqe = nullptr;
+      int ret                  = -EAGAIN;
+      for (int spin = 0; spin < completion_poll_spins_ && ret == -EAGAIN;
+           ++spin) {
+        ret = io_uring_peek_cqe(ring, &cqe);
+      }
+      if (ret == -EAGAIN) {
+        do {
+          // Zero spins keeps the non-polling bounded-window path. Preserve
+          // upstream's partial-submission handling and configurable polling.
+          ret = io_uring_wait_cqe_nr(
+              ring, &cqe, completion_poll_spins_ == 0 ? inflight : 1);
+        } while (ret == -EINTR);
+      }
+      CHECK_GE(ret, 0) << "Failed to wait for batch I/O: " << strerror(-ret);
+      do {
+        CHECK_GE(cqe->res, 0) << "Batch I/O failed: " << strerror(-cqe->res);
         io_uring_cqe_seen(ring, cqe);
-        inflight--;
-      }
+        --inflight;
+      } while (inflight > 0 && io_uring_peek_cqe(ring, &cqe) == 0);
     }
   }
 };

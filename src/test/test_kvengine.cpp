@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "base/json.h"
+#include "base/lock.h"
 #include "memory/shm_file.h"
 
 #include "storage/kv_engine/engine_factory.h"
@@ -55,10 +56,13 @@ TEST(PetHashTest, ShardedSizeTracksConcurrentMutations) {
   EXPECT_EQ(hash->Size(), kThreadCount * kKeysPerThread);
 
   threads.clear();
+  base::Barrier delete_barrier(kThreadCount);
   for (uint64_t thread_id = 0; thread_id < kThreadCount; ++thread_id) {
-    threads.emplace_back([hash, thread_id] {
-      for (uint64_t i = 0; i < kKeysPerThread; i += 2)
+    threads.emplace_back([hash, thread_id, &delete_barrier] {
+      for (uint64_t i = 0; i < kKeysPerThread; i += 2) {
+        delete_barrier.Wait();
         hash->Delete(thread_id * kKeysPerThread + i + 1);
+      }
     });
   }
   for (auto& thread : threads)
@@ -66,6 +70,84 @@ TEST(PetHashTest, ShardedSizeTracksConcurrentMutations) {
   EXPECT_EQ(hash->Size(), kThreadCount * kKeysPerThread / 2);
   EXPECT_TRUE(hash->Valid(memory_size));
 
+  hash->~Hash();
+  free(memory);
+}
+
+TEST(PetHashTest, ConcurrentDeletesOfSameKeyCountOnce) {
+  using Hash                   = base::PetHash<uint64_t, uint64_t>;
+  constexpr uint64_t kCapacity = 128;
+  constexpr uint64_t kKeyCount = 64;
+  constexpr int kThreadCount   = 4;
+  const uint64_t memory_size   = Hash::MemorySize(kCapacity);
+  void* memory                 = nullptr;
+  ASSERT_EQ(posix_memalign(&memory, alignof(Hash), memory_size), 0);
+  auto* hash = new (memory) Hash();
+  hash->Initialize(kCapacity);
+  for (uint64_t key = 1; key <= kKeyCount; ++key)
+    hash->Set(key, key);
+
+  base::Barrier barrier(kThreadCount);
+  std::vector<std::thread> threads;
+  for (int tid = 0; tid < kThreadCount; ++tid) {
+    threads.emplace_back([&] {
+      for (uint64_t key = 1; key <= kKeyCount; ++key) {
+        barrier.Wait();
+        hash->Delete(key);
+      }
+    });
+  }
+  for (auto& thread : threads)
+    thread.join();
+  EXPECT_EQ(hash->Size(), 0);
+  EXPECT_TRUE(hash->Valid(memory_size));
+  for (uint64_t key = 1; key <= kKeyCount; ++key) {
+    EXPECT_FALSE(hash->Get(key).second);
+    hash->Set(key, key);
+  }
+  EXPECT_EQ(hash->Size(), kKeyCount);
+  EXPECT_TRUE(hash->Valid(memory_size));
+  hash->~Hash();
+  free(memory);
+}
+
+TEST(PetHashTest, InsertCanExpireAndEvictWhileHoldingChunkLock) {
+  using Hash                   = base::PetHash<uint64_t, uint64_t>;
+  constexpr uint64_t kCapacity = 28;
+  const uint64_t memory_size   = Hash::MemorySize(kCapacity, true);
+  void* memory                 = nullptr;
+  ASSERT_EQ(posix_memalign(&memory, alignof(Hash), memory_size), 0);
+  auto* hash = new (memory) Hash();
+  hash->Initialize(kCapacity, true);
+  // Even keys share a home chunk; the last two overflow into the other one.
+  for (uint64_t key = 2; key <= 32; key += 2)
+    hash->Set(key, key);
+  for (uint64_t key = 1; key <= 19; key += 2)
+    hash->Set(key, key);
+  hash->Set(34, 34, [](const auto& key, const auto&, const bool&) {
+    return key != 2;
+  });
+  EXPECT_FALSE(hash->Get(2).second);
+  EXPECT_TRUE(hash->Get(30).second);
+  EXPECT_TRUE(hash->Get(34).second);
+  EXPECT_EQ(hash->Size(), 26);
+  EXPECT_TRUE(hash->Valid(memory_size));
+
+  uint64_t victim = 0;
+  hash->Set(
+      36,
+      36,
+      [&](const auto& key, const auto&, const bool& force) {
+        if (force)
+          victim = key;
+        return true;
+      },
+      true);
+  EXPECT_NE(victim, 0);
+  EXPECT_FALSE(hash->Get(victim).second);
+  EXPECT_TRUE(hash->Get(36).second);
+  EXPECT_EQ(hash->Size(), 26);
+  EXPECT_TRUE(hash->Valid(memory_size));
   hash->~Hash();
   free(memory);
 }

@@ -147,13 +147,16 @@ public:
   uint64_t EmbUpdateAsync(const std::string& table_name,
                           const base::RecTensor& keys,
                           const base::RecTensor& grads,
-                          framework::CacheUpdateActions cache = {});
+                          framework::CacheUpdateActions cache = {},
+                          float learning_rate                 = 0.0f);
   void WaitForEmbUpdate(uint64_t update_id);
-  void EmbUpdateCached(const std::string& table,
-                       const base::RecTensor& keys,
-                       const base::RecTensor& grads,
-                       const framework::CacheUpdateActions& cache,
-                       bool local = false);
+  void EmbUpdateCached(
+      const std::string& table,
+      const base::RecTensor& keys,
+      const base::RecTensor& grads,
+      const framework::CacheUpdateActions& cache,
+      bool local          = false,
+      float learning_rate = 0.0f);
   void EmbWriteCached(const base::RecTensor& keys,
                       const base::RecTensor& values,
                       const framework::CacheUpdateActions& cache,
@@ -201,7 +204,13 @@ public:
   bool GetLocalLookupFlatPayloadRegion(const void** base, std::size_t* bytes);
   void LocalUpdateFlat(const std::string& table_name,
                        const base::RecTensor& keys,
-                       const base::RecTensor& grads);
+                       const base::RecTensor& grads,
+                       float learning_rate = 0.0f);
+  // Sync update that also forwards the client learning rate to the PS.
+  void EmbUpdateWithLearningRate(const std::string& table_name,
+                                 const base::RecTensor& keys,
+                                 const base::RecTensor& grads,
+                                 float learning_rate);
 
 private:
   SparseGradientCommitRuntime sparse_commits_;

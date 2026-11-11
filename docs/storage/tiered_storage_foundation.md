@@ -1,14 +1,11 @@
 # Tiered storage foundation
 
-The foundation combines bounded io_uring completion windows, page-coalesced
-plain-SSD slab operations, explicit DRAM admission budgets, profiled placement,
-and persistent SGD updates for mixed DRAM/SSD batches. It does not enable online
-admission by default.
+The foundation combines bounded io_uring completion windows, page-coalesced plain-SSD slab operations, explicit DRAM admission budgets, profiled placement, and persistent SGD updates for mixed DRAM/SSD batches. Online admission remains disabled by default. The upstream completion polling policy remains configurable; `value.ssd_allocator.io.completion_poll_spins=0` selects waiting without busy polling.
 
 `value.tiering.dram_keys_path` accepts a sorted, unique binary array of native
 `uint64_t` keys. `high_watermark_ratio` bounds live DRAM reservations against the
 configured allocator capacity. SSD residency statistics describe live rows;
-allocator capacity, page-cache residency, and physical bytes are separate metrics.
+allocator capacity, page-cache residency, and physical bytes are separate metrics. Explicit key profiles work with legacy placement and the LRU read cache; combining them with a policy that selects CLOCK placement is rejected.
 
 Batch reads deduplicate pages and batch writes serialize overlapping page patches.
 Fresh single-row allocations and batch allocations release their destinations

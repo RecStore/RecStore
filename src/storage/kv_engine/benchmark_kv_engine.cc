@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <sys/resource.h>
 
 #include <algorithm>
 #include <array>
@@ -7,6 +8,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <numeric>
@@ -15,7 +17,6 @@
 #include <string_view>
 #include <thread>
 #include <vector>
-#include <sys/resource.h>
 
 #include "base/bind_core.h"
 #include "base/factory.h"
@@ -24,7 +25,6 @@
 #include "memory/shm_file.h"
 #include "storage/io_backend/force_link.h"
 #include "storage/kv_engine/base_kv.h"
-#include "storage/kv_engine/engine_factory.h"
 #include "storage/kv_engine/engine_selector.h"
 #include "storage/ssd_layout/ssd_layout.h"
 
@@ -64,19 +64,52 @@ DEFINE_string(ssd_io_backend, "IOURING", "SSD IO backend");
 DEFINE_int32(ssd_queue_depth, 512, "SSD IO queue depth");
 DEFINE_int64(dram_capacity_bytes, 0, "override DRAM allocator capacity bytes");
 DEFINE_int64(ssd_capacity_bytes, 0, "override SSD allocator capacity bytes");
+DEFINE_string(tiered_cache_policy,
+              "none",
+              "tiered policy: none/lru/clock/adaptive (cold DRAM exchange)");
+DEFINE_double(tiered_cache_budget_ratio,
+              0.05,
+              "fraction of DRAM reserved for cache");
+DEFINE_int64(tiered_cache_expected_dram_bytes,
+             0,
+             "load-time working set in DRAM slot bytes; 0 means unknown");
+DEFINE_int64(tiered_cache_promote_min_misses,
+             2,
+             "SSD misses before a value is eligible for promotion");
+DEFINE_bool(
+    tiered_clock_frequency_admission,
+    false,
+    "use shared-epoch frequency admission instead of legacy CLOCK heat");
+DEFINE_bool(tiered_clock_cost_aware,
+            false,
+            "break eligible victim heat ties by SSD write cost");
+DEFINE_bool(tiered_clock_async_exchange,
+            false,
+            "move CLOCK exchanges to a bounded background queue");
+DEFINE_int64(tiered_clock_exchange_queue_entries,
+             256,
+             "maximum queued and active CLOCK exchange candidates");
+DEFINE_int64(tiered_clock_exchange_queue_bytes,
+             4 * 1024 * 1024,
+             "maximum queued and active CLOCK candidate payload bytes");
+DEFINE_bool(tiered_retain_backing_copies,
+            true,
+            "retain SSD copies of promoted CLOCK values (plain layouts only "
+            "when false)");
+DEFINE_int32(ssd_completion_poll_spins,
+             8192,
+             "SSD value I/O CQ polls before blocking; 0 waits immediately");
+DEFINE_int32(warmup_seconds, 0, "unmeasured transaction warmup seconds");
 DEFINE_string(tiering_cache_policy,
               "none",
-              "value.tiering.cache_policy for TIERED_VALUE_STORE: none|lru");
+              "value.tiering.cache_policy: none/lru/clock/adaptive");
 DEFINE_double(tiering_cache_budget_ratio,
               0.05,
-              "read cache budget as a share of the tiered DRAM layer; measured "
-              "on e2e, 0.05 leaves primary placement almost intact, 0.5 halves "
-              "it and loses 47%");
+              "fraction of tiered DRAM reserved for the LRU read cache");
 DEFINE_int32(tiering_cache_shards, 16, "read cache shard count");
-DEFINE_int32(tiering_promote_min_misses,
+DEFINE_int64(tiering_promote_min_misses,
              2,
-             "misses before a value is admitted into the read cache; 2 filters "
-             "one-shot misses out (measured +21% on zipfian, flat on uniform)");
+             "SSD misses before a value is eligible for promotion");
 
 DEFINE_int64(record_count, 100000000, "YCSB record count");
 DEFINE_string(workload,
@@ -85,7 +118,13 @@ DEFINE_string(workload,
 DEFINE_string(distribution,
               "uniform",
               "key distribution: uniform/zipfian/trace");
+DEFINE_string(access_trace, "", "binary uint64 key trace for timed replay");
 DEFINE_string(read_trace_path, "", "text query log for distribution=trace");
+DEFINE_string(warmup_access_trace, "", "optional separate warmup trace");
+DEFINE_string(
+    load_order,
+    "",
+    "binary uint64 permutation of all keys, hottest historical keys first");
 DEFINE_double(zipfian_alpha, 0.9, "Zipfian alpha");
 DEFINE_bool(
     zipfian_scramble,
@@ -139,7 +178,8 @@ struct PhaseStats {
   static constexpr uint64_t kLatencyBucketNs   = 100;
   static constexpr std::size_t kLatencyBuckets = 1024;
   std::array<uint64_t, kLatencyBuckets> latency_ns{};
-  uint64_t max_latency_ns = 0;
+  uint64_t max_latency_ns   = 0;
+  uint64_t total_latency_ns = 0;
   BaseKV::BatchGetFlatStats get_stats;
 
   void RecordLatency(uint64_t ns) {
@@ -147,6 +187,7 @@ struct PhaseStats {
         std::min<uint64_t>(ns / kLatencyBucketNs, kLatencyBuckets - 1);
     ++latency_ns[static_cast<std::size_t>(bucket)];
     max_latency_ns = std::max(max_latency_ns, ns);
+    total_latency_ns += ns;
   }
 };
 
@@ -183,22 +224,21 @@ public:
                double zipfian_alpha,
                uint64_t seed,
                bool scramble                      = false,
-               const std::vector<uint32_t>* trace = nullptr)
-      : distribution_(std::move(distribution)),
+               const std::vector<uint64_t>* trace = nullptr,
+               size_t trace_begin                 = 0,
+               size_t trace_end                   = 0)
+      : trace_(trace),
+        trace_begin_(trace_begin),
+        trace_end_(trace_end),
+        trace_pos_(trace_begin),
+        distribution_(std::move(distribution)),
         record_count_(record_count),
         alpha_(zipfian_alpha),
-        rng_(seed),
-        trace_(trace) {
+        rng_(seed) {
     if (record_count_ == 0) {
       throw std::invalid_argument("record_count must be positive");
     }
-    if (distribution_ == "trace") {
-      if (trace_ == nullptr || trace_->empty()) {
-        throw std::invalid_argument(
-            "trace distribution requires nonempty keys");
-      }
-      trace_index_ = rng_.Uniform(trace_->size());
-    } else if (distribution_ == "zipfian") {
+    if (distribution_ == "zipfian") {
       if (alpha_ < 0.0) {
         throw std::invalid_argument("zipfian_alpha must be non-negative");
       }
@@ -210,18 +250,20 @@ public:
       if (scramble) {
         scramble_stride_ = ChooseCoprimeStride(record_count_);
       }
+    } else if (distribution_ == "trace") {
+      if (!trace_ || trace_begin_ >= trace_end_ || trace_end_ > trace_->size())
+        throw std::invalid_argument("each trace reader needs at least one key");
     } else if (distribution_ != "uniform") {
       throw std::invalid_argument(
-          "distribution must be uniform, zipfian, or trace");
+          "distribution must be uniform, zipfian or trace");
     }
   }
 
   uint64_t NextKey() {
-    if (trace_ != nullptr) {
-      const uint64_t key = (*trace_)[trace_index_++];
-      if (trace_index_ == trace_->size()) {
-        trace_index_ = 0;
-      }
+    if (trace_) {
+      const uint64_t key = (*trace_)[trace_pos_++];
+      if (trace_pos_ == trace_end_)
+        trace_pos_ = trace_begin_;
       return key;
     }
     if (distribution_ == "uniform") {
@@ -267,6 +309,8 @@ private:
     return 0;
   }
 
+  const std::vector<uint64_t>* trace_;
+  size_t trace_begin_, trace_end_, trace_pos_;
   std::string distribution_;
   uint64_t record_count_;
   double alpha_;
@@ -274,8 +318,6 @@ private:
   double log_n_             = 0.0;
   uint64_t scramble_stride_ = 0;
   FastRandom rng_;
-  const std::vector<uint32_t>* trace_ = nullptr;
-  size_t trace_index_                 = 0;
 };
 
 std::string NormalizeWorkload(std::string workload) {
@@ -322,6 +364,20 @@ bool IsDirectExternalEngine(const std::string& engine_class) {
 bool IsLegacyDirectEngine(const std::string& engine_class) {
   return IsDirectExternalEngine(engine_class) ||
          engine_class == "KVEnginePetKV";
+}
+
+template <typename T>
+T TieringFlag(const char* name,
+              const T& value,
+              const char* alias_name,
+              const T& alias_value) {
+  if (gflags::GetCommandLineFlagInfoOrDie(alias_name).is_default)
+    return value;
+  if (!gflags::GetCommandLineFlagInfoOrDie(name).is_default &&
+      value != alias_value)
+    throw std::invalid_argument(
+        std::string("conflicting flags --") + name + " and --" + alias_name);
+  return alias_value;
 }
 
 BaseKVConfig BuildConfig() {
@@ -442,10 +498,13 @@ BaseKVConfig BuildConfig() {
         {"io",
          {{"type", FLAGS_ssd_io_backend},
           {"queue_depth", FLAGS_ssd_queue_depth},
+          {"completion_poll_spins", FLAGS_ssd_completion_poll_spins},
           {"base_offset_bytes", 4096}}}};
   } else if (FLAGS_value_store_type == "TIERED_VALUE_STORE") {
     constexpr double dram_ratio = 0.1;
-    dram_capacity               = dram_capacity * dram_ratio;
+    if (FLAGS_dram_capacity_bytes == 0) {
+      dram_capacity = dram_capacity * dram_ratio;
+    }
 
     config.json_config_["value"]["dram_allocator"] = {
         {"type", FLAGS_dram_allocator},
@@ -460,12 +519,33 @@ BaseKVConfig BuildConfig() {
         {"io",
          {{"type", FLAGS_ssd_io_backend},
           {"queue_depth", FLAGS_ssd_queue_depth},
+          {"completion_poll_spins", FLAGS_ssd_completion_poll_spins},
           {"base_offset_bytes", 4096}}}};
     config.json_config_["value"]["tiering"] = {
-        {"cache_policy", FLAGS_tiering_cache_policy},
-        {"cache_budget_ratio", FLAGS_tiering_cache_budget_ratio},
+        {"cache_policy",
+         TieringFlag("tiering_cache_policy",
+                     FLAGS_tiering_cache_policy,
+                     "tiered_cache_policy",
+                     FLAGS_tiered_cache_policy)},
+        {"cache_budget_ratio",
+         TieringFlag("tiering_cache_budget_ratio",
+                     FLAGS_tiering_cache_budget_ratio,
+                     "tiered_cache_budget_ratio",
+                     FLAGS_tiered_cache_budget_ratio)},
         {"cache_shards", FLAGS_tiering_cache_shards},
-        {"promote_min_misses", FLAGS_tiering_promote_min_misses}};
+        {"promote_min_misses",
+         TieringFlag("tiering_promote_min_misses",
+                     FLAGS_tiering_promote_min_misses,
+                     "tiered_cache_promote_min_misses",
+                     FLAGS_tiered_cache_promote_min_misses)},
+        {"clock_frequency_admission", FLAGS_tiered_clock_frequency_admission},
+        {"clock_cost_aware", FLAGS_tiered_clock_cost_aware},
+        {"clock_async_exchange", FLAGS_tiered_clock_async_exchange},
+        {"clock_exchange_queue_entries",
+         FLAGS_tiered_clock_exchange_queue_entries},
+        {"clock_exchange_queue_bytes", FLAGS_tiered_clock_exchange_queue_bytes},
+        {"retain_backing_copies", FLAGS_tiered_retain_backing_copies},
+        {"expected_dram_bytes", FLAGS_tiered_cache_expected_dram_bytes}};
     if (!FLAGS_tiered_dram_keys_path.empty()) {
       config.json_config_["value"]["tiering"]["dram_keys_path"] =
           FLAGS_tiered_dram_keys_path;
@@ -492,6 +572,7 @@ BaseKVConfig BuildConfig() {
       config.json_config_["value"]["io"]   = {
           {"type", FLAGS_ssd_io_backend},
           {"queue_depth", FLAGS_ssd_queue_depth},
+          {"completion_poll_spins", FLAGS_ssd_completion_poll_spins},
           {"base_offset_bytes", 0}};
     }
     config.json_config_["value"]["ssd_layout"] = {
@@ -503,40 +584,90 @@ BaseKVConfig BuildConfig() {
   return config;
 }
 
-PhaseStats LoadRecords(BaseKV* kv, int load_threads, uint64_t record_count) {
+PhaseStats LoadRecords(BaseKV* kv,
+                       int load_threads,
+                       uint64_t record_count,
+                       const std::vector<uint64_t>& order) {
   if (FLAGS_load_batch_keys <= 0 ||
       (FLAGS_load_batch_keys > 1 && FLAGS_value_size % sizeof(float) != 0)) {
     throw std::invalid_argument(
         "invalid load_batch_keys or non-float row size");
   }
+  std::atomic<uint64_t> next{0};
   std::vector<std::thread> threads;
   std::vector<uint64_t> counts(load_threads, 0);
   const uint64_t per_thread = (record_count + load_threads - 1) / load_threads;
+  if (!order.empty()) {
+    // Place the heaviest keys before scheduling can delay a loader thread.
+    const uint64_t prefix = std::min<uint64_t>(record_count, load_threads);
+    for (uint64_t rank = 0; rank < prefix; ++rank) {
+      const uint64_t key = order[rank];
+      const std::string value(
+          FLAGS_value_size, static_cast<char>('a' + ((key / per_thread) % 26)));
+      kv->Put(key, value, 0);
+      ++counts[0];
+    }
+    next.store(prefix);
+  }
 
   for (int tid = 0; tid < load_threads; ++tid) {
-    threads.emplace_back([kv, tid, per_thread, record_count, &counts]() {
+    threads.emplace_back([&, tid]() {
       base::auto_bind_core();
       std::string value(FLAGS_value_size, static_cast<char>('a' + (tid % 26)));
-      const uint64_t begin = static_cast<uint64_t>(tid) * per_thread;
-      const uint64_t end   = std::min(record_count, begin + per_thread);
       if (FLAGS_load_batch_keys > 1) {
+        const size_t dim = FLAGS_value_size / sizeof(float);
         std::vector<uint64_t> keys;
+        std::vector<float> rows;
         std::vector<base::ConstArray<float>> values;
-        for (uint64_t key = begin; key < end;) {
+        uint64_t cursor      = static_cast<uint64_t>(tid) * per_thread;
+        const uint64_t limit = std::min(record_count, cursor + per_thread);
+        for (;;) {
+          const uint64_t begin =
+              order.empty()
+                  ? cursor
+                  : next.fetch_add(
+                        FLAGS_load_batch_keys, std::memory_order_relaxed);
+          const uint64_t end = order.empty() ? limit : record_count;
+          if (begin >= end)
+            break;
           const size_t count =
-              std::min<uint64_t>(FLAGS_load_batch_keys, end - key);
+              std::min<uint64_t>(FLAGS_load_batch_keys, end - begin);
           keys.resize(count);
-          std::iota(keys.begin(), keys.end(), key);
-          values.assign(
-              count,
-              base::ConstArray<float>(reinterpret_cast<float*>(value.data()),
-                                      FLAGS_value_size / sizeof(float)));
+          rows.resize(count * dim);
+          values.clear();
+          values.reserve(count);
+          for (size_t i = 0; i < count; ++i) {
+            keys[i] = order.empty() ? begin + i : order[begin + i];
+            const char fill =
+                order.empty()
+                    ? static_cast<char>('a' + tid % 26)
+                    : static_cast<char>('a' + (keys[i] / per_thread) % 26);
+            std::memset(rows.data() + i * dim, fill, FLAGS_value_size);
+            values.emplace_back(rows.data() + i * dim, dim);
+          }
           kv->BatchPut(base::ConstArray<uint64_t>(keys), &values, tid);
-          key += count;
           counts[tid] += count;
+          cursor += count;
         }
         return;
       }
+      if (!order.empty()) {
+        // Up to load_threads - 1 earlier keys may still be in flight.
+        // Values retain their key-derived contents for post-run verification.
+        for (;;) {
+          const uint64_t rank = next.fetch_add(1, std::memory_order_relaxed);
+          if (rank >= record_count)
+            break;
+          const uint64_t key = order[rank];
+          value.assign(FLAGS_value_size,
+                       static_cast<char>('a' + ((key / per_thread) % 26)));
+          kv->Put(key, std::string_view(value.data(), value.size()), tid);
+          ++counts[tid];
+        }
+        return;
+      }
+      const uint64_t begin = static_cast<uint64_t>(tid) * per_thread;
+      const uint64_t end   = std::min(record_count, begin + per_thread);
       for (uint64_t key = begin; key < end; ++key) {
         kv->Put(key, std::string_view(value.data(), value.size()), tid);
         ++counts[tid];
@@ -561,7 +692,9 @@ PhaseStats RunTransactions(
     const std::string& distribution,
     int threads_num,
     uint64_t record_count,
-    int seconds) {
+    int seconds,
+    uint64_t seed_offset               = 0,
+    const std::vector<uint64_t>* trace = nullptr) {
   const WorkloadMix mix         = GetWorkloadMix(workload);
   const bool use_exists         = FLAGS_read_mode == "exists";
   const bool use_batch_get_flat = FLAGS_read_mode == "batch_get_flat";
@@ -577,14 +710,6 @@ PhaseStats RunTransactions(
         "batch_get_flat requires value_size to be a multiple of sizeof(float)");
   }
   const int embedding_dim = FLAGS_value_size / sizeof(float);
-  std::vector<uint32_t> trace_keys;
-  if (distribution == "trace") {
-    auto graph = ssd_layout::ReadQueryLog(FLAGS_read_trace_path, false);
-    if (graph.vertex_count != record_count || graph.pins.empty()) {
-      throw std::invalid_argument("trace record count mismatch or empty trace");
-    }
-    trace_keys = std::move(graph.pins);
-  }
 
   std::atomic<bool> start{false};
   std::atomic<bool> stop{false};
@@ -601,9 +726,11 @@ PhaseStats RunTransactions(
             distribution,
             record_count,
             FLAGS_zipfian_alpha,
-            0x9e3779b97f4a7c15ULL + static_cast<uint64_t>(tid),
+            0x9e3779b97f4a7c15ULL + static_cast<uint64_t>(tid) + seed_offset,
             FLAGS_zipfian_scramble,
-            distribution == "trace" ? &trace_keys : nullptr);
+            trace,
+            trace ? trace->size() * tid / threads_num : 0,
+            trace ? trace->size() * (tid + 1) / threads_num : 0);
         std::string value(
             FLAGS_value_size, static_cast<char>('A' + (tid % 26)));
         std::string read_value;
@@ -712,8 +839,8 @@ PhaseStats RunTransactions(
   if (first_exception) {
     std::rethrow_exception(first_exception);
   }
-  kv->DrainBackgroundWork();
 
+  kv->DrainBackgroundWork();
   PhaseStats total;
   for (const auto& each : stats) {
     total.total_ops += each.total_ops;
@@ -727,6 +854,7 @@ PhaseStats RunTransactions(
     total.get_stats.row_copy_ns += each.get_stats.row_copy_ns;
     total.get_stats.missing_rows += each.get_stats.missing_rows;
     total.max_latency_ns = std::max(total.max_latency_ns, each.max_latency_ns);
+    total.total_latency_ns += each.total_latency_ns;
   }
   return total;
 }
@@ -770,12 +898,14 @@ void PrintLatencyPercentiles(const PhaseStats& stats) {
   const double max = static_cast<double>(stats.max_latency_ns);
   std::printf(
       "YCSB_LATENCY samples=%lu p50_us=%.3f p90_us=%.3f p99_us=%.3f "
-      "max_us=%.3f\n",
+      "max_us=%.3f avg_us=%.3f overflow_samples=%lu\n",
       samples,
       p50 / 1000.0,
       p90 / 1000.0,
       p99 / 1000.0,
-      max / 1000.0);
+      max / 1000.0,
+      static_cast<double>(stats.total_latency_ns) / samples / 1000.0,
+      stats.latency_ns.back());
 }
 
 void PrintStageBreakdown(const PhaseStats& stats) {
@@ -880,6 +1010,70 @@ int RunBenchmark(int argc, char* argv[]) {
                   "KVEngineFasterKV fasterkv_storage=ssd";
   }
 
+  auto read_trace = [](const std::string& path) {
+    std::vector<uint64_t> keys;
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    const auto bytes = input.tellg();
+    if (!input || bytes <= 0 || bytes % sizeof(uint64_t) != 0)
+      throw std::invalid_argument("invalid uint64 access trace: " + path);
+    keys.resize(static_cast<size_t>(bytes) / sizeof(uint64_t));
+    input.seekg(0);
+    if (!input.read(reinterpret_cast<char*>(keys.data()), bytes))
+      throw std::runtime_error("failed to read access trace: " + path);
+    for (uint64_t key : keys)
+      if (key >= static_cast<uint64_t>(FLAGS_record_count))
+        throw std::invalid_argument("trace key exceeds record_count");
+    return keys;
+  };
+  std::vector<uint64_t> load_order;
+  if (!FLAGS_load_order.empty()) {
+    load_order = read_trace(FLAGS_load_order);
+    if (load_order.size() != static_cast<size_t>(FLAGS_record_count))
+      throw std::invalid_argument("load_order must contain every key once");
+    std::vector<bool> seen(load_order.size());
+    for (uint64_t key : load_order) {
+      if (seen[key])
+        throw std::invalid_argument("load_order contains a duplicate key");
+      seen[key] = true;
+    }
+    std::printf("YCSB_PLACEMENT keys=%zu path=%s\n",
+                load_order.size(),
+                FLAGS_load_order.c_str());
+  }
+  std::vector<uint64_t> trace, warmup_trace;
+  if (!FLAGS_read_trace_path.empty() && !FLAGS_access_trace.empty())
+    throw std::invalid_argument(
+        "choose read_trace_path or access_trace, not both");
+  if (FLAGS_distribution == "trace") {
+    if (FLAGS_read_trace_path.empty()) {
+      trace = read_trace(FLAGS_access_trace);
+    } else {
+      auto graph = ssd_layout::ReadQueryLog(FLAGS_read_trace_path, false);
+      if (graph.vertex_count != static_cast<uint64_t>(FLAGS_record_count) ||
+          graph.pins.empty())
+        throw std::invalid_argument(
+            "trace record count mismatch or empty trace");
+      trace.assign(graph.pins.begin(), graph.pins.end());
+    }
+    warmup_trace = FLAGS_warmup_access_trace.empty()
+                     ? trace
+                     : read_trace(FLAGS_warmup_access_trace);
+    if (std::min(trace.size(), warmup_trace.size()) <
+        static_cast<size_t>(FLAGS_thread_num))
+      throw std::invalid_argument("trace is shorter than thread count");
+    std::printf(
+        "YCSB_TRACE keys=%zu warmup_keys=%zu path=%s warmup_path=%s\n",
+        trace.size(),
+        warmup_trace.size(),
+        (FLAGS_read_trace_path.empty() ? FLAGS_access_trace
+                                       : FLAGS_read_trace_path)
+            .c_str(),
+        FLAGS_warmup_access_trace.c_str());
+  } else if (!FLAGS_read_trace_path.empty() || !FLAGS_access_trace.empty() ||
+             !FLAGS_warmup_access_trace.empty()) {
+    throw std::invalid_argument("access_trace requires distribution=trace");
+  }
+
   const std::string workload = NormalizeWorkload(FLAGS_workload);
   (void)GetWorkloadMix(workload);
   const int load_threads =
@@ -907,7 +1101,10 @@ int RunBenchmark(int argc, char* argv[]) {
   if (FLAGS_load) {
     const auto begin      = std::chrono::steady_clock::now();
     PhaseStats load_stats = LoadRecords(
-        kv.get(), load_threads, static_cast<uint64_t>(FLAGS_record_count));
+        kv.get(),
+        load_threads,
+        static_cast<uint64_t>(FLAGS_record_count),
+        load_order);
     const auto end       = std::chrono::steady_clock::now();
     const double seconds = SecondsSince(begin, end);
     const double throughput =
@@ -915,20 +1112,71 @@ int RunBenchmark(int argc, char* argv[]) {
                       : 0.0;
     std::printf(
         "YCSB_LOAD_RESULT records=%ld threads=%d seconds=%.6f ops=%lu "
-        "throughput_ops_sec=%.6f%s\n",
+        "throughput_ops_sec=%.6f\n",
         FLAGS_record_count,
         load_threads,
         seconds,
         load_stats.total_ops,
-        throughput,
-        kv->ExtraResultFields().c_str());
+        throughput);
     if (FLAGS_print_util) {
       kv->Util();
     }
   }
 
+  auto verify_value = [&](uint64_t key) {
+    std::string value;
+    kv->Get(key, value, 0);
+    const uint64_t per_thread =
+        (FLAGS_record_count + load_threads - 1) / load_threads;
+    const std::string expected(
+        FLAGS_value_size, static_cast<char>('a' + ((key / per_thread) % 26)));
+    if (value != expected)
+      throw std::runtime_error(
+          "loaded value mismatch at key " + std::to_string(key));
+  };
+  auto verify_values = [&]() {
+    for (uint64_t sample = 0; sample < 1024; ++sample)
+      verify_value(sample * FLAGS_record_count / 1024);
+  };
+  auto wait_for_exchanges = [&]() {
+    if (!FLAGS_tiered_clock_async_exchange)
+      return 0.0;
+    const auto begin        = std::chrono::steady_clock::now();
+    const std::string field = " tiered_clock_exchange_pending=";
+    for (;;) {
+      const std::string info = kv->ExtraResultFields();
+      const auto pos         = info.find(field);
+      if (pos == std::string::npos)
+        return 0.0; // The adaptive policy may select the direct DRAM path.
+      if (std::stoull(info.substr(pos + field.size())) == 0)
+        return SecondsSince(begin, std::chrono::steady_clock::now());
+      if (SecondsSince(begin, std::chrono::steady_clock::now()) >= 30.0)
+        throw std::runtime_error("CLOCK background exchange did not drain");
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  };
+  if (FLAGS_run && FLAGS_load) {
+    verify_values();
+    std::printf("YCSB_VERIFY samples=1024 ok=1\n");
+    wait_for_exchanges();
+    std::printf("YCSB_AFTER_LOAD%s\n", kv->ExtraResultFields().c_str());
+  }
+
   if (FLAGS_run) {
+    if (FLAGS_warmup_seconds > 0) {
+      RunTransactions(
+          kv.get(),
+          workload,
+          FLAGS_distribution,
+          FLAGS_thread_num,
+          FLAGS_record_count,
+          FLAGS_warmup_seconds,
+          0x100000000ULL,
+          warmup_trace.empty() ? nullptr : &warmup_trace);
+    }
+    wait_for_exchanges();
     kv->ResetStats();
+    std::printf("YCSB_BEFORE_RUN%s\n", kv->ExtraResultFields().c_str());
     const auto begin     = std::chrono::steady_clock::now();
     PhaseStats run_stats = RunTransactions(
         kv.get(),
@@ -936,12 +1184,15 @@ int RunBenchmark(int argc, char* argv[]) {
         FLAGS_distribution,
         FLAGS_thread_num,
         static_cast<uint64_t>(FLAGS_record_count),
-        FLAGS_running_seconds);
+        FLAGS_running_seconds,
+        0,
+        trace.empty() ? nullptr : &trace);
     const auto end       = std::chrono::steady_clock::now();
     const double seconds = SecondsSince(begin, end);
     const double throughput =
         seconds > 0.0 ? static_cast<double>(run_stats.total_ops) / seconds
                       : 0.0;
+    const double drain_seconds = wait_for_exchanges();
     struct rusage usage {};
     const long peak_rss_kb =
         getrusage(RUSAGE_SELF, &usage) == 0 ? usage.ru_maxrss : -1;
@@ -963,6 +1214,27 @@ int RunBenchmark(int argc, char* argv[]) {
         run_stats.update_ops,
         peak_rss_kb,
         kv->ExtraResultFields().c_str());
+    if (FLAGS_tiered_clock_async_exchange)
+      std::printf(
+          "YCSB_RUN_MAINTENANCE drain_seconds=%.6f "
+          "throughput_including_drain=%.6f\n",
+          drain_seconds,
+          static_cast<double>(run_stats.total_ops) / (seconds + drain_seconds));
+    std::printf("YCSB_AFTER_RUN%s\n", kv->ExtraResultFields().c_str());
+    if (FLAGS_load && workload == "c") {
+      verify_values();
+      std::printf("YCSB_VERIFY_AFTER_RUN samples=1024 ok=1\n");
+      if (!trace.empty()) {
+        // Validate every replayed key only after timing, so validation cannot
+        // prewarm future trace keys or affect the reported throughput.
+        auto unique = trace;
+        std::sort(unique.begin(), unique.end());
+        unique.erase(std::unique(unique.begin(), unique.end()), unique.end());
+        for (uint64_t key : unique)
+          verify_value(key);
+        std::printf("YCSB_VERIFY_TRACE keys=%zu ok=1\n", unique.size());
+      }
+    }
     if (FLAGS_report_latency) {
       PrintLatencyPercentiles(run_stats);
     }

@@ -63,7 +63,7 @@ target_link_libraries(
     # Without a referenced symbol the linker drops the shared library under
     # --as-needed and every factory lookup fails at runtime.
     -Wl,--no-as-needed
-    kv_engine)
+    -Wl,--whole-archive kv_engine -Wl,--no-whole-archive)
 target_link_libraries(benchmark_kv_engine PUBLIC OpenMP::OpenMP_CXX)
 if(USE_GPERF_PROFILING)
   target_compile_options(benchmark_kv_engine PRIVATE -fno-omit-frame-pointer)

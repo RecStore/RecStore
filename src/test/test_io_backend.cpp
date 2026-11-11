@@ -172,47 +172,56 @@ TEST_F(IOBackendTest, SyncReadWriteRoundTrip) {
 }
 
 TEST_F(IOBackendTest, BatchReadWriteRoundTrip) {
-  // queue_cnt=64 permits 32 in flight: exercise three full windows and a tail.
-  constexpr int kNumPages = 97;
+  for (int spins : {0, 8192}) {
+    backend_impl_.reset();
+    auto config = MakeConfig(backend_, file_path_);
+    config.json_config_["completion_poll_spins"] = spins;
+    using IOF = base::Factory<IOBackend, const BaseKVConfig&>;
+    backend_impl_.reset(IOF::NewInstance(backend_, config));
+    backend_impl_->init();
+    // queue_cnt=64 permits 32 in flight: exercise three full windows and a
+    // tail.
+    constexpr int kNumPages = 97;
 
-  std::vector<IOBackend::IOEntry> write_entries;
-  std::vector<char*> write_buffers;
-  write_entries.reserve(kNumPages);
-  write_buffers.reserve(kNumPages);
+    std::vector<IOBackend::IOEntry> write_entries;
+    std::vector<char*> write_buffers;
+    write_entries.reserve(kNumPages);
+    write_buffers.reserve(kNumPages);
 
-  for (int i = 0; i < kNumPages; ++i) {
-    PageID_t page_id = backend_impl_->AllocatePage();
-    char* buf        = backend_impl_->AllocateBuffer(1);
-    ASSERT_NE(buf, nullptr);
-    std::memset(buf, i + 11, PAGE_SIZE);
-    write_entries.push_back({page_id, buf, 1});
-    write_buffers.push_back(buf);
-  }
-  backend_impl_->BatchWritePages(write_entries);
-
-  std::vector<IOBackend::IOEntry> read_entries;
-  std::vector<char*> read_buffers;
-  read_entries.reserve(kNumPages);
-  read_buffers.reserve(kNumPages);
-  for (int i = 0; i < kNumPages; ++i) {
-    char* buf = backend_impl_->AllocateBuffer(1);
-    ASSERT_NE(buf, nullptr);
-    read_entries.push_back({write_entries[i].page_id, buf, 1});
-    read_buffers.push_back(buf);
-  }
-  backend_impl_->BatchReadPages(read_entries);
-
-  for (int i = 0; i < kNumPages; ++i) {
-    for (size_t off = 0; off < PAGE_SIZE; ++off) {
-      ASSERT_EQ(read_buffers[i][off], static_cast<char>(i + 11))
-          << "page=" << i << ", offset=" << off;
+    for (int i = 0; i < kNumPages; ++i) {
+      PageID_t page_id = backend_impl_->AllocatePage();
+      char* buf        = backend_impl_->AllocateBuffer(1);
+      ASSERT_NE(buf, nullptr);
+      std::memset(buf, i + 11, PAGE_SIZE);
+      write_entries.push_back({page_id, buf, 1});
+      write_buffers.push_back(buf);
     }
-  }
+    backend_impl_->BatchWritePages(write_entries);
 
-  for (char* buf : write_buffers)
-    backend_impl_->FreeBuffer(buf);
-  for (char* buf : read_buffers)
-    backend_impl_->FreeBuffer(buf);
+    std::vector<IOBackend::IOEntry> read_entries;
+    std::vector<char*> read_buffers;
+    read_entries.reserve(kNumPages);
+    read_buffers.reserve(kNumPages);
+    for (int i = 0; i < kNumPages; ++i) {
+      char* buf = backend_impl_->AllocateBuffer(1);
+      ASSERT_NE(buf, nullptr);
+      read_entries.push_back({write_entries[i].page_id, buf, 1});
+      read_buffers.push_back(buf);
+    }
+    backend_impl_->BatchReadPages(read_entries);
+
+    for (int i = 0; i < kNumPages; ++i) {
+      for (size_t off = 0; off < PAGE_SIZE; ++off) {
+        ASSERT_EQ(read_buffers[i][off], static_cast<char>(i + 11))
+            << "page=" << i << ", offset=" << off;
+      }
+    }
+
+    for (char* buf : write_buffers)
+      backend_impl_->FreeBuffer(buf);
+    for (char* buf : read_buffers)
+      backend_impl_->FreeBuffer(buf);
+  }
 }
 
 } // namespace

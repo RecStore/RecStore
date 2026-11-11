@@ -311,7 +311,8 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
           grads,
           static_cast<int64_t>(header->key_count),
           static_cast<int64_t>(header->embedding_dim),
-          static_cast<int>(worker_tid_));
+          static_cast<int>(worker_tid_),
+          header->learning_rate);
       header->server_backend_duration_us =
           static_cast<uint64_t>(LocalShmElapsedUs(backend_start));
       ReportLocalShmStageMetric(
