@@ -332,6 +332,9 @@ TEST_F(StaticLayoutValueTest, BatchReadUsesFewerPagesThanPlain) {
   maxembed->BatchRead(handles, max_out);
   EXPECT_LT(maxembed->stats().page_reads, bandana->stats().page_reads);
   EXPECT_LT(bandana->stats().page_reads, plain_reads);
+  EXPECT_EQ(bandana->stats().payload_written_bytes, 24U);
+  EXPECT_EQ(bandana->stats().page_writes, 2U);
+  EXPECT_EQ(maxembed->stats().page_writes, 3U);
   ASSERT_EQ(bandana_out.size(), 6U);
   EXPECT_EQ(bandana_out.front().data, std::vector<char>(payload, payload + 4));
   EXPECT_EQ(max_out.back().data, bandana_out.back().data);
