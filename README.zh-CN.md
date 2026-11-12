@@ -1,4 +1,6 @@
-<h1 align="center">RecStore</h1>
+<p align="center">
+  <img src="docs/assets/branding/recstore-full-medium-1430x380.png" alt="RecStore" width="640">
+</p>
 
 <p align="center">
   <em>面向推荐模型的高性能分布式参数存储系统。</em>
