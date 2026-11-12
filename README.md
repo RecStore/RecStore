@@ -1,4 +1,8 @@
-<h1 align="center">RecStore</h1>
+<p align="center">
+  <img src="docs/assets/branding/recstore-full-medium-1430x380.png" alt="RecStore" width="640">
+</p>
+
+<!-- --8<-- [start:readme-content] -->
 
 <p align="center">
   <em>High-performance distributed parameter storage for recommendation models.</em>
@@ -88,3 +92,5 @@ We would appreciate citations to the following papers:
 ```
 
 </details>
+
+<!-- --8<-- [end:readme-content] -->
