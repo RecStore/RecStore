@@ -31,7 +31,13 @@
 // Every entry is self-describing (handle + size), so a stale or reused log
 // slot is rejected instead of returning another row's bytes. A read that hits
 // the page still being appended flushes that page first; a read that races a
-// fallback write revalidates the index and retries against the base store.
+// concurrent update, a compaction, or a fallback write revalidates the index
+// and retries instead of trusting the in-place slot, which may never have been
+// written for that row.
+//
+// Free keeps the index entry until the slot is allocated again: updates are
+// copy-on-write, so a reader that fetched the handle just before the update
+// must still see the previous value (the in-place slot keeps its bytes too).
 //
 // Stage 2 recycles segments. A sealed segment is compacted into one of the
 // free segments: live entries are re-appended, their index entries move, and
@@ -142,7 +148,8 @@ public:
       EnsureFlushed(loc);
       size_t actual = 0;
       if (!ReadEntry(loc, handle, out_buf, buf_size, &actual)) {
-        break;
+        // The entry moved (concurrent update or compaction); look it up again.
+        continue;
       }
       // A concurrent fallback write or slot reuse may have replaced the entry
       // while this read was in flight.
@@ -168,80 +175,99 @@ public:
   void BatchRead(const std::vector<uint64_t>& handles,
                  std::vector<ReadResult>& out_results) override {
     out_results.resize(handles.size());
-    std::vector<Loc> locs(handles.size());
-    std::vector<char> in_log(handles.size(), 0);
-    std::vector<uint64_t> pending_pages;
-    std::unordered_set<uint64_t> seen_pages;
+    std::vector<size_t> pending;
+    std::vector<size_t> base_rows;
+    pending.reserve(handles.size());
     for (size_t i = 0; i < handles.size(); ++i) {
       if (handles[i] == kValueHandleNone) {
         out_results[i].data.clear();
-        continue;
+      } else {
+        pending.push_back(i);
       }
-      if (Lookup(handles[i], locs[i])) {
-        in_log[i]           = 1;
-        const uint64_t page = AbsolutePage(locs[i]);
-        if (seen_pages.insert(page).second) {
-          pending_pages.push_back(page);
+    }
+
+    for (int attempt = 0; attempt < kReadAttempts && !pending.empty();
+         ++attempt) {
+      std::vector<Loc> locs(pending.size());
+      std::vector<size_t> log_positions;
+      std::vector<size_t> unresolved;
+      log_positions.reserve(pending.size());
+      for (size_t k = 0; k < pending.size(); ++k) {
+        if (Lookup(handles[pending[k]], locs[k])) {
+          log_positions.push_back(k);
+        } else {
+          // The index entry is gone, so the in-place copy is authoritative.
+          base_rows.push_back(pending[k]);
         }
       }
-    }
-    for (size_t i = 0; i < handles.size(); ++i) {
-      if (in_log[i]) {
-        EnsureFlushed(locs[i]);
+      if (log_positions.empty()) {
+        break;
       }
+      EnsureFlushedBatch(locs, log_positions);
+
+      // Read every distinct log page once, with all page I/O in flight.
+      std::unordered_map<uint64_t, char*> page_buffers;
+      std::vector<IOBackend::IOEntry> entries;
+      entries.reserve(log_positions.size());
+      for (size_t k : log_positions) {
+        const uint64_t page = AbsolutePage(locs[k]);
+        if (page_buffers.find(page) != page_buffers.end()) {
+          continue;
+        }
+        char* buffer = io_->AllocateBuffer();
+        page_buffers.emplace(page, buffer);
+        entries.push_back({page, buffer, 1});
+      }
+      if (!entries.empty()) {
+        io_->BatchReadPages(entries);
+        pages_read_.fetch_add(entries.size(), std::memory_order_relaxed);
+        bytes_read_.fetch_add(
+            entries.size() * PAGE_SIZE, std::memory_order_relaxed);
+      }
+
+      for (size_t k : log_positions) {
+        const size_t row = pending[k];
+        const Loc& loc   = locs[k];
+        const char* page = page_buffers.at(AbsolutePage(loc));
+        const auto* header =
+            reinterpret_cast<const EntryHeader*>(page + loc.byte_offset);
+        const bool matches =
+            header->handle == handles[row] && header->size == loc.size &&
+            loc.byte_offset + kHeaderBytes + loc.size <= PAGE_SIZE;
+        // A concurrent update or compaction can move the entry between the
+        // lookup and this check; re-look it up instead of reading the empty
+        // in-place slot, which never received an update for this row.
+        if (matches && StillCurrent(handles[row], loc)) {
+          const size_t actual = loc.size;
+          out_results[row].data.resize(actual);
+          std::memcpy(out_results[row].data.data(),
+                      page + loc.byte_offset + kHeaderBytes,
+                      actual);
+          hits_.fetch_add(1, std::memory_order_relaxed);
+        } else {
+          unresolved.push_back(row);
+        }
+      }
+      for (auto& entry : page_buffers) {
+        io_->FreeBuffer(entry.second);
+      }
+      pending.swap(unresolved);
     }
 
-    // Read every distinct log page once, with all page I/O in flight.
-    std::unordered_map<uint64_t, char*> page_buffers;
-    std::vector<IOBackend::IOEntry> entries;
-    for (uint64_t page : pending_pages) {
-      char* buffer = io_->AllocateBuffer();
-      page_buffers.emplace(page, buffer);
-      entries.push_back({page, buffer, 1});
-    }
-    if (!entries.empty()) {
-      io_->BatchReadPages(entries);
-      pages_read_.fetch_add(entries.size(), std::memory_order_relaxed);
-      bytes_read_.fetch_add(
-          entries.size() * PAGE_SIZE, std::memory_order_relaxed);
-    }
-
-    std::vector<size_t> retry_rows;
-    std::vector<uint64_t> retry_handles;
-    for (size_t i = 0; i < handles.size(); ++i) {
-      if (!in_log[i]) {
-        continue;
-      }
-      const Loc& loc   = locs[i];
-      const char* page = page_buffers.at(AbsolutePage(loc));
-      const auto* header =
-          reinterpret_cast<const EntryHeader*>(page + loc.byte_offset);
-      const bool matches =
-          header->handle == handles[i] && header->size == loc.size &&
-          loc.byte_offset + kHeaderBytes + loc.size <= PAGE_SIZE;
-      if (matches && StillCurrent(handles[i], loc)) {
-        const size_t actual = loc.size;
-        out_results[i].data.resize(actual);
-        std::memcpy(out_results[i].data.data(),
-                    page + loc.byte_offset + kHeaderBytes,
-                    actual);
-        hits_.fetch_add(1, std::memory_order_relaxed);
-      } else {
-        retry_rows.push_back(i);
-        retry_handles.push_back(handles[i]);
-      }
-    }
-    for (auto& entry : page_buffers) {
-      io_->FreeBuffer(entry.second);
-    }
-    if (retry_handles.empty()) {
+    base_rows.insert(base_rows.end(), pending.begin(), pending.end());
+    if (base_rows.empty()) {
       return;
     }
+    std::vector<uint64_t> base_handles;
+    base_handles.reserve(base_rows.size());
+    for (size_t row : base_rows) {
+      base_handles.push_back(handles[row]);
+    }
     std::vector<ReadResult> base_results;
-    base_.BatchRead(retry_handles, base_results);
-    misses_.fetch_add(retry_handles.size(), std::memory_order_relaxed);
-    for (size_t i = 0; i < retry_rows.size(); ++i) {
-      out_results[retry_rows[i]].data = std::move(base_results[i].data);
+    base_.BatchRead(base_handles, base_results);
+    misses_.fetch_add(base_rows.size(), std::memory_order_relaxed);
+    for (size_t i = 0; i < base_rows.size(); ++i) {
+      out_results[base_rows[i]].data = std::move(base_results[i].data);
     }
   }
 
@@ -259,7 +285,10 @@ public:
     if (handle == kValueHandleNone) {
       return;
     }
-    Invalidate(handle);
+    // Keep the log entry. A reader that fetched this handle from the index
+    // just before an update retired it must still see the previous value, and
+    // the in-place slot also keeps its bytes after Free. Alloc() drops the
+    // entry when the slot is handed out again.
     base_.Free(handle);
   }
 
@@ -440,13 +469,37 @@ private:
         EntryBytes(loc.size), std::memory_order_relaxed);
   }
 
+  bool PageNeedsFlush(const Loc& loc) const {
+    return loc.segment == cursor_segment_.load(std::memory_order_acquire) &&
+           loc.page == cursor_page_.load(std::memory_order_acquire);
+  }
+
   // A read that arrives while its page is still in the append buffer must not
-  // read the page from disk before it is written.
+  // read the page from disk before it is written. The cursor check is
+  // lock-free, so the common case (a page that was already flushed) does not
+  // serialize readers on the append lock.
   void EnsureFlushed(const Loc& loc) {
+    if (!PageNeedsFlush(loc)) {
+      return;
+    }
     std::lock_guard<std::mutex> lock(append_mu_);
-    if (loc.segment == cursor_segment_ && loc.page == cursor_page_ &&
-        cursor_offset_ != 0) {
+    if (cursor_offset_ != 0) {
       FlushPageLocked();
+    }
+  }
+
+  void EnsureFlushedBatch(const std::vector<Loc>& locs,
+                          const std::vector<size_t>& positions) {
+    bool flushed = false;
+    for (size_t k : positions) {
+      if (flushed || !PageNeedsFlush(locs[k])) {
+        continue;
+      }
+      std::lock_guard<std::mutex> lock(append_mu_);
+      if (cursor_offset_ != 0) {
+        FlushPageLocked();
+        flushed = true;
+      }
     }
   }
 
@@ -529,13 +582,13 @@ private:
   }
 
   Loc MakeLoc(size_t offset, size_t size) const {
+    const uint32_t segment = cursor_segment_.load(std::memory_order_relaxed);
     Loc loc;
-    loc.segment     = cursor_segment_;
-    loc.page        = cursor_page_;
+    loc.segment     = segment;
+    loc.page        = cursor_page_.load(std::memory_order_relaxed);
     loc.byte_offset = static_cast<uint32_t>(offset);
     loc.size        = static_cast<uint32_t>(size);
-    loc.generation =
-        segments_[cursor_segment_].epoch.load(std::memory_order_relaxed);
+    loc.generation  = segments_[segment].epoch.load(std::memory_order_relaxed);
     return loc;
   }
 
@@ -545,18 +598,19 @@ private:
     if (cursor_offset_ == 0) {
       return !exhausted_.load(std::memory_order_relaxed);
     }
-    io_->BatchWritePages(
-        {{AbsolutePage(cursor_segment_, cursor_page_), page_buf_, 1}});
+    const uint32_t segment = cursor_segment_.load(std::memory_order_relaxed);
+    const uint32_t page    = cursor_page_.load(std::memory_order_relaxed);
+    io_->BatchWritePages({{AbsolutePage(segment, page), page_buf_, 1}});
     pages_written_.fetch_add(1, std::memory_order_relaxed);
     bytes_written_.fetch_add(PAGE_SIZE, std::memory_order_relaxed);
     std::memset(page_buf_, 0, PAGE_SIZE);
     cursor_offset_ = 0;
-    ++cursor_page_;
-    if (cursor_page_ >= segment_pages_) {
-      cursor_page_                     = 0;
-      segments_[cursor_segment_].state = Segment::kSealed;
+    if (page + 1 >= segment_pages_) {
+      cursor_page_.store(0, std::memory_order_release);
+      segments_[segment].state = Segment::kSealed;
       return AdvanceSegmentLocked();
     }
+    cursor_page_.store(page + 1, std::memory_order_release);
     return true;
   }
 
@@ -722,8 +776,8 @@ private:
   }
 
   void ActivateLocked(uint32_t segment) {
-    cursor_segment_          = segment;
-    cursor_page_             = 0;
+    cursor_segment_.store(segment, std::memory_order_release);
+    cursor_page_.store(0, std::memory_order_relaxed);
     cursor_offset_           = 0;
     segments_[segment].state = Segment::kActive;
     segments_[segment].live_bytes.store(0, std::memory_order_relaxed);
@@ -741,10 +795,11 @@ private:
   uint64_t gc_max_live_bytes_ = 0;
 
   std::mutex append_mu_;
-  uint32_t cursor_segment_ = 0;
-  uint32_t cursor_page_    = 0;
-  uint32_t cursor_offset_  = 0;
-  bool compacting_         = false;
+  // Read without the append lock so a flushed page does not serialize readers.
+  std::atomic<uint32_t> cursor_segment_{0};
+  std::atomic<uint32_t> cursor_page_{0};
+  uint32_t cursor_offset_ = 0;
+  bool compacting_        = false;
   std::unique_ptr<Segment[]> segments_;
   std::deque<uint32_t> free_;
 

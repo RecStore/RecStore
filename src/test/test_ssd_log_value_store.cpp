@@ -192,16 +192,38 @@ TEST(SsdLogValueStoreTest, FallsBackWhenLogIsFull) {
   }
 }
 
-TEST(SsdLogValueStoreTest, FreeDropsIndexEntry) {
+// Copy-on-write updates allocate a new slot and retire the old one. A reader
+// that already fetched the old handle must still get its previous value, not
+// an empty row from the in-place slot that never received the update.
+TEST(SsdLogValueStoreTest, RetiredSlotKeepsValueUntilReuse) {
   SsdLogValueStore store(Config(1ULL << 20));
   const auto value      = Value('x');
   const uint64_t handle = store.AllocAndWrite(value.data(), value.size());
   ASSERT_NE(handle, kValueHandleNone);
   EXPECT_EQ(FieldOf(store.ExtraResultFields(), " write_log_index_entries="),
             1U);
+
+  const auto updated = Value('y');
+  const uint64_t new_handle =
+      store.AllocAndWrite(updated.data(), updated.size());
+  ASSERT_NE(new_handle, kValueHandleNone);
   store.Free(handle);
-  EXPECT_EQ(FieldOf(store.ExtraResultFields(), " write_log_index_entries="),
-            0U);
+
+  std::string out(value.size(), '\0');
+  ASSERT_EQ(store.Read(handle, out.data(), out.size()), value.size());
+  EXPECT_EQ(out, value);
+  out.assign(updated.size(), '\0');
+  ASSERT_EQ(store.Read(new_handle, out.data(), out.size()), updated.size());
+  EXPECT_EQ(out, updated);
+
+  // Reusing the slot must not inherit the retired row's entry.
+  const uint64_t reused = store.Alloc(value.size());
+  ASSERT_NE(reused, kValueHandleNone);
+  const auto fresh = Value('z');
+  store.Write(reused, fresh.data(), fresh.size());
+  out.assign(fresh.size(), '\0');
+  ASSERT_EQ(store.Read(reused, out.data(), out.size()), fresh.size());
+  EXPECT_EQ(out, fresh);
 }
 
 TEST(SsdLogValueStoreTest, OversizedValueFallsBackToInPlaceWrite) {
@@ -295,7 +317,9 @@ TEST(SsdLogValueStoreTest, CompactionSkipsFreedRows) {
   const std::string info = store.ExtraResultFields();
   EXPECT_GT(FieldOf(info, " write_log_compactions="), 0U);
   EXPECT_EQ(FieldOf(info, " write_log_fallbacks="), 0U);
-  EXPECT_EQ(FieldOf(info, " write_log_index_entries="), kLive);
+  // Freed rows keep their entry until the slot is reused, so a reader holding
+  // the old handle still sees the previous value. Nothing may resurrect them.
+  EXPECT_EQ(FieldOf(info, " write_log_index_entries="), kLive + kFreed);
 }
 
 // A log too small for its live set compacts or skips, then falls back to the
