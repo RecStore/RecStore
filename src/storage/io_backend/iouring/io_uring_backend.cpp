@@ -101,6 +101,7 @@ private:
     struct io_uring_sqe* sqe = io_uring_get_sqe(ring);
     CHECK_NE(sqe, nullptr) << "Failed to get SQE for write operation";
     pending++;
+    RecordWritePages(1);
     io_uring_prep_write(sqe, fd, buffer, PAGE_SIZE, page_id * PAGE_SIZE);
     sqe->user_data = index;
     submit();
@@ -110,6 +111,7 @@ private:
     struct io_uring* ring    = get_thread_ring();
     struct io_uring_sqe* sqe = io_uring_get_sqe(ring);
     CHECK_NE(sqe, nullptr) << "Failed to get SQE for sync write operation";
+    RecordWritePages(1);
     io_uring_prep_write(sqe, fd, buffer, PAGE_SIZE, page_id * PAGE_SIZE);
     int ret = io_uring_submit_and_wait(ring, 1);
     CHECK_GE(ret, 0) << "Failed to submit sync write operation: " +
@@ -226,6 +228,7 @@ public:
   }
 
   void BatchWritePages(const std::vector<IOEntry>& entries) override {
+    RecordWrite(entries);
     BatchIO(entries, true);
   }
 
