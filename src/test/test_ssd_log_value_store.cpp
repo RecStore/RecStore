@@ -4,6 +4,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -215,6 +216,168 @@ TEST(SsdLogValueStoreTest, OversizedValueFallsBackToInPlaceWrite) {
   std::string out(value.size(), '\0');
   ASSERT_EQ(store.Read(handle, out.data(), out.size()), value.size());
   EXPECT_EQ(out, value);
+}
+
+// 256 KiB / 64 KiB segments = 4 segments, with a live set of 1000 rows
+// (about half the log). The oldest sealed segment still holds live entries
+// when the log wraps, so compaction has to copy them instead of dropping the
+// whole segment.
+TEST(SsdLogValueStoreTest, CompactionRecyclesSegmentsWithoutFallback) {
+  SsdLogValueStore store(Config(256ULL << 10));
+  constexpr size_t kRows = 1000;
+  std::vector<std::string> values(kRows);
+  std::vector<uint64_t> handles(kRows, kValueHandleNone);
+  for (size_t i = 0; i < kRows; ++i) {
+    values[i]  = Value(static_cast<char>('a' + i % 26));
+    handles[i] = store.AllocAndWrite(values[i].data(), values[i].size());
+    ASSERT_NE(handles[i], kValueHandleNone) << "row=" << i;
+  }
+
+  for (size_t round = 0; round < 30; ++round) {
+    for (size_t i = 0; i < kRows; ++i) {
+      values[i] = Value(static_cast<char>('A' + (i + round) % 26));
+      store.Write(handles[i], values[i].data(), values[i].size());
+    }
+  }
+  for (size_t i = 0; i < kRows; ++i) {
+    std::string out(values[i].size(), '\0');
+    ASSERT_EQ(store.Read(handles[i], out.data(), out.size()), values[i].size())
+        << "row=" << i;
+    EXPECT_EQ(out, values[i]) << "row=" << i;
+  }
+
+  const std::string info = store.ExtraResultFields();
+  EXPECT_GT(FieldOf(info, " write_log_compactions="), 0U) << info;
+  EXPECT_GT(FieldOf(info, " write_log_segments_reclaimed="), 0U) << info;
+  EXPECT_EQ(FieldOf(info, " write_log_fallbacks="), 0U) << info;
+  EXPECT_EQ(FieldOf(info, " write_log_exhausted="), 0U) << info;
+  EXPECT_EQ(FieldOf(info, " write_log_index_entries="), kRows) << info;
+}
+
+// Freed rows must not come back when compaction walks the segment that still
+// holds their old bytes.
+TEST(SsdLogValueStoreTest, CompactionSkipsFreedRows) {
+  SsdLogValueStore store(Config(256ULL << 10));
+  constexpr size_t kLive  = 1000;
+  constexpr size_t kFreed = 200;
+  std::vector<uint64_t> live_handles;
+  std::vector<uint64_t> freed_handles;
+  std::vector<std::string> values;
+  for (size_t i = 0; i < kLive + kFreed; ++i) {
+    const std::string value = Value(static_cast<char>('a' + i % 26));
+    const uint64_t handle   = store.AllocAndWrite(value.data(), value.size());
+    ASSERT_NE(handle, kValueHandleNone) << "row=" << i;
+    if (i < kLive) {
+      live_handles.push_back(handle);
+      values.push_back(value);
+    } else {
+      freed_handles.push_back(handle);
+    }
+  }
+  for (uint64_t handle : freed_handles) {
+    store.Free(handle);
+  }
+
+  for (size_t round = 0; round < 30; ++round) {
+    for (size_t i = 0; i < kLive; ++i) {
+      values[i] = Value(static_cast<char>('A' + (i + round) % 26));
+      store.Write(live_handles[i], values[i].data(), values[i].size());
+    }
+  }
+  for (size_t i = 0; i < kLive; ++i) {
+    std::string out(values[i].size(), '\0');
+    ASSERT_EQ(store.Read(live_handles[i], out.data(), out.size()),
+              values[i].size())
+        << "row=" << i;
+    EXPECT_EQ(out, values[i]) << "row=" << i;
+  }
+
+  const std::string info = store.ExtraResultFields();
+  EXPECT_GT(FieldOf(info, " write_log_compactions="), 0U);
+  EXPECT_EQ(FieldOf(info, " write_log_fallbacks="), 0U);
+  EXPECT_EQ(FieldOf(info, " write_log_index_entries="), kLive);
+}
+
+// A log too small for its live set compacts or skips, then falls back to the
+// in-place path. Either way every read must return the latest value.
+TEST(SsdLogValueStoreTest, ExhaustedLogFallsBackWithoutLosingValues) {
+  SsdLogValueStore store(Config(128ULL << 10));
+  constexpr size_t kRows = 1000;
+  std::vector<std::string> values(kRows);
+  std::vector<uint64_t> handles(kRows, kValueHandleNone);
+  for (size_t i = 0; i < kRows; ++i) {
+    values[i]  = Value(static_cast<char>('a' + i % 26));
+    handles[i] = store.AllocAndWrite(values[i].data(), values[i].size());
+    ASSERT_NE(handles[i], kValueHandleNone) << "row=" << i;
+  }
+  for (size_t round = 0; round < 5; ++round) {
+    for (size_t i = 0; i < kRows; ++i) {
+      values[i] = Value(static_cast<char>('A' + (i + round) % 26));
+      store.Write(handles[i], values[i].data(), values[i].size());
+    }
+  }
+  for (size_t i = 0; i < kRows; ++i) {
+    std::string out(values[i].size(), '\0');
+    ASSERT_EQ(store.Read(handles[i], out.data(), out.size()), values[i].size())
+        << "row=" << i;
+    EXPECT_EQ(out, values[i]) << "row=" << i;
+  }
+  const std::string info = store.ExtraResultFields();
+  EXPECT_GT(FieldOf(info, " write_log_fallbacks="), 0U) << info;
+  EXPECT_EQ(FieldOf(info, " write_log_exhausted="), 1U) << info;
+  EXPECT_EQ(FieldOf(info, " write_log_index_entries="), 0U) << info;
+}
+
+// Compaction runs while other threads write and read. Each thread checks back
+// its own latest value, so a stale entry accepted after a segment recycle
+// would show up as a wrong value.
+TEST(SsdLogValueStoreTest, CompactionKeepsConcurrentReadsConsistent) {
+  SsdLogValueStore store(Config(512ULL << 10));
+  constexpr size_t kThreads = 8;
+  constexpr size_t kRowsPer = 6;
+  constexpr size_t kRounds  = 150;
+  std::vector<uint64_t> handles(kThreads * kRowsPer, kValueHandleNone);
+  for (size_t i = 0; i < handles.size(); ++i) {
+    const std::string value = Value(static_cast<char>('a' + i % 26));
+    handles[i]              = store.AllocAndWrite(value.data(), value.size());
+    ASSERT_NE(handles[i], kValueHandleNone) << "row=" << i;
+  }
+
+  std::atomic<bool> start{false};
+  std::atomic<uint64_t> failures{0};
+  std::vector<std::thread> threads;
+  threads.reserve(kThreads);
+  for (size_t tid = 0; tid < kThreads; ++tid) {
+    threads.emplace_back([&, tid]() {
+      while (!start.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+      }
+      for (size_t round = 0; round < kRounds; ++round) {
+        for (size_t r = 0; r < kRowsPer; ++r) {
+          const size_t row = tid * kRowsPer + r;
+          const std::string value(
+              128, static_cast<char>('a' + (row + round) % 26));
+          store.Write(handles[row], value.data(), value.size());
+          std::string out(value.size(), '\0');
+          const size_t actual =
+              store.Read(handles[row], out.data(), out.size());
+          if (actual != value.size() || out != value) {
+            failures.fetch_add(1, std::memory_order_relaxed);
+          }
+        }
+      }
+    });
+  }
+  start.store(true, std::memory_order_release);
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  EXPECT_EQ(failures.load(), 0U);
+  const std::string info = store.ExtraResultFields();
+  EXPECT_GT(FieldOf(info, " write_log_compactions="), 0U);
+  EXPECT_EQ(FieldOf(info, " write_log_fallbacks="), 0U);
+  EXPECT_EQ(FieldOf(info, " write_log_index_entries="), handles.size());
 }
 
 // The tiered e2e path wraps the log store in CLOCK, which moves rows between
