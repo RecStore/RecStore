@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <sys/resource.h>
 
 #include <algorithm>
 #include <array>
@@ -118,6 +119,7 @@ DEFINE_string(distribution,
               "uniform",
               "key distribution: uniform/zipfian/trace");
 DEFINE_string(access_trace, "", "binary uint64 key trace for timed replay");
+DEFINE_string(read_trace_path, "", "text query log for distribution=trace");
 DEFINE_string(warmup_access_trace, "", "optional separate warmup trace");
 DEFINE_string(
     load_order,
@@ -132,6 +134,16 @@ DEFINE_bool(
     "sequential-load bias");
 DEFINE_string(read_mode, "exists", "read mode: exists/get/batch_get_flat");
 DEFINE_int32(batch_keys, 500, "keys per BatchGetFlat operation");
+DEFINE_int32(load_batch_keys, 1, "keys per load BatchPut; 1 uses Put");
+DEFINE_string(tiered_dram_keys_path,
+              "",
+              "sorted native uint64 DRAM key profile");
+DEFINE_bool(tiered_online_admission,
+            false,
+            "enable bounded second-miss tiered admission");
+DEFINE_bool(tiered_async_admission,
+            false,
+            "prepare online tier exchanges in a bounded background queue");
 DEFINE_bool(load, true, "run load phase");
 DEFINE_bool(run, true, "run transaction phase");
 DEFINE_bool(print_util, false, "print KVEngine utilization after load");
@@ -534,6 +546,20 @@ BaseKVConfig BuildConfig() {
         {"clock_exchange_queue_bytes", FLAGS_tiered_clock_exchange_queue_bytes},
         {"retain_backing_copies", FLAGS_tiered_retain_backing_copies},
         {"expected_dram_bytes", FLAGS_tiered_cache_expected_dram_bytes}};
+    if (!FLAGS_tiered_dram_keys_path.empty()) {
+      config.json_config_["value"]["tiering"]["dram_keys_path"] =
+          FLAGS_tiered_dram_keys_path;
+    }
+    if (FLAGS_tiered_online_admission) {
+      config.json_config_["value"]["tiering"]["online_admission"]     = true;
+      config.json_config_["value"]["tiering"]["high_watermark_ratio"] = 0.90;
+    }
+    if (FLAGS_tiered_async_admission) {
+      if (!FLAGS_tiered_online_admission)
+        throw std::invalid_argument(
+            "async admission requires online admission");
+      config.json_config_["value"]["tiering"]["async_admission"] = true;
+    }
   }
   if (!FLAGS_ssd_layout_strategy.empty() &&
       FLAGS_ssd_layout_strategy != "plain") {
@@ -562,6 +588,11 @@ PhaseStats LoadRecords(BaseKV* kv,
                        int load_threads,
                        uint64_t record_count,
                        const std::vector<uint64_t>& order) {
+  if (FLAGS_load_batch_keys <= 0 ||
+      (FLAGS_load_batch_keys > 1 && FLAGS_value_size % sizeof(float) != 0)) {
+    throw std::invalid_argument(
+        "invalid load_batch_keys or non-float row size");
+  }
   std::atomic<uint64_t> next{0};
   std::vector<std::thread> threads;
   std::vector<uint64_t> counts(load_threads, 0);
@@ -583,6 +614,43 @@ PhaseStats LoadRecords(BaseKV* kv,
     threads.emplace_back([&, tid]() {
       base::auto_bind_core();
       std::string value(FLAGS_value_size, static_cast<char>('a' + (tid % 26)));
+      if (FLAGS_load_batch_keys > 1) {
+        const size_t dim = FLAGS_value_size / sizeof(float);
+        std::vector<uint64_t> keys;
+        std::vector<float> rows;
+        std::vector<base::ConstArray<float>> values;
+        uint64_t cursor      = static_cast<uint64_t>(tid) * per_thread;
+        const uint64_t limit = std::min(record_count, cursor + per_thread);
+        for (;;) {
+          const uint64_t begin =
+              order.empty()
+                  ? cursor
+                  : next.fetch_add(
+                        FLAGS_load_batch_keys, std::memory_order_relaxed);
+          const uint64_t end = order.empty() ? limit : record_count;
+          if (begin >= end)
+            break;
+          const size_t count =
+              std::min<uint64_t>(FLAGS_load_batch_keys, end - begin);
+          keys.resize(count);
+          rows.resize(count * dim);
+          values.clear();
+          values.reserve(count);
+          for (size_t i = 0; i < count; ++i) {
+            keys[i] = order.empty() ? begin + i : order[begin + i];
+            const char fill =
+                order.empty()
+                    ? static_cast<char>('a' + tid % 26)
+                    : static_cast<char>('a' + (keys[i] / per_thread) % 26);
+            std::memset(rows.data() + i * dim, fill, FLAGS_value_size);
+            values.emplace_back(rows.data() + i * dim, dim);
+          }
+          kv->BatchPut(base::ConstArray<uint64_t>(keys), &values, tid);
+          counts[tid] += count;
+          cursor += count;
+        }
+        return;
+      }
       if (!order.empty()) {
         // Up to load_threads - 1 earlier keys may still be in flight.
         // Values retain their key-derived contents for post-run verification.
@@ -669,6 +737,10 @@ PhaseStats RunTransactions(
         std::vector<uint64_t> batch_keys(static_cast<size_t>(FLAGS_batch_keys));
         std::vector<float> flat_values(static_cast<size_t>(FLAGS_batch_keys) *
                                        static_cast<size_t>(embedding_dim));
+        std::vector<base::ConstArray<float>> write_values(
+            static_cast<size_t>(FLAGS_batch_keys),
+            base::ConstArray<float>(
+                reinterpret_cast<float*>(value.data()), embedding_dim));
         PhaseStats local;
         while (!start.load(std::memory_order_acquire)) {
         }
@@ -728,6 +800,16 @@ PhaseStats RunTransactions(
             }
             ++local.read_ops;
           } else {
+            if (use_batch_get_flat) {
+              for (auto& key : batch_keys) {
+                key = key_gen.NextKey();
+              }
+              kv->BatchPut(
+                  base::ConstArray<uint64_t>(batch_keys), &write_values, tid);
+              local.update_ops += batch_keys.size();
+              local.total_ops += batch_keys.size();
+              continue;
+            }
             const uint64_t key = key_gen.NextKey();
             kv->Put(key, std::string_view(value.data(), value.size()), tid);
             ++local.update_ops;
@@ -758,6 +840,7 @@ PhaseStats RunTransactions(
     std::rethrow_exception(first_exception);
   }
 
+  kv->DrainBackgroundWork();
   PhaseStats total;
   for (const auto& each : stats) {
     total.total_ops += each.total_ops;
@@ -958,20 +1041,35 @@ int RunBenchmark(int argc, char* argv[]) {
                 FLAGS_load_order.c_str());
   }
   std::vector<uint64_t> trace, warmup_trace;
+  if (!FLAGS_read_trace_path.empty() && !FLAGS_access_trace.empty())
+    throw std::invalid_argument(
+        "choose read_trace_path or access_trace, not both");
   if (FLAGS_distribution == "trace") {
-    trace        = read_trace(FLAGS_access_trace);
+    if (FLAGS_read_trace_path.empty()) {
+      trace = read_trace(FLAGS_access_trace);
+    } else {
+      auto graph = ssd_layout::ReadQueryLog(FLAGS_read_trace_path, false);
+      if (graph.vertex_count != static_cast<uint64_t>(FLAGS_record_count) ||
+          graph.pins.empty())
+        throw std::invalid_argument(
+            "trace record count mismatch or empty trace");
+      trace.assign(graph.pins.begin(), graph.pins.end());
+    }
     warmup_trace = FLAGS_warmup_access_trace.empty()
                      ? trace
                      : read_trace(FLAGS_warmup_access_trace);
     if (std::min(trace.size(), warmup_trace.size()) <
         static_cast<size_t>(FLAGS_thread_num))
       throw std::invalid_argument("trace is shorter than thread count");
-    std::printf("YCSB_TRACE keys=%zu warmup_keys=%zu path=%s warmup_path=%s\n",
-                trace.size(),
-                warmup_trace.size(),
-                FLAGS_access_trace.c_str(),
-                FLAGS_warmup_access_trace.c_str());
-  } else if (!FLAGS_access_trace.empty() ||
+    std::printf(
+        "YCSB_TRACE keys=%zu warmup_keys=%zu path=%s warmup_path=%s\n",
+        trace.size(),
+        warmup_trace.size(),
+        (FLAGS_read_trace_path.empty() ? FLAGS_access_trace
+                                       : FLAGS_read_trace_path)
+            .c_str(),
+        FLAGS_warmup_access_trace.c_str());
+  } else if (!FLAGS_read_trace_path.empty() || !FLAGS_access_trace.empty() ||
              !FLAGS_warmup_access_trace.empty()) {
     throw std::invalid_argument("access_trace requires distribution=trace");
   }
@@ -1077,6 +1175,7 @@ int RunBenchmark(int argc, char* argv[]) {
           warmup_trace.empty() ? nullptr : &warmup_trace);
     }
     wait_for_exchanges();
+    kv->ResetStats();
     std::printf("YCSB_BEFORE_RUN%s\n", kv->ExtraResultFields().c_str());
     const auto begin     = std::chrono::steady_clock::now();
     PhaseStats run_stats = RunTransactions(
@@ -1094,10 +1193,14 @@ int RunBenchmark(int argc, char* argv[]) {
         seconds > 0.0 ? static_cast<double>(run_stats.total_ops) / seconds
                       : 0.0;
     const double drain_seconds = wait_for_exchanges();
+    struct rusage usage {};
+    const long peak_rss_kb =
+        getrusage(RUSAGE_SELF, &usage) == 0 ? usage.ru_maxrss : -1;
     std::printf(
         "YCSB_RESULT workload=%s distribution=%s zipfian_alpha=%.6f "
         "read_mode=%s threads=%d records=%ld runtime_s=%.6f ops=%lu "
-        "throughput_ops_sec=%.6f read_ops=%lu update_ops=%lu%s\n",
+        "throughput_ops_sec=%.6f read_ops=%lu update_ops=%lu "
+        "process_peak_rss_kb=%ld%s\n",
         workload.c_str(),
         FLAGS_distribution.c_str(),
         FLAGS_zipfian_alpha,
@@ -1109,6 +1212,7 @@ int RunBenchmark(int argc, char* argv[]) {
         throughput,
         run_stats.read_ops,
         run_stats.update_ops,
+        peak_rss_kb,
         kv->ExtraResultFields().c_str());
     if (FLAGS_tiered_clock_async_exchange)
       std::printf(

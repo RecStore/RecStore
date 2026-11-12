@@ -45,6 +45,8 @@ public:
   void Init(const json& config) override;
   void Run() override;
   void Stop();
+  // Call after requests finish for a consistent live-allocation snapshot.
+  std::string ExtraResultFields() const;
 
 private:
   json local_config_;

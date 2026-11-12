@@ -16,7 +16,7 @@ endif()
 add_library(kv_engine
   kv_engine_register.cc
 )
-target_link_libraries(kv_engine PUBLIC base)
+target_link_libraries(kv_engine PUBLIC base Folly::folly)
 if(USE_PMKV MATCHES "ON")
   target_link_libraries(kv_engine PUBLIC ${LIBPMEMKV_LIBRARIES})
 endif()

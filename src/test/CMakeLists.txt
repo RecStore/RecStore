@@ -590,6 +590,11 @@ set_tests_properties(test_local_shm_op_component PROPERTIES
 )
 
 add_python_unittest(
+    test_build_tiered_dram_profile_py
+    src.test.scripts.test_build_tiered_dram_profile
+)
+
+add_python_unittest(
     test_run_local_shm_mixed_benchmark_py
     src/test/scripts/test_run_local_shm_mixed_benchmark.py
 )
