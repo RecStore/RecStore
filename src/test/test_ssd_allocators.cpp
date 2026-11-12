@@ -707,8 +707,11 @@ TEST(SsdSlabAllocatorTest, BatchAllocAndWriteKeepsSlotsCrossingPageBoundaries) {
     updates.push_back({values[i].data(), kValueSize});
   }
   backend.ResetReadStats();
+  backend.ResetWriteStats();
   alloc.BatchWrite(handles, updates);
   EXPECT_EQ(backend.GetReadStats().page_reads, 4U);
+  EXPECT_EQ(backend.GetWriteStats().page_writes, 4U);
+  EXPECT_EQ(backend.GetWriteStats().bytes_written, 4U * PAGE_SIZE);
   alloc.BatchRead(reads, sizes);
   for (size_t i = 0; i < kSlots; ++i) {
     EXPECT_EQ(std::string(buffers[i].data(), sizes[i]), values[i]);

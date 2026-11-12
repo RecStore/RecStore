@@ -111,9 +111,30 @@ public:
     bytes_read_.store(0, std::memory_order_relaxed);
   }
 
+  // Page-level write counters. A 128 B value update costs one whole page
+  // write (and a page read for in-place update), so these counters expose the
+  // write amplification that payload byte counters cannot show.
+  struct WriteStats {
+    uint64_t page_writes   = 0;
+    uint64_t bytes_written = 0;
+  };
+
+  WriteStats GetWriteStats() const {
+    return {page_writes_.load(std::memory_order_relaxed),
+            bytes_written_.load(std::memory_order_relaxed)};
+  }
+
+  void ResetWriteStats() {
+    page_writes_.store(0, std::memory_order_relaxed);
+    bytes_written_.store(0, std::memory_order_relaxed);
+  }
+
   // Batch write using sliding-window async IO (no coroutines).
   // Buffers are NOT freed by this method; caller is responsible.
+  // Overrides must record the batch exactly once: either here through
+  // RecordWrite() or once per page inside their own page-write path.
   virtual void BatchWritePages(const std::vector<IOEntry>& entries) {
+    RecordWrite(entries);
     for (auto& e : entries) {
       for (uint64_t i = 0; i < e.page_count; i++) {
         WritePageSync(e.page_id + i, e.buffer + i * PAGE_SIZE);
@@ -138,6 +159,8 @@ protected:
   int queue_cnt    = 512;
   std::atomic<uint64_t> page_reads_{0};
   std::atomic<uint64_t> bytes_read_{0};
+  std::atomic<uint64_t> page_writes_{0};
+  std::atomic<uint64_t> bytes_written_{0};
 
   void RecordRead(const std::vector<IOEntry>& entries) {
     uint64_t pages = 0;
@@ -146,6 +169,22 @@ protected:
     }
     page_reads_.fetch_add(pages, std::memory_order_relaxed);
     bytes_read_.fetch_add(pages * PAGE_SIZE, std::memory_order_relaxed);
+  }
+
+  void RecordWritePages(uint64_t pages) {
+    if (pages == 0) {
+      return;
+    }
+    page_writes_.fetch_add(pages, std::memory_order_relaxed);
+    bytes_written_.fetch_add(pages * PAGE_SIZE, std::memory_order_relaxed);
+  }
+
+  void RecordWrite(const std::vector<IOEntry>& entries) {
+    uint64_t pages = 0;
+    for (const auto& entry : entries) {
+      pages += entry.page_count;
+    }
+    RecordWritePages(pages);
   }
 
   virtual void ReadPageAsync(coroutine<void>::push_type& sink,

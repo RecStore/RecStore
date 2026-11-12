@@ -306,6 +306,7 @@ public:
                       char* buffer) override {
     struct spdk_nvme_qpair* qpair = get_thread_qpair();
     pending++;
+    RecordWritePages(1);
     int ret = spdk_nvme_ns_cmd_write(
         ns_entry.ns,
         qpair,
@@ -329,6 +330,7 @@ public:
     struct spdk_nvme_qpair* qpair = get_thread_qpair();
     // LOG(INFO) << "WritePageSync: qpair=" << (void*)qpair;
     pending++;
+    RecordWritePages(1);
     int ret = spdk_nvme_ns_cmd_write(
         ns_entry.ns,
         qpair,
@@ -365,6 +367,7 @@ public:
   void BatchWritePages(const std::vector<IOEntry>& entries) override {
     if (entries.empty())
       return;
+    RecordWrite(entries);
     struct spdk_nvme_qpair* qpair = get_thread_qpair();
     int max_inflight              = std::max(queue_cnt / 2, 1);
     size_t submitted              = 0;

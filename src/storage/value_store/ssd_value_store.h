@@ -70,11 +70,13 @@ public:
 
   void Write(uint64_t handle, const void* data, size_t size) override {
     if (handle != kValueHandleNone) {
+      payload_written_bytes_.fetch_add(size, std::memory_order_relaxed);
       allocator_->Write(handle, data, size);
     }
   }
 
   uint64_t AllocAndWrite(const void* data, size_t size) override {
+    payload_written_bytes_.fetch_add(size, std::memory_order_relaxed);
     const uint64_t handle = allocator_->AllocAndWrite(data, size);
     return handle == SsdBlockAllocator::kInvalidHandle
              ? kValueHandleNone
@@ -85,7 +87,9 @@ public:
     if (handle == kValueHandleNone) {
       return 0;
     }
-    return allocator_->Read(handle, out_buf, buf_size);
+    const size_t actual = allocator_->Read(handle, out_buf, buf_size);
+    payload_read_bytes_.fetch_add(actual, std::memory_order_relaxed);
+    return actual;
   }
 
   void Free(uint64_t handle) override {
@@ -109,6 +113,8 @@ public:
       if (handles[i] == kValueHandleNone) {
         continue;
       }
+      payload_written_bytes_.fetch_add(
+          specs[i].size, std::memory_order_relaxed);
       raw_handles.push_back(handles[i]);
       entries.push_back({specs[i].data, specs[i].size});
     }
@@ -131,6 +137,7 @@ public:
             "SsdValueStore::BatchRead result size mismatch");
       }
       for (size_t i = 0; i < indices.size(); ++i) {
+        payload_read_bytes_.fetch_add(sizes[i], std::memory_order_relaxed);
         out_results[indices[i]].data.resize(sizes[i]);
       }
       entries.clear();
@@ -167,6 +174,10 @@ public:
       }
       std::vector<uint64_t> chunk_handles =
           allocator_->BatchAllocAndWrite(entries);
+      for (size_t i = begin; i < end; ++i) {
+        payload_written_bytes_.fetch_add(
+            specs[i].size, std::memory_order_relaxed);
+      }
       for (uint64_t handle : chunk_handles) {
         handles.push_back(handle == SsdBlockAllocator::kInvalidHandle
                               ? kValueHandleNone
@@ -176,13 +187,25 @@ public:
     return handles;
   }
 
-  void ResetStats() override { io_backend_->ResetReadStats(); }
+  void ResetStats() override {
+    io_backend_->ResetReadStats();
+    io_backend_->ResetWriteStats();
+    payload_read_bytes_.store(0, std::memory_order_relaxed);
+    payload_written_bytes_.store(0, std::memory_order_relaxed);
+  }
 
   std::string ExtraResultFields() const override {
-    const auto stats = io_backend_->GetReadStats();
+    const auto stats  = io_backend_->GetReadStats();
+    const auto writes = io_backend_->GetWriteStats();
     std::ostringstream out;
     out << " layout_strategy=plain" << " layout_page_reads=" << stats.page_reads
-        << " layout_bytes_read=" << stats.bytes_read;
+        << " layout_bytes_read=" << stats.bytes_read
+        << " layout_page_writes=" << writes.page_writes
+        << " layout_bytes_written=" << writes.bytes_written
+        << " layout_payload_bytes_read="
+        << payload_read_bytes_.load(std::memory_order_relaxed)
+        << " layout_payload_bytes_written="
+        << payload_written_bytes_.load(std::memory_order_relaxed);
     if (const auto* slab =
             dynamic_cast<const SsdSlabAllocator*>(allocator_.get()))
       out << " ssd_joined_read_pages=" << slab->JoinedReadPages()
@@ -193,6 +216,8 @@ public:
 private:
   std::unique_ptr<IOBackend> io_backend_;
   std::unique_ptr<SsdBlockAllocator> allocator_;
+  std::atomic<uint64_t> payload_read_bytes_{0};
+  std::atomic<uint64_t> payload_written_bytes_{0};
 };
 
 FACTORY_REGISTER(
