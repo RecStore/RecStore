@@ -20,12 +20,16 @@
 class SsdStaticLayoutValueStore : public ValueStore {
 public:
   struct Stats {
-    uint64_t logical_rows    = 0;
-    uint64_t physical_copies = 0;
-    uint64_t page_reads      = 0;
-    uint64_t requested_rows  = 0;
-    uint64_t effective_rows  = 0;
-    uint64_t bytes_read      = 0;
+    uint64_t logical_rows          = 0;
+    uint64_t physical_copies       = 0;
+    uint64_t page_reads            = 0;
+    uint64_t page_writes           = 0;
+    uint64_t requested_rows        = 0;
+    uint64_t effective_rows        = 0;
+    uint64_t bytes_read            = 0;
+    uint64_t bytes_written         = 0;
+    uint64_t payload_read_bytes    = 0;
+    uint64_t payload_written_bytes = 0;
   };
 
   explicit SsdStaticLayoutValueStore(const BaseKVConfig& config) {
@@ -84,9 +88,15 @@ public:
     out.logical_rows    = artifact_.keys.size();
     out.physical_copies = copy_count_;
     out.page_reads      = page_reads_.load(std::memory_order_relaxed);
+    out.page_writes     = page_writes_.load(std::memory_order_relaxed);
     out.requested_rows  = requested_rows_.load(std::memory_order_relaxed);
     out.effective_rows  = effective_rows_.load(std::memory_order_relaxed);
     out.bytes_read      = bytes_read_.load(std::memory_order_relaxed);
+    out.bytes_written   = bytes_written_.load(std::memory_order_relaxed);
+    out.payload_read_bytes =
+        payload_read_bytes_.load(std::memory_order_relaxed);
+    out.payload_written_bytes =
+        payload_written_bytes_.load(std::memory_order_relaxed);
     return out;
   }
 
@@ -125,15 +135,12 @@ public:
     if (size != artifact_.row_size) {
       throw std::invalid_argument("static SSD layout value size mismatch");
     }
-    std::vector<uint64_t> pages;
-    pages.reserve(copies.size());
+    std::vector<RowPatch> patches;
+    patches.reserve(copies.size());
     for (const auto& copy : copies) {
-      pages.push_back(copy.page_id);
+      patches.push_back({copy.page_id, copy.byte_offset, data, size});
     }
-    auto locked = LockPages(pages, true);
-    for (const auto& copy : copies) {
-      UpdatePage(copy, data, size);
-    }
+    ApplyPatches(patches);
   }
 
   void BatchWrite(const std::vector<uint64_t>& handles,
@@ -141,9 +148,21 @@ public:
     if (handles.size() != specs.size()) {
       throw std::invalid_argument("static SSD layout batch size mismatch");
     }
+    std::vector<RowPatch> patches;
+    patches.reserve(handles.size());
     for (size_t i = 0; i < handles.size(); ++i) {
-      Write(handles[i], specs[i].data, specs[i].size);
+      if (specs[i].size != artifact_.row_size) {
+        throw std::invalid_argument("static SSD layout value size mismatch");
+      }
+      for (const auto& copy : CopiesOf(handles[i])) {
+        patches.push_back(
+            {copy.page_id, copy.byte_offset, specs[i].data, specs[i].size});
+      }
     }
+    // One read-modify-write per page, not per row and replica: rows that
+    // share a page (and every MaxEmbed replica page) otherwise rewrite the
+    // same 4 KiB page once per row.
+    ApplyPatches(patches);
   }
 
   size_t Read(uint64_t handle, void* out_buf, size_t buf_size) override {
@@ -156,6 +175,8 @@ public:
     ReadPage(copy, out_buf);
     requested_rows_.fetch_add(1, std::memory_order_relaxed);
     effective_rows_.fetch_add(1, std::memory_order_relaxed);
+    payload_read_bytes_.fetch_add(
+        artifact_.row_size, std::memory_order_relaxed);
     return artifact_.row_size;
   }
 
@@ -177,6 +198,8 @@ public:
       out_results[i].data.resize(artifact_.row_size);
     }
     requested_rows_.fetch_add(remaining, std::memory_order_relaxed);
+    payload_read_bytes_.fetch_add(
+        remaining * artifact_.row_size, std::memory_order_relaxed);
     // ponytail: rescan candidate pages each round. Invert page->request if a
     // batch profile shows this scan above the SSD read.
     while (remaining > 0) {
@@ -231,10 +254,15 @@ public:
 
   void ResetStats() override {
     io_backend_->ResetReadStats();
+    io_backend_->ResetWriteStats();
     page_reads_.store(0, std::memory_order_relaxed);
+    page_writes_.store(0, std::memory_order_relaxed);
     requested_rows_.store(0, std::memory_order_relaxed);
     effective_rows_.store(0, std::memory_order_relaxed);
     bytes_read_.store(0, std::memory_order_relaxed);
+    bytes_written_.store(0, std::memory_order_relaxed);
+    payload_read_bytes_.store(0, std::memory_order_relaxed);
+    payload_written_bytes_.store(0, std::memory_order_relaxed);
   }
 
   std::string ExtraResultFields() const override {
@@ -249,10 +277,14 @@ public:
         << " layout_logical_rows=" << snapshot.logical_rows
         << " layout_physical_copies=" << snapshot.physical_copies
         << " layout_page_reads=" << snapshot.page_reads
+        << " layout_page_writes=" << snapshot.page_writes
         << " layout_requested_rows=" << snapshot.requested_rows
         << " layout_effective_rows=" << snapshot.effective_rows
         << " layout_rows_per_page=" << rows_per_page
-        << " layout_bytes_read=" << snapshot.bytes_read;
+        << " layout_bytes_read=" << snapshot.bytes_read
+        << " layout_bytes_written=" << snapshot.bytes_written
+        << " layout_payload_bytes_read=" << snapshot.payload_read_bytes
+        << " layout_payload_bytes_written=" << snapshot.payload_written_bytes;
     return out.str();
   }
 
@@ -341,12 +373,50 @@ private:
     io_backend_->FreeBuffer(page);
   }
 
-  void
-  UpdatePage(const ssd_layout::Location& copy, const void* data, size_t size) {
-    char* page = ReadRawPage(copy.page_id, false);
-    std::memcpy(page + copy.byte_offset, data, size);
-    io_backend_->BatchWritePages({{copy.page_id + page_id_offset_, page, 1}});
-    io_backend_->FreeBuffer(page);
+  struct RowPatch {
+    uint64_t page_id;
+    uint32_t byte_offset;
+    const void* data;
+    size_t size;
+  };
+
+  void ApplyPatches(std::vector<RowPatch>& patches) {
+    if (patches.empty()) {
+      return;
+    }
+    std::stable_sort(patches.begin(),
+                     patches.end(),
+                     [](const RowPatch& a, const RowPatch& b) {
+                       return a.page_id != b.page_id
+                                ? a.page_id < b.page_id
+                                : a.byte_offset < b.byte_offset;
+                     });
+    std::vector<uint64_t> pages;
+    pages.reserve(patches.size());
+    for (const auto& patch : patches) {
+      if (pages.empty() || pages.back() != patch.page_id) {
+        pages.push_back(patch.page_id);
+      }
+    }
+    auto locked       = LockPages(pages, true);
+    size_t next_patch = 0;
+    while (next_patch < patches.size()) {
+      const uint64_t page_id = patches[next_patch].page_id;
+      char* page             = ReadRawPage(page_id, false);
+      while (next_patch < patches.size() &&
+             patches[next_patch].page_id == page_id) {
+        std::memcpy(page + patches[next_patch].byte_offset,
+                    patches[next_patch].data,
+                    patches[next_patch].size);
+        payload_written_bytes_.fetch_add(
+            patches[next_patch].size, std::memory_order_relaxed);
+        ++next_patch;
+      }
+      io_backend_->BatchWritePages({{page_id + page_id_offset_, page, 1}});
+      io_backend_->FreeBuffer(page);
+      page_writes_.fetch_add(1, std::memory_order_relaxed);
+      bytes_written_.fetch_add(PAGE_SIZE, std::memory_order_relaxed);
+    }
   }
 
   ssd_layout::Artifact artifact_;
@@ -356,9 +426,13 @@ private:
   uint64_t copy_count_     = 0;
   std::array<std::shared_mutex, 64> page_locks_;
   std::atomic<uint64_t> page_reads_{0};
+  std::atomic<uint64_t> page_writes_{0};
   std::atomic<uint64_t> requested_rows_{0};
   std::atomic<uint64_t> effective_rows_{0};
   std::atomic<uint64_t> bytes_read_{0};
+  std::atomic<uint64_t> bytes_written_{0};
+  std::atomic<uint64_t> payload_read_bytes_{0};
+  std::atomic<uint64_t> payload_written_bytes_{0};
 };
 
 FACTORY_REGISTER(ValueStore,
