@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "base/report/report_client.h"
 #include "base/timer.h"
+#include <sys/wait.h>
+#include <unistd.h>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -371,6 +373,54 @@ TEST(ReportTest, CsvSinkAppendsWithoutRepeatingHeader) {
   const auto lines = ReadLines(output_path);
   ASSERT_EQ(lines.size(), 2U);
   EXPECT_EQ(lines[0].rfind("timestamp_us,", 0), 0U);
+
+  std::filesystem::remove_all(temp_dir);
+}
+
+TEST(ReportTest, CsvSinkKeepsLinesWholeAcrossProcesses) {
+  std::lock_guard<std::mutex> lock(EnvTestMutex());
+  const std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path() /
+      "recstore_test_report_csv_shared";
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+  const std::filesystem::path output_path = temp_dir / "metrics.csv";
+
+  constexpr int kChildren = 3;
+  constexpr int kPerChild = 200;
+
+  {
+    ScopedCsvTestEnv env(output_path);
+
+    std::vector<pid_t> children;
+    for (int child = 0; child < kChildren; ++child) {
+      const pid_t pid = ::fork();
+      ASSERT_GE(pid, 0);
+      if (pid == 0) {
+        for (int i = 0; i < kPerChild; ++i) {
+          if (!report("csv_shared", "uid_shared", "duration_us", 1.0)) {
+            ::_exit(1);
+          }
+        }
+        ::_exit(0);
+      }
+      children.push_back(pid);
+    }
+
+    for (const pid_t pid : children) {
+      int status = 0;
+      ASSERT_EQ(::waitpid(pid, &status, 0), pid);
+      ASSERT_TRUE(WIFEXITED(status));
+      ASSERT_EQ(WEXITSTATUS(status), 0);
+    }
+  }
+
+  const auto lines = ReadLines(output_path);
+  ASSERT_EQ(lines.size(), 1U + static_cast<size_t>(kChildren * kPerChild));
+  EXPECT_EQ(lines[0].rfind("timestamp_us,", 0), 0U);
+  for (size_t i = 1; i < lines.size(); ++i) {
+    EXPECT_EQ(SplitCsvLine(lines[i]).size(), 11U) << "line " << i;
+  }
 
   std::filesystem::remove_all(temp_dir);
 }

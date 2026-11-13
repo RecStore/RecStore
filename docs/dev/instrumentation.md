@@ -73,6 +73,28 @@ recstore::RegisterMetricSink(std::make_unique<MyExporter>());
 `Emit` 会被多个线程并发调用，实现必须自己保证线程安全。注册发生在第一次 `report()` 之前才能收到全部样本，
 之后再注册只收到后续事件。自定义 sink 与内置 sink 并行，不受 `observability.sinks` 影响。
 
+## Python 入口
+
+Python 侧通过 `recstore.telemetry` 调用同一个 `report()`，样本进入相同的 sink：
+
+```python
+from recstore.telemetry import emit
+
+emit("embread_stages", "KVClient::pull|123", "duration_us", 42.0)
+```
+
+`libreport.so` 由 `-DUSE_PERF_REPORT=ON` 生成。加载顺序是 `RECSTORE_REPORT_LIBRARY` 环境变量、
+包内 `lib/`、仓库的 `build*/lib/`（多份时取最新）；都找不到时 `emit()` 返回 `False` 而不抛异常，
+所以调用点不用做可用性判断。`recstore.KVClient.report_metric` 是这个函数的旧名字。
+
+## e2e 每步指标
+
+`rs_demo --report-metrics` 会把每个 step 的指标额外发到 `e2e_step` 表（只发 rank 0），`unique_id` 为
+`<run_id>|step<N>`。转发的指标是宽表 CSV 的一个子集：`step_total_ms`、`host_step_enqueue_wall_ms`、
+`samples_per_sec`、`emb_stage_ms`、`input_pack_ms`、`embed_lookup_ms`、`embed_pool_local_ms`、
+`output_unpack_ms`、`dense_compute_ms`、`sparse_optimizer_ms`、`step_sync_wait_ms`、`loss`、
+`warmup_excluded`。48 列宽表 CSV 与 `aggregate.py` 不受影响。
+
 ## 与 stdout 周期表的关系
 
 `xmh::Reporter::StartReportThread()` 每 5 s 往 stdout 打一张 P50/P99 文本表，由 `ps_server` 和
