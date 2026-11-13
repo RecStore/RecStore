@@ -208,6 +208,7 @@ Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 c
 | 字段 | 默认 | 含义 |
 |------|------|------|
 | `high_watermark_ratio` | `0.85` | DRAM 安放水位 |
+| `dram_keys_path` | 空 | 排序去重的 native `uint64` key profile，指定优先放 DRAM 的 key；仅 plain 布局 |
 | `cache_budget_ratio` | `0.05` | LRU 缓存预留比例，范围 `(0, 1]`；CLOCK 不使用此预留 |
 | `cache_shards` | `16` | 缓存或 CLOCK 分片数 |
 | `promote_min_misses` | `2` | SSD value 达到晋升条件所需的成功读取次数 |
