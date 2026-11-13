@@ -1,4 +1,5 @@
 import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -29,6 +30,31 @@ class TelemetryTest(unittest.TestCase):
                 telemetry._candidate_paths(),
                 [Path("/tmp/custom/libreport.so")],
             )
+
+    def test_prefers_the_newest_build_directory(self) -> None:
+        def candidates_for(newer: Path, older: Path) -> list[Path]:
+            for path, stamp in ((newer, 2_000), (older, 1_000)):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"")
+                os.utime(path, (stamp, stamp))
+            with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(
+                telemetry, "_repo_root", return_value=newer.parents[2]
+            ):
+                return telemetry._candidate_paths()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            build = root / "build" / "lib" / telemetry._LIBRARY_NAME
+            release = root / "build_release" / "lib" / telemetry._LIBRARY_NAME
+            candidates = candidates_for(release, build)
+            self.assertLess(candidates.index(release), candidates.index(build))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            build = root / "build" / "lib" / telemetry._LIBRARY_NAME
+            release = root / "build_release" / "lib" / telemetry._LIBRARY_NAME
+            candidates = candidates_for(build, release)
+            self.assertLess(candidates.index(build), candidates.index(release))
 
     def test_emit_calls_the_reported_symbol(self) -> None:
         library = mock.MagicMock()
