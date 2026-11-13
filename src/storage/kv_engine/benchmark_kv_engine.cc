@@ -110,6 +110,17 @@ DEFINE_int32(tiering_cache_shards, 16, "read cache shard count");
 DEFINE_int64(tiering_promote_min_misses,
              2,
              "SSD misses before a value is eligible for promotion");
+DEFINE_bool(write_log_enabled,
+            false,
+            "append SSD row updates to an append-only log instead of doing "
+            "in-place page read-modify-write");
+DEFINE_string(write_log_path, "", "append-only update log file path");
+DEFINE_int64(write_log_capacity_bytes,
+             1LL << 30,
+             "append-only update log capacity in bytes");
+DEFINE_int64(write_log_segment_bytes,
+             8LL << 20,
+             "append-only update log segment size in bytes");
 
 DEFINE_int64(record_count, 100000000, "YCSB record count");
 DEFINE_string(workload,
@@ -559,6 +570,21 @@ BaseKVConfig BuildConfig() {
         throw std::invalid_argument(
             "async admission requires online admission");
       config.json_config_["value"]["tiering"]["async_admission"] = true;
+    }
+    if (FLAGS_write_log_enabled) {
+      if (FLAGS_write_log_path.empty()) {
+        throw std::invalid_argument(
+            "--write_log_path is required when --write_log_enabled");
+      }
+      config.json_config_["value"]["write_log"] = {
+          {"enabled", true},
+          {"path", FLAGS_write_log_path},
+          {"capacity_bytes", FLAGS_write_log_capacity_bytes},
+          {"segment_bytes", FLAGS_write_log_segment_bytes},
+          {"io",
+           {{"type", FLAGS_ssd_io_backend},
+            {"queue_depth", FLAGS_ssd_queue_depth},
+            {"completion_poll_spins", FLAGS_ssd_completion_poll_spins}}}};
     }
   }
   if (!FLAGS_ssd_layout_strategy.empty() &&

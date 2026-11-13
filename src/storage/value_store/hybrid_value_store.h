@@ -21,6 +21,7 @@
 #include "storage/value_store/dram_value_store.h"
 #include "storage/value_store/ssd_static_layout_value_store.h"
 #include "storage/value_store/ssd_value_store.h"
+#include "storage/value_store/ssd_log_value_store.h"
 
 class HybridValueStore : public ValueStore {
 public:
@@ -849,13 +850,19 @@ private:
   }
 
   static std::string SsdStoreType(const json& value) {
+    const bool write_log = value.contains("write_log") &&
+                           value.at("write_log").value("enabled", false);
     if (!value.contains("ssd_layout")) {
-      return "SSD_VALUE_STORE";
+      return write_log ? "SSD_LOG_VALUE_STORE" : "SSD_VALUE_STORE";
     }
     const std::string strategy =
         value.at("ssd_layout").value("strategy", "plain");
     if (strategy.empty() || strategy == "plain") {
-      return "SSD_VALUE_STORE";
+      return write_log ? "SSD_LOG_VALUE_STORE" : "SSD_VALUE_STORE";
+    }
+    if (write_log) {
+      throw std::invalid_argument(
+          "write_log cannot be combined with a static SSD layout");
     }
     if (strategy == "bandana" || strategy == "maxembed") {
       return "SSD_STATIC_LAYOUT_VALUE_STORE";
