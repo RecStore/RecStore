@@ -194,21 +194,63 @@ Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 c
 
 ## 分层安放与读缓存 { #tiered-placement-cache }
 
-通过 `value.tiering.cache_policy` 选择策略：
+DRAM 装不下全部 value 时，这一层决定三件事：新 value 放哪、读过的 value 要不要另存一份、运行中怎么冷热互换。
+
+| 概念 | 一句话 |
+|------|--------|
+| 安放 | value 首次写入时落 DRAM 还是 SSD |
+| 高水位 | 安放可用的 DRAM 比例，默认 `0.85` |
+| 缓存 | 从 DRAM 预扣一块，专门存 SSD 读结果 |
+| 晋升 | SSD value 被读到门槛次数后进入 DRAM |
+| 交换 | 用新晋 value 换掉 DRAM 中较冷的 value |
+
+### 安放
+
+默认策略 `none` 只做安放：写到高水位为止落 DRAM，其余落 SSD，之后不再移动。
+
+`dram_keys_path` 把"先到先得"换成显式名单：文件是排序去重的 native `uint64` key，名单内的 key 可以用满高水位，名单外的 key 直接落 SSD。它只在 plain 布局、且没有启用 CLOCK 时生效，只决定首次写入的落点（表初始化、新行分配），不改变之后的驻留位置。名单应覆盖一个 epoch 会读到的全部行；只覆盖一部分时，漏掉的行每次访问都要付 SSD 读延迟，覆盖越差越慢。
+
+### 缓存
+
+`lru` 从 DRAM 容量中预扣 `cache_budget_ratio` 作缓存，主安放上限变成 `high_watermark_ratio * (capacity - budget)`。主安放与缓存共用同一块 DRAM：写入同步更新缓存，释放 value 时缓存失效；正数 `expected_dram_bytes` 不超过原始高水位时不预留缓存，实际退化为 `none`。
+
+缓存只对重复读有用。单次扫描或复用不足时，它占用的预算只会压低主安放。
+
+### 交换
+
+`clock` 不预扣缓存，DRAM 与 SSD 共享整个高水位预算，按访问热度在线交换。
+
+SSD value 达到晋升门槛后，CLOCK 在同一分片里找较冷的 value 复用其 DRAM 槽位，每次最多检查 64 个候选，逻辑 handle 在交换期间不变。批量 SSD 读成功后先记录访问需求再尝试晋升：锁繁忙不会丢失已完成读取的需求，失败的 I/O 不获得晋升计数。
+
+默认保留晋升 value 的 SSD 副本：未修改的副本被淘汰时无需回写，初始 DRAM value 或修改过的 value 先写回 SSD 再复用槽位；回写失败时保留原安放。关闭 `retain_backing_copies` 可释放 SSD 槽位，但之后每次淘汰都要重写。
+
+`clock_cost_aware` 先比热度再比是否需要回写，不会为省写入而淘汰更热的数据。`clock_frequency_admission` 让两层访问频率按同一周期衰减，候选需要足够的频率优势才交换。`clock_async_exchange` 把候选放进有界队列由后台执行，队列满或锁繁忙时跳过本次晋升、后续访问可重试；SSD 需求读本身仍要等 I/O。两个队列上限必须为正数，包含正在执行的候选，额外缓冲区不计入 resident value 预算。
+
+CLOCK 的 DRAM 命中使用快照与读取者保护：批量路径预取元数据并每 64 行发布一次读取状态，写入、释放和淘汰等待相关读取者结束。此模式不提供直接 value 指针或 RDMA 行地址，调用方走复制路径。
+
+### 选哪个
 
 | 策略 | 行为 |
 |------|------|
-| `none`（默认） | 按 DRAM 高水位安放，超出部分进入 SSD，不做冷热交换 |
-| `lru` | 预留部分 DRAM 缓存 SSD 读结果，不淘汰最初安放在 DRAM 的 value |
-| `clock` | DRAM 与 SSD 按访问热度交换，共享整个 DRAM 高水位预算 |
-| `adaptive` | 根据 `expected_dram_bytes` 选择直接 DRAM、LRU 或 CLOCK |
+| `none`（默认） | 只做安放，超出高水位进 SSD，不交换 |
+| `lru` | 预扣缓存存放 SSD 读结果，不淘汰已安放的 value |
+| `clock` | DRAM 与 SSD 按热度交换，共享整个高水位预算 |
+| `adaptive` | 构造时按 `expected_dram_bytes` 选择直接 DRAM、LRU 或 CLOCK |
+
+跨 step 有明显重复访问、活跃集装得进 DRAM 剩余预算时用 `clock`；只做一次扫描或没有复用时用 `none`，否则只剩交换开销。`lru` 只缓存 SSD 读结果，收益取决于重复读能否弥补它占用的预算。
+
+`adaptive` 在选择时看工作集估计：放得下走直接读；溢出不超过估计工作集的 0.1% 用 LRU；其余用 CLOCK。工作集未知或会继续增长时保持 `expected_dram_bytes=0`，避免低估后停留在不做交换的策略。
+
+库与 benchmark server 模板默认 `none`，`rs_demo` 的 tiered 配置默认 `clock`。
+
+### 字段
 
 字段位于 `value.tiering`：
 
 | 字段 | 默认 | 含义 |
 |------|------|------|
 | `high_watermark_ratio` | `0.85` | DRAM 安放水位 |
-| `dram_keys_path` | 空 | 排序去重的 native `uint64` key profile，指定优先放 DRAM 的 key；仅 plain 布局 |
+| `dram_keys_path` | 空 | 排序去重的 native `uint64` key 名单，指定首次写入时优先放 DRAM 的 key；仅 plain 布局 |
 | `cache_budget_ratio` | `0.05` | LRU 缓存预留比例，范围 `(0, 1]`；CLOCK 不使用此预留 |
 | `cache_shards` | `16` | 缓存或 CLOCK 分片数 |
 | `promote_min_misses` | `2` | SSD value 达到晋升条件所需的成功读取次数 |
@@ -220,33 +262,17 @@ Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 c
 | `clock_exchange_queue_entries` | `256` | 后台交换中等待和执行的候选总数上限 |
 | `clock_exchange_queue_bytes` | `4194304` | 上述候选的 value 缓冲区总字节上限 |
 
-LRU 的缓存预算从 DRAM 容量中预扣，主安放上限为 `high_watermark_ratio * (capacity - budget)`。缓存和主安放共用容量，写入同步更新缓存，释放 value 时使缓存失效。若正数 `expected_dram_bytes` 不超过原始 DRAM 水位，则不预留缓存，实际策略为 `none`。
+### 观测与基准
 
-`adaptive` 在构造时选择策略：工作集能放入 DRAM 时走直接读路径；溢出量不超过估计工作集的 0.1% 时使用 LRU，按溢出量预留缓存；其余情况使用 CLOCK。工作集未知或会继续增长时应保留 `expected_dram_bytes=0`，避免低估后停留在不做交换的策略。
+`benchmark_kv_engine --load_order=PATH` 接受覆盖 `[0, record_count)` 的无头二进制 uint64 排列，按历史热度从高到低加载；初始安放不固定后续驻留位置。生成顺序时只使用历史请求，不使用评估窗口的数据。
 
-### CLOCK 冷热交换
+基准程序兼容 `--tiering_cache_policy`、`--tiering_cache_budget_ratio`、`--tiering_promote_min_misses` 及 `--tiered_*` 别名，同名参数指定不同值会报错；`--tiering_cache_shards` 控制分片数，CLOCK 扩展参数使用 `--tiered_clock_*`。
 
-SSD value 达到晋升门槛后，CLOCK 尝试复用同一分片中较冷 value 的 DRAM 槽位，每次最多检查 64 个候选。逻辑 handle 在交换期间保持不变。批量 SSD 读成功后先记录访问需求，再尝试晋升；晋升锁繁忙不会丢失已完成读取的需求，失败的 I/O 不获得晋升计数。
+真实访问回放用 `--distribution=trace --access_trace=PATH`，`--warmup_access_trace=PATH` 指定独立预热窗口；trace 是无头二进制 uint64 key 流，每个工作线程顺序循环回放自己的连续片段。
 
-默认保留晋升 value 的 SSD 副本。未修改的副本被淘汰时无需回写；初始 DRAM value 或修改过的 value 则先写入 SSD，再复用 DRAM 槽位。回写失败时保留原安放。关闭 `retain_backing_copies` 可在晋升后释放 SSD 槽位，但之后每次淘汰都要重新写入。
+比较安放策略时保持相同的 value DRAM 预算，并单独记录元数据、临时缓冲区和 RSS。`tiered_dram_live_allocs`、`tiered_ssd_live_allocs` 是当前主驻留数量，SSD 副本不算额外驻留；`tiered_clock_metadata_bytes` 只统计元数据数组；`tiered_clock_promotions` 是完成的晋升次数，`tiered_clock_writebacks` 是成功回写的 value 次数。
 
-`clock_cost_aware` 先比较热度，再比较是否需要回写，不会为节省写入而优先淘汰更热的数据。`clock_frequency_admission` 让两层的访问频率按相同周期衰减，候选需有足够的频率优势才交换；它与成本策略独立，均需按实际负载选择。
-
-启用 `clock_async_exchange` 后，前台将候选 value 放入有界队列，后台检查 handle 和写入版本后执行交换。队列满或锁繁忙时跳过本次晋升，后续访问可重试；SSD 需求读取本身仍需等待 I/O。队列两个上限必须为正数，包含正在执行的候选，且额外占用的缓冲区不计入 resident value 预算。
-
-CLOCK 的 DRAM 命中使用快照与读取者保护，批量路径预取元数据并每 64 行发布一次读取状态；写入、释放和淘汰会等待相关读取者结束。此模式不提供直接 value 指针或 RDMA 行地址，调用方使用复制路径。
-
-### 初始安放与基准统计
-
-`benchmark_kv_engine --load_order=PATH` 接受覆盖 `[0, record_count)` 的无头二进制 uint64 排列，按历史热度从高到低加载。初始安放不固定后续驻留位置，CLOCK 仍可在线交换；生成顺序时只使用历史请求，不使用评估窗口的数据。
-
-基准程序兼容 `--tiering_cache_policy`、`--tiering_cache_budget_ratio`、`--tiering_promote_min_misses` 及对应的 `--tiered_cache_policy`、`--tiered_cache_budget_ratio`、`--tiered_cache_promote_min_misses`。同一参数的两种名称同时指定不同值会报错。`--tiering_cache_shards` 控制分片数；CLOCK 扩展参数使用 `--tiered_clock_*`。
-
-真实访问回放使用 `--distribution=trace --access_trace=PATH`，可用 `--warmup_access_trace=PATH` 指定独立预热窗口。trace 为无头二进制 uint64 key 流，每个工作线程按顺序循环回放自己的连续片段。
-
-比较安放策略时保持相同的 value DRAM 预算，并单独记录元数据、临时缓冲区和 RSS。`tiered_dram_live_allocs`、`tiered_ssd_live_allocs` 表示当前主驻留数量，SSD 副本不算额外驻留；`tiered_clock_metadata_bytes` 仅统计元数据数组。`tiered_clock_promotions` 表示完成的晋升次数，`tiered_clock_writebacks` 表示成功回写的 value 次数。
-
-异步交换基准在阶段边界等待队列排空，`YCSB_RUN_MAINTENANCE` 同时给出排空耗时和包含该耗时的吞吐。大批量读取可合并相邻页并复用其他批次尚未完成的页读取，但也会增加临时内存；延迟直方图溢出时，饱和的分位数桶只能作为下界。
+异步交换基准在阶段边界等待队列排空，`YCSB_RUN_MAINTENANCE` 同时给出排空耗时和包含该耗时的吞吐。大批量读取可合并相邻页并复用其他批次尚未完成的页读取，但会增加临时内存；延迟直方图溢出时，饱和的分位数桶只能作为下界。
 
 ---
 
