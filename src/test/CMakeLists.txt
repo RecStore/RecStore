@@ -595,6 +595,27 @@ add_python_unittest(
 )
 
 add_python_unittest(
+    test_telemetry
+    src/test/model_zoo/rs_demo/test_telemetry.py
+)
+set_tests_properties(
+    test_telemetry
+    PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/src;PYTHONDONTWRITEBYTECODE=1"
+    LABELS "python;telemetry"
+)
+
+add_recstore_unittest(
+    test_e2e_metrics
+    src/test/model_zoo/rs_demo/test_e2e_metrics.py
+)
+set_tests_properties(
+    test_e2e_metrics
+    PROPERTIES
+    LABELS "python;telemetry"
+)
+
+add_python_unittest(
     test_run_local_shm_mixed_benchmark_py
     src/test/scripts/test_run_local_shm_mixed_benchmark.py
 )
