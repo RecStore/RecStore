@@ -210,6 +210,8 @@ DRAM 装不下全部 value 时，这一层决定三件事：新 value 放哪、�
 
 `dram_keys_path` 把"先到先得"换成显式名单：文件是排序去重的 native `uint64` key，名单内的 key 可以用满高水位，名单外的 key 直接落 SSD。它只在 plain 布局、且没有启用 CLOCK 时生效，只决定首次写入的落点（表初始化、新行分配），不改变之后的驻留位置。名单应覆盖一个 epoch 会读到的全部行；只覆盖一部分时，漏掉的行每次访问都要付 SSD 读延迟，覆盖越差越慢。
 
+`tools/benchmarks/build_tiered_dram_profile.py` 从稀疏特征文件生成名单：按运行时的 `abs(id) % cardinality` 折叠、用 `--profile-end` 截取历史窗口，输出 fused 或连续编码的排序去重 `uint64` 列表。`--dram-rows` 设为 DRAM 预算行数（`0.85 * capacity * dram_multiplier`），用默认 `density` 填满预算；只收窗口内出现的 key 会欠填预算，覆盖率明显更低。能扫完整 epoch 时扫完整 epoch，只拿历史窗口时窗口外新出现的行无法预先放入 DRAM，在仓库 DLRM 基准上覆盖率约 95%、吞吐比完整扫描低约 25%。
+
 ### 缓存
 
 `lru` 从 DRAM 容量中预扣 `cache_budget_ratio` 作缓存，主安放上限变成 `high_watermark_ratio * (capacity - budget)`。主安放与缓存共用同一块 DRAM：写入同步更新缓存，释放 value 时缓存失效；正数 `expected_dram_bytes` 不超过原始高水位时不预留缓存，实际退化为 `none`。
