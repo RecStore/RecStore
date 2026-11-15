@@ -1534,6 +1534,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#python" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python 入口
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#e2e" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        e2e 每步指标
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#stdout" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2901,6 +2923,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#python" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python 入口
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#e2e" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        e2e 每步指标
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#stdout" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3077,6 +3121,21 @@
 </code></pre></div>
 <p><code>Emit</code> 会被多个线程并发调用，实现必须自己保证线程安全。注册发生在第一次 <code>report()</code> 之前才能收到全部样本，
 之后再注册只收到后续事件。自定义 sink 与内置 sink 并行，不受 <code>observability.sinks</code> 影响。</p>
+<h2 id="python">Python 入口<a class="headerlink" href="#python" title="Permanent link">&para;</a></h2>
+<p>Python 侧通过 <code>recstore.telemetry</code> 调用同一个 <code>report()</code>，样本进入相同的 sink：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">recstore.telemetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">emit</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">emit</span><span class="p">(</span><span class="s2">"embread_stages"</span><span class="p">,</span> <span class="s2">"KVClient::pull|123"</span><span class="p">,</span> <span class="s2">"duration_us"</span><span class="p">,</span> <span class="mf">42.0</span><span class="p">)</span>
+</code></pre></div>
+<p><code>libreport.so</code> 由 <code>-DUSE_PERF_REPORT=ON</code> 生成。加载顺序是 <code>RECSTORE_REPORT_LIBRARY</code> 环境变量、
+包内 <code>lib/</code>、仓库的 <code>build*/lib/</code>（多份时取最新）；都找不到时 <code>emit()</code> 返回 <code>False</code> 而不抛异常，
+所以调用点不用做可用性判断。<code>recstore.KVClient.report_metric</code> 是这个函数的旧名字。</p>
+<h2 id="e2e">e2e 每步指标<a class="headerlink" href="#e2e" title="Permanent link">&para;</a></h2>
+<p><code>rs_demo --report-metrics</code> 会把每个 step 的指标额外发到 <code>e2e_step</code> 表（只发 rank 0），<code>unique_id</code> 为
+<code>&lt;run_id&gt;|step&lt;N&gt;</code>。转发的指标是宽表 CSV 的一个子集：<code>step_total_ms</code>、<code>host_step_enqueue_wall_ms</code>、
+<code>samples_per_sec</code>、<code>emb_stage_ms</code>、<code>input_pack_ms</code>、<code>embed_lookup_ms</code>、<code>embed_pool_local_ms</code>、
+<code>output_unpack_ms</code>、<code>dense_compute_ms</code>、<code>sparse_optimizer_ms</code>、<code>step_sync_wait_ms</code>、<code>loss</code>、
+<code>warmup_excluded</code>。48 列宽表 CSV 与 <code>aggregate.py</code> 不受影响。</p>
 <h2 id="stdout">与 stdout 周期表的关系<a class="headerlink" href="#stdout" title="Permanent link">&para;</a></h2>
 <p><code>xmh::Reporter::StartReportThread()</code> 每 5 s 往 stdout 打一张 P50/P99 文本表，由 <code>ps_server</code> 和
 <code>recstore_pytorch</code> 启动。<code>report()</code> 里 <code>metric_name</code> 为 <code>duration_ns</code> / <code>latency_ns</code> / <code>duration_us</code> /
