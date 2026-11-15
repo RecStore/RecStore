@@ -145,7 +145,7 @@ class TestChooseAvailablePorts(unittest.TestCase):
                 base_kv["value"]["ssd_allocator"]["capacity_bytes"],
                 256 * 1024 * 1024,
             )
-            self.assertEqual(base_kv["value"]["tiering"], {"cache_policy": "LRU"})
+            self.assertEqual(base_kv["value"]["tiering"], {"cache_policy": "none"})
 
     def test_make_runtime_dir_applies_tiered_dram_capacity_multiplier(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -167,15 +167,49 @@ class TestChooseAvailablePorts(unittest.TestCase):
             )
 
     def test_make_runtime_dir_applies_tiered_cache_policy(self) -> None:
+        for raw, expected in (("none", "none"), ("LRU", "LRU")):
+            with self.subTest(policy=raw), tempfile.TemporaryDirectory() as tmpdir:
+                _runtime_dir, runtime_cfg_path = self._make_runtime_dir(
+                    tmpdir,
+                    run_id=f"case-tiered-cache-{raw.lower()}",
+                    ps_type="GRPC",
+                    kv_capacity=20_000,
+                    value_size_bytes=512,
+                    ps_kv_backend="recstore_tiered",
+                    tiered_cache_policy=raw,
+                )
+                runtime_cfg = json.loads(runtime_cfg_path.read_text(encoding="utf-8"))
+                base_kv = runtime_cfg["cache_ps"]["base_kv_config"]
+
+                self.assertEqual(
+                    base_kv["value"]["tiering"], {"cache_policy": expected}
+                )
+
+    def test_make_runtime_dir_applies_tiered_clock_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             _runtime_dir, runtime_cfg_path = self._make_runtime_dir(
                 tmpdir,
-                run_id="case-tiered-cache-off",
+                run_id="case-tiered-clock",
                 ps_type="GRPC",
                 kv_capacity=20_000,
                 value_size_bytes=512,
                 ps_kv_backend="recstore_tiered",
-                tiered_cache_policy="none",
+                tiered_cache_policy="clock",
+            )
+            runtime_cfg = json.loads(runtime_cfg_path.read_text(encoding="utf-8"))
+            base_kv = runtime_cfg["cache_ps"]["base_kv_config"]
+
+            self.assertEqual(base_kv["value"]["tiering"], {"cache_policy": "clock"})
+
+    def test_make_runtime_dir_defaults_tiered_cache_policy_to_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _runtime_dir, runtime_cfg_path = self._make_runtime_dir(
+                tmpdir,
+                run_id="case-tiered-cache-default",
+                ps_type="GRPC",
+                kv_capacity=20_000,
+                value_size_bytes=512,
+                ps_kv_backend="recstore_tiered",
             )
             runtime_cfg = json.loads(runtime_cfg_path.read_text(encoding="utf-8"))
             base_kv = runtime_cfg["cache_ps"]["base_kv_config"]

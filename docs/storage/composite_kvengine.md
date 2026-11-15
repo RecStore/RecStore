@@ -203,6 +203,11 @@ Checkpoint v3 在原 metadata 之外保存 strategy 和 artifact checksum。v2 c
 | `clock` | DRAM 与 SSD 按访问热度交换，共享整个 DRAM 高水位预算 |
 | `adaptive` | 根据 `expected_dram_bytes` 选择直接 DRAM、LRU 或 CLOCK |
 
+跨 step 重复访问明显、且活跃行装得进 DRAM 剩余预算时用 `clock`；活跃集超过 DRAM 容量、只做一次扫描
+或没有复用时用 `none`，此时 `clock` 只剩交换开销。
+`lru` 只缓存 SSD 读结果、不改变主放置，收益取决于重复读能否弥补它占用的 DRAM 预算。
+`rs_demo` 的 tiered 配置默认 `clock`，库与 benchmark server 模板默认 `none`。
+
 字段位于 `value.tiering`：
 
 | 字段 | 默认 | 含义 |

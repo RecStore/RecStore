@@ -101,11 +101,11 @@ def normalize_cache_policy(cache_policy: str) -> str:
     policy = str(cache_policy).strip().lower()
     if policy == "lru":
         return "LRU"
-    if policy == "none":
-        return "none"
+    if policy in {"none", "clock"}:
+        return policy
     raise ValueError(
         "unsupported tiering.cache_policy: "
-        f"{cache_policy!r} (expected 'LRU' or 'none')"
+        f"{cache_policy!r} (expected 'LRU', 'none', or 'clock')"
     )
 
 
@@ -155,7 +155,7 @@ def _build_recstore_base_kv_config(
     allocator: str,
     index_type: str,
     tiered_dram_capacity_multiplier: float,
-    tiered_cache_policy: str = "LRU",
+    tiered_cache_policy: str = "none",
 ) -> dict:
     dram_capacity = capacity * value_size_hint * 2
     value: dict = {
@@ -231,7 +231,7 @@ def build_base_kv_config_for_backend(
     value_size_hint: int,
     index_type: str,
     tiered_dram_capacity_multiplier: float = 2.0,
-    tiered_cache_policy: str = "LRU",
+    tiered_cache_policy: str = "none",
 ) -> dict:
     backend = ps_kv_backend.strip().lower()
     kv_data_path = resolve_kv_data_path(
@@ -304,7 +304,7 @@ def build_runtime_config(
     index_type: str = "DRAM_EXTENDIBLE_HASH",
     ps_kv_backend: str = "recstore_dram",
     tiered_dram_capacity_multiplier: float = 2.0,
-    tiered_cache_policy: str = "LRU",
+    tiered_cache_policy: str = "none",
 ) -> dict:
     cfg = copy.deepcopy(base_cfg)
     cfg.setdefault("cache_ps", {})
@@ -521,7 +521,7 @@ def make_runtime_dir(
     index_type: str = "DRAM_EXTENDIBLE_HASH",
     ps_kv_backend: str = "recstore_dram",
     tiered_dram_capacity_multiplier: float = 2.0,
-    tiered_cache_policy: str = "LRU",
+    tiered_cache_policy: str = "none",
 ) -> tuple[Path, Path]:
     unique_tag = f"{time.time_ns()}_{uuid.uuid4().hex[:8]}"
     output_root_path = Path(output_root).resolve()
