@@ -1,31 +1,16 @@
 import torch
 import os
 import time
-import ctypes
 import json
 from typing import Optional, Tuple, List, Dict, Any, Callable
+
+from .telemetry import emit as _telemetry_emit
 
 _KEY_TAG_SHIFT = 56
 _LOCAL_FAST_PATH_BACKENDS = {"local_shm", "hierkv"}
 
-def get_reporter():
-    if not hasattr(get_reporter, 'lib'):
-        script_dir = os.path.dirname(__file__)
-        lib_path = os.path.abspath(os.path.join(script_dir, '../../../../build/lib/libreport.so'))
-        if os.path.exists(lib_path):
-            lib = ctypes.CDLL(lib_path)
-            lib.report.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_double]
-            lib.report.restype = ctypes.c_bool
-            get_reporter.lib = lib
-        else:
-            get_reporter.lib = None
-    return get_reporter.lib
-
 def report_metric(table: str, uid: str, metric: str, value: float) -> bool:
-    lib = get_reporter()
-    if lib:
-        return lib.report(table.encode('utf-8'), uid.encode('utf-8'), metric.encode('utf-8'), float(value))
-    return False
+    return _telemetry_emit(table, uid, metric, value)
 
 class RecStoreClient:
     _instance = None

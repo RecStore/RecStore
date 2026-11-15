@@ -4,12 +4,16 @@
 #include "base/timer.h"
 
 #include <curl/curl.h>
+#include <fcntl.h>
 #include <glog/logging.h>
 #include <nlohmann/json.hpp>
+#include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <charconv>
 #include <chrono>
 #include <condition_variable>
@@ -617,6 +621,94 @@ private:
   std::thread worker_;
 };
 
+// Append-only file shared by the CSV and JSONL sinks. Samples arrive from
+// several processes (the PS server and every training rank call report()) and
+// may target the same path, so each batch goes out as one O_APPEND write under
+// an advisory lock: lines stay whole and the header is written exactly once.
+class AppendFile {
+public:
+  AppendFile()                             = default;
+  AppendFile(const AppendFile&)            = delete;
+  AppendFile& operator=(const AppendFile&) = delete;
+  ~AppendFile() { Close(); }
+
+  bool Open(const std::filesystem::path& path) {
+    Close();
+    const auto parent = path.parent_path();
+    std::error_code ec;
+    if (!parent.empty()) {
+      std::filesystem::create_directories(parent, ec);
+    }
+    fd_ = ::open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+    return fd_ >= 0;
+  }
+
+  bool IsOpen() const { return fd_ >= 0; }
+
+  // Writes `header` plus a newline when the file is still empty, under the
+  // same lock that protects row batches.
+  bool WriteHeaderIfEmpty(const std::string& header) {
+    if (fd_ < 0) {
+      return false;
+    }
+    const bool locked = ::flock(fd_, LOCK_EX) == 0;
+    struct stat info {};
+    const bool empty = ::fstat(fd_, &info) == 0 && info.st_size == 0;
+    const bool wrote = empty && WriteAll(header + '\n');
+    if (locked) {
+      ::flock(fd_, LOCK_UN);
+    }
+    return wrote;
+  }
+
+  void Append(const std::string& data) { pending_.append(data); }
+
+  void Flush() {
+    if (fd_ < 0 || pending_.empty()) {
+      return;
+    }
+    const bool locked = ::flock(fd_, LOCK_EX) == 0;
+    if (!WriteAll(pending_)) {
+      LOG(ERROR) << "Failed to append " << pending_.size()
+                 << " bytes to report sink file";
+    }
+    if (locked) {
+      ::flock(fd_, LOCK_UN);
+    }
+    pending_.clear();
+  }
+
+  void Close() {
+    Flush();
+    if (fd_ >= 0) {
+      ::close(fd_);
+      fd_ = -1;
+    }
+  }
+
+private:
+  bool WriteAll(const std::string& data) {
+    const char* cursor = data.data();
+    size_t remaining   = data.size();
+    while (remaining > 0) {
+      const ssize_t written = ::write(fd_, cursor, remaining);
+      if (written > 0) {
+        cursor += written;
+        remaining -= static_cast<size_t>(written);
+        continue;
+      }
+      if (written < 0 && errno == EINTR) {
+        continue;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  int fd_ = -1;
+  std::string pending_;
+};
+
 class CsvSink {
 public:
   static CsvSink& GetInstance() {
@@ -628,7 +720,7 @@ public:
             const ObservabilityConfig& config) {
     std::lock_guard<std::mutex> lock(mutex_);
     ConfigureIfNeeded(config);
-    if (!ofs_.is_open()) {
+    if (!file_.IsOpen()) {
       return;
     }
 
@@ -655,20 +747,19 @@ public:
     AppendNumber(line, record.metric_value);
     line.push_back(',');
     AppendCsvField(line, record.source);
+    line.push_back('\n');
 
-    ofs_ << line << '\n';
+    file_.Append(line);
     ++writes_since_flush_;
     if (writes_since_flush_ >= config.csv_flush_every_n) {
-      ofs_.flush();
+      file_.Flush();
       writes_since_flush_ = 0;
     }
   }
 
   void Flush() {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (ofs_.is_open()) {
-      ofs_.flush();
-    }
+    file_.Flush();
   }
 
 private:
@@ -676,10 +767,7 @@ private:
 
   ~CsvSink() {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (ofs_.is_open()) {
-      ofs_.flush();
-      ofs_.close();
-    }
+    file_.Close();
   }
 
   void ConfigureIfNeeded(const ObservabilityConfig& config) {
@@ -688,31 +776,22 @@ private:
       return;
     }
 
-    if (ofs_.is_open()) {
-      ofs_.flush();
-      ofs_.close();
-    }
+    file_.Close();
     writes_since_flush_ = 0;
     path_               = config.csv_path;
     flush_every_n_      = config.csv_flush_every_n;
 
     const std::filesystem::path output_path(ExpandCsvPath(config.csv_path));
-    const auto parent = output_path.parent_path();
-    std::error_code ec;
-    if (!parent.empty()) {
-      std::filesystem::create_directories(parent, ec);
-    }
-    ofs_.open(output_path, std::ios::app);
-    if (!ofs_.is_open()) {
+    if (!file_.Open(output_path)) {
       LOG(ERROR) << "Failed to open report CSV sink: " << output_path;
-    } else if (ofs_.tellp() == 0) {
-      ofs_ << kCsvHeader << '\n';
+    } else {
+      file_.WriteHeaderIfEmpty(kCsvHeader);
     }
     configured_ = true;
   }
 
   std::mutex mutex_;
-  std::ofstream ofs_;
+  AppendFile file_;
   bool configured_ = false;
   std::string path_;
   size_t flush_every_n_      = 1;
@@ -729,22 +808,21 @@ public:
   void Emit(const std::string& line, const ObservabilityConfig& config) {
     std::lock_guard<std::mutex> lock(mutex_);
     ConfigureIfNeeded(config);
-    if (!ofs_.is_open()) {
+    if (!file_.IsOpen()) {
       return;
     }
-    ofs_ << line << '\n';
+    file_.Append(line);
+    file_.Append("\n");
     ++writes_since_flush_;
     if (writes_since_flush_ >= config.jsonl_flush_every_n) {
-      ofs_.flush();
+      file_.Flush();
       writes_since_flush_ = 0;
     }
   }
 
   void Flush() {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (ofs_.is_open()) {
-      ofs_.flush();
-    }
+    file_.Flush();
   }
 
 private:
@@ -752,10 +830,7 @@ private:
 
   ~JsonlSink() {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (ofs_.is_open()) {
-      ofs_.flush();
-      ofs_.close();
-    }
+    file_.Close();
   }
 
   void ConfigureIfNeeded(const ObservabilityConfig& config) {
@@ -764,22 +839,12 @@ private:
       return;
     }
 
-    if (ofs_.is_open()) {
-      ofs_.flush();
-      ofs_.close();
-    }
+    file_.Close();
     writes_since_flush_ = 0;
     path_               = config.jsonl_path;
     flush_every_n_      = config.jsonl_flush_every_n;
 
-    const std::filesystem::path output_path(config.jsonl_path);
-    const auto parent = output_path.parent_path();
-    std::error_code ec;
-    if (!parent.empty()) {
-      std::filesystem::create_directories(parent, ec);
-    }
-    ofs_.open(output_path, std::ios::app);
-    if (!ofs_.is_open()) {
+    if (!file_.Open(config.jsonl_path)) {
       LOG(ERROR) << "Failed to open local report JSONL sink: "
                  << config.jsonl_path;
     }
@@ -787,7 +852,7 @@ private:
   }
 
   std::mutex mutex_;
-  std::ofstream ofs_;
+  AppendFile file_;
   bool configured_ = false;
   std::string path_;
   size_t flush_every_n_      = 1;

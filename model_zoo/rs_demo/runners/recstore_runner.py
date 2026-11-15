@@ -128,6 +128,43 @@ def _reset_perf_stats(obj: Any) -> None:
     obj.reset_perf_stats()
 
 
+# Step-row keys forwarded to the metric sinks when --report-metrics is set.
+# The wide CSV keeps every column; this is the curated subset that makes sense
+# as long-format metrics in Grafana.
+_E2E_STEP_METRICS = (
+    "step_total_ms",
+    "host_step_enqueue_wall_ms",
+    "samples_per_sec",
+    "emb_stage_ms",
+    "input_pack_ms",
+    "embed_lookup_ms",
+    "embed_pool_local_ms",
+    "output_unpack_ms",
+    "dense_compute_ms",
+    "sparse_optimizer_ms",
+    "step_sync_wait_ms",
+    "loss",
+    "warmup_excluded",
+)
+
+
+def _emit_step_metrics(
+    row: dict[str, Any], run_id: str, step: int, names: tuple[str, ...] | None = None
+) -> None:
+    from recstore import telemetry
+
+    uid = f"{run_id}|step{step}"
+    for name in _E2E_STEP_METRICS if names is None else names:
+        value = row.get(name)
+        if value is None or value == "":
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        telemetry.emit("e2e_step", uid, name, number)
+
+
 class _EventLog:
     """Append-only JSONL host timeline used to align traces with wall clock."""
 
@@ -1002,6 +1039,8 @@ class RecStoreRunner(BenchmarkRunner):
                 else:
                     continuous.finish_row(row, step_wall_start, backpressure_ms)
                 rows.append(finalize_recstore_row(row))
+                if cfg.report_metrics and rank == 0:
+                    _emit_step_metrics(rows[-1], cfg.run_id, step)
                 events.emit("barrier_start", step=step)
                 if continuous is None:
                     _barrier_for_step_alignment(
@@ -1031,6 +1070,11 @@ class RecStoreRunner(BenchmarkRunner):
             if continuous is not None:
                 loop_summary = continuous.finish(rows, lambda: _barrier_for_step_alignment(
                     dist=dist, device=device, local_rank=local_rank, use_dist=use_dist))
+                if cfg.report_metrics and rank == 0:
+                    # Losses arrive after the last step, so per-step rows were
+                    # emitted without one. Emit the backfilled values now.
+                    for step, row in enumerate(rows):
+                        _emit_step_metrics(row, cfg.run_id, step, names=("loss",))
                 loop_summary.update(rank=rank, backend="recstore", world_size=world_size,
                                     configured_warmup_steps=cfg.warmup_steps, run_id=cfg.run_id)
                 lifecycle["continuous_loop"] = loop_summary
