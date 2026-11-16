@@ -53,6 +53,17 @@ class EmitStepMetricsTest(unittest.TestCase):
         )
         self.assertEqual(emit.call_args_list[0].args[3], 123.0)
 
+    def test_restricted_names_emit_only_that_metric(self) -> None:
+        row = {"loss": 0.375, "step_total_ms": 12.5, "samples_per_sec": 8000.0}
+        with mock.patch("recstore.telemetry.emit") as emit:
+            recstore_runner._emit_step_metrics(
+                row, "run-3", 7, names=("loss",)
+            )
+
+        self.assertEqual([call.args[2] for call in emit.call_args_list], ["loss"])
+        self.assertEqual(emit.call_args_list[0].args[1], "run-3|step7")
+        self.assertEqual(emit.call_args_list[0].args[3], 0.375)
+
 
 class ReportMetricsConfigTest(unittest.TestCase):
     def test_disabled_by_default(self) -> None:

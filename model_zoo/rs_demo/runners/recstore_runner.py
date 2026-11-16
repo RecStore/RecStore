@@ -148,11 +148,13 @@ _E2E_STEP_METRICS = (
 )
 
 
-def _emit_step_metrics(row: dict[str, Any], run_id: str, step: int) -> None:
+def _emit_step_metrics(
+    row: dict[str, Any], run_id: str, step: int, names: tuple[str, ...] | None = None
+) -> None:
     from recstore import telemetry
 
     uid = f"{run_id}|step{step}"
-    for name in _E2E_STEP_METRICS:
+    for name in _E2E_STEP_METRICS if names is None else names:
         value = row.get(name)
         if value is None or value == "":
             continue
@@ -1068,6 +1070,11 @@ class RecStoreRunner(BenchmarkRunner):
             if continuous is not None:
                 loop_summary = continuous.finish(rows, lambda: _barrier_for_step_alignment(
                     dist=dist, device=device, local_rank=local_rank, use_dist=use_dist))
+                if cfg.report_metrics and rank == 0:
+                    # Losses arrive after the last step, so per-step rows were
+                    # emitted without one. Emit the backfilled values now.
+                    for step, row in enumerate(rows):
+                        _emit_step_metrics(row, cfg.run_id, step, names=("loss",))
                 loop_summary.update(rank=rank, backend="recstore", world_size=world_size,
                                     configured_warmup_steps=cfg.warmup_steps, run_id=cfg.run_id)
                 lifecycle["continuous_loop"] = loop_summary

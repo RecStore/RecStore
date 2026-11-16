@@ -44,10 +44,10 @@ def _candidate_paths() -> list[Path]:
     candidates = [
         package / "lib" / _LIBRARY_NAME,
         package / _LIBRARY_NAME,
-        _repo_root() / "build" / "lib" / _LIBRARY_NAME,
     ]
     # Build directories are not always named "build"; prefer the newest copy
-    # so a stale tree does not win over a fresh one.
+    # so a stale tree does not win over a fresh one. Every build candidate is
+    # sorted together, otherwise an explicit "build" entry would pin the order.
     discovered = glob.glob(
         str(_repo_root() / "build*" / "lib" / _LIBRARY_NAME)
     )
