@@ -233,6 +233,12 @@ Block** Block::Split(void) {
   local_depth = local_depth + 1;
   clflush((char*)&local_depth, sizeof(size_t));
 
+  // Release the announcement for the owner. In-place splits keep `this` as
+  // split[0] and the directory keeps pointing at it, so a stale `splitting`
+  // would make every later insert return -2 and spin in `Insert` forever. The
+  // caller republishes `sema` right after, and `sema == -1` already holds the
+  // block for the whole directory update, so releasing here is safe.
+  splitting.store(false, std::memory_order_release);
   return split;
 #else
   Block** split = new Block*[2];
@@ -255,6 +261,7 @@ Block** Block::Split(void) {
   clflush((char*)split[0], sizeof(Block));
   clflush((char*)split[1], sizeof(Block));
 
+  splitting.store(false, std::memory_order_release);
   return split;
 #endif
 }
