@@ -658,6 +658,51 @@ TEST(PetPSIntegrationTest, HashedValueBatchGetTransferSingleShard) {
   FLAGS_rdma_get_response_mode = previous_response_mode;
 }
 
+TEST(PetPSIntegrationTest, DirectSgSplitsNonContiguousRowsAboveSgeCap) {
+  ASSERT_EQ(FLAGS_value_size % static_cast<int>(sizeof(float)), 0);
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  auto& client            = SingleShardClient();
+
+  // One PUT per key leaves the rows wherever the slab allocator placed them.
+  // Reading them back in reverse order makes every row its own SGE, so the
+  // response needs far more SGEs than one WR may carry and the server has to
+  // split it into several WRs. The ctest passes --value-size 16 to match the
+  // config's default_value_size_hint; on a hint mismatch the server takes the
+  // row-copy fallback instead and this split is never exercised.
+  constexpr std::size_t kRows = 200;
+  std::vector<std::uint64_t> keys;
+  keys.reserve(kRows);
+  for (std::size_t i = 0; i < kRows; ++i) {
+    keys.push_back(7000001ULL + i);
+  }
+  for (const std::uint64_t key : keys) {
+    const std::vector<std::uint64_t> one_key = {key};
+    ASSERT_EQ(
+        client.PutParameter(one_key, MakeHashedValues(one_key, embedding_dim)),
+        0);
+  }
+
+  std::vector<std::uint64_t> reversed(keys.rbegin(), keys.rend());
+  const std::string previous_response_mode = FLAGS_rdma_get_response_mode;
+  FLAGS_rdma_get_response_mode             = "direct_sg";
+  std::vector<float> output(
+      reversed.size() * static_cast<std::size_t>(embedding_dim) + 1, 0.0f);
+  int rpc_id = client.GetParameter(
+      base::ConstArray<std::uint64_t>(reversed), output.data(), false);
+  client.WaitRPCFinish(rpc_id);
+  FLAGS_rdma_get_response_mode = previous_response_mode;
+
+  // A WR wider than the max_send_sge the QP negotiated is rejected with EINVAL,
+  // which completes the RPC with an error status instead of the payload. On a
+  // device that grants 32 this only guards the split itself; on one that grants
+  // less it is the regression the clamp fixes.
+  const auto* status_word = petps::FixedSlotStatusWord(
+      output.data(), reversed.size(), FLAGS_value_size);
+  EXPECT_EQ(*status_word, static_cast<std::int32_t>(petps::RpcStatus::kOk));
+  ExpectHashedFlatSlots(output.data(), reversed, embedding_dim);
+  client.RevokeRPCResource(rpc_id);
+}
+
 TEST(PetPSIntegrationTest, AdapterSparseGradientCommitWithOutstandingPrefetch) {
   json config = ParseFile2Json(std::getenv("RECSTORE_CONFIG"));
   config["distributed_client"]["max_keys_per_request"] = 10000;
