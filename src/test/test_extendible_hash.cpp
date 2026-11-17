@@ -301,3 +301,23 @@ TEST(ExtendibleHashBlockTest, SplitWaitsForActiveInserter) {
   delete split[1];
   delete[] split;
 }
+
+// The splitter must release the announcement when it returns, not only when it
+// bails out. An in-place split keeps `this` as split[0] and the directory keeps
+// pointing at it, so a stale flag makes every later insert return -2 and spin
+// in `ExtendibleHash::Insert` forever.
+TEST(ExtendibleHashBlockTest, SplitReleasesSplittingFlag) {
+  Block block(4);
+  for (size_t i = 0; i < Block::kNumSlot; ++i) {
+    block._[i].key   = static_cast<Key_t>(i) + 1;
+    block._[i].value = 1;
+  }
+
+  Block** split = block.Split();
+  ASSERT_NE(split, nullptr);
+  EXPECT_FALSE(block.splitting.load(std::memory_order_acquire));
+  EXPECT_FALSE(split[0]->splitting.load(std::memory_order_acquire));
+  delete split[0];
+  delete split[1];
+  delete[] split;
+}
