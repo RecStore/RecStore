@@ -126,6 +126,10 @@ int Block::Insert(
 #else
   if (sema == -1)
     return -2;
+  // A split has already been announced: do not join the inserter count, or the
+  // splitter waits for a count that keeps growing.
+  if (splitting.load(std::memory_order_acquire))
+    return -2;
 #  ifdef LSB
   if ((key_hash & (size_t)mypow(2, local_depth) - 1) != pattern)
     return -2;
@@ -189,9 +193,25 @@ void Block::Insert4split(Key_t& key, Value_t value) {
 
 Block** Block::Split(void) {
   using namespace std;
-  int64_t lock = 0;
-  if (!CAS(&sema, &lock, -1))
+  // Announce first, then wait for the inserters already inside to leave. New
+  // inserters back off on `splitting`, so the count drains: the old code only
+  // tried CAS(sema, 0, -1) once and returned nullptr, which let a stream of
+  // inserters starve the splitter (16-thread loads spun here forever).
+  if (splitting.exchange(true, std::memory_order_acq_rel))
     return nullptr;
+  // Wait for the count to reach zero: `CAS` compares against the expected
+  // value, so `lock` must be reset to 0 on every retry. Any positive count
+  // means an inserter is still inside the block.
+  int64_t lock = 0;
+  while (!CAS(&sema, &lock, -1)) {
+    if (lock < 0) {
+      // Already retired by another owner (or a stale pointer): nothing to do.
+      splitting.store(false, std::memory_order_release);
+      return nullptr;
+    }
+    lock = 0;
+    std::this_thread::yield();
+  }
 
 #ifdef INPLACE
   Block** split = new Block*[2];
@@ -358,7 +378,8 @@ RETRY:
           std::memory_order_relaxed);
     }
     if (s == nullptr) {
-      // another thread is doing split
+      // Another thread owns the split; give it the CPU it needs to finish.
+      std::this_thread::yield();
       goto RETRY;
     }
 
@@ -470,11 +491,9 @@ RETRY:
     }
     goto RETRY;
   } else if (ret == -2) {
-    // Block is splitting or directory pointers are stale; retry without
-    // recursion.
-    if (target->sema == -1) {
-      std::this_thread::yield();
-    }
+    // Block is splitting, already retired, or directory pointers are stale;
+    // retry without recursion and let the splitter make progress.
+    std::this_thread::yield();
     goto RETRY;
   } else {
     clflush((char*)&dir._[x]->_[ret], sizeof(Pair));
