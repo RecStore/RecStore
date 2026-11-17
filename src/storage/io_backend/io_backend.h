@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <glog/logging.h>
 #include <sys/user.h>
 #include <vector>
@@ -151,6 +152,17 @@ public:
         ReadPageSync(e.page_id + i, e.buffer + i * PAGE_SIZE);
       }
     }
+  }
+
+  // CPU-only work runs once, before waiting for submitted reads.
+  // Implementations drain submitted I/O before propagating a callback failure.
+  // Work must not reenter the backend while caller-owned buffers or page locks
+  // are in use.
+  virtual void BatchReadPagesWithWork(const std::vector<IOEntry>& entries,
+                                      const std::function<void()>& work) {
+    if (work)
+      work();
+    BatchReadPages(entries);
   }
 
 protected:

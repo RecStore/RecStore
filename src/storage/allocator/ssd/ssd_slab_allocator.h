@@ -195,8 +195,16 @@ public:
 
   void BatchRead(const std::vector<ReadEntry>& entries,
                  std::vector<size_t>& out_sizes) override {
+    BatchReadWithWork(entries, out_sizes, {});
+  }
+
+  void BatchReadWithWork(const std::vector<ReadEntry>& entries,
+                         std::vector<size_t>& out_sizes,
+                         const std::function<void()>& work) override {
     out_sizes.assign(entries.size(), 0);
     if (entries.empty()) {
+      if (work)
+        work();
       return;
     }
     struct PendingRead {
@@ -239,7 +247,7 @@ public:
     if (pages.size() >= 512) {
       std::vector<std::shared_lock<std::shared_mutex>> locks;
       LockStripes(pages, locks);
-      const auto buffers = ReadSharedPages(pages);
+      const auto buffers = ReadSharedPages(pages, work);
       for (size_t i = 0; i < pending.size(); ++i) {
         const auto& item = pending[i];
         const size_t first =
@@ -285,7 +293,7 @@ public:
     // Crossing slots have adjacent pages in the compact buffer as well.
     std::vector<std::shared_lock<std::shared_mutex>> locks;
     LockStripes(pages, locks);
-    backend_->BatchReadPages(io_entries);
+    backend_->BatchReadPagesWithWork(io_entries, work);
     for (size_t i = 0; i < pending.size(); ++i) {
       const auto& item = pending[i];
       const size_t page_index =
@@ -379,7 +387,8 @@ private:
   };
 
   std::vector<std::shared_ptr<char>>
-  ReadSharedPages(const std::vector<uint64_t>& pages) {
+  ReadSharedPages(const std::vector<uint64_t>& pages,
+                  const std::function<void()>& work = {}) {
     auto read = std::make_shared<PendingRead>();
     std::vector<PendingPage> pending(pages.size());
     std::vector<size_t> owned;
@@ -425,7 +434,7 @@ private:
         }
         // Issue owned reads before waiting for other owners, avoiding cycles
         // between batches that each own some pages needed by the other.
-        backend_->BatchReadPages(entries);
+        backend_->BatchReadPagesWithWork(entries, work);
         // Share only in-flight I/O. Completed pages are never retained as an
         // extra value cache outside the configured DRAM budget.
         erase_owned();
@@ -437,6 +446,8 @@ private:
       read->complete.set_exception(error);
       std::rethrow_exception(error);
     }
+    if (owned.empty() && work)
+      work();
     std::vector<std::shared_ptr<char>> buffers;
     buffers.reserve(pages.size());
     for (const auto& page : pending) {

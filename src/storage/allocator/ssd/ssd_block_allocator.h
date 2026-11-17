@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <stdexcept>
 #include <vector>
 
@@ -46,6 +47,14 @@ public:
                           entries[i].out_buf,
                           SlotCapacity(entries[i].handle));
     }
+  }
+
+  virtual void BatchReadWithWork(const std::vector<ReadEntry>& entries,
+                                 std::vector<size_t>& out_sizes,
+                                 const std::function<void()>& work) {
+    if (work)
+      work();
+    BatchRead(entries, out_sizes);
   }
 
   virtual std::vector<uint64_t>

@@ -187,6 +187,15 @@ public:
     return handles;
   }
 
+  void
+  ReadIntoWithWork(const std::vector<SsdBlockAllocator::ReadEntry>& entries,
+                   std::vector<size_t>& out_sizes,
+                   const std::function<void()>& work) {
+    allocator_->BatchReadWithWork(entries, out_sizes, work);
+    for (size_t size : out_sizes)
+      payload_read_bytes_.fetch_add(size, std::memory_order_relaxed);
+  }
+
   void ResetStats() override {
     io_backend_->ResetReadStats();
     io_backend_->ResetWriteStats();

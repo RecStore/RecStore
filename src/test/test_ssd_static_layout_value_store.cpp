@@ -4523,3 +4523,243 @@ TEST_F(StaticLayoutValueTest, ReadEpochShutdownDrainsPendingVersions) {
   }
   EXPECT_EQ(probe->freed.load(), 20U);
 }
+
+TEST_F(StaticLayoutValueTest, FlatReadsPreserveMixedRowsAndOnlineFallback) {
+  ForceLinkIOBackends();
+  for (const std::string mode : {"serial", "overlap"}) {
+    for (const std::string io : {"INMEMORY", "IOURING"}) {
+      for (bool fixed : {false}) {
+        auto config                        = OnlineConfig(48);
+        config.json_config_["read_epochs"] = true;
+        config.json_config_["value"]["default_value_size_hint"]     = 512;
+        config.json_config_["value"]["tiering"]["online_admission"] = false;
+        config.json_config_["value"]["tiering"]["flat_read_mode"]   = mode;
+        config.json_config_["value"]["ssd_allocator"]["io"]["type"] = io;
+        config.json_config_["value"]["ssd_allocator"]["io"]["queue_depth"] = 4;
+
+        config.json_config_["value"]["ssd_allocator"]["path"] =
+            (root_ /
+             ("flat_" + mode + "_" + io + (fixed ? "_fixed" : "_variable")))
+                .string();
+        KVEngineComposite engine(config);
+        std::array<float, 128> row;
+        for (uint64_t key = 0; key < 80; ++key) {
+          row.fill(key + 1);
+          engine.Put(
+              key,
+              std::string_view(reinterpret_cast<const char*>(row.data()), 512),
+              0);
+        }
+        const std::vector<uint64_t> query{0, 47, 55, 55, 48, 56, 79, 1000, 1};
+        std::vector<float> result(query.size() * 128);
+        std::vector<uint8_t> found(query.size());
+        BaseKV::BatchGetFlatStats stats;
+        ASSERT_TRUE(engine.BatchGetFlat(
+            base::ConstArray<uint64_t>(query),
+            result.data(),
+            query.size(),
+            128,
+            0,
+            &stats,
+            found.data()));
+        EXPECT_EQ(stats.missing_rows, 1U);
+        for (size_t i = 0; i < query.size(); ++i) {
+          EXPECT_EQ(found[i], query[i] == 1000 ? 0 : 1);
+          for (size_t j = 0; j < 128; ++j)
+            EXPECT_EQ(result[i * 128 + j], query[i] == 1000 ? 0 : query[i] + 1);
+        }
+        EXPECT_NE(engine.ExtraResultFields().find("tiered_flat_read_calls=1 "),
+                  std::string::npos);
+        for (const auto& extra : std::vector<std::vector<uint64_t>>{
+                 {0, 47}, {55, 55, 79}, {1000}, {}}) {
+          std::vector<float> flat(std::max<size_t>(1, extra.size() * 128), -1);
+          ASSERT_TRUE(engine.BatchGetFlat(
+              base::ConstArray<uint64_t>(extra),
+              flat.data(),
+              extra.size(),
+              128,
+              0));
+          for (size_t i = 0; i < extra.size(); ++i)
+            for (size_t j = 0; j < 128; ++j)
+              EXPECT_EQ(flat[i * 128 + j], extra[i] == 1000 ? 0 : extra[i] + 1);
+        }
+        engine.Put(0, std::string(64, 's'), 0);
+        engine.DrainBackgroundWork();
+        const std::vector<uint64_t> invalid{0, 55};
+        std::vector<float> invalid_output(256);
+        EXPECT_THROW(
+            engine.BatchGetFlat(
+                base::ConstArray<uint64_t>(invalid),
+                invalid_output.data(),
+                2,
+                128,
+                0),
+            std::runtime_error);
+        EXPECT_EQ(g_scratch_buffers.load(), 0);
+        std::string still_valid;
+        engine.Get(55, still_valid, 0);
+        ASSERT_EQ(still_valid.size(), 512U);
+        std::array<float, 128> recovered;
+        std::memcpy(recovered.data(), still_valid.data(), 512);
+        for (float value : recovered)
+          EXPECT_EQ(value, 56);
+        engine.DrainBackgroundWork();
+      }
+    }
+    auto online                                               = OnlineConfig(3);
+    online.json_config_["value"]["tiering"]["flat_read_mode"] = mode;
+    HybridValueStore store(online);
+    float output     = -1;
+    uint64_t missing = 0;
+    EXPECT_FALSE(store.ReadFlatFixedRows(nullptr, 0, &output, 128, &missing));
+  }
+}
+
+TEST_F(StaticLayoutValueTest,
+       FlatReadsKeepConcurrentAssignmentsWholeAndVisible) {
+  ForceLinkIOBackends();
+  for (const std::string mode : {"serial", "overlap"}) {
+    for (bool fixed : {false}) {
+      auto config                                             = OnlineConfig(2);
+      config.json_config_["read_epochs"]                      = true;
+      config.json_config_["value"]["default_value_size_hint"] = 512;
+      config.json_config_["value"]["tiering"]["online_admission"] = false;
+      config.json_config_["value"]["tiering"]["flat_read_mode"]   = mode;
+      config.json_config_["value"]["ssd_allocator"]["io"]["type"] = "IOURING";
+
+      config.json_config_["value"]["ssd_allocator"]["path"] =
+          (root_ / ("concurrent_" + mode + (fixed ? "_fixed" : "_variable")))
+              .string();
+      KVEngineComposite engine(config);
+      const std::vector<uint64_t> keys{0, 2, 2, 1000};
+      const std::string initial(512, '\0');
+      engine.Put(0, initial, 0);
+      engine.Put(2, initial, 0);
+      std::atomic<int> ready{0}, failures{0};
+      std::atomic<bool> start{false};
+      std::vector<std::thread> readers;
+      for (unsigned tid = 0; tid < 3; ++tid)
+        readers.emplace_back([&, tid] {
+          std::vector<float> rows(keys.size() * 128);
+          std::array<float, 2> last{};
+          ++ready;
+          while (!start.load())
+            std::this_thread::yield();
+          for (int n = 0; n < 80; ++n) {
+            if (!engine.BatchGetFlat(
+                    base::ConstArray<uint64_t>(keys),
+                    rows.data(),
+                    keys.size(),
+                    128,
+                    tid)) {
+              ++failures;
+              continue;
+            }
+            for (size_t r = 0; r < keys.size(); ++r) {
+              for (size_t j = 1; j < 128; ++j)
+                if (rows[r * 128 + j] != rows[r * 128])
+                  ++failures;
+              if (r < 2) {
+                if (rows[r * 128] < last[r])
+                  ++failures;
+                last[r] = rows[r * 128];
+              }
+              if (r == 3 && rows[r * 128] != 0)
+                ++failures;
+            }
+          }
+        });
+      while (ready.load() != 3)
+        std::this_thread::yield();
+      start = true;
+      std::array<float, 128> row;
+      for (int n = 1; n <= 80; ++n) {
+        row.fill(n);
+        std::vector<base::ConstArray<float>> values(
+            2, base::ConstArray<float>(row.data(), row.size()));
+        engine.BatchPut(base::ConstArray<uint64_t>(keys.data(), 2), &values, 3);
+      }
+      for (auto& reader : readers)
+        reader.join();
+      EXPECT_EQ(failures.load(), 0);
+      std::vector<float> rows(keys.size() * 128);
+      ASSERT_TRUE(engine.BatchGetFlat(
+          base::ConstArray<uint64_t>(keys), rows.data(), keys.size(), 128, 0));
+      EXPECT_EQ(rows[0], 80);
+      EXPECT_EQ(rows[128], 80);
+      engine.DrainBackgroundWork();
+    }
+  }
+}
+
+TEST_F(StaticLayoutValueTest, OverlapKeepsClockAndReadCacheSemantics) {
+  auto clock_config = ClockConfig(root_, "overlap-clock", 2);
+  clock_config.json_config_["value"]["tiering"]["flat_read_mode"] = "overlap";
+  HybridValueStore clock_store(clock_config);
+  const std::string row(512, 'c');
+  const uint64_t clock_handle =
+      clock_store.AllocAndWrite(7, row.data(), row.size());
+  std::array<char, 512> clock_output{};
+  uint64_t missing = 0;
+  ASSERT_TRUE(clock_store.ReadFlatFixedRows(
+      &clock_handle, 1, clock_output.data(), row.size(), &missing));
+  EXPECT_EQ(std::string(clock_output.data(), clock_output.size()), row);
+  EXPECT_EQ(missing, 0U);
+  EXPECT_NE(clock_store.ExtraResultFields().find("tiered_cache_policy=clock"),
+            std::string::npos);
+
+  auto cache_config =
+      TieredStoreConfig(root_, "overlap-cache", LruTieringConfig(0.5, 4));
+  cache_config.json_config_["value"]["tiering"]["flat_read_mode"] = "overlap";
+  HybridValueStore cached(cache_config);
+  const auto ssd = FillUntilSsd(cached, 1);
+  ASSERT_EQ(ssd.size(), 1U);
+  std::vector<char> output(kCachedValueSize);
+  for (int repeat = 0; repeat < 2; ++repeat) {
+    ASSERT_TRUE(cached.ReadFlatFixedRows(
+        &ssd[0].handle, 1, output.data(), output.size(), &missing));
+    EXPECT_EQ(std::string(output.data(), output.size()), ssd[0].payload);
+  }
+  EXPECT_GE(TieredField(cached.ExtraResultFields(), "tiered_cache_hits"), 1);
+  EXPECT_EQ(TieredField(cached.ExtraResultFields(), "tiered_flat_read_calls"),
+            0);
+}
+
+TEST_F(StaticLayoutValueTest, OverlapCallbacksCoverSharedPageBatchesAndErrors) {
+  auto config                          = OnlineConfig(0);
+  config.json_config_["value"]["type"] = "SSD_VALUE_STORE";
+  config.json_config_["value"]["path"] =
+      (root_ / "shared_overlap_ssd").string();
+  SsdValueStore store(config);
+  const std::string value(512, 'p');
+  std::vector<ValueStore::WriteSpec> writes(4096, {value.data(), value.size()});
+  const auto handles = store.BatchAllocAndWrite(writes);
+  ASSERT_EQ(handles.size(), writes.size());
+  std::vector<char> output(handles.size() * value.size());
+  std::vector<SsdBlockAllocator::ReadEntry> reads;
+  for (size_t i = 0; i < handles.size(); ++i)
+    reads.push_back({handles[i], output.data() + i * value.size()});
+  std::vector<size_t> sizes;
+  int calls = 0;
+  store.ReadIntoWithWork(reads, sizes, [&] { ++calls; });
+  ASSERT_EQ(sizes.size(), handles.size());
+  EXPECT_TRUE(std::all_of(sizes.begin(), sizes.end(), [&](size_t n) {
+    return n == value.size();
+  }));
+  EXPECT_TRUE(std::all_of(output.begin(), output.end(), [](char c) {
+    return c == 'p';
+  }));
+  EXPECT_EQ(calls, 1);
+  EXPECT_THROW(
+      store.ReadIntoWithWork(
+          reads,
+          sizes,
+          [&] {
+            ++calls;
+            throw std::runtime_error("shared-page copy failure");
+          }),
+      std::runtime_error);
+  store.ReadIntoWithWork(reads, sizes, [&] { ++calls; });
+  EXPECT_EQ(calls, 3);
+  EXPECT_EQ(g_scratch_buffers.load(), 0);
+}
