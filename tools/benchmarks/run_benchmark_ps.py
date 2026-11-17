@@ -358,7 +358,6 @@ def build_runtime_config(
     config = {
         "cache_ps": {
             "ps_type": ps_type,
-            "max_batch_keys_size": max_keys_per_request,
             "num_threads": num_threads,
             "num_shards": len(topology.server_plan),
             "servers": servers,
@@ -528,7 +527,7 @@ def build_value_store_config(
                 "path": str(Path(data_root) / "dram"),
             },
             "ssd_allocator": ssd_allocator,
-            "tiering": {"cache_policy": "LRU"},
+            "tiering": {"cache_policy": "none"},
         }
     raise ValueError(f"unsupported value_store_type: {value_store_type}")
 

@@ -47,22 +47,7 @@ graph TD
 
 ## CachePS 与 BaseKV
 
-`CachePS` 在构造时读取 `cache_ps` 配置：
-
-```cpp
-BaseKVConfig kv_config;
-kv_config.num_threads_ = config["num_threads"];
-kv_config.json_config_ = config["base_kv_config"];
-auto resolved = base::ResolveEngine(kv_config);
-base_kv_.reset(base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
-    resolved.engine, resolved.cfg));
-```
-
-- `num_threads_` 传入引擎，供批量与组件内部并行使用。
-- `json_config_` 原样交给具体引擎；**字段合法性由各引擎及其子组件构造时检查**。
-- 省略 `engine_type` 时，`ResolveEngine` 默认 `KVEngineComposite`。
-
-典型调用链：
+`CachePS` 把 `cache_ps.base_kv_config` 原样交给引擎：`num_threads_` 供内部并行，其余字段由引擎与组件在构造时校验；省略 `engine_type` 时默认 `KVEngineComposite`。
 
 | CachePS 操作 | BaseKV 方法 |
 |--------------|-------------|
@@ -71,22 +56,7 @@ base_kv_.reset(base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
 | 表初始化 / 优化器 | `optimizer_->Init(..., base_kv_.get())` |
 | 清空 | `clear()` |
 
-## KVEngineComposite 读写路径（默认）
-
-写入（`Put` / `BatchPut`）：
-
-1. `CachePS` 收到 key 与 float 数据，调用 `BaseKV::Put` 或 `BatchPut`。
-2. `KVEngineComposite` 在 `ValueStore` 上 `AllocAndWrite` 新 slot。
-3. `Index::Put` 更新 key 的 handle，返回旧 handle。
-4. 对旧 handle 调用 `ValueStore::Retire`（延迟回收）。
-
-读取（`Get` / `BatchGet`）：
-
-1. `Index` 解析 key → handle；未命中为 `kValueHandleNone`，对外表现为空值。
-2. 若 `ValueStore::DirectPtr` 可用（DRAM），`BatchGet` 可返回指向底层存储的 `ConstArray<float>` 视图。
-3. 否则 `Read` / `BatchRead`（SSD 或 tiered 的 SSD 部分）拷贝到线程局部 buffer。
-
-`BatchPut` 对同一批次内重复 key 会退回逐条 `Put`，避免覆盖顺序不确定。其他引擎的语义以各自实现为准，见 [basekv.md](./basekv.md)。
+构造代码、`ResolveEngine` 行为与接口语义见 [basekv.md](./basekv.md)；默认组合的读写顺序见 [composite_kvengine.md](./composite_kvengine.md)。
 
 ## 文档索引
 

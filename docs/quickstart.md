@@ -1,10 +1,6 @@
 # 从源码构建
 
-!!! note "待重写"
-
-    与 Docker 开发镜像页面合并重复的环境准备步骤。
-
-本指南将帮助你搭建 RecStore 的开发和运行环境，相关步骤出现错误可以查看 [常见问题](./faq.md)。
+本指南将帮助你搭建 RecStore 的开发和运行环境，相关步骤出现错误可以查看 [常见问题](./faq.md)。暂时不想编译时，可以先拉 CPU 版开发镜像跑通流程，见 [Docker 开发镜像](dev/zero_config_run.md)；GPU 版镜像还在完善，训练与性能测试仍按本页从源码构建。
 
 ## 0. 环境准备
 
@@ -59,7 +55,7 @@ git config core.hooksPath .githooks  # 启用仓库自带的提交前格式化�
 
 ```bash
 cd dockerfiles
-sudo docker build -f Dockerfile.recstore --build-arg uid=$UID  -t recstore .
+sudo docker build -f Dockerfile.recstore -t recstore:env .
 cd -
 ```
 
@@ -89,7 +85,7 @@ cd -
         -v /dev/hugepages:/dev/hugepages \
         -v /dev:/dev \
         -w ${RECSTORE_PATH} \
-        --rm -it --gpus all -d recstore
+        --rm -it --gpus all -d recstore:env
     ```
 
 进入容器：
@@ -129,7 +125,7 @@ mkdir -p build && cd build
 
 ```bash title="编译 RecStore"
 # in RecStore/build directory
-cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.10 ..
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
 make -j
 ```
 

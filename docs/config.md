@@ -2,7 +2,9 @@
 
 ## 配置文件结构
 
-RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含以下顶层配置块：`cache_ps`、`distributed_client`、`client`、`report_API`，以及按需启用的 `hugectr`、`hierkv`。
+RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含以下顶层配置块：`cache_ps`、`distributed_client`、`client`；`report_API`、`hugectr`、`hierkv` 按需添加。
+
+本页只列字段。配置文件放哪、读取优先级、单机 / 多机 / RDMA / 换存储的改法见[配置指南](usage/configuration.md)。
 
 ## 1. cache_ps 配置
 
@@ -13,7 +15,7 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `ps_type` | string | 是 | 参数服务器类型，可选 `"GRPC"` 或 `"BRPC"` |
-| `max_batch_keys_size` | integer | 是 | 单次批量请求的最大键数量 |
+| `max_batch_keys_size` | integer | 否（已废弃） | 保留兼容但 C++ 不读取；批量由 `distributed_client.max_keys_per_request` 控制 |
 | `num_threads` | integer | 是 | 服务器工作线程数 |
 | `num_shards` | integer | 是 | 分片数量，应等于 `servers` 数组长度 |
 | `servers` | array | 是 | 服务器节点配置数组 |
@@ -109,15 +111,57 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
 ???+ tip "动态覆盖"
     运行时可用 `client.set_ps_config(host, port)` 覆盖配置文件里的 `host` 和 `port`。接口说明见 [计算层接口](./calc/interfaces.md)。
 
-## 4. report_API 配置
+## 4. 观测上报配置
 
-`report_API` 是顶层配置项，用于指定性能 report 的 HTTP 上报入口。
+`report()` 的样本发往哪些 sink 由顶层 `observability` 决定；旧的 `report_API` 仍然可用，两者同时存在时以 `observability` 为准。
+
+### 4.1 observability
 
 | 字段 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `report_API` | string | 否 | `http://127.0.0.1:8081/report` | `report()` 异步上报接口地址，通常由该服务写入 ClickHouse 并供 Grafana 展示 |
+| `observability.sinks` | string[] | 否 | 由旧配置推导 | 内置 sink 列表：`remote` / `csv` / `jsonl` / `glog` / `none` |
+| `observability.remote.endpoint` | string | 否 | `http://127.0.0.1:8081/report` | 异步 HTTP 上报地址 |
+| `observability.remote.timeout_ms` | integer | 否 | `3000` | 单次请求超时 |
+| `observability.remote.queue_max` | integer | 否 | `10000` | 待发队列上限，满了丢最旧的一条 |
+| `observability.csv.path` | string | 否 | `recstore_metrics_{host}_{pid}.csv` | 长表 CSV 路径，支持 `{host}` / `{pid}` 占位符 |
+| `observability.csv.flush_every_n` | integer | 否 | `1` | 每 N 行 flush 一次（只到 OS，不做 fsync） |
+| `observability.jsonl.path` | string | 否 | `recstore_report_events.jsonl` | JSONL 路径 |
+| `observability.jsonl.flush_every_n` | integer | 否 | `1` | 每 N 行 flush 一次 |
 
-作用位置：`report_API` 由 `src/base/report/report_client.cpp` 读取；当该字段缺失时会回退到默认地址 `http://127.0.0.1:8081/report`。
+`sinks` 会先清空默认集合再按列表开启，所以 `["csv"]` 表示只写 CSV，`glog` 也会一起关掉。
+不写 `sinks` 时保留默认集合（`glog` 开、其余关）。
+
+```json
+"observability": {
+  "sinks": ["remote", "csv"],
+  "remote": {"endpoint": "http://127.0.0.1:8081/report", "timeout_ms": 3000, "queue_max": 10000},
+  "csv": {"path": "recstore_metrics_{host}_{pid}.csv", "flush_every_n": 1}
+}
+```
+
+### 4.2 report_API（兼容）
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `report_API` | string | 否 | `http://127.0.0.1:8081/report` | 旧字段，非空时开 `remote` sink；`glog` 默认仍然开着 |
+
+没有 `observability` 块时按旧规则推导：`report_API` 非空开 `remote`，否则只走 `glog`；
+`RECSTORE_REPORT_MODE`、`RECSTORE_REPORT_LOCAL_SINK` 继续生效。
+
+### 4.3 环境变量覆盖
+
+| 变量 | 作用 |
+|------|------|
+| `RECSTORE_REPORT_SINKS` | 逗号分隔的 sink 列表，优先于配置文件和其他旧变量 |
+| `RECSTORE_REPORT_MODE` | `local` / `off` 关 remote，`remote` / `grafana` 开 remote |
+| `RECSTORE_REPORT_LOCAL_SINK` | `glog` / `jsonl` / `both` / `csv` |
+| `RECSTORE_REPORT_JSONL_PATH` / `RECSTORE_REPORT_FLUSH_EVERY_N` | JSONL 路径与 flush |
+| `RECSTORE_REPORT_CSV_PATH` / `RECSTORE_REPORT_CSV_FLUSH_EVERY_N` | CSV 路径与 flush |
+| `RECSTORE_RUN_ID` / `RANK` / `LOCAL_RANK` / `RECSTORE_SHARD_ID` / `SHARD_ID` | 写入 CSV 与 `MetricSink` 的维度字段 |
+
+配置文件按 mtime 失效后重新解析，环境变量每次 `report()` 重读，改配置不需要重启进程。
+作用位置：`src/base/report/report_client.cpp`。
+
 
 ## 5. hugectr 配置
 
@@ -154,7 +198,6 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
     {
         "cache_ps": {
             "ps_type": "GRPC",
-            "max_batch_keys_size": 65536,
             "num_threads": 32,
             "num_shards": 2,
             "servers": [
@@ -276,7 +319,7 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
     }
     ```
 
-    推导引擎类型：`KVEngineCCEH`
+    推导引擎类型：`KVEngineComposite`
 
 ??? example "HYBRID 混合模式配置"
 
@@ -312,7 +355,7 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
     }
     ```
 
-    推导引擎类型：`KVEngineHybrid`
+    推导引擎类型：`KVEngineComposite`
 
 ??? example "在 CI 中的配置"
 
@@ -320,7 +363,6 @@ RecStore 配置采用 JSON 格式，位于根目录。当前仓库默认包含�
 
     ```shell
     jq '.cache_ps.base_kv_config.capacity = 512
-        | .cache_ps.max_batch_keys_size = 128
         | .cache_ps.num_threads = 4
         | .distributed_client.max_keys_per_request = 32
         | .cache_ps.base_kv_config.index = {"type": "DRAM_EXTENDIBLE_HASH"}

@@ -16,6 +16,15 @@
 
 ## 代码地图
 
-!!! note "待补充"
+| 目录 | 内容 |
+| --- | --- |
+| `src/framework/` | `CommonOp` / `KVClientOp` 与 PyTorch binding（`pytorch/`） |
+| `src/ps/` | 参数服务器：`base/`、`grpc/`、`brpc/`、`rdma/`、`proto/` |
+| `src/storage/` | KVEngine、index、value store、allocator、IO backend |
+| `src/memory/` | 持久化与并发 slab allocator |
+| `src/python/` | Python 客户端与 TorchRec 兼容层 |
+| `src/test/` | 单测、集成测试与测试脚本 |
+| `tools/benchmarks/` | storage-only / PS / E2E 基准 runner |
+| `model_zoo/` | DLRM 与 rs_demo 示例 |
 
-    整理主要代码目录与开发入口。
+修改前先看[测试概览](testing.md)，文档约定见[文档维护](documentation.md)。

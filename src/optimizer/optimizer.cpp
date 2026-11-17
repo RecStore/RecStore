@@ -176,31 +176,26 @@ void SGD::Update(
     CheckUpdateKeyTag(keys[0], it->second->Tag(), table);
   }
 
-  std::vector<base::ConstArray<float>> current_values;
-  it->second->BatchGet(keys, &current_values, tid);
-
-  for (int i = 0; i < size; ++i) {
-    const auto* item = reader->item(i);
-    if (current_values[i].Size() == 0) {
-      // If key not found, we fallback to Put to initialize it
-      std::vector<float> zero_init(item->dim, 0.0f);
-      for (int j = 0; j < item->dim; ++j) {
-        zero_init[j] = -learning_rate_ * item->data()[j];
-      }
-      std::string val_str(
-          (char*)zero_init.data(), zero_init.size() * sizeof(float));
-      it->second->Put(item->key, val_str, tid);
-      continue;
-    }
-
-    float* data = const_cast<float*>(current_values[i].Data());
-    int dim     = std::min(current_values[i].Size(), item->dim);
-
-#pragma omp simd
-    for (int j = 0; j < dim; ++j) {
-      data[j] -= learning_rate_ * item->data()[j];
-    }
+  const int64_t embedding_dim = it->second->EmbeddingDim();
+  if (embedding_dim <= 0) {
+    throw std::runtime_error("SGD requires a positive embedding dimension");
   }
+  if (size == 0)
+    return;
+  std::vector<float> flat_grads(
+      static_cast<size_t>(size) * embedding_dim, 0.0f);
+  for (int i = 0; i < size; ++i) {
+    const auto* item    = reader->item(i);
+    const int64_t count = std::min<int64_t>(embedding_dim, item->dim);
+    std::copy_n(item->data(), count, flat_grads.data() + i * embedding_dim);
+  }
+  // Use the same explicit SSD writeback path as flat transport updates.
+  UpdateFlat(table,
+             base::ConstArray<uint64_t>(keys),
+             flat_grads.data(),
+             size,
+             embedding_dim,
+             tid);
 }
 
 void SGD::UpdateFlat(

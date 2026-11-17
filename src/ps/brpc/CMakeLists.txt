@@ -95,7 +95,7 @@ if(brpc_FOUND)
         gflags
         leveldb
     )
-    if(CMAKE_BUILD_TYPE MATCHES "Debug" AND USE_PERF_REPORT)
+    if(USE_PERF_REPORT)
         target_compile_definitions(brpc_ps_client PRIVATE ENABLE_PERF_REPORT)
         target_link_libraries(brpc_ps_client PUBLIC report_client)
     endif()
@@ -166,7 +166,7 @@ if(brpc_FOUND)
         dl
 
     )
-    if(CMAKE_BUILD_TYPE MATCHES "Debug" AND USE_PERF_REPORT)
+    if(USE_PERF_REPORT)
         target_compile_definitions(dist_brpc_ps_client PRIVATE ENABLE_PERF_REPORT)
         target_link_libraries(dist_brpc_ps_client PUBLIC report_client)
     endif()

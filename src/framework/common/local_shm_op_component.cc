@@ -106,11 +106,13 @@ void ReleaseLocalShmLookupFlat(BasePSClient* client,
   local_client->ReleaseGetParameterFlat(handle);
 }
 
-void LocalShmUpdateFlat(BasePSClient* client,
-                        const std::string& backend_name,
-                        const std::string& table_name,
-                        const base::RecTensor& keys,
-                        const base::RecTensor& grads) {
+void LocalShmUpdateFlat(
+    BasePSClient* client,
+    const std::string& backend_name,
+    const std::string& table_name,
+    const base::RecTensor& keys,
+    const base::RecTensor& grads,
+    float learning_rate) {
   ValidateKeys(keys);
   ValidateEmbeddings(grads, "Grads");
 
@@ -130,7 +132,8 @@ void LocalShmUpdateFlat(BasePSClient* client,
   auto* local_client =
       GetLocalShmClientOrThrow(client, backend_name, "local_update_flat");
   base::ConstArray<uint64_t> key_array(keys.data_as<uint64_t>(), num_rows);
-  const int ret = local_client->UpdateParameter(table_name, key_array, grads);
+  const int ret = local_client->UpdateParameter(
+      table_name, key_array, grads, learning_rate);
   if (ret != 0) {
     throw std::runtime_error("Failed to update embeddings via PS client.");
   }

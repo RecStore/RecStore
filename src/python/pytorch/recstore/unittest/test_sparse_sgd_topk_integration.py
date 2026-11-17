@@ -15,7 +15,7 @@ class FakeKVClient:
     def current_ps_backend(self):
         return "grpc"
 
-    def update_async(self, name, ids, grads):
+    def update_async(self, name, ids, grads, learning_rate=0.0):
         self.calls.append((
             name,
             ids.detach().clone(),
@@ -149,7 +149,7 @@ class FakeLocalKVClient(FakeKVClient):
     def is_shared_local_shm_table(self):
         return True
 
-    def local_update_flat(self, name, ids, grads):
+    def local_update_flat(self, name, ids, grads, learning_rate=0.0):
         self.local_calls.append((
             name,
             ids.detach().clone(),

@@ -22,6 +22,7 @@
 #include "ps/base/base_ps_server.h"
 #include "ps/base/cache_ps_impl.h"
 #include "ps/base/parameters.h"
+#include "ps/base/shard_endpoint.h"
 #include "src/base/config.h"
 
 #ifdef ENABLE_PERF_REPORT
@@ -461,7 +462,8 @@ private:
 #ifdef ENABLE_PERF_REPORT
       before_cache_update_time = std::chrono::high_resolution_clock::now();
 #endif
-      success = cache_ps_->UpdateParameter(table_name, reader, 0);
+      success = cache_ps_->UpdateParameter(
+          table_name, reader, 0, request->learning_rate());
 
       RECSTORE_LOG_EVERY_MS(INFO, 2000)
           << "UpdateParameter: table=" << table_name << ", keys=" << size;
@@ -705,8 +707,25 @@ public:
       // Single-server startup
       std::cout << "Starting single parameter server" << std::endl;
       std::string server_address("0.0.0.0:15000");
+      int service_shard_id = 0;
+      try {
+        const auto endpoint = recstore::SelectSingleShardEndpoint(
+            config_["cache_ps"], local_shard_id);
+        if (endpoint.has_value()) {
+          server_address   = recstore::FormatShardEndpoint(*endpoint);
+          service_shard_id = endpoint->shard;
+          std::cout << "Using configured single-shard listen address "
+                    << server_address << std::endl;
+        } else {
+          LOG(WARNING) << "cache_ps.servers is missing; falling back to "
+                       << server_address;
+        }
+      } catch (const std::exception& e) {
+        LOG(FATAL) << "Invalid single-shard listen configuration: " << e.what();
+        return;
+      }
       auto cache_ps = std::make_unique<CachePS>(config_["cache_ps"]);
-      ParameterServiceImpl service(cache_ps.get(), 0);
+      ParameterServiceImpl service(cache_ps.get(), service_shard_id);
 
       std::atomic<bool> metrics_running{true};
       std::thread metrics_thread([&service, &metrics_running]() {

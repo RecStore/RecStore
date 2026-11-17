@@ -35,8 +35,10 @@ void emb_update_torch(const torch::Tensor& keys, const torch::Tensor& grads) {
 
 void emb_update_table_torch(const std::string& table_name,
                             const torch::Tensor& keys,
-                            const torch::Tensor& grads) {
+                            const torch::Tensor& grads,
+                            double learning_rate = 0.0) {
   TORCH_CHECK(!table_name.empty(), "table_name must be non-empty");
+  TORCH_CHECK(learning_rate >= 0.0, "learning_rate must be non-negative");
   CheckRows(keys, grads);
 
   if (keys.size(0) == 0) {
@@ -50,13 +52,20 @@ void emb_update_table_torch(const std::string& table_name,
   base::RecTensor rec_grads = ToRecTensor(cpu_grads, base::DataType::FLOAT32);
 
   GetConcreteKVClientOp()->EmbUpdateCached(
-      table_name, rec_keys, rec_grads, CacheActions(keys, grads.size(1)));
+      table_name,
+      rec_keys,
+      rec_grads,
+      CacheActions(keys, grads.size(1)),
+      false,
+      static_cast<float>(learning_rate));
 }
 
 int64_t emb_update_async_torch(const std::string& table_name,
                                const torch::Tensor& keys,
-                               const torch::Tensor& grads) {
+                               const torch::Tensor& grads,
+                               double learning_rate = 0.0) {
   TORCH_CHECK(!table_name.empty(), "table_name must be non-empty");
+  TORCH_CHECK(learning_rate >= 0.0, "learning_rate must be non-negative");
   CheckRows(keys, grads);
 
   torch::Tensor cpu_keys   = ToCpuTensor(keys);
@@ -66,7 +75,8 @@ int64_t emb_update_async_torch(const std::string& table_name,
       table_name,
       ToRecTensor(cpu_keys, base::DataType::UINT64),
       ToRecTensor(cpu_grads, base::DataType::FLOAT32),
-      CacheActions(keys, grads.size(1)));
+      CacheActions(keys, grads.size(1)),
+      static_cast<float>(learning_rate));
   return static_cast<int64_t>(update_id);
 }
 
@@ -148,8 +158,12 @@ void RegisterBaseOps(torch::Library& m) {
   m.def("emb_read_into(Tensor keys, Tensor(a!) values) -> ()",
         emb_read_into_torch);
   m.def("emb_update", emb_update_torch);
-  m.def("emb_update_table", emb_update_table_torch);
-  m.def("emb_update_async", emb_update_async_torch);
+  m.def("emb_update_table(str table_name, Tensor keys, Tensor grads, "
+        "float learning_rate=0.0) -> ()",
+        emb_update_table_torch);
+  m.def("emb_update_async(str table_name, Tensor keys, Tensor grads, "
+        "float learning_rate=0.0) -> int",
+        emb_update_async_torch);
   m.def("emb_update_wait", emb_update_wait_torch);
   m.def("init_embedding_table", init_embedding_table_torch);
   m.def("save_checkpoint", save_checkpoint_torch);

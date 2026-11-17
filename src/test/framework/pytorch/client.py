@@ -45,7 +45,7 @@ class RecstoreClient:
             raise ValueError("keys and grads must have the same number of entries")
         self.ops.emb_update_table("default", keys, grads)
 
-    def emb_update_table(self, table_name: str, keys: torch.Tensor, grads: torch.Tensor) -> None:
+    def emb_update_table(self, table_name: str, keys: torch.Tensor, grads: torch.Tensor, learning_rate: float = 0.0) -> None:
         if not table_name:
             raise ValueError("table_name must be non-empty")
         if keys.dtype != torch.int64:
@@ -55,7 +55,7 @@ class RecstoreClient:
         if keys.shape[0] != grads.shape[0]:
             raise ValueError("keys and grads must have the same number of entries")
 
-        self.ops.emb_update_table(table_name, keys, grads)
+        self.ops.emb_update_table(table_name, keys, grads, float(learning_rate))
 
     def init_embedding_table(
         self,

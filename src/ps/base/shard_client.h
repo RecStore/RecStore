@@ -24,7 +24,8 @@ public:
                            const base::RecTensor& values)            = 0;
   virtual int UpdateParameter(const std::string& table_name,
                               const base::ConstArray<uint64_t>& keys,
-                              const base::RecTensor& grads)          = 0;
+                              const base::RecTensor& grads,
+                              float learning_rate = 0.0f)            = 0;
   virtual int InitEmbeddingTable(const std::string& table_name,
                                  const EmbeddingTableConfig& config) = 0;
   virtual void Command(PSCommand command)                            = 0;

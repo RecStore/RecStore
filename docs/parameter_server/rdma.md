@@ -6,7 +6,7 @@
 面向真实跨机部署的配置、IB/RoCE v1/RoCE v2 选择和改造边界，以代码中的
 `ResolvedRdmaDeployment` 配置契约和本页的稳定架构说明为准。
 
-默认工作目录为仓库根目录：
+默认工作目录为仓库根目录，本文命令按容器内的固定路径书写；在宿主机上跑时把 `/app/RecStore` 换成自己的仓库根目录。
 
 ```bash
 cd /app/RecStore
@@ -201,8 +201,8 @@ CQE；**等到接近等待超时**说明收割与慢路径都被关了（对应 
   `ibv_create_qp failed` 或 `no idle RC write slot available`。
 - `slots-per-qp` 默认是 `1`，增加它主要提高在途深度，不增加 QP 数。
 - `read` 和 `push` 是不同的 PUT-v2 payload 路径，结果不能直接混合比较。
-- `rdma-get-response-mode=auto` 会按 index/value layout 选择 GET response path；
-  当前 `DRAM_PET_HASH` 使用 `staging_copy`，其他 index 默认使用 `direct_sg`。
+- `rdma-get-response-mode` 只接受 `direct_sg` 或 `staging_copy`，其它值启动即失败；
+  runner 里的 `auto` 只是解析层：`DRAM_PET_HASH` 解析成 `staging_copy`，其余解析成 `direct_sg`。
 - 调试使用 Debug/O0 构建，吞吐基准使用 Release 构建。
 - 修改源码后，重新编译对应的 `petps_server`、benchmark、integration 或 op-layer target，再验证结果。
 - 热点路径零开销：正常请求（µs 级完成）既不查控制面（1 s 后才查）也不收割 CQ
@@ -279,7 +279,7 @@ row copy 和 response completion 可分别定位查找、清零、搬运和回�
 2. 检查 `/dev/infiniband`、`ibv_devices` 和 shard 0 控制面日志。
 3. 若卡在 `control-plane-wait` 或 `startup-wait`，先查看 shard 0 日志和控制面端口。
 4. 若出现 `librdkafka.so.1` 缺失，确认 `build/lib` 在运行时库路径中：
-   `LD_LIBRARY_PATH=/app/RecStore/build/lib:${LD_LIBRARY_PATH}`。
+   `LD_LIBRARY_PATH=$PWD/build/lib:${LD_LIBRARY_PATH}`。
 5. 若出现 `unknown command line flag 'rdma_transport_mode'` 或旧的
    `--use-local-memcached`，优先检查是否运行了旧 binary 或旧 runner。
 6. 若请求卡住，检查 MR 注册、QP metadata 的 shard/lane 匹配、CQ 消费线程以及

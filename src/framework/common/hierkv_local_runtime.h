@@ -21,7 +21,8 @@ public:
   void Read(const base::RecTensor& keys, base::RecTensor& values);
   void Update(const std::string& table_name,
               const base::RecTensor& keys,
-              const base::RecTensor& grads);
+              const base::RecTensor& grads,
+              float learning_rate = 0.0f);
   uint64_t Prefetch(const base::RecTensor& keys, int64_t embedding_dim);
   bool IsPrefetchDone(uint64_t prefetch_id);
   void WaitForPrefetch(uint64_t prefetch_id);

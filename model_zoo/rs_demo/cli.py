@@ -149,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
                 index_type=cfg.recstore_index_type,
                 ps_kv_backend=cfg.ps_kv_backend,
                 tiered_dram_capacity_multiplier=cfg.tiered_dram_capacity_multiplier,
+                tiered_cache_policy=cfg.tiered_cache_policy,
             )
         runtime_dir = runtime_dir.resolve()
         runtime_cfg_path = runtime_dir / "recstore_config.json"

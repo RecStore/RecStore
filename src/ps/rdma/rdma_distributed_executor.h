@@ -70,7 +70,8 @@ public:
       const float* grads,
       std::size_t embedding_dim,
       const std::vector<shard_routing::ShardChunk>& chunks,
-      std::size_t max_in_flight);
+      std::size_t max_in_flight,
+      float learning_rate = 0.0f);
   int WaitUpdateParameterFlat(std::uint64_t update_id);
   std::uint64_t SubmitPrefetch(
       const std::vector<shard_routing::ShardChunk>& chunks,

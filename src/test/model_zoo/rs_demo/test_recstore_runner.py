@@ -134,7 +134,7 @@ class _FakeRecStoreClient:
         self.emb_wait_result_calls += 1
         raise AssertionError("prefetch read mode should use stable emb_read_prefetch")
 
-    def emb_update_table(self, table_name: str, keys: torch.Tensor, grads: torch.Tensor) -> None:
+    def emb_update_table(self, table_name: str, keys: torch.Tensor, grads: torch.Tensor, learning_rate: float = 0.0) -> None:
         return None
 
     def warmup_local_lookup_flat_cuda_region(self) -> bool:

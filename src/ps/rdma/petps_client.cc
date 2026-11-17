@@ -1268,9 +1268,11 @@ int PetPSClient::InitEmbeddingTable(
   return static_cast<int>(tag_word);
 }
 
-int PetPSClient::UpdateParameter(const std::string& table_name,
-                                 const base::ConstArray<uint64_t>& keys,
-                                 const base::RecTensor& grads) {
+int PetPSClient::UpdateParameter(
+    const std::string& table_name,
+    const base::ConstArray<uint64_t>& keys,
+    const base::RecTensor& grads,
+    float learning_rate) {
   if (keys.Size() == 0) {
     return 0;
   }
@@ -1317,6 +1319,7 @@ int PetPSClient::UpdateParameter(const std::string& table_name,
           payload_bytes,
           table_name,
           slot.view);
+      descriptor.learning_rate = learning_rate;
       if (!RequestPayloadFitsSlot(payload_bytes)) {
         slot.busy = false;
         throw std::runtime_error("UPDATE request exceeds RC request slot");
@@ -1342,7 +1345,8 @@ int PetPSClient::SubmitUpdateParameterFlat(
     const std::string& table_name,
     base::ConstArray<uint64_t> keys,
     const float* grads,
-    std::size_t embedding_dim) {
+    std::size_t embedding_dim,
+    float learning_rate) {
   if (keys.Size() == 0) {
     return 0;
   }
@@ -1380,7 +1384,8 @@ int PetPSClient::SubmitUpdateParameterFlat(
       embedding_dim,
       table_name,
       slot.view);
-  float* recv = AllocateStatusReceiveBufferLocked();
+  descriptor.learning_rate = learning_rate;
+  float* recv              = AllocateStatusReceiveBufferLocked();
   return SubmitRpcLocked(&slot, descriptor, payload, payload_bytes, recv, 0, 0);
 }
 
@@ -1391,7 +1396,8 @@ int PetPSClient::SubmitUpdateParameterFlatGather(
     std::size_t num_rows,
     std::size_t embedding_dim,
     const std::size_t* row_indices,
-    std::size_t row_count) {
+    std::size_t row_count,
+    float learning_rate) {
   if (row_count == 0) {
     return 0;
   }
@@ -1439,7 +1445,8 @@ int PetPSClient::SubmitUpdateParameterFlatGather(
       embedding_dim,
       table_name,
       slot.view);
-  float* recv = AllocateStatusReceiveBufferLocked();
+  descriptor.learning_rate = learning_rate;
+  float* recv              = AllocateStatusReceiveBufferLocked();
   return SubmitRpcLocked(
       &slot, descriptor, slot.view.payload, payload_bytes, recv, 0, 0);
 }

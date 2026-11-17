@@ -2,6 +2,7 @@
 
 - [测试范围与指标](methodology.md)
 - [端到端训练基准](e2e.md)
+- [混合存储（DRAM+SSD）端到端基准](tiered-e2e.md)
 - [参数服务器与传输基准](ps.md)
 - [KVEngine 存储基准](../dev/ycsb.md)
 - [Profiling 与瓶颈分析](profiling.md)
@@ -10,9 +11,9 @@
 
 ## 基准入口 {#benchmark-entry}
 
-仓库在.agents目录下内置了一系列测试skills，可以以对话的形式方便地启动性能测试，并自动整理给出报告。
+仓库在 `.agents/skills/` 下内置了性能测试 skill，可以把基准配置、执行和结果整理交给编码 agent 完成。
 
-用 Claude Code/Cursor/Codex 跑性能基准时，先按**测试层级**选 skill（定义在仓库 `.agents/skills/`）。
+用 agent 跑性能基准时，先按**测试层级**选 skill（定义在仓库 `.agents/skills/`）。
 
 
 | 测试层级                    | 测什么                                       | 使用 skill                                                                   | 主要入口                                               |

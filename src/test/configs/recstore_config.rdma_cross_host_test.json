@@ -1,7 +1,6 @@
 {
   "cache_ps": {
     "ps_type": "GRPC",
-    "max_batch_keys_size": 65536,
     "num_threads": 32,
     "num_shards": 1,
     "servers": [

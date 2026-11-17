@@ -15,7 +15,8 @@ local_lookup_flat_torch(const torch::Tensor& keys, int64_t embedding_dim) {
 
 void local_update_flat_torch(const std::string& table_name,
                              const torch::Tensor& keys,
-                             const torch::Tensor& grads) {
+                             const torch::Tensor& grads,
+                             double learning_rate = 0.0) {
   ResetLocalUpdateFlatProfile();
 #ifdef RECSTORE_ENABLE_GPU_CACHE
   gpu::ResetLastGpuCacheProfile();
@@ -82,7 +83,12 @@ void local_update_flat_torch(const std::string& table_name,
 
   const auto shm_call_start = SteadyNow();
   kv_op->EmbUpdateCached(
-      table_name, rec_keys, rec_grads, CacheActions(keys, grads.size(1)), true);
+      table_name,
+      rec_keys,
+      rec_grads,
+      CacheActions(keys, grads.size(1)),
+      true,
+      static_cast<float>(learning_rate));
   g_last_local_update_flat_profile[kUpdateShmCallMs] =
       ElapsedMs(shm_call_start);
 
@@ -120,7 +126,9 @@ bool warmup_local_lookup_flat_cuda_region_torch() {
 
 void RegisterFlatOps(torch::Library& m) {
   m.def("local_lookup_flat", local_lookup_flat_torch);
-  m.def("local_update_flat", local_update_flat_torch);
+  m.def("local_update_flat(str table_name, Tensor keys, Tensor grads, "
+        "float learning_rate=0.0) -> ()",
+        local_update_flat_torch);
   m.def("warmup_local_lookup_flat_cuda_region",
         warmup_local_lookup_flat_cuda_region_torch);
 }

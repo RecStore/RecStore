@@ -93,7 +93,8 @@ struct alignas(64) LocalShmSlotHeader {
   uint32_t key_count;
 
   uint32_t embedding_dim;
-  uint32_t reserved0;
+  // Client optimizer learning rate; 0 means "not advertised".
+  float learning_rate;
 
   uint64_t input_bytes;
   uint64_t output_bytes;

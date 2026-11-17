@@ -100,9 +100,11 @@ bool KVClientOp::GetLocalLookupFlatPayloadRegion(const void** base,
   return local_client->GetSlotPayloadRegion(base, bytes);
 }
 
-void KVClientOp::LocalUpdateFlat(const std::string& table_name,
-                                 const base::RecTensor& keys,
-                                 const base::RecTensor& grads) {
+void KVClientOp::LocalUpdateFlat(
+    const std::string& table_name,
+    const base::RecTensor& keys,
+    const base::RecTensor& grads,
+    float learning_rate) {
   if (ps_backend_name_ != "local_shm" &&
       !IsHierKVBackendName(ps_backend_name_)) {
     throw std::runtime_error(
@@ -115,7 +117,8 @@ void KVClientOp::LocalUpdateFlat(const std::string& table_name,
     EmbUpdate(table_name, keys, grads);
     return;
   }
-  LocalShmUpdateFlat(ps_client_, ps_backend_name_, table_name, keys, grads);
+  LocalShmUpdateFlat(
+      ps_client_, ps_backend_name_, table_name, keys, grads, learning_rate);
 }
 
 } // namespace recstore

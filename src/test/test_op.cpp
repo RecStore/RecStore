@@ -64,7 +64,9 @@ public:
 
   int UpdateParameter(const std::string& table_name,
                       const base::ConstArray<uint64_t>& keys,
-                      const base::RecTensor& grads) override {
+                      const base::RecTensor& grads,
+                      float learning_rate = 0.0f) override {
+    (void)learning_rate;
     update_calls++;
     last_update_table = table_name;
     last_update_rows  = static_cast<int64_t>(keys.size);

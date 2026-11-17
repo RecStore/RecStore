@@ -67,7 +67,7 @@ if(brpc_FOUND)
         target_link_libraries(ps_server PRIVATE ${GPERFTOOLS_TCMALLOC_AND_PROFILER})
     endif()
 
-    if(CMAKE_BUILD_TYPE MATCHES "Debug" AND USE_PERF_REPORT)
+    if(USE_PERF_REPORT)
         target_compile_definitions(ps_server PRIVATE ENABLE_PERF_REPORT)
         target_link_libraries(ps_server PRIVATE report_client)
     endif()

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <boost/coroutine2/all.hpp>
+#include <cmath>
 #include <cstring>
 #include <cstdint>
 #include <exception>
@@ -67,6 +68,20 @@ public:
 
   CachePS(json config) {
     LOG(INFO) << "cache ps config: " << config.dump(2);
+    if (config.contains("max_batch_keys_size")) {
+      LOG(WARNING)
+          << "cache_ps.max_batch_keys_size is deprecated and ignored; use "
+             "distributed_client.max_keys_per_request for client batching";
+    }
+    const auto value_config =
+        config.at("base_kv_config").value("value", json::object());
+    const auto tiering = value_config.value("tiering", json::object());
+    if (tiering.value("online_admission", false) &&
+        config.value("optimizer", json::object()).value("type", "SGD") !=
+            "SGD") {
+      throw std::invalid_argument(
+          "online tiered admission currently requires SGD");
+    }
     BaseKVConfig kv_config;
     kv_config.num_threads_ = config["num_threads"].get<int>();
     kv_config.json_config_ = config["base_kv_config"];
@@ -77,6 +92,11 @@ public:
   }
 
   ~CachePS() {}
+
+  std::string ExtraResultFields() const {
+    base_kv_->DrainBackgroundWork();
+    return base_kv_->ExtraResultFields();
+  }
 
   bool Initialize(const std::vector<std::string>& model_config_path,
                   const std::vector<std::string>& emb_file_path) {
@@ -604,9 +624,13 @@ public:
 
   bool UpdateParameter(const std::string& table_name,
                        const ParameterCompressReader* reader,
-                       unsigned tid) {
+                       unsigned tid,
+                       float learning_rate = 0.0f) {
     if (!optimizer_) {
       LOG(ERROR) << "Optimizer not initialized. Please call InitTable first.";
+      return false;
+    }
+    if (!CheckLearningRate(table_name, learning_rate)) {
       return false;
     }
 
@@ -621,7 +645,8 @@ public:
       const float* grads,
       int64_t num_rows,
       int64_t embedding_dim,
-      unsigned tid) {
+      unsigned tid,
+      float learning_rate = 0.0f) {
     if (grads == nullptr) {
       LOG(ERROR) << "UpdateParameterFlat grads pointer is null";
       return false;
@@ -640,6 +665,9 @@ public:
       LOG(ERROR) << "Optimizer not initialized. Please call InitTable first.";
       return false;
     }
+    if (!CheckLearningRate(table_name, learning_rate)) {
+      return false;
+    }
     optimizer_->UpdateFlat(
         table_name, keys, grads, num_rows, embedding_dim, tid);
     MarkCheckpointDirty();
@@ -647,6 +675,26 @@ public:
   }
 
 private:
+  // The server optimizer owns the learning rate. A client that advertises a
+  // different rate must fail instead of being silently ignored.
+  bool CheckLearningRate(const std::string& table_name, float client_lr) const {
+    if (client_lr <= 0.0f) {
+      return true;
+    }
+    const float server_lr = optimizer_->LearningRate();
+    if (server_lr <= 0.0f) {
+      return true;
+    }
+    const float scale = std::max(1.0f, std::abs(server_lr));
+    if (std::abs(client_lr - server_lr) <= 1e-6f * scale) {
+      return true;
+    }
+    LOG(ERROR) << "UpdateParameter learning rate mismatch for table "
+               << table_name << ": client=" << client_lr
+               << " server=" << server_lr;
+    return false;
+  }
+
   recstore::SparseGradientCommitCoordinator sparse_gradient_commits_;
   void MarkCheckpointDirty() {
     if (!checkpoint_dirty_.load(std::memory_order_relaxed)) {

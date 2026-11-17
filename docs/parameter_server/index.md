@@ -18,46 +18,7 @@ RecStore 参数服务器（PS）模块负责分布式训练中模型参数和嵌
 
 ### 核心接口
 
-**BaseParameterServer** - 服务器抽象基类
-
-```cpp
-class BaseParameterServer {
-  virtual void Init(const json& config);
-  virtual void Run() = 0;
-};
-```
-
-**BasePSClient** - 客户端抽象基类
-
-| 方法 | 说明 |
-|------|------|
-| `GetParameter` | 同步获取参数 |
-| `PutParameter` | 设置参数初始值 |
-| `UpdateParameter` | 更新参数（应用梯度）|
-| `InitEmbeddingTable` | 初始化嵌入表 |
-| `AsyncGetParameter` | 异步获取参数 |
-| `PrefetchParameter` | 预取参数 |
-
-## 数据结构
-
-### 参数压缩格式
-
-```cpp
-struct ParameterCompressItem {
-  uint64_t key;          // 参数键
-  int dim;               // 维度
-  float embedding[0];    // 可变长度数组
-};
-```
-
-### 嵌入表配置
-
-```cpp
-struct EmbeddingTableConfig {
-  uint64_t num_embeddings;  // 嵌入数量
-  uint64_t embedding_dim;   // 嵌入维度
-};
-```
+`BaseParameterServer` 定义 `Init(config)` / `Run()`；`BasePSClient` 定义 `GetParameter`、`PutParameter`、`UpdateParameter`、`InitEmbeddingTable`、`AsyncGetParameter`、`PrefetchParameter` 等操作。完整签名、数据结构和控制命令见 [base.md](./base.md)。
 
 ## 工作流程
 
@@ -94,9 +55,13 @@ struct EmbeddingTableConfig {
 
 ```json
 {
-  "backend": "grpc",  // 或 "brpc"
-  "server_addresses": ["192.168.1.1:50051"],
-  "num_embeddings": 1000000,
-  "embedding_dim": 128
+  "cache_ps": {
+    "ps_type": "GRPC",
+    "servers": [
+      { "host": "192.168.1.1", "port": 50051, "shard": 0 }
+    ]
+  }
 }
 ```
+
+`ps_type` 取 `GRPC` 或 `BRPC`；多分片时在 `servers` 里按 `shard` 递增列出。

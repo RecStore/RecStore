@@ -36,7 +36,7 @@ class FakeOps:
             out[i] = self._store[int(keys[i].item())]
         return out
 
-    def emb_update_table(self, table_name: str, keys: torch.Tensor, grads: torch.Tensor):
+    def emb_update_table(self, table_name: str, keys: torch.Tensor, grads: torch.Tensor, learning_rate: float = 0.0):
         keys = keys.to(torch.int64).cpu().contiguous()
         grads = grads.to(torch.float32).cpu().contiguous()
         self.update_calls.append((table_name, keys.clone(), grads.clone()))

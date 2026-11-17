@@ -9,8 +9,7 @@
 
 | 测试方法 | 描述 | 图解/逻辑 | 预期结果 |
 | :--- | :--- | :--- | :--- |
-| `test_initialization` | **初始化与元数据注册** | `DistEmbedding(...)` -> 连接 Client -> 注册 Table | Client 内部元数据结构中应包含该 Table 的 Shape 和 Dtype。 |
-| `test_backward` | **梯度追踪 (Tracing)** | `loss.backward()` -> **Hook 触发** -> 记录 `{Keys, Grads}` 到 Trace | Backward 仅记录 Trace，**不更新**权重。权重在此时应保持不变。 |
-| `test_optimizer_step` | **优化器更新** | `SparseSGD.step()` -> 读取 Trace -> `client.push` | 调用 `step()` 后，权重发生变化，且符合 SGD 更新公式。 |
-| `test_duplicate_ids` | **梯度聚合** | 输入 Batch: `[ID 1, ID 1, ID 1]`<br>Backward: `Wait...` | Server 端收到的 ID 1 的梯度应为 3 次梯度的**总和**。 |
-| `test_persistence` | **数据持久化** | `Emb(name="A")` 退出 -> `Emb(name="A")` 重启 | 新实例应能读取到上一个实例写入的数据。 |
+| `test_initialization_and_forward` | **初始化、元数据注册与 forward** | `DistEmbedding(...)` -> 连接 Client -> 注册 Table -> forward | Client 内部元数据结构中包含该 Table 的 Shape 和 Dtype；forward 输出形状正确。 |
+| `test_backward_and_optimizer_step` | **梯度追踪与优化器更新** | `loss.backward()` -> Hook 记录 `{Keys, Grads}` -> `SparseSGD.step()` -> `client.push` | backward 只记录 Trace，不更新权重；`step()` 后权重按 SGD 公式变化。 |
+| `test_update_with_duplicate_ids` | **重复 ID 的梯度聚合** | 输入 Batch: `[ID 1, ID 1, ID 1]`，backward 后 step | Server 端收到的 ID 1 梯度为 3 次梯度的总和。 |
+| `test_persistence_with_same_name` | **数据持久化** | `Emb(name="A")` 退出 -> 重新创建 `Emb(name="A")` | 新实例能读取到上一个实例写入的数据。 |

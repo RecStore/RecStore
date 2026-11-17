@@ -56,7 +56,7 @@ target_include_directories(recstore_torch_ops PRIVATE
     ${PROJECT_SOURCE_DIR}/src/ps/grpc
 )
 
-if(CMAKE_BUILD_TYPE MATCHES "Debug" AND USE_PERF_REPORT)
+if(USE_PERF_REPORT)
     target_compile_definitions(recstore_torch_ops PRIVATE ENABLE_PERF_REPORT)
     target_link_libraries(recstore_torch_ops PRIVATE report_client)
 endif()

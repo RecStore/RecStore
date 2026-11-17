@@ -35,8 +35,13 @@ def resolve_rdma_integration_config(server_count, config_path):
     return DEFAULT_RDMA_SINGLE_SHARD_CONFIG
 
 
-def materialize_rdma_config(config_path, server_count, client_count, runtime_dir=None):
-    """Write a runtime RDMA config whose deployment matches the launched mesh."""
+def materialize_rdma_config(config_path, server_count, client_count, runtime_dir=None, device=None):
+    """Write a runtime RDMA config whose deployment matches the launched mesh.
+
+    `device` optionally overrides every node's RDMA device. Hosts without the
+    config's default device (for example a lab machine exposing only
+    `ibp139s0` instead of `mlx5_0`) can set it instead of editing configs.
+    """
     if server_count <= 0 or client_count <= 0:
         raise ValueError("server_count and client_count must be positive")
     with resolve_repo_path(config_path).open() as fh:
@@ -63,6 +68,9 @@ def materialize_rdma_config(config_path, server_count, client_count, runtime_dir
         {**client_nodes[0], "node_id": server_count + client_index, "role": "client"}
         for client_index in range(client_count)
     ]
+    if device:
+        for node in deployment["nodes"]:
+            node["device"] = device
     if runtime_dir is None:
         runtime_dir = tempfile.mkdtemp(prefix="recstore_rdma_config_")
     runtime_path = Path(runtime_dir) / "recstore_config.rdma_runtime.json"

@@ -125,9 +125,11 @@ void HierKVLocalRuntime::Read(const base::RecTensor& keys,
   }
 }
 
-void HierKVLocalRuntime::Update(const std::string& table_name,
-                                const base::RecTensor& keys,
-                                const base::RecTensor& grads) {
+void HierKVLocalRuntime::Update(
+    const std::string& table_name,
+    const base::RecTensor& keys,
+    const base::RecTensor& grads,
+    float learning_rate) {
   ValidateKeys(keys);
   ValidateEmbeddings(grads, "Grads");
   const int64_t num_rows = keys.shape(0);
@@ -148,6 +150,9 @@ void HierKVLocalRuntime::Update(const std::string& table_name,
 
   const uint64_t* key_data = keys.data_as<uint64_t>();
   const float* grad_data   = grads.data_as<float>();
+  // An advertised rate wins; 0 keeps the legacy local default for callers that
+  // do not pass one.
+  const float rate = learning_rate > 0.0f ? learning_rate : kHierKVLearningRate;
   for (int64_t row = 0; row < num_rows; ++row) {
     auto& value = state.store[key_data[row]];
     if (value.empty()) {
@@ -158,7 +163,7 @@ void HierKVLocalRuntime::Update(const std::string& table_name,
     }
     for (int64_t col = 0; col < embedding_dim; ++col) {
       value[static_cast<size_t>(col)] -=
-          kHierKVLearningRate * grad_data[row * embedding_dim + col];
+          rate * grad_data[row * embedding_dim + col];
     }
   }
 }

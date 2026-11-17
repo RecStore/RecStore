@@ -20,7 +20,7 @@ class FakeKVClient:
     def current_ps_backend(self):
         return "hierkv"
 
-    def local_update_flat(self, name, ids, grads):
+    def local_update_flat(self, name, ids, grads, learning_rate=0.0):
         self.updates.append((
             name,
             ids.detach().clone(),

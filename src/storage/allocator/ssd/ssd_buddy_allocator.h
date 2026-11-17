@@ -4,6 +4,7 @@
 #include <cstring>
 #include <mutex>
 #include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -35,23 +36,34 @@ public:
 
   uint64_t Alloc(size_t data_size) override {
     std::lock_guard<std::mutex> lock(mu_);
-    const int level = LevelFor(data_size);
-    return AllocAtLevel(level);
+    const int level      = LevelFor(data_size);
+    const uint64_t block = AllocAtLevel(level);
+    if (block != kInvalidHandle) {
+      allocated_levels_.emplace(block, level);
+    }
+    return block;
   }
 
   void Free(uint64_t block_addr) override {
     if (block_addr == kInvalidHandle || block_addr == 0) {
       return;
     }
-    uint32_t data_size = 0;
-    uint32_t level     = 0;
-    ReadHeader(block_addr, data_size, level);
     std::lock_guard<std::mutex> lock(mu_);
-    FreeAtLevel(block_addr, static_cast<int>(level));
+    const auto found = allocated_levels_.find(block_addr);
+    if (found == allocated_levels_.end()) {
+      return;
+    }
+    FreeAtLevel(block_addr, found->second);
+    allocated_levels_.erase(found);
   }
 
   void Write(uint64_t block_addr, const void* data, size_t data_size) override {
-    const int level = LevelFor(data_size);
+    const int level = AllocationLevel(block_addr);
+    const uint64_t capacity =
+        (static_cast<uint64_t>(min_block_size_) << level) - kHeaderSize;
+    if (data_size > capacity) {
+      throw std::invalid_argument("SsdBuddyAllocator write exceeds block size");
+    }
     WriteWithLevel(block_addr, level, data, data_size);
   }
 
@@ -84,17 +96,19 @@ public:
     if (block_addr == 0 || block_addr == kInvalidHandle) {
       return 0;
     }
-    std::lock_guard<std::mutex> lock(io_mu_);
-    uint32_t data_size = 0;
-    uint32_t level     = 0;
-    const_cast<SsdBuddyAllocator*>(this)->ReadHeaderUnlocked(
-        block_addr, data_size, level);
-    return (static_cast<uint64_t>(min_block_size_) << level) - kHeaderSize;
+    return (static_cast<uint64_t>(min_block_size_)
+            << AllocationLevel(block_addr)) -
+           kHeaderSize;
   }
 
   static constexpr int kHeaderSize = 8;
 
 private:
+  int AllocationLevel(uint64_t block_addr) const {
+    std::lock_guard<std::mutex> lock(mu_);
+    return allocated_levels_.at(block_addr);
+  }
+
   int LevelFor(size_t data_size) const {
     const uint64_t needed = static_cast<uint64_t>(data_size) + kHeaderSize;
     for (int level = 0; level < num_levels_; ++level) {
@@ -159,11 +173,6 @@ private:
     backend_->FreeBuffer(buf);
   }
 
-  void ReadHeader(uint64_t block_addr, uint32_t& data_size, uint32_t& level) {
-    std::lock_guard<std::mutex> lock(io_mu_);
-    ReadHeaderUnlocked(block_addr, data_size, level);
-  }
-
   void ReadHeaderUnlocked(
       uint64_t block_addr, uint32_t& data_size, uint32_t& level) {
     const uint64_t byte_offset = BlockByteOffset(block_addr);
@@ -181,9 +190,11 @@ private:
   const int num_levels_;
   const uint64_t total_min_blocks_;
   const uint64_t base_byte_offset_;
-  std::mutex mu_;
+  mutable std::mutex mu_;
   mutable std::mutex io_mu_;
   std::vector<std::unordered_set<uint64_t>> free_lists_;
+  // Allocation sizes exist before the first write and survive shorter rewrites.
+  std::unordered_map<uint64_t, int> allocated_levels_;
 };
 
 FACTORY_REGISTER(

@@ -73,6 +73,25 @@ class TestHierKVIntegration(unittest.TestCase):
         expected = torch.full((2, 4), -0.02, dtype=torch.float32)
         self.assertTrue(torch.allclose(updated, expected))
 
+    def test_hierkv_async_update_forwards_explicit_learning_rate(self) -> None:
+        table_name = self._new_table_name()
+        self.client.init_data(
+            name=table_name,
+            shape=(16, 4),
+            dtype=torch.float32,
+        )
+
+        ids = torch.tensor([1, 4], dtype=torch.int64)
+        grads = torch.ones((2, 4), dtype=torch.float32)
+        handle = self.client.update_async(
+            table_name, ids, grads, learning_rate=0.25
+        )
+        self.client.wait(handle)
+
+        updated = self.client.local_lookup_flat(table_name, ids)
+        expected = torch.full((2, 4), -0.25, dtype=torch.float32)
+        self.assertTrue(torch.allclose(updated, expected))
+
 
 if __name__ == "__main__":
     unittest.main()

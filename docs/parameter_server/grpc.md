@@ -22,7 +22,7 @@ gRPC 服务实现，处理客户端的参数请求。
 
 ## 客户端实现
 
-### GRPCPSClient
+### GRPCParameterClient
 
 单服务器客户端，继承自 `BasePSClient`，使用 gRPC Channel 与服务器通信。
 
@@ -33,13 +33,13 @@ gRPC 服务实现，处理客户端的参数请求。
 | channel_ | shared_ptr<Channel> | gRPC 通道 |
 | stub_ | unique_ptr<Stub> | 服务 Stub |
 
-### DistGRPCPSClient
+### DistributedGRPCParameterClient
 
 分布式客户端，支持连接多个服务器进行参数分片。
 
 | 成员 | 说明 |
 |------|------|
-| clients_ | 多个 GRPCPSClient 实例 |
+| clients_ | 多个 GRPCParameterClient 实例 |
 | 分片策略 | 根据参数 key 哈希到不同服务器 |
 
 ### 预取机制
@@ -58,8 +58,12 @@ gRPC 服务实现，处理客户端的参数请求。
 
 ```json
 {
-  "backend": "grpc",
-  "server_addresses": ["192.168.1.1:50051"]
+  "cache_ps": {
+    "ps_type": "GRPC",
+    "servers": [
+      { "host": "192.168.1.1", "port": 50051, "shard": 0 }
+    ]
+  }
 }
 ```
 

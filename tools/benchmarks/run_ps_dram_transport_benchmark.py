@@ -175,7 +175,6 @@ def build_runtime_config(
     config = {
         "cache_ps": {
             "ps_type": normalized_transport,
-            "max_batch_keys_size": max_keys_per_request,
             "num_threads": num_threads,
             "num_shards": num_shards,
             "servers": servers,
@@ -280,7 +279,7 @@ def build_base_kv_config(
             ssd_capacity, ssd_io_backend, ssd_queue_depth
         )
         config["value"]["ssd_allocator"]["path"] = str(ssd_root / "ssd.db")
-        config["value"]["tiering"] = {"cache_policy": "LRU"}
+        config["value"]["tiering"] = {"cache_policy": "none"}
     else:
         raise ValueError(f"unsupported value_store_type: {backend.value_store_type}")
     return config

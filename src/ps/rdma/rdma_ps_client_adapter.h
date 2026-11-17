@@ -51,10 +51,13 @@ public:
                    const base::RecTensor& values) override;
   int UpdateParameter(const std::string& table_name,
                       const base::ConstArray<uint64_t>& keys,
-                      const base::RecTensor& grads) override;
-  uint64_t SubmitUpdateParameterAsync(const std::string& table_name,
-                                      const base::ConstArray<uint64_t>& keys,
-                                      const base::RecTensor& grads) override;
+                      const base::RecTensor& grads,
+                      float learning_rate = 0.0f) override;
+  uint64_t SubmitUpdateParameterAsync(
+      const std::string& table_name,
+      const base::ConstArray<uint64_t>& keys,
+      const base::RecTensor& grads,
+      float learning_rate = 0.0f) override;
   int WaitUpdateParameter(uint64_t update_id) override;
   int InitEmbeddingTable(const std::string& table_name,
                          const EmbeddingTableConfig& config) override;

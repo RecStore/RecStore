@@ -46,8 +46,8 @@ graph TD
 
 参数服务器层负责分布式环境下参数的分发与通信。它屏蔽了底层的网络细节，支持多种通信协议。
 
-- **RPC 通信**: 支持 gRPC 和 bRPC。例如 `DistGRPCPSClient`（`src/ps/grpc/dist_grpc_ps_client.cpp`）负责序列化数据并发送请求。
-- **服务端分发**: `GRPCPS_Server`（`src/ps/grpc/grpc_ps_server.cpp`）接收请求并将其路由给后端的存储逻辑。
+- **RPC 通信**: 支持 gRPC 和 bRPC。例如 `DistributedGRPCParameterClient`（`src/ps/grpc/dist_grpc_ps_client.cpp`）负责序列化数据并发送请求。
+- **服务端分发**: `GRPCParameterServer`（`src/ps/grpc/grpc_ps_server.cpp`）接收请求并将其路由给后端的存储逻辑。
 - **协议定义**: `src/ps/proto/ps.proto` 定义了 `GetParameter`、`UpdateParameter` 等核心接口。
 
 ---

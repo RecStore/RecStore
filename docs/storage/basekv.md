@@ -55,29 +55,13 @@ base_kv_.reset(base::Factory<BaseKV, const BaseKVConfig&>::NewInstance(
 | `KVEngineFasterKV` | `external/fasterkv/` | 顶层 `capacity`、`value_size`；可选 `fasterkv` 块 | 下文 |
 | `KVEngineHPSHashMap` | `external/hps/` | 顶层 `capacity`、`value_size`；无 `path` | 下文 |
 | `KVEngineHPSRocksDB` | `external/hps/` | 同上 + 必填 `path` | 下文 |
+| `KVEngineDETable` | `external/detable/` | 顶层 `capacity`、`value_size`；可选 `detable` 块（`library_path`、`block_size`） | — |
 
 ---
 
 ## KVEngineComposite（摘要）
 
-省略 `engine_type` 或显式写 `KVEngineComposite` 时使用嵌套配置：
-
-```json
-{
-  "engine_type": "KVEngineComposite",
-  "capacity": 1000000,
-  "index": { "type": "DRAM_PET_HASH" },
-  "value": {
-    "type": "DRAM_VALUE_STORE",
-    "default_value_size_hint": 512,
-    "path": "/dev/shm/recstore_kv/value",
-    "dram_allocator": {
-      "type": "CONCURRENT_SLAB_MEMORY_POOL",
-      "capacity_bytes": 512000000
-    }
-  }
-}
-```
+省略 `engine_type` 或显式写 `KVEngineComposite` 时使用嵌套配置，字段与完整示例见 [composite_kvengine.md](./composite_kvengine.md) 的配置骨架一节。
 
 常用顶层字段：
 
@@ -186,5 +170,3 @@ HugeCTR `DatabaseBackend` 适配，固定 float 对齐的 `value_size`。
   "value_size": 512
 }
 ```
-
----

@@ -81,12 +81,15 @@ public:
                        int64_t embedding_dim);
   int UpdateParameter(const std::string& table_name,
                       const base::ConstArray<uint64_t>& keys,
-                      const base::RecTensor& grads) override;
-  int UpdateParameterFlat(const std::string& table_name,
-                          const base::ConstArray<uint64_t>& keys,
-                          const float* grads,
-                          int64_t num_rows,
-                          int64_t embedding_dim);
+                      const base::RecTensor& grads,
+                      float learning_rate = 0.0f) override;
+  int UpdateParameterFlat(
+      const std::string& table_name,
+      const base::ConstArray<uint64_t>& keys,
+      const float* grads,
+      int64_t num_rows,
+      int64_t embedding_dim,
+      float learning_rate = 0.0f);
   int InitEmbeddingTable(const std::string& table_name,
                          const EmbeddingTableConfig& config) override;
   bool GetSlotPayloadRegion(const void** base, std::size_t* bytes) const;

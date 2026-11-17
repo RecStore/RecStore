@@ -14,11 +14,15 @@ class TestRecstoreConfigSchema(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-    def validate_config(self, base_kv_config: dict, optimizer: dict | None = None) -> None:
+    def build_config(
+        self,
+        base_kv_config: dict,
+        optimizer: dict | None = None,
+        include_deprecated_max_batch_keys: bool = True,
+    ) -> dict:
         config = {
             "cache_ps": {
                 "ps_type": "GRPC",
-                "max_batch_keys_size": 1024,
                 "num_threads": 4,
                 "num_shards": 1,
                 "servers": [
@@ -35,9 +39,53 @@ class TestRecstoreConfigSchema(unittest.TestCase):
             },
             "client": {"host": "127.0.0.1", "port": 15000, "shard": 0},
         }
+        if include_deprecated_max_batch_keys:
+            config["cache_ps"]["max_batch_keys_size"] = 1024
         if optimizer is not None:
             config["cache_ps"]["optimizer"] = optimizer
+        return config
+
+    def validate_config(
+        self,
+        base_kv_config: dict,
+        optimizer: dict | None = None,
+        include_deprecated_max_batch_keys: bool = True,
+    ) -> None:
+        config = self.build_config(
+            base_kv_config,
+            optimizer=optimizer,
+            include_deprecated_max_batch_keys=include_deprecated_max_batch_keys,
+        )
         jsonschema.Draft202012Validator(self.schema).validate(config)
+
+    def minimal_kv_config(self) -> dict:
+        return {
+            "capacity": 1024,
+            "index": {"type": "DRAM_EXTENDIBLE_HASH"},
+            "value": {
+                "type": "DRAM_VALUE_STORE",
+                "default_value_size_hint": 128,
+                "dram_allocator": {
+                    "type": "PERSIST_LOOP_SLAB",
+                    "capacity_bytes": 1024 * 128,
+                },
+            },
+        }
+
+    def test_accepts_observability_sinks(self) -> None:
+        config = self.build_config(self.minimal_kv_config())
+        config["observability"] = {
+            "sinks": ["remote", "csv"],
+            "remote": {"endpoint": "http://127.0.0.1:8081/report", "queue_max": 2048},
+            "csv": {"path": "metrics_{host}_{pid}.csv", "flush_every_n": 4},
+        }
+        jsonschema.Draft202012Validator(self.schema).validate(config)
+
+    def test_rejects_unknown_observability_sink(self) -> None:
+        config = self.build_config(self.minimal_kv_config())
+        config["observability"] = {"sinks": ["clickhouse"]}
+        with self.assertRaises(jsonschema.ValidationError):
+            jsonschema.Draft202012Validator(self.schema).validate(config)
 
     def assert_invalid_config(self, base_kv_config: dict) -> None:
         config = {
@@ -62,6 +110,23 @@ class TestRecstoreConfigSchema(unittest.TestCase):
         }
         with self.assertRaises(jsonschema.ValidationError):
             jsonschema.Draft202012Validator(self.schema).validate(config)
+
+    def test_accepts_config_without_deprecated_max_batch_keys_size(self) -> None:
+        self.validate_config(
+            {
+                "capacity": 1024,
+                "index": {"type": "DRAM_EXTENDIBLE_HASH"},
+                "value": {
+                    "type": "DRAM_VALUE_STORE",
+                    "default_value_size_hint": 128,
+                    "dram_allocator": {
+                        "type": "PERSIST_LOOP_SLAB",
+                        "capacity_bytes": 1024 * 128,
+                    },
+                },
+            },
+            include_deprecated_max_batch_keys=False,
+        )
 
     def test_accepts_nested_local_kv_config_without_engine_type(self) -> None:
         self.validate_config(

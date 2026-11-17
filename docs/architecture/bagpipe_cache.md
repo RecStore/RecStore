@@ -1,144 +1,84 @@
-# BagPipe with PS-owned parameters
+# BagPipe 缓存
 
-Default (online) and planned (prescan) execution share a bounded GPU cache
-controller. The PS owns embedding values and applies SGD each step; its
-DRAM/SSD tiers are configured independently of GPU cache capacity.
+原论文：Saurabh Agarwal、Chengpo Yan、Ziyi Zhang、Shivaram Venkataraman，[BagPipe: Accelerating Deep Recommendation Model Training](https://doi.org/10.1145/3600006.3613142)，SOSP 2023，348–363。
 
-## Execution modes
+BagPipe 在训练端缓存 embedding，并提前从参数服务器（PS）预取后续批次需要的行。PS 保存完整参数并执行 SGD，GPU 缓存随每步提交结果更新。
 
-`--read-mode bagpipe` enables the runtime. `--optimization-prescan` builds
-CPU access plans before training; without it, ranks exchange batch IDs online.
-Both support two gradient aggregation modes:
+## 启用
 
-| Option | Aggregation | PS update |
-| --- | --- | --- |
-| `--bagpipe-aggregation collective` | All-reduce active-row gradients and divide by world size | One designated rank submits each row; PS commits after all rank markers |
-| `--bagpipe-aggregation ps` (default) | Send local unique-row gradients to their PS shard | PS sums in rank/chunk order, divides by world size, and applies SGD once |
-
-Both modes use dense DDP collectives and ID metadata exchange. Prescan
-exchanges IDs once and retains plans in CPU memory; online mode exchanges
-IDs each batch.
-
-Example additions to an existing RDMA training command:
+在现有训练命令中加入：
 
 ```sh
 --ps-type RDMA --read-mode bagpipe --optimization-prescan \
   --optimization-cache-capacity 8192 --bagpipe-aggregation ps
 ```
 
-The `rs_demo` launcher selects a local backend for single-node deployments,
-including commands with `--ps-type RDMA`.
+默认逐批交换各 rank 的 ID，在线生成访问计划。`--optimization-prescan` 在训练前扫描同一批次序列，一次性交换 ID，并把计划保存在 CPU。`rs_demo` 的单机部署由启动器选择本地后端。
 
-## Memory and cache coherence
+训练使用融合 embedding 表、FP32 稀疏梯度和固定学习率 SGD，客户端与 PS 使用相同学习率；每个样本的每个特征对应一个 ID。
 
-`cache_capacity` is measured in units of 64 rows. Resident GPU value storage
-uses `cache_capacity * 64 * embedding_dim * 4` bytes. CPU LRU metadata maps
-keys to slots. The current batch and bounded prepared-batch queue use
-additional temporary tensors. Batches larger than the cache gather into their
-own tensors and admit only bounded rows. Prescan plans consume CPU memory
-proportional to the access trace.
-
-Admission returns the final source row for each destination slot, giving GPU
-scatters unique destinations even for oversized batches. Metadata operations
-are serialized with commit completion.
-
-After a PS commit, each rank updates cached rows accessed only by that rank
-using its local gradient divided by world size. Rows modified by another rank
-are invalidated and fetched on demand. Collective aggregation makes gradients
-available for all affected resident rows, which can then be updated locally.
-Eviction discards clean cache rows.
-
-Plans track each local row's previous global update step. Prefetch is issued
-only for rows whose preceding updates have committed; other misses wait until
-consumption.
-A forward waits for a pending commit when its rows depend on that step, allowing
-independent forward work to overlap PS submission. Each sparse update waits
-for its predecessor.
-
-## RDMA submission
-
-Gradients are staged asynchronously into pinned CPU buffers. A native worker
-waits for producer-stream CUDA events before reading them and retains the
-source and staging buffers through submission. IDs in CPU plans avoid a GPU
-round trip.
-
-The adapter packs gradients into bounded packets and submits chunks
-round-robin across shards. Multiple RC writes can precede ACK waits, bounded
-by QP/slot capacity. Every shard receives rank markers, including shards with
-zero rows in the step.
-
-GET windows and gradient submissions share RC slots. Before reusing slots,
-the adapter materializes outstanding prefetch results in CPU buffers while
-preserving their handles. Slot ownership is serialized within the adapter;
-GPU computation and PS aggregation remain asynchronous.
-
-## Module layout
-
-Paths below are relative to `src/`.
-
-| Module | Responsibility |
+| `--bagpipe-aggregation` | 梯度聚合方式 |
 | --- | --- |
-| `optimization/bagpipe/cache_metadata.h` | `CacheMetadata`: batched LRU queries, admission, invalidation, and previous-update tracking using the C++ standard library |
-| `framework/op.{h,cc}` | Sparse commit submission/wait/close and cached updates/writes through `RecTensor`; cache clearing after successful table initialization or checkpoint restore |
-| `framework/common/sparse_gradient_commit_runtime.h` | Input readiness, asynchronous handles, committed-step polling, timeout, and peer abort |
-| `framework/cache/cache_aware_op.h` | Query/read-misses/fill/scatter sequence, low-hit bypass, fallback, and invalidation after transport completion |
-| `framework/cache/gpu_embedding_cache.{h,cu}` | GPU cache lifecycle, cross-stream ordering, generation, residency, and cache SGD; device-buffer API independent of Torch |
-| `framework/pytorch/cache/` | Tensor allocation, dtype/shape/device conversion, result wrapping, and cache/metadata bindings |
-| `framework/gpu/host_memory.cu` | Host-memory registration and stream-completion retention |
+| `ps`（默认） | 各 rank 提交本地梯度，PS 汇总并除以 rank 数，再执行 SGD |
+| `collective` | 训练端 all-reduce 后除以 rank 数，每行由指定 rank 提交给 PS |
 
-`CacheMetadata` borrows input arrays for each call and returns vectors. Its
-PyTorch binding, `BagPipeCacheMetadata`, exchanges compact position and slot
-tensors with the Python controller, which handles planning, gathers, autograd,
-and communication scheduling.
+## 每步流程
 
-PyTorch adapters supply buffer operations to the common execution layer.
-`emb_read`, `local_lookup_flat`, and `gpu_cache_lookup_flat` share that layer.
-Adapters retain source/staging buffers through commit completion and borrowed
-local-read storage through H2D completion.
+### 1. 准备：逐行决定是否预取
 
-GPU cache callers supply device pointers, sizes, a device ordinal, and a CUDA
-stream, retaining buffers until completion. Query waits for the miss count;
-hit-only reads and ordinary mutations enqueue work. Clear/disable wait before
-freeing cache storage. Explicit enable/disable/reset reset the calling thread's
-bypass state; internal clearing preserves it.
+本批 ID 去重后，记录每行在所有 rank 中上次参与更新的步骤，依次判断：
 
-Strict cache SGD sums duplicate gradients with CUDA/Thrust before updating
-each row once. A missing key causes invalidation of the requested keys and a
-`false` result. Best-effort SGD updates resident rows asynchronously and skips
-missing keys.
+| 行的类别 | 条件 | 处理 |
+| --- | --- | --- |
+| 等待更新的行 | 上次更新尚未确认提交 | 记录依赖，前向时等提交完成，再查缓存 |
+| 可复用的行 | 依赖已提交，且已在缓存中 | 前向时查缓存取值 |
+| 待预取的行 | 依赖已提交，且未在缓存中 | 有预取额度时发起 PS 读取，其余留到前向按需读取 |
 
-Tests: `test_bagpipe_metadata`, `test_framework_op_runtime`, and
-`test_framework_gpu_cache`.
+### 2. 前向：取值与缓存替换
 
-## Sparse gradient commits
+完成依赖等待后，每行依次从 GPU 缓存、预取结果、PS 按需查询中取值。命中的行移到 LRU 队尾；补齐的缺失行写入缓存时，优先使用空槽，缓存满时淘汰队首的最久未使用行并复用其槽位。其余缓存行保留。
 
-`SparseGradientCommit` aggregates sparse gradients and commits ordered updates.
-Its header, client, and coordinator live in `src/ps/base/sparse_gradient_commit.h`.
-Python exposes `sparse_gradient_commit_async`, `sparse_gradient_commit_wait`,
-and `sparse_gradient_commit_close`. The asynchronous handle completes when
-all shards report the requested committed step.
+### 3. 反向与提交
 
-A session identifies one job on one fused table. Packets carry session, step,
-rank, world size, chunk index/count, dimension, and SGD learning rate. The PS
-acknowledges chunks immediately and applies the update once all ranks' chunks
-arrive. Clients observe the minimum committed step across shards. Empty-rank
-and all-empty-step markers advance the same protocol. Conflicting pending
-retries and out-of-order steps fail; committed-step retries do not repeat SGD.
+合并本地重复 ID 的梯度，按所选方式聚合。PS 收齐各 rank 的分块和步骤标记后执行更新，全部 shard 更新后，本步提交完成。
 
-Backend errors can leave partial updates and fail the session. Recovery
-restores the job and PS from a consistent checkpoint. Rank loss produces an
-error or timeout. Successful shutdown drains pending work and closes every
-rank's session; failure cleanup uses no new distributed collective.
+### 4. 刷新：逐行更新或失效
 
-## Requirements and metrics
+确认提交完成后，将仍在缓存中的行按本步访问情况分为四类：
 
-The runtime requires fused tables, FP32 gradients, constant-rate SGD with
-matching PS/client learning rates, fixed feature order, one ID per feature per
-sample, and one fused sparse update per step per rank. Empty ranks participate.
-Prescan requires the same ID sequence during training. Uneven rank termination,
-external writers, adaptive optimizers, and elastic recovery are unsupported.
+| 行的类别 | 本步由谁访问 | `ps` 模式 | `collective` 模式 |
+| --- | --- | --- | --- |
+| 本地独占行 | 只有本 rank | 用本地梯度除以 rank 数后更新 | 用全局平均梯度更新 |
+| 共享行 | 本 rank 和其他 rank | 失效 | 用全局平均梯度更新 |
+| 仅远端访问的行 | 只有其他 rank | 失效 | 用全局平均梯度更新 |
+| 未访问的行 | 所有 rank 都未访问 | 保留 | 保留 |
 
-Metrics cover cache hits, demand/prefetch IDs, eviction/invalidation counts,
-resident bytes, skipped dependency waits, commit-wait time, and gradient
-payload bytes. Prescan startup and shutdown costs are recorded separately.
-Compare modes at the same cache capacity and include final commit time.
+失效会移除缓存映射并释放槽位，下次访问时重新取值；LRU 淘汰则在前向补入新行时触发。已被淘汰的行由 PS 保存更新后的参数。
+
+## 例子
+
+以单 rank、缓存充足为例：step 0 访问 `[10, 20]`，提前准备的 step 1 访问 `[20, 30]`，其中 30 尚未缓存。
+
+| 时刻 | 训练与数据读取 |
+| --- | --- |
+| step 0 计算 | GPU 用 10、20 做前向和反向，同时从 PS 预取 30；30 的值在 step 0 中保持不变 |
+| step 0 提交 | PS 更新 10、20；客户端确认提交完成后，用梯度刷新缓存中的 20 |
+| step 1 计算 | 20 取自更新后的缓存，30 取自预取结果 |
+
+准备 step 1 时，20 属于等待更新的行，30 属于待预取的行。step 0 提交后，缓存中的 10、20 都作为本地独占行刷新。
+
+## 缓存容量
+
+`--optimization-cache-capacity` 每单位对应 64 行。FP32 embedding 的常驻缓存大小为 `cache_capacity × 64 × embedding_dim × 4` 字节；批次张量和预扫描计划另占空间。缓存替换由 CPU 上的 LRU 元数据管理，PS 的 DRAM/SSD 容量单独配置。
+
+## 代码入口
+
+| 文件（相对 `src/`） | 职责 |
+| --- | --- |
+| `python/pytorch/recstore/bagpipe_cache/plugin.py` | 接入训练循环 |
+| `python/pytorch/recstore/bagpipe_cache/planned.py` | 访问计划、预取和缓存更新 |
+| `python/pytorch/recstore/bagpipe_cache/optimizer.py` | 提交稀疏梯度 |
+| `optimization/bagpipe/cache_metadata.h` | LRU、缓存准入和更新依赖 |
+| `ps/base/sparse_gradient_commit.h` | 梯度聚合与按步提交 |
+
+相关测试：`test_bagpipe_planned.py`、`test_bagpipe_metadata`、`test_framework_op_runtime`。

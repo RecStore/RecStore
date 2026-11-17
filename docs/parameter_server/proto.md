@@ -8,6 +8,8 @@ Proto 模块包含 Protocol Buffer 定义文件，定义了参数服务器的通
 
 ### 消息定义
 
+下表字段名与 `ps.proto` 逐字一致，包括历史拼写（`PutParameterResponse.sucess`）。
+
 | 消息 | 字段 | 说明 |
 |------|------|------|
 | GetParameterRequest | keys (bytes) | 参数键列表 |
@@ -16,15 +18,20 @@ Proto 模块包含 Protocol Buffer 定义文件，定义了参数服务器的通
 | GetParameterResponse | parameter_value (bytes) | 参数值 |
 | | keys (bytes) | 参数键 |
 | PutParameterRequest | parameter_value (bytes) | 参数值 |
-| PutParameterResponse | success (bool) | 操作成功标志 |
+| PutParameterResponse | sucess (bool) | 操作成功标志；proto 里就拼作 `sucess`，改字段名会影响所有已生成的客户端，暂不修 |
 | UpdateParameterRequest | table_name (string) | 表名 |
 | | gradients (bytes) | 梯度数据 |
 | UpdateParameterResponse | success (bool) | 操作成功标志 |
 | InitEmbeddingTableRequest | table_name (string) | 表名 |
 | | config_payload (bytes) | 配置数据 |
 | InitEmbeddingTableResponse | success (bool) | 操作成功标志 |
+| | tag (int32) | 建表返回的非负 tag |
+| SparseGradientCommitRequest | table_name (string) | 表名 |
+| | payload (bytes) | 编码后的 sparse gradient |
+| SparseGradientCommitResponse | committed_step (int64) | 提交后的 step |
+| | error (string) | 失败原因，空表示成功 |
 | CommandRequest | command (PSCommand) | 控制命令 |
-| | arg1, arg2, arg3 (bytes) | 参数 |
+| | arg1, arg2, arg3 (repeated bytes) | 参数 |
 | CommandResponse | reply (string) | 响应消息 |
 
 ### PSCommand 枚举
@@ -34,11 +41,15 @@ Proto 模块包含 Protocol Buffer 定义文件，定义了参数服务器的通
 | CLEAR_PS | 清空参数服务器 |
 | RELOAD_PS | 重新加载参数 |
 | LOAD_FAKE_DATA | 加载测试数据 |
+| DUMP_FAKE_DATA | 导出测试数据 |
+| SAVE_CHECKPOINT | 保存 checkpoint |
+| LOAD_CHECKPOINT | 加载 checkpoint |
 
 ### 服务定义
 
 ```protobuf
 service ParameterService {
+  rpc SparseGradientCommit(SparseGradientCommitRequest) returns (SparseGradientCommitResponse);
   rpc GetParameter(GetParameterRequest) returns (GetParameterResponse);
   rpc Command(CommandRequest) returns (CommandResponse);
   rpc PutParameter(PutParameterRequest) returns (PutParameterResponse);

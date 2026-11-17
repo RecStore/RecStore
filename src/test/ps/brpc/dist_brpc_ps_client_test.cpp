@@ -217,6 +217,24 @@ void TestLargeBatch() {
   }
 }
 
+void TestCheckpointUnsupported() {
+  std::cout << "=== Testing bRPC Checkpoint Unsupported ===" << std::endl;
+
+  json config = {
+      {"distributed_client",
+       {{"servers",
+         {{{"host", "127.0.0.1"}, {"port", kDistBrpcPort0}, {"shard", 0}},
+          {{"host", "127.0.0.1"}, {"port", kDistBrpcPort1}, {"shard", 1}}}},
+        {"num_shards", 2},
+        {"hash_method", "city_hash"}}}};
+
+  DistributedBRPCParameterClient client(config);
+  CHECK(!client.SaveCheckpoint("/tmp/recstore-brpc-checkpoint", "{}"));
+  CHECK(!client.LoadCheckpoint("/tmp/recstore-brpc-checkpoint", "{}"));
+
+  std::cout << "Checkpoint unsupported path reported as expected." << std::endl;
+}
+
 int main(int argc, char** argv) {
   folly::Init(&argc, &argv);
   xmh::Reporter::StartReportThread(2000);
@@ -231,5 +249,6 @@ int main(int argc, char** argv) {
   TestFactoryClient();
   TestDirectClient();
   TestLargeBatch();
+  TestCheckpointUnsupported();
   return 0;
 }

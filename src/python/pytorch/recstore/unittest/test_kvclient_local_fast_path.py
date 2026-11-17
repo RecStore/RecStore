@@ -34,7 +34,7 @@ class _FakeOps:
         rows = keys.numel()
         return torch.arange(rows * int(embedding_dim), dtype=torch.float32).view(rows, int(embedding_dim))
 
-    def local_update_flat(self, table_name: str, keys: torch.Tensor, grads: torch.Tensor) -> None:
+    def local_update_flat(self, table_name: str, keys: torch.Tensor, grads: torch.Tensor, learning_rate: float = 0.0) -> None:
         self.update_clear_gpu_cache_call_counts.append(self.clear_gpu_cache_calls)
         self.update_calls.append((table_name, keys.clone(), grads.clone()))
 

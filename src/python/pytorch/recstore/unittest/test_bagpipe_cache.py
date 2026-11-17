@@ -48,7 +48,7 @@ class _FakeClient:
     def update(self, name, ids, grads):
         self.updates.append((name, ids.clone(), grads.clone()))
 
-    def update_async(self, name, ids, grads):
+    def update_async(self, name, ids, grads, learning_rate=0.0):
         self._next_handle += 1
         self.async_updates.append(
             (self._next_handle, name, ids.clone(), grads.clone())

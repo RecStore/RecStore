@@ -1,31 +1,16 @@
 import torch
 import os
 import time
-import ctypes
 import json
 from typing import Optional, Tuple, List, Dict, Any, Callable
+
+from .telemetry import emit as _telemetry_emit
 
 _KEY_TAG_SHIFT = 56
 _LOCAL_FAST_PATH_BACKENDS = {"local_shm", "hierkv"}
 
-def get_reporter():
-    if not hasattr(get_reporter, 'lib'):
-        script_dir = os.path.dirname(__file__)
-        lib_path = os.path.abspath(os.path.join(script_dir, '../../../../build/lib/libreport.so'))
-        if os.path.exists(lib_path):
-            lib = ctypes.CDLL(lib_path)
-            lib.report.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_double]
-            lib.report.restype = ctypes.c_bool
-            get_reporter.lib = lib
-        else:
-            get_reporter.lib = None
-    return get_reporter.lib
-
 def report_metric(table: str, uid: str, metric: str, value: float) -> bool:
-    lib = get_reporter()
-    if lib:
-        return lib.report(table.encode('utf-8'), uid.encode('utf-8'), metric.encode('utf-8'), float(value))
-    return False
+    return _telemetry_emit(table, uid, metric, value)
 
 class RecStoreClient:
     _instance = None
@@ -805,7 +790,13 @@ class RecStoreClient:
             vals = vals.to(ids.device)
         self.ops.emb_write_values(ids, vals)
 
-    def local_update_flat(self, name: str, ids: torch.Tensor, grads: torch.Tensor) -> None:
+    def local_update_flat(
+        self,
+        name: str,
+        ids: torch.Tensor,
+        grads: torch.Tensor,
+        learning_rate: float = 0.0,
+    ) -> None:
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
 
@@ -819,7 +810,7 @@ class RecStoreClient:
             raise ValueError("ids and grads must have the same number of rows")
         if ids.device.type == "cpu":
             self._reject_gpu_cache_reserved_ids(ids)
-        self.ops.local_update_flat(name, ids, grads)
+        self.ops.local_update_flat(name, ids, grads, float(learning_rate))
         if ids.device.type == "cpu":
             self._clear_gpu_cache_if_available()
         self._perf_add(
@@ -929,8 +920,19 @@ class RecStoreClient:
         self.ops.sparse_gradient_commit_close(
             name, session, step, rank, world, dim, lr, divisor, abort)
 
-    def update_async(self, name: str, ids: torch.Tensor, grads: torch.Tensor) -> int:
-        """Submit an embedding update and return a handle for synchronization."""
+    def update_async(
+        self,
+        name: str,
+        ids: torch.Tensor,
+        grads: torch.Tensor,
+        learning_rate: float = 0.0,
+    ) -> int:
+        """Submit an embedding update and return a handle for synchronization.
+
+        ``learning_rate`` is forwarded to the server so it can reject updates
+        whose client rate does not match the server optimizer. 0 means the
+        caller does not advertise a rate.
+        """
         if name not in self._tensor_meta:
             raise RuntimeError(f"Tensor '{name}' has not been initialized.")
 
@@ -949,7 +951,7 @@ class RecStoreClient:
             and self.ops.current_ps_backend() == "rdma"
             and callable(submit)
         ):
-            backend_handle = int(submit(name, ids, grads))
+            backend_handle = int(submit(name, ids, grads, float(learning_rate)))
             self._pending_async_ops[handle] = ("rdma", backend_handle)
         else:
             self._pending_async_ops[handle] = (
@@ -957,6 +959,7 @@ class RecStoreClient:
                 name,
                 ids.clone(),
                 grads.clone(),
+                float(learning_rate),
             )
         ops_done = time.perf_counter()
         self._perf_add("sparse_ids_ms", (ids_done - submit_start) * 1e3)
@@ -974,8 +977,8 @@ class RecStoreClient:
             self.ops.emb_update_wait(int(pending[1]))
             del self._pending_async_ops[handle]
             return
-        _, name, ids, grads = pending
-        self.ops.emb_update_table(name, ids, grads)
+        _, name, ids, grads, learning_rate = pending
+        self.ops.emb_update_table(name, ids, grads, learning_rate)
         del self._pending_async_ops[handle]
 
     def flush_async_updates(self) -> None:

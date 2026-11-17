@@ -29,7 +29,11 @@ class _FakeDistributedOps:
         return ids.to(torch.float32).unsqueeze(1).repeat(1, embedding_dim)
 
     def emb_update_table(
-        self, table_name: str, ids: torch.Tensor, grads: torch.Tensor
+        self,
+        table_name: str,
+        ids: torch.Tensor,
+        grads: torch.Tensor,
+        learning_rate: float = 0.0,
     ) -> None:
         self.update_calls.append((table_name, ids.clone(), grads.clone()))
 
@@ -49,6 +53,7 @@ class TestKVClientNativeDistributed(unittest.TestCase):
         self.client._gpu_cache_table_name = None
         self.client._gpu_cache_clear_count = 0
         self.client._next_table_id = 0
+        self.client._perf_stats = {}
         self.client._initialized = True
 
     def test_init_data_registers_metadata_and_writes_once(self) -> None:

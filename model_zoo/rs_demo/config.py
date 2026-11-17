@@ -158,12 +158,14 @@ class RunConfig:
     recstore_index_type: str = "DRAM_EXTENDIBLE_HASH"
     ps_kv_backend: str = "recstore_dram"
     tiered_dram_capacity_multiplier: float = 2.0
+    tiered_cache_policy: str = "clock"
     torchrec_profiler: bool = False
     torchrec_dist_mode: str = "replicated"
     torchrec_memory_mode: str = "hbm"
     torchrec_timing_sync_mode: str = "stage"
     torchrec_align_recstore_init: bool = False
     validation_state: bool = False
+    report_metrics: bool = False
     ps_pipeline_early_submit: bool = False
     ps_pipeline_dependency_split: bool = False
     dense_cuda_graph: bool = False
@@ -329,6 +331,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "DRAM allocator bytes for recstore_tiered as "
             "kv_capacity * value_size_bytes * multiplier."
+        ),
+    )
+    parser.add_argument(
+        "--tiered-cache-policy",
+        type=str,
+        default="clock",
+        help=(
+            "tiering.cache_policy for recstore_tiered: 'LRU' (read cache on), "
+            "'none' (cache-off baseline), or 'clock' (hot-row exchange)."
         ),
     )
     parser.add_argument("--num-embeddings", type=int, default=200000)
@@ -545,6 +556,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--validation-state",
         action="store_true",
         help="Export exact local embedding and dense tensors for numerical validation after training.",
+    )
+    parser.add_argument(
+        "--report-metrics",
+        action="store_true",
+        help="Also emit per-step e2e metrics (e2e_step table) through the configured sinks.",
     )
     parser.add_argument(
         "--save-checkpoint",
@@ -789,6 +805,10 @@ def validate_recstore_config(cfg: RunConfig) -> None:
         raise RuntimeError("--prefetch-issue-depth must be non-negative")
     if cfg.tiered_dram_capacity_multiplier < 0:
         raise RuntimeError("--tiered-dram-capacity-multiplier must be non-negative")
+    policy = str(cfg.tiered_cache_policy).strip().lower()
+    if policy not in {"lru", "none", "clock"}:
+        raise RuntimeError("--tiered-cache-policy must be 'LRU', 'none', or 'clock'")
+    cfg.tiered_cache_policy = {"lru": "LRU", "none": "none", "clock": "clock"}[policy]
     if cfg.nnodes == 1:
         if cfg.single_node_ps_backend not in {"local_shm", "hierkv"}:
             raise RuntimeError(

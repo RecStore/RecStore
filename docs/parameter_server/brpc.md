@@ -30,7 +30,7 @@ bRPC 服务实现，接口与 gRPC 版本类似。
 
 ## 客户端实现
 
-### BRPCPSClient
+### BRPCParameterClient
 
 单服务器客户端，使用 brpc::Channel 通信。
 
@@ -39,16 +39,20 @@ bRPC 服务实现，接口与 gRPC 版本类似。
 | channel_ | brpc::Channel | bRPC 通道 |
 | stub_ | ParameterService_Stub | 服务 Stub |
 
-### DistBRPCPSClient
+### DistributedBRPCParameterClient
 
 分布式客户端，支持多服务器分片。
 
-##配置
+## 配置
 
 ```json
 {
-  "backend": "brpc",
-  "server_addresses": ["192.168.1.1:50051"]
+  "cache_ps": {
+    "ps_type": "BRPC",
+    "servers": [
+      { "host": "192.168.1.1", "port": 50051, "shard": 0 }
+    ]
+  }
 }
 ```
 

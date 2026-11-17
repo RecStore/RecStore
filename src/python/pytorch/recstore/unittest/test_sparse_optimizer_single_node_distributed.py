@@ -17,7 +17,7 @@ class _FakeLegacyKVClient:
         self.activate_shard_calls = []
         self._next_handle = 1
 
-    def update_async(self, name, ids, grads):
+    def update_async(self, name, ids, grads, learning_rate=0.0):
         handle = self._next_handle
         self._next_handle += 1
         self.update_async_calls.append((name, ids.clone(), grads.clone(), handle))
@@ -26,7 +26,7 @@ class _FakeLegacyKVClient:
     def wait(self, handle):
         self.wait_calls.append(int(handle))
 
-    def local_update_flat(self, name, ids, grads):
+    def local_update_flat(self, name, ids, grads, learning_rate=0.0):
         self.local_update_flat_calls.append((name, ids.clone(), grads.clone()))
 
     def set_ps_backend(self, backend):

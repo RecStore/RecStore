@@ -219,6 +219,33 @@ TEST_F(LocalShmPSClientTest, LastRequestProfileCapturesTransportStages) {
   server_thread.join();
 }
 
+TEST_F(LocalShmPSClientTest, RejectsMismatchedLearningRate) {
+  const auto config =
+      MakeLocalShmConfig(MakeUniqueRegionName("recstore_lr_guard"));
+  LocalShmParameterServer server;
+  server.Init(config);
+  std::thread server_thread([&]() { server.Run(); });
+  try {
+    LocalShmPSClient client(config["local_shm"]);
+    EXPECT_EQ(client.InitEmbeddingTable("lr_guard", {128, 4}), 0);
+    std::vector<uint64_t> keys{7};
+    std::vector<float> initial{1, 2, 3, 4}, grad{0.1f, 0.1f, 0.1f, 0.1f};
+    base::ConstArray<uint64_t> key_array(keys);
+    base::RecTensor values(initial.data(), {1, 4});
+    base::RecTensor grads(grad.data(), {1, 4});
+    EXPECT_EQ(client.PutParameter(key_array, values), 0);
+    EXPECT_EQ(client.UpdateParameter("lr_guard", key_array, grads, 0.01f), 0);
+    EXPECT_EQ(client.UpdateParameter("lr_guard", key_array, grads, 0.02f), -1);
+    EXPECT_EQ(client.UpdateParameter("lr_guard", key_array, grads), 0);
+  } catch (...) {
+    server.Stop();
+    server_thread.join();
+    throw;
+  }
+  server.Stop();
+  server_thread.join();
+}
+
 TEST_F(LocalShmPSClientTest,
        SparseGradientCommitAggregatesBeforeUpdatingStorage) {
   const auto config = MakeLocalShmConfig(

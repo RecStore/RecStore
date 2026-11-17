@@ -495,8 +495,7 @@ public:
         if (UNLIKELY(Full())) {
           LOG(FATAL) << "todo: pet hash dict is full";
           // let the insert thread first eviction
-          auto it = chunk->Get((sign + i) % kChunkSize);
-          Delete(it->first);
+          DeleteLocked(victim_pos, (sign + i) % kChunkSize);
         } else {
           chunk->IncOverflow();
           victim_pos = (victim_pos + victim_step) & (chunk_num_ - 1);
@@ -657,7 +656,7 @@ public:
           if (chunk->InUse(id)) {
             auto it = chunk->Get(id);
             if (!check_func(it->first, it->second, false))
-              Delete(it->first);
+              DeleteLocked(pos, id);
           }
       }
 
@@ -711,7 +710,7 @@ public:
         auto it = chunk->Get((sign + i) % kChunkSize);
         if (check_func != nullptr)
           check_func(it->first, it->second, true);
-        Delete(it->first);
+        DeleteLocked(pos, (sign + i) % kChunkSize);
       } else {
         if (!chunk->IncOverflow()) {
           saturated_overflow_steps.push_back(overflowed_chunk_count);
@@ -725,22 +724,25 @@ public:
     return nullptr;
   }
   bool Delete(const KeyT& key) {
-    uint64_t pos;
-    auto [nouse0, nouse1, exists] = GetInternal(key, &pos);
-    if (!exists)
-      return true;
-
-    uint64_t hash_value = Hash(key);
-    size_t step         = ProbeDelta(Sign(hash_value));
-    auto chunk_id       = pos / kChunkSize;
-    auto chunk_offset   = pos % kChunkSize;
-    pos                 = hash_value & (chunk_num_ - 1);
-    while (pos != chunk_id) {
-      chunk_table_[pos].DecOverflow();
+  RETRY:
+    const uint64_t hash_value = Hash(key);
+    const auto sign           = Sign(hash_value);
+    const size_t step         = ProbeDelta(sign);
+    size_t pos                = hash_value & (chunk_num_ - 1);
+    for (size_t i = 0; i < chunk_num_; ++i) {
+      auto* chunk = chunk_table_ + pos;
+      base::AutoLock lock(chunk->lock_);
+      if (UNLIKELY(chunk->is_migrating))
+        goto RETRY;
+      const int id = chunk->Find(key, sign);
+      if (id != -1) {
+        DeleteLocked(pos, id);
+        return true;
+      }
+      if (chunk->OverflowCount() == 0)
+        break;
       pos = (pos + step) & (chunk_num_ - 1);
     }
-    chunk_table_[chunk_id].Delete(chunk_offset);
-    DecrementSize(key);
     return true;
   }
 
@@ -777,6 +779,20 @@ public:
   inline bool Full() { return Size() * 100 >= capacity_ * kMaxLoadFactor; }
 
 private:
+  // The caller holds the target chunk's lock.
+  void DeleteLocked(size_t chunk_id, size_t chunk_offset) {
+    const KeyT key            = chunk_table_[chunk_id].Get(chunk_offset)->first;
+    const uint64_t hash_value = Hash(key);
+    const size_t step         = ProbeDelta(Sign(hash_value));
+    size_t pos                = hash_value & (chunk_num_ - 1);
+    while (pos != chunk_id) {
+      chunk_table_[pos].DecOverflow();
+      pos = (pos + step) & (chunk_num_ - 1);
+    }
+    chunk_table_[chunk_id].Delete(chunk_offset);
+    DecrementSize(key);
+  }
+
   void ResetSize() {
     for (auto& shard : size_shards_)
       shard.store(0, std::memory_order_relaxed);

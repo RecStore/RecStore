@@ -29,6 +29,11 @@ public:
                    BaseKV* base_kv)   = 0;
   virtual int TensorsPerTable() const = 0;
 
+  // Learning rate applied by this optimizer. Returns a negative value when the
+  // optimizer does not expose a single scalar rate, so callers can skip the
+  // client/server consistency check instead of failing every update.
+  virtual float LearningRate() const { return -1.0f; }
+
   virtual void Update(std::string table,
                       const ParameterCompressReader* reader,
                       unsigned tid) = 0;
@@ -47,7 +52,7 @@ private:
 
 public:
   explicit SGD(float lr = 0.01) : learning_rate_(lr) {}
-  float LearningRate() const { return learning_rate_; }
+  float LearningRate() const override { return learning_rate_; }
 
   int Init(const std::vector<std::string> table_name,
            const EmbeddingTableConfig& config,
@@ -72,6 +77,7 @@ private:
 public:
   explicit AdaGrad(float lr = 0.01, float epsilon = 1e-10)
       : learning_rate_(lr), epsilon_(epsilon) {}
+  float LearningRate() const override { return learning_rate_; }
 
   int Init(const std::vector<std::string> table_name,
            const EmbeddingTableConfig& config,
@@ -96,6 +102,7 @@ private:
 public:
   explicit RowWiseAdaGrad(float lr = 0.01, float epsilon = 1e-10)
       : learning_rate_(lr), epsilon_(epsilon) {}
+  float LearningRate() const override { return learning_rate_; }
 
   int Init(const std::vector<std::string> table_name,
            const EmbeddingTableConfig& config,
@@ -141,6 +148,7 @@ public:
         beta2_(beta2),
         epsilon_(epsilon),
         weight_decay_(weight_decay) {}
+  float LearningRate() const override { return learning_rate_; }
 
   int Init(const std::vector<std::string> table_name,
            const EmbeddingTableConfig& config,
