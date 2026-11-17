@@ -201,6 +201,47 @@ class TestChooseAvailablePorts(unittest.TestCase):
 
             self.assertEqual(base_kv["value"]["tiering"], {"cache_policy": "clock"})
 
+    def test_make_runtime_dir_passes_tiered_tuning_knobs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _runtime_dir, runtime_cfg_path = self._make_runtime_dir(
+                tmpdir,
+                run_id="case-tiered-knobs",
+                ps_type="GRPC",
+                kv_capacity=20_000,
+                value_size_bytes=512,
+                ps_kv_backend="recstore_tiered",
+                tiered_cache_policy="clock",
+                tiered_promote_min_misses=1,
+                tiered_clock_cost_aware=True,
+            )
+            runtime_cfg = json.loads(runtime_cfg_path.read_text(encoding="utf-8"))
+            base_kv = runtime_cfg["cache_ps"]["base_kv_config"]
+
+            self.assertEqual(
+                base_kv["value"]["tiering"],
+                {
+                    "cache_policy": "clock",
+                    "promote_min_misses": 1,
+                    "clock_cost_aware": True,
+                },
+            )
+
+    def test_make_runtime_dir_omits_default_tiered_tuning_knobs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _runtime_dir, runtime_cfg_path = self._make_runtime_dir(
+                tmpdir,
+                run_id="case-tiered-knobs-default",
+                ps_type="GRPC",
+                kv_capacity=20_000,
+                value_size_bytes=512,
+                ps_kv_backend="recstore_tiered",
+                tiered_cache_policy="clock",
+            )
+            runtime_cfg = json.loads(runtime_cfg_path.read_text(encoding="utf-8"))
+            base_kv = runtime_cfg["cache_ps"]["base_kv_config"]
+
+            self.assertEqual(base_kv["value"]["tiering"], {"cache_policy": "clock"})
+
     def test_make_runtime_dir_defaults_tiered_cache_policy_to_none(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             _runtime_dir, runtime_cfg_path = self._make_runtime_dir(

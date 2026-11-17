@@ -150,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
                 ps_kv_backend=cfg.ps_kv_backend,
                 tiered_dram_capacity_multiplier=cfg.tiered_dram_capacity_multiplier,
                 tiered_cache_policy=cfg.tiered_cache_policy,
+                tiered_promote_min_misses=cfg.tiered_promote_min_misses,
+                tiered_clock_cost_aware=cfg.tiered_clock_cost_aware,
             )
         runtime_dir = runtime_dir.resolve()
         runtime_cfg_path = runtime_dir / "recstore_config.json"
