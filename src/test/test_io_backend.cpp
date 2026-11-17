@@ -224,4 +224,56 @@ TEST_F(IOBackendTest, BatchReadWriteRoundTrip) {
   }
 }
 
+TEST_F(IOBackendTest, BatchReadWorkDrainsExceptionsAndReusesRing) {
+  for (const std::string type : {"IOURING"}) {
+    backend_impl_.reset();
+    auto config                      = MakeConfig(type, file_path_);
+    config.json_config_["queue_cnt"] = 4;
+    backend_impl_.reset(
+        base::Factory<IOBackend, const BaseKVConfig&>::NewInstance(
+            type, config));
+    backend_impl_->init();
+    std::vector<IOBackend::IOEntry> writes, reads;
+    for (size_t i = 0; i < 7; ++i) {
+      char* source = backend_impl_->AllocateBuffer(3);
+      char* target = backend_impl_->AllocateBuffer(3);
+      std::memset(source, 20 + i, 3 * PAGE_SIZE);
+      // Cross a 2MiB shard extent, with more entries than the two-entry window.
+      writes.push_back({510 + i * 1024, source, 3});
+      reads.push_back({510 + i * 1024, target, 3});
+    }
+    backend_impl_->BatchWritePages(writes);
+    int calls = 0;
+    backend_impl_->BatchReadPagesWithWork(reads, [&] { ++calls; });
+    EXPECT_EQ(calls, 1);
+    for (size_t i = 0; i < reads.size(); ++i)
+      for (size_t j = 0; j < 3 * PAGE_SIZE; ++j)
+        ASSERT_EQ(reads[i].buffer[j], static_cast<char>(20 + i));
+    EXPECT_THROW(backend_impl_->BatchReadPagesWithWork(
+                     reads,
+                     [&] {
+                       ++calls;
+                       throw std::runtime_error("CPU copy failure");
+                     }),
+                 std::runtime_error);
+    EXPECT_EQ(calls, 2);
+    for (auto& entry : reads)
+      std::memset(entry.buffer, 0, 3 * PAGE_SIZE);
+    backend_impl_->BatchReadPages(reads);
+    for (size_t i = 0; i < reads.size(); ++i)
+      for (size_t j = 0; j < 3 * PAGE_SIZE; ++j)
+        ASSERT_EQ(reads[i].buffer[j], static_cast<char>(20 + i));
+    backend_impl_->BatchReadPagesWithWork({}, [&] { ++calls; });
+    EXPECT_EQ(calls, 3);
+    EXPECT_THROW(
+        backend_impl_->BatchReadPagesWithWork(
+            {}, [] { throw std::runtime_error("empty copy failure"); }),
+        std::runtime_error);
+    for (auto& entry : writes)
+      backend_impl_->FreeBuffer(entry.buffer);
+    for (auto& entry : reads)
+      backend_impl_->FreeBuffer(entry.buffer);
+  }
+}
+
 } // namespace

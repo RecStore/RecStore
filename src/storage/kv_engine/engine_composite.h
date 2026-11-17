@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 #include <folly/SharedMutex.h>
+#include <folly/synchronization/Rcu.h>
 
 #include "base/factory.h"
 #include "storage/index/dram/extendible_hash_index.h"
@@ -46,12 +47,21 @@ class KVEngineComposite : public BaseKV {
 public:
   KVEngineComposite(std::unique_ptr<Index> index,
                     std::unique_ptr<ValueStore> value_store,
-                    int num_threads = 0)
+                    int num_threads             = 0,
+                    bool read_epochs            = false,
+                    uint64_t retired_rows_limit = 65536)
       : BaseKV(BaseKVConfig{}),
         index_(std::move(index)),
         value_store_(std::move(value_store)),
         num_threads_(std::max(num_threads, 1)),
-        checkpoint_keys_by_thread_(static_cast<size_t>(num_threads_)) {}
+        checkpoint_keys_by_thread_(static_cast<size_t>(num_threads_)) {
+    read_epochs_ = read_epochs;
+    if (retired_rows_limit == 0)
+      throw std::invalid_argument("retired row limit must be positive");
+    retired_rows_limit_ = retired_rows_limit;
+    if (read_epochs_)
+      background_thread_ = std::thread([this] { BackgroundLoop(); });
+  }
 
   explicit KVEngineComposite(const BaseKVConfig& config) : BaseKV(config) {
     config_                      = config;
@@ -67,6 +77,22 @@ public:
         static_cast<size_t>(std::max(num_threads_, 1)));
     default_value_size_hint_ =
         j.at("value").value("default_value_size_hint", 0);
+    read_epochs_      = j.value("read_epochs", false);
+    const auto& value = j.at("value");
+    if (default_value_size_hint_ > 0 && value.contains("dram_allocator")) {
+      retired_rows_limit_ = std::max<uint64_t>(
+          1024,
+          value.at("dram_allocator").at("capacity_bytes").get<uint64_t>() /
+              default_value_size_hint_ / 64);
+    }
+    if (j.contains("read_epoch_retire_limit_rows")) {
+      const auto& limit = j.at("read_epoch_retire_limit_rows");
+      if (!limit.is_number_integer() || limit.get<int64_t>() <= 0) {
+        throw std::invalid_argument(
+            "read_epoch_retire_limit_rows must be positive");
+      }
+      retired_rows_limit_ = limit.get<uint64_t>();
+    }
     if (!index_ || !value_store_) {
       throw std::runtime_error("failed to create KVEngine components");
     }
@@ -88,9 +114,9 @@ public:
       online_residents_   = hybrid->DramProfileKeys();
       online_ghost_limit_ = std::max<size_t>(online_residents_.size() / 20, 1);
       online_async_       = async_admission;
-      if (online_async_)
-        background_thread_ = std::thread([this] { BackgroundLoop(); });
     }
+    if (online_async_ || read_epochs_)
+      background_thread_ = std::thread([this] { BackgroundLoop(); });
   }
 
   ~KVEngineComposite() override {
@@ -105,25 +131,22 @@ public:
         LOG(ERROR) << "online admission stopped after a background failure";
       }
     }
+    if (read_epochs_)
+      read_domain_.synchronize();
   }
 
-  void DrainBackgroundWork() override {
-    if (!online_async_)
-      return;
-    std::unique_lock<std::mutex> lock(background_mu_);
-    background_cv_.wait(lock, [this] {
-      return !background_active_ && !background_pending_;
-    });
-    if (background_error_)
-      std::rethrow_exception(background_error_);
-  }
+  bool HasConcurrentOwnedReads() const override { return read_epochs_; }
+
+  void DrainBackgroundWork() override { WaitForBackgroundWork(); }
 
   void Get(const uint64_t key, std::string& value, unsigned tid) override {
     bool cold = false;
     std::vector<OnlineSnapshot> snapshots;
     uint64_t generation = 0;
+    std::unique_lock<folly::rcu_domain> read_epoch;
     {
       auto online_lock = LockOnlineRead();
+      read_epoch       = LockReadEpoch();
       Value_t handle   = kValueHandleNone;
       ReadValue(key, value, &cold, &handle);
       CaptureSnapshot(snapshots, key, handle, value.data(), value.size(), 1);
@@ -144,6 +167,7 @@ public:
   void Put(const uint64_t key,
            const std::string_view& value,
            unsigned tid) override {
+    WaitForRetirementBudget();
     auto online_lock = LockOnlineWrite();
     BumpOnlineGeneration();
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
@@ -160,30 +184,14 @@ public:
     if (keys.Size() == 0) {
       return;
     }
+    WaitForRetirementBudget();
     auto online_lock = LockOnlineWrite();
     BumpOnlineGeneration();
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
 
-    std::unordered_set<uint64_t> seen_keys;
-    seen_keys.reserve(static_cast<size_t>(keys.Size()));
-    bool has_duplicate_key = false;
     for (int i = 0; i < keys.Size(); ++i) {
       const auto& item = (*values)[i];
       ValidateOnlineRowSize(static_cast<size_t>(item.Size()) * sizeof(float));
-      if (!seen_keys.insert(keys[i]).second) {
-        has_duplicate_key = true;
-      }
-    }
-    if (has_duplicate_key) {
-      for (int i = 0; i < keys.Size(); ++i) {
-        const auto& item = (*values)[i];
-        PutInternal(keys[i],
-                    item.Data(),
-                    static_cast<size_t>(item.Size()) * sizeof(float),
-                    tid,
-                    false);
-      }
-      return;
     }
 
     struct PutItem {
@@ -192,12 +200,21 @@ public:
     };
     std::vector<PutItem> items;
     items.reserve(static_cast<size_t>(keys.Size()));
+    std::unordered_map<uint64_t, size_t> positions;
+    positions.reserve(static_cast<size_t>(keys.Size()));
 
     for (int i = 0; i < keys.Size(); ++i) {
-      const auto& item  = (*values)[i];
-      const void* data  = item.Data();
-      const size_t size = static_cast<size_t>(item.Size()) * sizeof(float);
-      items.push_back(PutItem{keys[i], ValueStore::WriteSpec{data, size}});
+      const auto& item    = (*values)[i];
+      const void* data    = item.Data();
+      const size_t size   = static_cast<size_t>(item.Size()) * sizeof(float);
+      const auto inserted = positions.emplace(keys[i], items.size());
+      if (inserted.second) {
+        items.push_back(PutItem{keys[i], ValueStore::WriteSpec{data, size}});
+      } else {
+        // Assignment is last-wins without turning duplicate batches into
+        // individual SSD writes.
+        items[inserted.first->second].spec = ValueStore::WriteSpec{data, size};
+      }
     }
 
     std::vector<uint64_t> batch_keys;
@@ -225,21 +242,23 @@ public:
         new_handles.data(),
         old_handles.data(),
         tid);
+    size_t retired_count = 0;
     for (size_t i = 0; i < items.size(); ++i) {
       const Value_t old_handle = old_handles[i];
-      if (old_handle == kValueHandleNone) {
+      if (old_handle == kValueHandleNone)
         TrackKey(items[i].key, tid);
-      }
-      if (old_handle != kValueHandleNone && old_handle != new_handles[i]) {
-        value_store_->Retire(old_handle);
-      }
+      if (old_handle != kValueHandleNone && old_handle != new_handles[i])
+        old_handles[retired_count++] = old_handle;
     }
+    old_handles.resize(retired_count);
+    RetireHandles(std::move(old_handles));
   }
 
   uint64_t BatchDelete(base::ConstArray<uint64_t> keys, unsigned tid) override {
     if (keys.Size() == 0) {
       return 0;
     }
+    WaitForRetirementBudget();
     auto online_lock = LockOnlineWrite();
     BumpOnlineGeneration();
     std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
@@ -250,6 +269,7 @@ public:
                 std::vector<base::ConstArray<float>>* values,
                 unsigned tid) override {
     auto online_lock = LockOnlineRead();
+    auto read_epoch  = LockReadEpoch();
     (void)tid;
     values->resize(keys.Size());
     thread_local std::vector<Value_t> handles;
@@ -275,7 +295,7 @@ public:
             online_store_ != nullptr
                 ? default_value_size_hint_
                 : value_store_->SlotCapacity(handles[i]);
-        if (online_store_ != nullptr) {
+        if (online_store_ != nullptr || read_epochs_) {
           buffers[i].resize(bytes / sizeof(float));
           std::memcpy(buffers[i].data(), ptr, bytes);
           (*values)[i] = base::ConstArray<float>(buffers[i]);
@@ -327,17 +347,20 @@ public:
     }
   }
 
-  bool BatchGetFlat(base::ConstArray<uint64_t> keys,
-                    float* values,
-                    int64_t num_rows,
-                    int64_t embedding_dim,
-                    unsigned tid,
-                    BatchGetFlatStats* stats = nullptr) override {
+  bool BatchGetFlat(
+      base::ConstArray<uint64_t> keys,
+      float* values,
+      int64_t num_rows,
+      int64_t embedding_dim,
+      unsigned tid,
+      BatchGetFlatStats* stats = nullptr,
+      uint8_t* found           = nullptr) override {
     if (values == nullptr || num_rows < 0 || embedding_dim <= 0 ||
         keys.Size() != static_cast<size_t>(num_rows)) {
       return false;
     }
     auto online_lock       = LockOnlineRead();
+    auto read_epoch        = LockReadEpoch();
     const size_t row_bytes = static_cast<size_t>(embedding_dim) * sizeof(float);
     thread_local std::vector<Value_t> handles;
     handles.assign(keys.Size(), kValueHandleNone);
@@ -346,6 +369,11 @@ public:
                          : std::chrono::steady_clock::time_point{};
     if (keys.Size() > 0) {
       index_->BatchGet(keys, handles.data(), tid);
+    }
+    if (found != nullptr) {
+      for (size_t row = 0; row < handles.size(); ++row) {
+        found[row] = handles[row] != kValueHandleNone;
+      }
     }
     if (stats != nullptr) {
       stats->index_lookup_ns = static_cast<std::uint64_t>(
@@ -538,7 +566,7 @@ public:
       unsigned tid,
       std::vector<DirectFixedRow>* rows,
       BatchGetFlatStats* stats = nullptr) override {
-    if (online_store_ != nullptr) {
+    if (online_store_ != nullptr || read_epochs_) {
       return false;
     }
     if (rows == nullptr || num_rows < 0 || embedding_dim <= 0 ||
@@ -588,7 +616,7 @@ public:
   }
 
   RDMABackingRegion GetRDMABackingRegion() const override {
-    if (!value_store_) {
+    if (!value_store_ || read_epochs_) {
       return {};
     }
     return RDMABackingRegion{
@@ -604,11 +632,15 @@ public:
       uint8_t tag,
       unsigned tid,
       UpdateFlatStats* stats = nullptr) override {
+    if (read_epochs_ && online_store_ == nullptr)
+      return false;
     if (grads == nullptr || keys.Size() != static_cast<size_t>(num_rows) ||
         embedding_dim <= 0) {
       return false;
     }
-    using clock      = std::chrono::steady_clock;
+    using clock = std::chrono::steady_clock;
+    WaitForRetirementBudget();
+    auto read_epoch  = LockReadEpoch();
     auto online_lock = LockOnlineWrite();
     BumpOnlineGeneration();
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
@@ -739,6 +771,8 @@ public:
       int64_t update_dim,
       float learning_rate,
       unsigned tid) override {
+    if (read_epochs_ && online_store_ == nullptr)
+      return false;
     if (online_store_ != nullptr) {
       return false;
     }
@@ -794,6 +828,7 @@ public:
     if (keys.Size() == 0) {
       return;
     }
+    WaitForRetirementBudget();
     auto online_lock = LockOnlineWrite();
     BumpOnlineGeneration();
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
@@ -1166,6 +1201,8 @@ public:
   }
 
   std::string ExtraResultFields() const override {
+    if (read_epochs_)
+      WaitForBackgroundWork();
     auto online_lock = LockOnlineRead();
     const std::string fields =
         (value_store_ ? value_store_->ExtraResultFields() : "") +
@@ -1173,7 +1210,15 @@ public:
         sgd_write_time_.Fields("tier_sgd_write") +
         migration_read_time_.Fields("tier_migration_read") +
         migration_prepare_time_.Fields("tier_migration_prepare") +
-        migration_publish_time_.Fields("tier_migration_publish");
+        migration_publish_time_.Fields("tier_migration_publish") +
+        " read_epochs=" + std::to_string(read_epochs_) +
+        " retired_rows_pending=" +
+        std::to_string(retired_rows_pending_.load()) +
+        " retired_rows_peak=" + std::to_string(retired_rows_peak_.load()) +
+        " retired_rows_limit=" + std::to_string(retired_rows_limit_) +
+        retirement_wait_time_.Fields("retirement_wait") +
+        reclamation_free_time_.Fields("reclamation_free") +
+        reclamation_time_.Fields("reclamation");
     if (online_store_ == nullptr)
       return fields;
     return fields +
@@ -1194,6 +1239,10 @@ public:
 
   void ResetStats() override {
     DrainBackgroundWork();
+    DrainBackgroundWork();
+    retirement_wait_time_.Reset();
+    reclamation_free_time_.Reset();
+    reclamation_time_.Reset();
     auto online_lock = LockOnlineWrite();
     sgd_read_time_.Reset();
     sgd_write_time_.Reset();
@@ -1213,6 +1262,96 @@ public:
   }
 
 private:
+  void WaitForRetirementBudget() {
+    if (!read_epochs_ || retired_rows_pending_.load() < retired_rows_limit_)
+      return;
+    const auto begin = std::chrono::steady_clock::now();
+    std::unique_lock<std::mutex> lock(background_mu_);
+    reclaim_requested_ = true;
+    background_cv_.notify_all();
+    // Wait before taking publication locks: readers and the reclaimer must
+    // remain free to finish. In-flight batches can overshoot this row
+    // threshold.
+    background_cv_.wait(lock, [this] {
+      return background_error_ ||
+             retired_rows_pending_.load() < retired_rows_limit_;
+    });
+    if (background_error_)
+      std::rethrow_exception(background_error_);
+    lock.unlock();
+    retirement_wait_time_.Record(begin);
+  }
+
+  std::unique_lock<folly::rcu_domain> LockReadEpoch() const {
+    RethrowBackgroundError();
+    std::unique_lock<folly::rcu_domain> lock(read_domain_, std::defer_lock);
+    if (read_epochs_)
+      lock.lock();
+    return lock;
+  }
+
+  void WaitForBackgroundWork() const {
+    if (!online_async_ && !read_epochs_)
+      return;
+    std::unique_lock<std::mutex> lock(background_mu_);
+    background_cv_.wait(lock, [this] {
+      return background_error_ ||
+             (!background_active_ && !background_pending_ &&
+              !reclaim_requested_ && retired_rows_pending_.load() == 0);
+    });
+    if (background_error_)
+      std::rethrow_exception(background_error_);
+  }
+
+  void RetireHandle(uint64_t handle) {
+    if (handle == kValueHandleNone)
+      return;
+    if (!read_epochs_) {
+      value_store_->Retire(handle);
+      return;
+    }
+    RetireHandles({handle});
+  }
+
+  void RetireHandles(std::vector<uint64_t> handles) {
+    handles.erase(std::remove(handles.begin(), handles.end(), kValueHandleNone),
+                  handles.end());
+    if (handles.empty())
+      return;
+    if (!read_epochs_) {
+      for (uint64_t handle : handles)
+        value_store_->Retire(handle);
+      return;
+    }
+    const size_t count = handles.size();
+    uint64_t pending   = 0;
+    {
+      std::unique_lock<std::mutex> lock(background_mu_);
+      if (background_error_)
+        std::rethrow_exception(background_error_);
+      try {
+        retired_handles_.insert(
+            retired_handles_.end(), handles.begin(), handles.end());
+      } catch (...) {
+        // Publication already happened. Preserve allocations until destruction
+        // rather than reusing a value that may still have readers.
+        background_error_ = std::current_exception();
+        background_pending_.reset();
+        background_stop_ = true;
+        lock.unlock();
+        background_cv_.notify_all();
+        throw;
+      }
+      pending            = retired_rows_pending_.fetch_add(count) + count;
+      reclaim_requested_ = true;
+    }
+    uint64_t peak = retired_rows_peak_.load();
+    while (peak < pending &&
+           !retired_rows_peak_.compare_exchange_weak(peak, pending)) {
+    }
+    background_cv_.notify_all();
+  }
+
   bool BatchGetFlatRangeImpl(
       base::ConstArray<uint64_t> keys,
       float* values,
@@ -1244,6 +1383,7 @@ private:
       }
     }
 
+    auto read_epoch = LockReadEpoch();
     const size_t stored_row_bytes =
         static_cast<size_t>(row_dim) * sizeof(float);
     if (default_value_size_hint_ != stored_row_bytes) {
@@ -1467,7 +1607,7 @@ private:
   }
 
   void RethrowBackgroundError() const {
-    if (!online_async_)
+    if (!online_async_ && !read_epochs_)
       return;
     std::lock_guard<std::mutex> lock(background_mu_);
     if (background_error_)
@@ -1507,18 +1647,38 @@ private:
   void BackgroundLoop() {
     for (;;) {
       std::unique_ptr<OnlineJob> job;
+      std::vector<uint64_t> retired;
       {
         std::unique_lock<std::mutex> lock(background_mu_);
         background_cv_.wait(lock, [this] {
-          return background_stop_ || background_pending_;
+          return background_stop_ || background_pending_ || reclaim_requested_;
         });
-        if (!background_pending_)
+        if (!background_pending_ && !reclaim_requested_)
           return;
-        job                = std::move(background_pending_);
+        job = std::move(background_pending_);
+        retired.swap(retired_handles_);
+        reclaim_requested_ = false;
         background_active_ = true;
       }
       try {
-        RunBackgroundJob(*job);
+        if (job)
+          RunBackgroundJob(*job);
+        if (!retired.empty()) {
+          const auto begin = std::chrono::steady_clock::now();
+          // Every queued publication precedes this grace period. Readers of
+          // those versions must finish before any of their slots can be reused.
+          read_domain_.synchronize();
+          const auto free_begin = std::chrono::steady_clock::now();
+          // Admission retains its read epoch and validates under background_mu_
+          // before enqueue. Retirement of that source follows its publication
+          // under the same mutex. Run the job before freeing this retired
+          // batch.
+          std::sort(retired.begin(), retired.end());
+          for (uint64_t handle : retired)
+            value_store_->Free(handle);
+          reclamation_free_time_.Record(free_begin);
+          reclamation_time_.Record(begin);
+        }
       } catch (...) {
         std::lock_guard<std::mutex> lock(background_mu_);
         background_error_ = std::current_exception();
@@ -1527,6 +1687,7 @@ private:
       }
       {
         std::lock_guard<std::mutex> lock(background_mu_);
+        retired_rows_pending_.fetch_sub(retired.size());
         background_active_ = false;
       }
       background_cv_.notify_all();
@@ -1625,7 +1786,7 @@ private:
           online_ghost_.erase(hot_keys[i]);
         }
         for (uint64_t handle : retired)
-          value_store_->Retire(handle);
+          RetireHandle(handle);
         online_promoted_rows_ += count;
         ++online_exchange_batches_;
         migration_publish_time_.Record(publish_begin);
@@ -1660,7 +1821,7 @@ private:
       value.clear();
       return;
     }
-    if (online_store_ == nullptr) {
+    if (online_store_ == nullptr && !read_epochs_) {
       value_store_->ReadValue(handle, value);
       return;
     }
@@ -1845,7 +2006,7 @@ private:
     // Both new copies are complete before publication. All readers hold a
     // shared guard through their copy, so retiring these handles is safe.
     for (uint64_t handle : old)
-      value_store_->Retire(handle);
+      RetireHandle(handle);
     online_promoted_rows_ += count;
     ++online_exchange_batches_;
     migration_publish_time_.Record(publish_begin);
@@ -1957,7 +2118,7 @@ private:
       if (!index_->Delete(key)) {
         continue;
       }
-      value_store_->Retire(handle);
+      RetireHandle(handle);
       deleted_keys.insert(key);
     }
     if (!deleted_keys.empty()) {
@@ -2003,7 +2164,7 @@ private:
         stats != nullptr ? clock::now() : clock::time_point{};
     Value_t old_handle = index_->Put(key, new_handle, tid);
     if (old_handle != kValueHandleNone && old_handle != new_handle) {
-      value_store_->Retire(old_handle);
+      RetireHandle(old_handle);
     }
     const auto track_start =
         stats != nullptr ? clock::now() : clock::time_point{};
@@ -2038,6 +2199,10 @@ private:
   BaseKVConfig config_;
   std::unique_ptr<Index> index_;
   std::unique_ptr<ValueStore> value_store_;
+  bool read_epochs_ = false;
+  mutable folly::rcu_domain read_domain_;
+  std::atomic<uint64_t> retired_rows_pending_{0}, retired_rows_peak_{0};
+  uint64_t retired_rows_limit_    = 65536;
   int num_threads_                = 0;
   size_t default_value_size_hint_ = 0;
   HybridValueStore* online_store_ = nullptr;
@@ -2050,8 +2215,10 @@ private:
   uint64_t online_generation_ = 0;
   std::thread background_thread_;
   mutable std::mutex background_mu_;
-  std::condition_variable background_cv_;
+  mutable std::condition_variable background_cv_;
   std::unique_ptr<OnlineJob> background_pending_;
+  std::vector<uint64_t> retired_handles_;
+  bool reclaim_requested_ = false;
   bool background_active_ = false, background_stop_ = false;
   std::exception_ptr background_error_;
   std::vector<uint64_t> online_residents_;
@@ -2066,7 +2233,8 @@ private:
   uint64_t online_capacity_rejects_    = 0;
   uint64_t online_submitted_jobs_ = 0, online_stale_jobs_ = 0,
            online_queue_drops_ = 0;
-  TieringTime sgd_read_time_, sgd_write_time_;
+  TieringTime sgd_read_time_, sgd_write_time_, retirement_wait_time_;
+  TieringTime reclamation_time_, reclamation_free_time_;
   TieringTime migration_read_time_, migration_prepare_time_,
       migration_publish_time_;
   mutable std::shared_mutex checkpoint_mu_;

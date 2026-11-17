@@ -165,26 +165,42 @@ public:
     constexpr size_t kMaxBatchIoEntries = 1024;
     std::vector<uint64_t> handles;
     handles.reserve(specs.size());
-    for (size_t begin = 0; begin < specs.size(); begin += kMaxBatchIoEntries) {
-      const size_t end = std::min(begin + kMaxBatchIoEntries, specs.size());
-      std::vector<SsdBlockAllocator::WriteEntry> entries;
-      entries.reserve(end - begin);
-      for (size_t i = begin; i < end; ++i) {
-        entries.push_back({specs[i].data, specs[i].size});
+    try {
+      for (size_t begin = 0; begin < specs.size();
+           begin += kMaxBatchIoEntries) {
+        const size_t end = std::min(begin + kMaxBatchIoEntries, specs.size());
+        std::vector<SsdBlockAllocator::WriteEntry> entries;
+        entries.reserve(end - begin);
+        for (size_t i = begin; i < end; ++i) {
+          entries.push_back({specs[i].data, specs[i].size});
+        }
+        std::vector<uint64_t> chunk_handles =
+            allocator_->BatchAllocAndWrite(entries);
+        for (size_t i = begin; i < end; ++i) {
+          payload_written_bytes_.fetch_add(
+              specs[i].size, std::memory_order_relaxed);
+        }
+        for (uint64_t handle : chunk_handles) {
+          handles.push_back(handle == SsdBlockAllocator::kInvalidHandle
+                                ? kValueHandleNone
+                                : handle);
+        }
       }
-      std::vector<uint64_t> chunk_handles =
-          allocator_->BatchAllocAndWrite(entries);
-      for (size_t i = begin; i < end; ++i) {
-        payload_written_bytes_.fetch_add(
-            specs[i].size, std::memory_order_relaxed);
-      }
-      for (uint64_t handle : chunk_handles) {
-        handles.push_back(handle == SsdBlockAllocator::kInvalidHandle
-                              ? kValueHandleNone
-                              : handle);
-      }
+    } catch (...) {
+      for (uint64_t handle : handles)
+        Free(handle);
+      throw;
     }
     return handles;
+  }
+
+  void
+  ReadIntoWithWork(const std::vector<SsdBlockAllocator::ReadEntry>& entries,
+                   std::vector<size_t>& out_sizes,
+                   const std::function<void()>& work) {
+    allocator_->BatchReadWithWork(entries, out_sizes, work);
+    for (size_t size : out_sizes)
+      payload_read_bytes_.fetch_add(size, std::memory_order_relaxed);
   }
 
   void ResetStats() override {

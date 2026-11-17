@@ -64,6 +64,11 @@ public:
       }
       profiled_placement_ = true;
     }
+    flat_read_mode_ = tiering.value("flat_read_mode", "generic");
+    flat_row_bytes_ = v.value("default_value_size_hint", uint64_t{0});
+    if (flat_read_mode_ != "generic" && flat_read_mode_ != "serial" &&
+        flat_read_mode_ != "overlap")
+      throw std::invalid_argument("invalid tiered flat_read_mode");
     online_placement_ = tiering.value("online_admission", false);
     if (online_placement_) {
       if (!profiled_placement_ || ssd_static_ || dram_profile_.empty()) {
@@ -364,6 +369,10 @@ public:
     if (clock_)
       return clock_->ReadFlatFixedRows(
           handles, num_rows, out_buf, row_bytes, missing_rows);
+    if (flat_read_mode_ != "generic" && !cache_ && !online_placement_ &&
+        !ssd_static_)
+      return ReadFlatWithWork(
+          handles, num_rows, out_buf, row_bytes, missing_rows);
     if (ssd_static_ || !handles || !out_buf || row_bytes == 0)
       return false;
     auto* out        = static_cast<char*>(out_buf);
@@ -640,6 +649,7 @@ public:
   }
 
   void ResetStats() override {
+    flat_read_calls_.store(0, std::memory_order_relaxed);
     if (ssd_store_) {
       ssd_store_->ResetStats();
     }
@@ -702,7 +712,9 @@ public:
     } else {
       os << " tiered_cache_policy=none";
     }
-    os << " tiered_profile_enabled=" << profiled_placement_
+    os << " tiered_flat_read_mode=" << flat_read_mode_
+       << " tiered_flat_read_calls=" << flat_read_calls_.load()
+       << " tiered_profile_enabled=" << profiled_placement_
        << " tiered_dram_profile_keys=" << dram_profile_.size()
        << " tiered_dram_profile_bytes="
        << dram_profile_.size() * sizeof(uint64_t)
@@ -718,6 +730,86 @@ public:
   }
 
 private:
+  bool ReadFlatWithWork(const uint64_t* handles,
+                        size_t num_rows,
+                        void* out_buf,
+                        size_t row_bytes,
+                        uint64_t* missing_rows) const {
+    // Online admission needs the engine's existing cold-row/snapshot handoff.
+    if (flat_read_mode_ == "generic" || online_placement_ || ssd_static_ ||
+        row_bytes == 0 || row_bytes != flat_row_bytes_ ||
+        (num_rows != 0 && (handles == nullptr || out_buf == nullptr)) ||
+        num_rows > SIZE_MAX / row_bytes)
+      return false;
+    auto* plain_ssd = dynamic_cast<SsdValueStore*>(ssd_store_.get());
+    if (plain_ssd == nullptr)
+      return false;
+
+    thread_local std::vector<const char*> direct_rows;
+    thread_local std::vector<SsdBlockAllocator::ReadEntry> cold_rows;
+    thread_local std::vector<size_t> sizes;
+    direct_rows.assign(num_rows, nullptr);
+    cold_rows.clear();
+    uint64_t missing = 0;
+    char* output     = static_cast<char*>(out_buf);
+    // Validate SSD destinations before copying a full slot into one. DRAM
+    // checks run during copying; a failure drains I/O before the epoch ends.
+    for (size_t row = 0; row < num_rows; ++row) {
+      if (handles[row] == kValueHandleNone) {
+        ++missing;
+        continue;
+      }
+      if (IsOnSSD(handles[row])) {
+        if (ssd_store_->SlotCapacity(SsdRawHandle(handles[row])) != row_bytes)
+          return false;
+        cold_rows.push_back(
+            {SsdRawHandle(handles[row]), output + row * row_bytes});
+      } else {
+        direct_rows[row] = dram_store_.DirectPtr(DramRawHandle(handles[row]));
+      }
+    }
+    const auto copy_dram = [&] {
+      constexpr size_t distance = 8;
+      const auto prefetch       = [&](size_t row) {
+        if (direct_rows[row] != nullptr) {
+          for (size_t off = 0; off < std::min(row_bytes, size_t{512});
+               off += 64)
+            __builtin_prefetch(direct_rows[row] + off, 0, 3);
+        }
+      };
+      for (size_t row = 0; row < std::min(num_rows, distance); ++row)
+        prefetch(row);
+      for (size_t row = 0; row < num_rows; ++row) {
+        if (row + distance < num_rows)
+          prefetch(row + distance);
+        if (direct_rows[row] != nullptr) {
+          if (dram_store_.SlotCapacity(DramRawHandle(handles[row])) !=
+              row_bytes)
+            throw std::runtime_error("tiered flat DRAM row size mismatch");
+          std::memcpy(output + row * row_bytes, direct_rows[row], row_bytes);
+        } else if (handles[row] == kValueHandleNone)
+          std::memset(output + row * row_bytes, 0, row_bytes);
+      }
+    };
+    ssd_read_rows_.fetch_add(cold_rows.size(), std::memory_order_relaxed);
+    if (flat_read_mode_ == "overlap") {
+      plain_ssd->ReadIntoWithWork(cold_rows, sizes, copy_dram);
+    } else {
+      copy_dram();
+      plain_ssd->ReadIntoWithWork(cold_rows, sizes, {});
+    }
+    if (sizes.size() != cold_rows.size() ||
+        std::any_of(sizes.begin(), sizes.end(), [row_bytes](size_t bytes) {
+          return bytes != row_bytes;
+        })) {
+      throw std::runtime_error("tiered flat read row size mismatch");
+    }
+    if (missing_rows != nullptr)
+      *missing_rows = missing;
+    flat_read_calls_.fetch_add(1, std::memory_order_relaxed);
+    return true;
+  }
+
   bool KeyUsesDram(uint64_t key) const {
     if (online_placement_) {
       return online_dram_keys_.count(key) != 0;
@@ -954,7 +1046,10 @@ private:
   std::atomic<uint64_t> ssd_live_allocs_{0};
   std::atomic<uint64_t> dram_total_allocs_{0};
   std::atomic<uint64_t> ssd_total_allocs_{0};
-  std::atomic<uint64_t> ssd_read_rows_{0};
+  std::string flat_read_mode_{"generic"};
+  uint64_t flat_row_bytes_ = 0;
+  mutable std::atomic<uint64_t> flat_read_calls_{0};
+  mutable std::atomic<uint64_t> ssd_read_rows_{0};
 };
 
 FACTORY_REGISTER(

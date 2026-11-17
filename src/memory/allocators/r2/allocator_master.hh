@@ -9,7 +9,9 @@
 #include <cstring>
 #include <atomic>
 
+#ifndef JEMALLOC_NO_DEMANGLE
 #define JEMALLOC_NO_DEMANGLE
+#endif
 #include <jemalloc/jemalloc.h>
 #include "allocator.hh"
 
