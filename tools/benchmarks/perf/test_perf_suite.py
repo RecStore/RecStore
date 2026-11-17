@@ -534,5 +534,37 @@ class RegistryTest(unittest.TestCase):
                 perf_suite.BASELINE_ROOT = original
 
 
+class ProfileTest(unittest.TestCase):
+    def test_profile_is_mutually_exclusive_with_check(self) -> None:
+        case = perf_suite.load_cases()[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            args = argparse.Namespace(
+                case=[case.id],
+                label=None,
+                build_dir=None,
+                output_dir=tmp,
+                repeats=1,
+                timeout=1.0,
+                env_id="test",
+                baseline_dir=None,
+                check=True,
+                profile="cpu",
+                write_baseline=False,
+                noise_floor_pct=None,
+            )
+            self.assertEqual(perf_suite.cmd_run(args), 2)
+
+    def test_profile_env_points_cpuprofile_at_the_run(self) -> None:
+        case = perf_suite.load_cases()[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            setup = perf_suite._profile_env(Path(tmp), case, 0, "kvengine")
+            self.assertIsNotNone(setup)
+            env, path = setup
+            self.assertEqual(env["CPUPROFILE"], str(path))
+            self.assertEqual(env["LD_PRELOAD"], "libprofiler.so.0")
+            self.assertEqual(path.parent, Path(tmp))
+            self.assertTrue(path.parent.is_dir())
+
+
 if __name__ == "__main__":
     unittest.main()

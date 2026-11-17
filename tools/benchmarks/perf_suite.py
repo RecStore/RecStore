@@ -153,10 +153,18 @@ def _tail(text: str, limit: int = 40) -> str:
 
 
 def _run_command(
-    cmd: list[str], log_path: Path, timeout_s: float, cwd: Path = REPO_ROOT
+    cmd: list[str],
+    log_path: Path,
+    timeout_s: float,
+    cwd: Path = REPO_ROOT,
+    env_extra: dict[str, str] | None = None,
 ) -> str:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
+    env = None
+    if env_extra:
+        env = os.environ.copy()
+        env.update(env_extra)
     try:
         proc = subprocess.run(
             cmd,
@@ -165,6 +173,7 @@ def _run_command(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             timeout=timeout_s,
+            env=env,
         )
     except subprocess.TimeoutExpired as exc:
         output = exc.output or ""
@@ -309,14 +318,29 @@ def _prepare_work_dir(case: Case, work_dir: Path) -> None:
 
 
 def _run_kvengine(
-    case: Case, build_dir: Path, output_dir: Path, repeat: int, timeout_s: float
+    case: Case,
+    build_dir: Path,
+    output_dir: Path,
+    repeat: int,
+    timeout_s: float,
+    profile_dir: Path | None = None,
 ) -> dict[str, float]:
     work_dir = output_dir / "work" / case.id / f"r{repeat:02d}"
     _prepare_work_dir(case, work_dir)
     log_path = output_dir / "logs" / case.id / f"r{repeat:02d}.log"
+    profile = _profile_env(profile_dir, case, repeat, "kvengine")
     output = _run_command(
-        _kvengine_command(case, build_dir, work_dir), log_path, timeout_s
+        _kvengine_command(case, build_dir, work_dir),
+        log_path,
+        timeout_s,
+        env_extra=profile[0] if profile else None,
     )
+    if profile:
+        _write_pprof(
+            build_dir / "bin" / "benchmark_kv_engine",
+            profile[1],
+            profile_dir / f"{case.id}.r{repeat:02d}.kvengine.txt",
+        )
     return _parse_kvengine(output)
 
 
@@ -369,7 +393,12 @@ def _wait_for_region(region: str, timeout_s: float, proc: subprocess.Popen) -> N
 
 
 def _run_ps_local_shm(
-    case: Case, build_dir: Path, output_dir: Path, repeat: int, timeout_s: float
+    case: Case,
+    build_dir: Path,
+    output_dir: Path,
+    repeat: int,
+    timeout_s: float,
+    profile_dir: Path | None = None,
 ) -> dict[str, float]:
     params = case.params
     run_id = f"{int(time.time())}_{repeat:02d}_{uuid.uuid4().hex[:6]}"
@@ -389,6 +418,9 @@ def _run_ps_local_shm(
     server_log.parent.mkdir(parents=True, exist_ok=True)
 
     shm_path.unlink(missing_ok=True)
+    # The server is stopped with SIGTERM, which does not flush a gperftools
+    # profile, so only the client is profiled here.
+    profile = _profile_env(profile_dir, case, repeat, "ps_client")
     with server_log.open("w", encoding="utf-8") as sink:
         server = subprocess.Popen(
             [
@@ -416,7 +448,9 @@ def _run_ps_local_shm(
             _flag("value_size", params["value_size"]),
             _flag("report_mode", "summary"),
         ]
-        output = _run_command(cmd, client_log, timeout_s)
+        output = _run_command(
+            cmd, client_log, timeout_s, env_extra=profile[0] if profile else None
+        )
     finally:
         server.terminate()
         try:
@@ -425,6 +459,13 @@ def _run_ps_local_shm(
             server.kill()
             server.wait()
         shm_path.unlink(missing_ok=True)
+
+    if profile:
+        _write_pprof(
+            build_dir / "bin" / "ps_transport_benchmark",
+            profile[1],
+            profile_dir / f"{case.id}.r{repeat:02d}.ps_client.txt",
+        )
 
     metrics = {"throughput_keys_sec": _parse_float(_PS_RESULT, output, "PS_BENCHMARK_RESULT")}
     profile = _PS_PROFILE.search(output)
@@ -440,7 +481,36 @@ def _parse_float(pattern: re.Pattern, output: str, label: str) -> float:
     return float(match.group("value"))
 
 
-Runner = Callable[[Case, Path, Path, int, float], dict[str, float]]
+# ── Profiling ────────────────────────────────────────────────────────────────
+
+_PROFILER_LIBRARY = "libprofiler.so.0"
+
+
+def _profile_env(
+    profile_dir: Path | None, case: Case, repeat: int, role: str
+) -> tuple[dict[str, str], Path] | None:
+    """Return the environment that makes gperftools dump one profile file."""
+    if profile_dir is None:
+        return None
+    path = profile_dir / f"{case.id}.r{repeat:02d}.{role}.prof"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return {"CPUPROFILE": str(path), "LD_PRELOAD": _PROFILER_LIBRARY}, path
+
+
+def _write_pprof(
+    binary: Path, profile: Path, out_path: Path, timeout_s: float = 120.0
+) -> None:
+    if not profile.exists():
+        raise SuiteError(
+            f"profile not written: {profile} (is {_PROFILER_LIBRARY} available?)"
+        )
+    pprof = shutil.which("google-pprof") or shutil.which("pprof")
+    if pprof is None:
+        raise SuiteError("google-pprof not found; install gperftools")
+    _run_command([pprof, "--text", str(binary), str(profile)], out_path, timeout_s)
+
+
+Runner = Callable[[Case, Path, Path, int, float, "Path | None"], dict[str, float]]
 
 RUNNERS: dict[str, Runner] = {
     "kvengine": _run_kvengine,
@@ -912,6 +982,7 @@ def run_cases(
     timeout_s: float,
     label: str,
     env_id: str | None = None,
+    profile_dir: Path | None = None,
 ) -> tuple[list[dict], dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
     _reset_failure_marker(output_dir)
@@ -930,7 +1001,9 @@ def run_cases(
         runner = RUNNERS[case.runner]
         for repeat in range(repeats):
             try:
-                metrics = runner(case, build_dir, output_dir, repeat, timeout_s)
+                metrics = runner(
+                    case, build_dir, output_dir, repeat, timeout_s, profile_dir
+                )
             except SuiteError as exc:
                 failures.append(f"{case.id} repeat {repeat}: {exc}")
                 print(f"[perf]   repeat {repeat}: FAILED ({exc})", flush=True)
@@ -974,10 +1047,19 @@ def run_cases(
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    profile = getattr(args, "profile", None)
+    if profile and (args.check or args.write_baseline):
+        print(
+            "[perf] --profile cannot be combined with --check or --write-baseline: "
+            "profiling changes the runtime and must not produce numbers",
+            file=sys.stderr,
+        )
+        return 2
     cases = select_cases(load_cases(), args.case, args.label)
     build_dir = _resolve_build_dir(args.build_dir)
     output_dir = _resolve_output_dir(args.output_dir)
     env_id = args.env_id or default_env_id()
+    profile_dir = output_dir / "profile" if profile else None
     rows, env = run_cases(
         cases,
         build_dir,
@@ -986,6 +1068,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         args.timeout,
         args.label or "all",
         env_id=env_id,
+        profile_dir=profile_dir,
     )
     (output_dir / "metrics.json").write_text(
         json.dumps({"schema": 1, "env": env, "rows": rows}, indent=2, sort_keys=True)
@@ -1317,6 +1400,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--baseline-dir", help="baseline root (default: tools/benchmarks/perf/baselines)"
     )
     run_parser.add_argument("--check", action="store_true", help="compare with the baseline")
+    run_parser.add_argument(
+        "--profile",
+        choices=["cpu"],
+        help="write a gperftools CPU profile per repeat (requires a profile build; "
+        "cannot be combined with --check/--write-baseline)",
+    )
     run_parser.add_argument(
         "--noise-floor-pct", type=float, help="override the per-case noise floor"
     )
