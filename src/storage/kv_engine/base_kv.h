@@ -145,13 +145,15 @@ public:
     size_t size = 0;
   };
 
+  // On success, found distinguishes missing keys from stored zero rows.
   virtual bool BatchGetFlat(
       base::ConstArray<uint64_t> keys,
       float* values,
       int64_t num_rows,
       int64_t embedding_dim,
       unsigned tid,
-      BatchGetFlatStats* stats = nullptr) {
+      BatchGetFlatStats* stats = nullptr,
+      uint8_t* found           = nullptr) {
     return false;
   }
 

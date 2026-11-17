@@ -1,7 +1,9 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -9,6 +11,7 @@
 #include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -55,8 +58,14 @@ public:
 
     BaseKVConfig cfg;
     cfg.num_threads_ = params.num_threads;
+    for (unsigned tid = 0;
+         tid < static_cast<unsigned>(std::max(1, params.num_threads));
+         ++tid) {
+      free_thread_slots_.push_back(tid);
+    }
     const uint64_t value_size =
         params.value_size > 0 ? params.value_size : sizeof(float);
+    fixed_row_bytes_ = value_size;
     const uint64_t dram_capacity =
         params.dram_capacity_bytes > 0
             ? params.dram_capacity_bytes
@@ -162,6 +171,10 @@ public:
       throw std::invalid_argument(
           "HpsRecStoreBackend insert requires value_size <= value_stride");
     }
+    std::unique_lock<std::shared_mutex> rows_lock(rows_mu_);
+    if (value_size != fixed_row_bytes_) {
+      fixed_rows_only_.store(false, std::memory_order_release);
+    }
     auto& scratch = Scratch::Get();
     scratch.keys.resize(num_pairs);
     const size_t floats_per_value =
@@ -185,8 +198,9 @@ public:
         scratch.row_views.emplace_back(row, floats_per_value);
       }
     }
+    ThreadSlot slot(*this);
     kv_->BatchPut(
-        base::ConstArray<uint64_t>(scratch.keys), &scratch.row_views, 0);
+        base::ConstArray<uint64_t>(scratch.keys), &scratch.row_views, slot.tid);
     {
       std::lock_guard<std::mutex> lock(table_sizes_mu_);
       table_sizes_[table_name] += num_pairs;
@@ -201,19 +215,79 @@ public:
                size_t value_stride,
                const HugeCTR::DatabaseMissCallback& on_miss,
                const std::chrono::nanoseconds& time_budget) override {
+    return fetch_with_stats(
+        table_name,
+        num_keys,
+        keys,
+        values,
+        value_stride,
+        on_miss,
+        time_budget,
+        nullptr);
+  }
+
+  size_t fetch_with_stats(
+      const std::string& table_name,
+      size_t num_keys,
+      const Key* keys,
+      char* values,
+      size_t value_stride,
+      const HugeCTR::DatabaseMissCallback& on_miss,
+      const std::chrono::nanoseconds& time_budget,
+      BaseKV::BatchGetFlatStats* stats) {
+    if (stats != nullptr)
+      *stats = BaseKV::BatchGetFlatStats{};
     (void)table_name;
     (void)time_budget;
+    if (num_keys == 0)
+      return 0;
     auto& scratch = Scratch::Get();
     scratch.keys.resize(num_keys);
     for (size_t i = 0; i < num_keys; ++i) {
       scratch.keys[i] = static_cast<uint64_t>(keys[i]);
     }
+    std::shared_lock<std::shared_mutex> rows_lock(rows_mu_);
+    std::vector<size_t> misses;
+    if (value_stride == fixed_row_bytes_ && value_stride % sizeof(float) == 0 &&
+        reinterpret_cast<uintptr_t>(values) % alignof(float) == 0) {
+      scratch.found.resize(num_keys);
+      if (fixed_rows_only_.load(std::memory_order_acquire) &&
+          kv_->BatchGetFlat(
+              base::ConstArray<uint64_t>(scratch.keys),
+              reinterpret_cast<float*>(values),
+              num_keys,
+              value_stride / sizeof(float),
+              0,
+              stats,
+              scratch.found.data())) {
+        size_t hits = 0;
+        for (size_t i = 0; i < num_keys; ++i) {
+          if (scratch.found[i])
+            ++hits;
+          else
+            misses.push_back(i);
+        }
+        // Callbacks may reenter this backend and mutate its TLS scratch.
+        rows_lock.unlock();
+        for (size_t row : misses)
+          on_miss(row);
+        return hits;
+      }
+    }
+    if (stats != nullptr)
+      *stats = BaseKV::BatchGetFlatStats{};
     scratch.fetched_rows.clear();
     kv_->BatchGet(
         base::ConstArray<uint64_t>(scratch.keys), &scratch.fetched_rows, 0);
 
-    return CopyRowsToOutput(
-        scratch.fetched_rows, num_keys, values, value_stride, on_miss);
+    const size_t hits = CopyRowsToOutput(
+        scratch.fetched_rows, num_keys, values, value_stride, [&](size_t row) {
+          misses.push_back(row);
+        });
+    rows_lock.unlock();
+    for (size_t row : misses)
+      on_miss(row);
+    return hits;
   }
 
   size_t
@@ -230,6 +304,7 @@ public:
     if (num_indices == 0) {
       return 0;
     }
+    std::shared_lock<std::shared_mutex> rows_lock(rows_mu_);
     auto& scratch = Scratch::Get();
     scratch.keys.resize(num_indices);
     for (size_t i = 0; i < num_indices; ++i) {
@@ -240,6 +315,7 @@ public:
         base::ConstArray<uint64_t>(scratch.keys), &scratch.fetched_rows, 0);
 
     size_t hits = 0;
+    std::vector<size_t> misses;
     for (size_t i = 0; i < num_indices; ++i) {
       const size_t output_index = indices[i];
       if (i < scratch.fetched_rows.size() &&
@@ -250,9 +326,12 @@ public:
                    value_stride);
         ++hits;
       } else {
-        on_miss(output_index);
+        misses.push_back(output_index);
       }
     }
+    rows_lock.unlock();
+    for (size_t row : misses)
+      on_miss(row);
     return hits;
   }
 
@@ -298,11 +377,39 @@ public:
 #endif
 
 private:
+  struct ThreadSlot {
+    HpsRecStoreBackend& owner;
+    unsigned tid;
+
+    explicit ThreadSlot(HpsRecStoreBackend& backend) : owner(backend) {
+      std::unique_lock<std::mutex> lock(owner.thread_slots_mu_);
+      owner.thread_slots_cv_.wait(lock, [&] {
+        return !owner.free_thread_slots_.empty();
+      });
+      tid = owner.free_thread_slots_.back();
+      owner.free_thread_slots_.pop_back();
+    }
+    ~ThreadSlot() {
+      {
+        std::lock_guard<std::mutex> lock(owner.thread_slots_mu_);
+        owner.free_thread_slots_.push_back(tid);
+      }
+      owner.thread_slots_cv_.notify_one();
+    }
+    ThreadSlot(const ThreadSlot&)            = delete;
+    ThreadSlot& operator=(const ThreadSlot&) = delete;
+  };
+
+  std::mutex thread_slots_mu_;
+  std::condition_variable thread_slots_cv_;
+  std::vector<unsigned> free_thread_slots_;
+
   struct Scratch {
     std::vector<uint64_t> keys;
     std::vector<float> insert_values;
     std::vector<base::ConstArray<float>> row_views;
     std::vector<base::ConstArray<float>> fetched_rows;
+    std::vector<uint8_t> found;
 
     static Scratch& Get() {
       thread_local Scratch scratch;
@@ -359,6 +466,9 @@ private:
   }
 
   std::unique_ptr<BaseKV> kv_;
+  size_t fixed_row_bytes_ = 0;
+  std::shared_mutex rows_mu_;
+  std::atomic<bool> fixed_rows_only_{true};
   mutable std::mutex table_sizes_mu_;
   std::unordered_map<std::string, size_t> table_sizes_;
 };

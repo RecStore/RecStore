@@ -164,26 +164,9 @@ public:
     BumpOnlineGeneration();
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
 
-    std::unordered_set<uint64_t> seen_keys;
-    seen_keys.reserve(static_cast<size_t>(keys.Size()));
-    bool has_duplicate_key = false;
     for (int i = 0; i < keys.Size(); ++i) {
       const auto& item = (*values)[i];
       ValidateOnlineRowSize(static_cast<size_t>(item.Size()) * sizeof(float));
-      if (!seen_keys.insert(keys[i]).second) {
-        has_duplicate_key = true;
-      }
-    }
-    if (has_duplicate_key) {
-      for (int i = 0; i < keys.Size(); ++i) {
-        const auto& item = (*values)[i];
-        PutInternal(keys[i],
-                    item.Data(),
-                    static_cast<size_t>(item.Size()) * sizeof(float),
-                    tid,
-                    false);
-      }
-      return;
     }
 
     struct PutItem {
@@ -192,12 +175,21 @@ public:
     };
     std::vector<PutItem> items;
     items.reserve(static_cast<size_t>(keys.Size()));
+    std::unordered_map<uint64_t, size_t> positions;
+    positions.reserve(static_cast<size_t>(keys.Size()));
 
     for (int i = 0; i < keys.Size(); ++i) {
-      const auto& item  = (*values)[i];
-      const void* data  = item.Data();
-      const size_t size = static_cast<size_t>(item.Size()) * sizeof(float);
-      items.push_back(PutItem{keys[i], ValueStore::WriteSpec{data, size}});
+      const auto& item    = (*values)[i];
+      const void* data    = item.Data();
+      const size_t size   = static_cast<size_t>(item.Size()) * sizeof(float);
+      const auto inserted = positions.emplace(keys[i], items.size());
+      if (inserted.second) {
+        items.push_back(PutItem{keys[i], ValueStore::WriteSpec{data, size}});
+      } else {
+        // Assignment is last-wins without turning duplicate batches into
+        // individual SSD writes.
+        items[inserted.first->second].spec = ValueStore::WriteSpec{data, size};
+      }
     }
 
     std::vector<uint64_t> batch_keys;
@@ -327,12 +319,14 @@ public:
     }
   }
 
-  bool BatchGetFlat(base::ConstArray<uint64_t> keys,
-                    float* values,
-                    int64_t num_rows,
-                    int64_t embedding_dim,
-                    unsigned tid,
-                    BatchGetFlatStats* stats = nullptr) override {
+  bool BatchGetFlat(
+      base::ConstArray<uint64_t> keys,
+      float* values,
+      int64_t num_rows,
+      int64_t embedding_dim,
+      unsigned tid,
+      BatchGetFlatStats* stats = nullptr,
+      uint8_t* found           = nullptr) override {
     if (values == nullptr || num_rows < 0 || embedding_dim <= 0 ||
         keys.Size() != static_cast<size_t>(num_rows)) {
       return false;
@@ -346,6 +340,11 @@ public:
                          : std::chrono::steady_clock::time_point{};
     if (keys.Size() > 0) {
       index_->BatchGet(keys, handles.data(), tid);
+    }
+    if (found != nullptr) {
+      for (size_t row = 0; row < handles.size(); ++row) {
+        found[row] = handles[row] != kValueHandleNone;
+      }
     }
     if (stats != nullptr) {
       stats->index_lookup_ns = static_cast<std::uint64_t>(

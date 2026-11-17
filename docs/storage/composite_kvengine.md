@@ -33,7 +33,7 @@ graph TD
 
 **读路径**：`Index::Get` / `BatchGet` → `DirectPtr` 或 `Read` / `BatchRead`。
 
-`BatchPut` 遇到同一批次内重复 key 时退回逐条 `Put`，避免覆盖顺序不确定。
+`BatchPut` 合并同一批次内的重复 key，以最后一次赋值为准，仍通过批量分配与写入路径发布。`BatchGetFlat` 可通过调用者提供的 `found` 数组区分缺失 key 与全零值；HPS 在行宽、步长和对齐匹配时直接写入平坦输出，其余情况保留逐行复制路径。缺失回调在释放内部读锁后执行，允许回调重新进入后端。
 
 ## 配置骨架
 

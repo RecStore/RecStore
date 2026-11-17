@@ -4301,3 +4301,34 @@ TEST_F(StaticLayoutValueTest, MixedSgdUpdatesRemainVisibleWithClockPlacement) {
       EXPECT_FLOAT_EQ(item, expected.second);
   }
 }
+
+TEST_F(StaticLayoutValueTest, DuplicateAssignmentsKeepGroupedIoAndLastValue) {
+  auto config = Config(Save(Bandana()), "bandana", "SSD_VALUE_STORE");
+  config.json_config_["value"].erase("ssd_layout");
+  config.json_config_["value"]["ssd_allocator"] = {
+      {"type", "SSD_SLAB"},
+      {"capacity_bytes", 64ULL << 20},
+      {"io", {{"type", "INMEMORY"}, {"base_offset_bytes", 0}}}};
+  KVEngineComposite engine(config);
+  const std::vector<uint64_t> keys{0, 1, 0, 2, 1};
+  const std::array<float, 5> input{1, 2, 3, 4, 5};
+  std::vector<base::ConstArray<float>> values;
+  for (const float& value : input)
+    values.emplace_back(&value, 1);
+  g_read_entries.store(0);
+  engine.BatchPut(base::ConstArray<uint64_t>(keys), &values, 0);
+  EXPECT_EQ(g_read_entries.load(), 1U);
+  const std::vector<uint64_t> query{0, 1, 2};
+  std::array<float, 3> output{};
+  ASSERT_TRUE(engine.BatchGetFlat(
+      base::ConstArray<uint64_t>(query), output.data(), 3, 1, 0));
+  EXPECT_EQ(output, (std::array<float, 3>{3, 5, 4}));
+  const auto checkpoint = (root_ / "duplicate_assignments.ckpt").string();
+  ASSERT_TRUE(engine.SaveCheckpoint(checkpoint, "duplicates"));
+  KVEngineComposite restored(config);
+  ASSERT_TRUE(restored.LoadCheckpoint(checkpoint, "duplicates"));
+  output.fill(0);
+  ASSERT_TRUE(restored.BatchGetFlat(
+      base::ConstArray<uint64_t>(query), output.data(), 3, 1, 0));
+  EXPECT_EQ(output, (std::array<float, 3>{3, 5, 4}));
+}
