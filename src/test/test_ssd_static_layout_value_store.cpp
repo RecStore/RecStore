@@ -159,6 +159,22 @@ private:
 
 FACTORY_REGISTER(IOBackend, INMEMORY, CountingIOBackend, const BaseKVConfig&);
 
+class FailSecondWriteBackend : public CountingIOBackend {
+public:
+  using CountingIOBackend::CountingIOBackend;
+  void BatchWritePages(const std::vector<IOEntry>& entries) override {
+    if (++batches_ == 2)
+      throw std::runtime_error("second batch write failure");
+    CountingIOBackend::BatchWritePages(entries);
+  }
+
+private:
+  size_t batches_ = 0;
+};
+
+FACTORY_REGISTER(
+    IOBackend, FAIL_SECOND_WRITE, FailSecondWriteBackend, const BaseKVConfig&);
+
 struct ReclamationProbe {
   std::mutex mu;
   std::condition_variable cv;
@@ -4762,4 +4778,25 @@ TEST_F(StaticLayoutValueTest, OverlapCallbacksCoverSharedPageBatchesAndErrors) {
   store.ReadIntoWithWork(reads, sizes, [&] { ++calls; });
   EXPECT_EQ(calls, 3);
   EXPECT_EQ(g_scratch_buffers.load(), 0);
+}
+
+TEST_F(StaticLayoutValueTest, FailedLaterSsdBatchReleasesEarlierAllocations) {
+  auto config                          = OnlineConfig(0);
+  config.json_config_["value"]["type"] = "SSD_VALUE_STORE";
+  config.json_config_["value"]["path"] = (root_ / "batch_rollback").string();
+  config.json_config_["value"]["ssd_allocator"]["io"]["type"] =
+      "FAIL_SECOND_WRITE";
+  auto probe = std::make_shared<ReclamationProbe>();
+  ProbedValueStore<SsdValueStore> store(config, probe);
+  const std::string value(128, 'r');
+  std::vector<ValueStore::WriteSpec> specs(1100, {value.data(), value.size()});
+  EXPECT_THROW(store.BatchAllocAndWrite(specs), std::runtime_error);
+  EXPECT_EQ(probe->freed.load(), 1024U);
+  const auto handles = store.BatchAllocAndWrite(specs);
+  ASSERT_EQ(handles.size(), specs.size());
+  for (size_t i : {size_t{0}, size_t{1023}, size_t{1099}}) {
+    std::string actual;
+    store.ReadValue(handles[i], actual);
+    EXPECT_EQ(actual, value);
+  }
 }
