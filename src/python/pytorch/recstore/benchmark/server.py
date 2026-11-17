@@ -145,6 +145,21 @@ def _prepare_base_kv_paths(base_kv: dict) -> None:
         Path(str(path)).parent.mkdir(parents=True, exist_ok=True)
 
 
+def _build_tiering_config(
+    tiered_cache_policy: str,
+    promote_min_misses: int,
+    clock_cost_aware: bool,
+) -> dict:
+    tiering = {"cache_policy": normalize_cache_policy(tiered_cache_policy)}
+    # Omit the knobs unless the caller asked for them, so the library defaults
+    # stay the single source of truth for what a run uses.
+    if promote_min_misses > 0:
+        tiering["promote_min_misses"] = int(promote_min_misses)
+    if clock_cost_aware:
+        tiering["clock_cost_aware"] = True
+    return tiering
+
+
 def _build_recstore_base_kv_config(
     *,
     ps_kv_backend: str,
@@ -156,6 +171,8 @@ def _build_recstore_base_kv_config(
     index_type: str,
     tiered_dram_capacity_multiplier: float,
     tiered_cache_policy: str = "none",
+    tiered_promote_min_misses: int = 0,
+    tiered_clock_cost_aware: bool = False,
 ) -> dict:
     dram_capacity = capacity * value_size_hint * 2
     value: dict = {
@@ -184,7 +201,11 @@ def _build_recstore_base_kv_config(
                 "path": f"{kv_data_path}/dram",
             },
             "ssd_allocator": _build_ssd_allocator(ssd_capacity),
-            "tiering": {"cache_policy": normalize_cache_policy(tiered_cache_policy)},
+            "tiering": _build_tiering_config(
+                tiered_cache_policy,
+                tiered_promote_min_misses,
+                tiered_clock_cost_aware,
+            ),
         }
         value["ssd_allocator"]["path"] = tiered_ssd_path
     return {
@@ -232,6 +253,8 @@ def build_base_kv_config_for_backend(
     index_type: str,
     tiered_dram_capacity_multiplier: float = 2.0,
     tiered_cache_policy: str = "none",
+    tiered_promote_min_misses: int = 0,
+    tiered_clock_cost_aware: bool = False,
 ) -> dict:
     backend = ps_kv_backend.strip().lower()
     kv_data_path = resolve_kv_data_path(
@@ -251,6 +274,8 @@ def build_base_kv_config_for_backend(
             index_type=index_type,
             tiered_dram_capacity_multiplier=tiered_dram_capacity_multiplier,
             tiered_cache_policy=tiered_cache_policy,
+            tiered_promote_min_misses=tiered_promote_min_misses,
+            tiered_clock_cost_aware=tiered_clock_cost_aware,
         )
     if backend in {"hps_hash_map", "hps_rocksdb"}:
         return _build_hps_base_kv_config(
@@ -305,6 +330,8 @@ def build_runtime_config(
     ps_kv_backend: str = "recstore_dram",
     tiered_dram_capacity_multiplier: float = 2.0,
     tiered_cache_policy: str = "none",
+    tiered_promote_min_misses: int = 0,
+    tiered_clock_cost_aware: bool = False,
 ) -> dict:
     cfg = copy.deepcopy(base_cfg)
     cfg.setdefault("cache_ps", {})
@@ -355,6 +382,8 @@ def build_runtime_config(
         index_type=index_type,
         tiered_dram_capacity_multiplier=tiered_dram_capacity_multiplier,
         tiered_cache_policy=tiered_cache_policy,
+        tiered_promote_min_misses=tiered_promote_min_misses,
+        tiered_clock_cost_aware=tiered_clock_cost_aware,
     )
     _prepare_base_kv_paths(base_kv)
     cfg["cache_ps"]["base_kv_config"] = base_kv
@@ -522,6 +551,8 @@ def make_runtime_dir(
     ps_kv_backend: str = "recstore_dram",
     tiered_dram_capacity_multiplier: float = 2.0,
     tiered_cache_policy: str = "none",
+    tiered_promote_min_misses: int = 0,
+    tiered_clock_cost_aware: bool = False,
 ) -> tuple[Path, Path]:
     unique_tag = f"{time.time_ns()}_{uuid.uuid4().hex[:8]}"
     output_root_path = Path(output_root).resolve()
@@ -541,6 +572,8 @@ def make_runtime_dir(
         ps_kv_backend=ps_kv_backend,
         tiered_dram_capacity_multiplier=tiered_dram_capacity_multiplier,
         tiered_cache_policy=tiered_cache_policy,
+        tiered_promote_min_misses=tiered_promote_min_misses,
+        tiered_clock_cost_aware=tiered_clock_cost_aware,
     )
     runtime_dir = output_root_path / "runtime" / run_id / unique_tag
     runtime_dir.mkdir(parents=True, exist_ok=True)
