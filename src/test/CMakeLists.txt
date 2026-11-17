@@ -850,6 +850,7 @@ set_tests_properties(test_ebc_precision_py PROPERTIES
 add_recstore_unittest(
     test_gpu_cache_py
     recstore.unittest.test_gpu_cache_hit_only
+    recstore.unittest.test_gpu_cache_invalidation
 )
 set_tests_properties(test_gpu_cache_py PROPERTIES
     LABELS "python;gpu"
