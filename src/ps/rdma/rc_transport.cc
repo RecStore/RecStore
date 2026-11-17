@@ -1052,6 +1052,15 @@ RcShardServerTransport::ResponseEpoch(int client_id, int qp_index) const {
       .response_epoch.load(std::memory_order_acquire);
 }
 
+std::size_t RcShardServerTransport::MaxResponseSgesPerWr(
+    int client_id, int qp_index) const {
+  ValidateClientId(config_, client_id);
+  const Lane& lane = LaneAt(client_id, qp_index);
+  const int client_node_id =
+      config_.num_servers + OsClientIndexForLogicalClient(config_, client_id);
+  return lane.verbs->max_send_sge(static_cast<std::uint16_t>(client_node_id));
+}
+
 void RcShardServerTransport::WriteResponsePayloadSg(
     int client_id,
     int qp_index,
