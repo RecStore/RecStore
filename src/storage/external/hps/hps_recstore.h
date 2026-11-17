@@ -41,6 +41,7 @@ struct HpsRecStoreBackendParams : public HugeCTR::VolatileBackendParams {
   std::string ssd_value_file;
   int ssd_queue_depth{512};
   int num_threads{1};
+  bool read_epochs{true};
 };
 
 template <typename Key>
@@ -80,6 +81,7 @@ public:
             ? params.path + "_value.db"
             : params.ssd_value_file;
     cfg.json_config_ = {
+        {"read_epochs", params.read_epochs},
         {"capacity", params.capacity},
         {"index", {{"type", params.index_type}}},
         {"value",
@@ -128,6 +130,7 @@ public:
     if (!kv_) {
       throw std::runtime_error("failed to create RecStore BaseKV for HPS");
     }
+    concurrent_owned_reads_ = kv_->HasConcurrentOwnedReads();
   }
 
   const char* get_name() const override { return "RecStoreBackend"; }
@@ -171,9 +174,13 @@ public:
       throw std::invalid_argument(
           "HpsRecStoreBackend insert requires value_size <= value_stride");
     }
-    std::unique_lock<std::shared_mutex> rows_lock(rows_mu_);
-    if (value_size != fixed_row_bytes_) {
-      fixed_rows_only_.store(false, std::memory_order_release);
+    std::unique_lock<std::shared_mutex> rows_lock(rows_mu_, std::defer_lock);
+    const bool variable_row = value_size != fixed_row_bytes_;
+    if (!concurrent_owned_reads_ ||
+        (variable_row && fixed_rows_only_.load(std::memory_order_acquire))) {
+      rows_lock.lock();
+      if (variable_row)
+        fixed_rows_only_.store(false, std::memory_order_release);
     }
     auto& scratch = Scratch::Get();
     scratch.keys.resize(num_pairs);
@@ -466,7 +473,8 @@ private:
   }
 
   std::unique_ptr<BaseKV> kv_;
-  size_t fixed_row_bytes_ = 0;
+  bool concurrent_owned_reads_ = false;
+  size_t fixed_row_bytes_      = 0;
   std::shared_mutex rows_mu_;
   std::atomic<bool> fixed_rows_only_{true};
   mutable std::mutex table_sizes_mu_;

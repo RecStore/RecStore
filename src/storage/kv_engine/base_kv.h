@@ -296,6 +296,9 @@ public:
 
   // Complete optional maintenance and surface its failures at a quiescent
   // point.
+  // Owned snapshots remain valid while COW writes publish new handles.
+  virtual bool HasConcurrentOwnedReads() const { return false; }
+
   virtual void DrainBackgroundWork() {}
 
 protected:

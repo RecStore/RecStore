@@ -159,6 +159,47 @@ private:
 
 FACTORY_REGISTER(IOBackend, INMEMORY, CountingIOBackend, const BaseKVConfig&);
 
+struct ReclamationProbe {
+  std::mutex mu;
+  std::condition_variable cv;
+  bool pause_next = false, entered = false, resume = false;
+  std::atomic<size_t> freed{0};
+  std::atomic<bool> fail_free{false};
+};
+
+template <typename Store>
+class ProbedValueStore : public Store {
+public:
+  ProbedValueStore(const BaseKVConfig& config,
+                   std::shared_ptr<ReclamationProbe> probe)
+      : Store(config), probe_(std::move(probe)) {}
+
+  const char* DirectPtr(uint64_t handle) const override {
+    const char* ptr = Store::DirectPtr(handle);
+    std::unique_lock<std::mutex> lock(probe_->mu);
+    if (probe_->pause_next) {
+      probe_->pause_next = false;
+      probe_->entered    = true;
+      probe_->cv.notify_all();
+      probe_->cv.wait(lock, [&] { return probe_->resume; });
+    }
+    return ptr;
+  }
+
+  void Free(uint64_t handle) override {
+    if (probe_->fail_free.load())
+      throw std::runtime_error("injected reclamation failure");
+    Store::Free(handle);
+    probe_->freed.fetch_add(1);
+  }
+
+private:
+  std::shared_ptr<ReclamationProbe> probe_;
+};
+
+using ProbedDramStore   = ProbedValueStore<DramValueStore>;
+using ProbedHybridStore = ProbedValueStore<HybridValueStore>;
+
 class StaticLayoutValueTest : public ::testing::Test {
 protected:
   void SetUp() override {
@@ -214,6 +255,22 @@ protected:
   }
 
   std::filesystem::path root_;
+
+  BaseKVConfig EpochConfig() {
+    BaseKVConfig config;
+    config.num_threads_ = 2;
+    config.json_config_ = {
+        {"capacity", 16},
+        {"index", {{"type", "DRAM_UNORDERED_MAP"}}},
+        {"value",
+         {{"type", "DRAM_VALUE_STORE"},
+          {"path", (root_ / "epoch_dram").string()},
+          {"default_value_size_hint", 128},
+          {"dram_allocator",
+           {{"type", "CONCURRENT_SLAB_MEMORY_POOL"},
+            {"capacity_bytes", 64ULL << 20}}}}}};
+    return config;
+  }
 
   BaseKVConfig OnlineConfig(size_t hot_rows) {
     const auto profile = root_ / "online_keys.bin";
@@ -4331,4 +4388,138 @@ TEST_F(StaticLayoutValueTest, DuplicateAssignmentsKeepGroupedIoAndLastValue) {
   ASSERT_TRUE(restored.BatchGetFlat(
       base::ConstArray<uint64_t>(query), output.data(), 3, 1, 0));
   EXPECT_EQ(output, (std::array<float, 3>{3, 5, 4}));
+}
+
+TEST_F(StaticLayoutValueTest, ReadEpochPinsOldValueWithoutBlockingPublication) {
+  auto config = EpochConfig();
+  auto probe  = std::make_shared<ReclamationProbe>();
+  KVEngineComposite engine(
+      std::make_unique<DramUnorderedMapIndex>(config),
+      std::make_unique<ProbedDramStore>(config, probe),
+      2,
+      true);
+  ASSERT_TRUE(engine.HasConcurrentOwnedReads());
+  const std::string before(128, 'a'), after(128, 'b');
+  engine.Put(1, before, 0);
+  probe->pause_next = true;
+  std::string captured;
+  auto reader =
+      std::async(std::launch::async, [&] { engine.Get(1, captured, 0); });
+  {
+    std::unique_lock<std::mutex> lock(probe->mu);
+    EXPECT_TRUE(probe->cv.wait_for(lock, std::chrono::seconds(2), [&] {
+      return probe->entered;
+    }));
+  }
+  auto writer =
+      std::async(std::launch::async, [&] { engine.Put(1, after, 1); });
+  EXPECT_EQ(writer.wait_for(std::chrono::seconds(2)),
+            std::future_status::ready);
+  EXPECT_EQ(probe->freed.load(), 0U);
+  {
+    std::lock_guard<std::mutex> lock(probe->mu);
+    probe->resume = true;
+  }
+  probe->cv.notify_all();
+  writer.get();
+  reader.get();
+  EXPECT_EQ(captured, before);
+  engine.DrainBackgroundWork();
+  EXPECT_EQ(probe->freed.load(), 1U);
+  engine.Get(1, captured, 0);
+  EXPECT_EQ(captured, after);
+
+  const std::vector<uint64_t> keys{1};
+  std::vector<base::ConstArray<float>> rows;
+  engine.BatchGet(base::ConstArray<uint64_t>(keys), &rows, 0);
+  engine.Put(1, std::string(128, 'c'), 1);
+  engine.DrainBackgroundWork();
+  ASSERT_EQ(rows.size(), 1U);
+  EXPECT_EQ(std::string(reinterpret_cast<const char*>(rows[0].Data()), 128),
+            after);
+  std::vector<BaseKV::DirectFixedRow> borrowed;
+  EXPECT_FALSE(engine.BatchGetDirectFixedRows(
+      base::ConstArray<uint64_t>(keys), 1, 32, 0, &borrowed));
+  EXPECT_EQ(engine.GetRDMABackingRegion().data, nullptr);
+  float gradient[32] = {};
+  EXPECT_FALSE(engine.ApplySgdUpdateFlat(
+      base::ConstArray<uint64_t>(keys), gradient, 1, 32, 0.1f, 0, 0));
+  EXPECT_FALSE(engine.ApplySgdUpdateFlatRange(
+      base::ConstArray<uint64_t>(keys), gradient, 1, 32, 0, 32, 0.1f, 0));
+}
+
+TEST_F(StaticLayoutValueTest, ReadEpochBackpressureLetsPinnedReadersFinish) {
+  auto config = EpochConfig();
+  auto probe  = std::make_shared<ReclamationProbe>();
+  KVEngineComposite engine(
+      std::make_unique<DramUnorderedMapIndex>(config),
+      std::make_unique<ProbedDramStore>(config, probe),
+      2,
+      true,
+      2);
+  engine.Put(1, std::string(128, 'a'), 0);
+  probe->pause_next = true;
+  std::string captured;
+  auto reader =
+      std::async(std::launch::async, [&] { engine.Get(1, captured, 0); });
+  {
+    std::unique_lock<std::mutex> lock(probe->mu);
+    EXPECT_TRUE(probe->cv.wait_for(lock, std::chrono::seconds(2), [&] {
+      return probe->entered;
+    }));
+  }
+  engine.Put(1, std::string(128, 'b'), 1);
+  engine.Put(1, std::string(128, 'c'), 1);
+  auto writer = std::async(std::launch::async, [&] {
+    engine.Put(1, std::string(128, 'd'), 1);
+  });
+  EXPECT_EQ(writer.wait_for(std::chrono::milliseconds(50)),
+            std::future_status::timeout);
+  EXPECT_EQ(probe->freed.load(), 0U);
+  {
+    std::lock_guard<std::mutex> lock(probe->mu);
+    probe->resume = true;
+  }
+  probe->cv.notify_all();
+  reader.get();
+  writer.get();
+  engine.DrainBackgroundWork();
+  EXPECT_EQ(captured, std::string(128, 'a'));
+  EXPECT_EQ(probe->freed.load(), 3U);
+  engine.Get(1, captured, 0);
+  EXPECT_EQ(captured, std::string(128, 'd'));
+  EXPECT_NE(engine.ExtraResultFields().find("retired_rows_limit=2 "),
+            std::string::npos);
+}
+
+TEST_F(StaticLayoutValueTest, ReadEpochSurfacesReclamationFailure) {
+  auto config = EpochConfig();
+  auto probe  = std::make_shared<ReclamationProbe>();
+  KVEngineComposite engine(
+      std::make_unique<DramUnorderedMapIndex>(config),
+      std::make_unique<ProbedDramStore>(config, probe),
+      2,
+      true);
+  engine.Put(1, std::string(128, 'a'), 0);
+  probe->fail_free.store(true);
+  engine.Put(1, std::string(128, 'b'), 0);
+  EXPECT_THROW(engine.DrainBackgroundWork(), std::runtime_error);
+  std::string value;
+  EXPECT_THROW(engine.Get(1, value, 0), std::runtime_error);
+}
+
+TEST_F(StaticLayoutValueTest, ReadEpochShutdownDrainsPendingVersions) {
+  auto config = EpochConfig();
+  auto probe  = std::make_shared<ReclamationProbe>();
+  {
+    KVEngineComposite engine(
+        std::make_unique<DramUnorderedMapIndex>(config),
+        std::make_unique<ProbedDramStore>(config, probe),
+        2,
+        true);
+    engine.Put(1, std::string(128, 'a'), 0);
+    for (size_t i = 0; i < 20; ++i)
+      engine.Put(1, std::string(128, 'b'), 0);
+  }
+  EXPECT_EQ(probe->freed.load(), 20U);
 }
