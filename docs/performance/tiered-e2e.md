@@ -58,8 +58,6 @@ usable DRAM rows = floor(0.85 * DRAM tier bytes / 512)
 
 3 次重复，排除 warmup；`samples/s` 与 `step` 的重复 CV 均 <2%。
 
-下表不含冷热交换（`cache_policy=none`），只是基线参考；默认配置的读缓存效果见「读缓存」。
-
 | 行在 SSD | 访问走 SSD | samples/s | 相对 DRAM | step ms | commit ms | pull ms | init s |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 0.0% | 0.0% | **37.3K** | 100% | 27.6 | 20.6 | 3.3 | 3.1 |
@@ -73,10 +71,9 @@ usable DRAM rows = floor(0.85 * DRAM tier bytes / 512)
 
 ### 读缓存（#343 之后）
 
-`tiering.cache_policy` 的库默认值是 `none`，benchmark server 模板默认也是 `none`
-（`src/python/pytorch/recstore/benchmark/server.py`），`rs_demo` 默认 `clock`；要复现本页基线需显式
-`--tiered-cache-policy none`。下面用同机 loopback、
-同样 15% 行在 SSD（16.3% 访问走 SSD）的两轮交错复测给出 cache-on 结果。
+复现本页基线需显式 `--tiered-cache-policy none`（库与 benchmark server 模板默认 `none`，`rs_demo`
+默认 `clock`）。下面用同机 loopback、同样 15% 行在 SSD（16.3% 访问走 SSD）的两轮交错复测给出
+cache-on 结果。
 
 每轮 64 steps、排除 5 步 warmup、3 次重复；下表是每次重复的 `step` 均值和中位数指标
 （`results/e2e_cache_recheck_11062048/`、`results/e2e_cache_recheck_11071449/`）：
@@ -136,11 +133,9 @@ dense / backward / sparse 基本不变。
 小表整体挤到 SSD，访问占比从 21.9% 跳到 54.1%，step 从 74.8 ms 跳到 105.7 ms。能控制放置时，
 应优先保住小表和热点表，而不是简单按行数比例切。
 
-**本页数据是显式 cache-off，默认配置会做冷热交换。** #343 给 `HybridValueStore` 加了可选的 LRU 读缓存：
-`tiering.cache_policy=lru` 时先从 `cache_budget_ratio`（默认 0.05）预留 DRAM，SSD 行在读完成且
-连续 miss 达到 `promote_min_misses`（默认 2）后提升；`Write` 写穿、`Free` 失效，没有后台线程。
-它不改变首次 `Alloc` 的放置，也不做后台冷热迁移。库与 benchmark server 模板默认是 `none`，
-`rs_demo` 默认 `clock`；本页 lane 全部显式设回 `none`，上表的放置结论仍按“先到先得”读。
+**本页数据是显式 cache-off，放置结论按“先到先得”读。** 读缓存与主放置交换的机制见
+[分层安放与读缓存](../storage/composite_kvengine.md#tiered-placement-cache)；本页 lane 全部用
+`cache_policy=none`，所以上表反映的是首次 `Alloc` 的放置，不含冷热迁移。
 
 **写回路径比读路径更早成为瓶颈。** 49% 以后 commit 增量持续大于 pull 增量；SSD 行的更新走
 `SsdValueStore` 的 `Write`/`BatchWrite`，在 server 线程里同步完成。批量、异步写回，
