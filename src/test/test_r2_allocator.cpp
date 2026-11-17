@@ -1,3 +1,5 @@
+#include <jemalloc/jemalloc.h>
+
 #include <atomic>
 #include <cstdint>
 #include <thread>
@@ -7,8 +9,23 @@
 
 #include "base/base.h"
 #include "memory/allocators/r2/allocator_master.hh"
+#include "memory/allocators/r2_slab_allocator.h"
 
 namespace {
+
+TEST(R2AllocatorTest, AllocationSizeAndFreeUseConfiguredJemallocPrefix) {
+  // jemalloc is included first to exercise the public aliases' include order.
+  std::vector<char> backing(16ULL << 20);
+  r2::AllocatorMaster master;
+  master.init(backing.data(), backing.size());
+  auto* allocator = master.get_thread_allocator();
+  ASSERT_NE(allocator, nullptr);
+  void* allocation = allocator->alloc(128);
+  ASSERT_NE(allocation, nullptr);
+  EXPECT_TRUE(master.within_range(allocation));
+  EXPECT_GE(je_malloc_usable_size(allocation), 128U);
+  allocator->dealloc(allocation);
+}
 
 TEST(R2AllocatorTest, SmallConcurrentAllocationsFitInTightBackingMemory) {
   constexpr int kThreads   = 16;

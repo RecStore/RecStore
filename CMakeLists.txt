@@ -128,6 +128,8 @@ set_target_properties(jemalloc PROPERTIES
   IMPORTED_LOCATION             ${JEMALLOC_LIB_PATH}
   INTERFACE_INCLUDE_DIRECTORIES ${JEMALLOC_INSTALL_DIR}/include
 )
+# Keep the stable je_* aliases when another dependency includes jemalloc first.
+target_compile_definitions(jemalloc INTERFACE JEMALLOC_NO_DEMANGLE)
 add_dependencies(jemalloc jemalloc_ext)
 
 list(APPEND CMAKE_BUILD_RPATH "${JEMALLOC_INSTALL_DIR}/lib")
