@@ -3343,9 +3343,10 @@
     VS --&gt; SsdAlloc[SsdBlockAllocator]
     VS --&gt; IO[IOBackend]
     Index --&gt; IOIdx[IOBackend 仅 SSD 索引]</code></pre>
-<p><strong>写路径</strong>：<code>ValueStore::AllocAndWrite</code> → <code>Index::Put</code>（得到旧 handle）→ <code>ValueStore::Retire(old)</code>。</p>
+<p><strong>写路径</strong>：<code>ValueStore::AllocAndWrite</code> → <code>Index::Put</code>（得到旧 handle）→ 退休旧版本。默认沿用 <code>ValueStore::Retire</code>；启用顶层 <code>read_epochs=true</code> 后，复制读取持有 epoch，后台线程等待读者退出后释放旧槽位。<code>read_epoch_retire_limit_rows</code> 限制待回收行数，写入在获取发布锁前等待回收；<code>DrainBackgroundWork</code> 排空并传播后台异常。此模式不提供借用行指针、RDMA backing 或静态原地 SGD，调用方须使用复制读取和 COW 更新。HPS 默认启用该模式，也可通过 <code>HpsRecStoreBackendParams::read_epochs</code> 关闭。</p>
 <p><strong>读路径</strong>：<code>Index::Get</code> / <code>BatchGet</code> → <code>DirectPtr</code> 或 <code>Read</code> / <code>BatchRead</code>。</p>
-<p><code>BatchPut</code> 遇到同一批次内重复 key 时退回逐条 <code>Put</code>，避免覆盖顺序不确定。</p>
+<p><code>BatchPut</code> 合并同一批次内的重复 key，以最后一次赋值为准，仍通过批量分配与写入路径发布。<code>BatchGetFlat</code> 可通过调用者提供的 <code>found</code> 数组区分缺失 key 与全零值；HPS 在行宽、步长和对齐匹配时直接写入平坦输出，其余情况保留逐行复制路径。缺失回调在释放内部读锁后执行，允许回调重新进入后端。</p>
+<p>固定宽度、普通 SSD 布局可设置 <code>value.tiering.flat_read_mode="overlap"</code>：先提交 SSD 读取，再校验和复制 DRAM 行，最后等待完成。默认 <code>generic</code> 保持原路径，<code>serial</code> 用于相同输出路径的串行对照；CLOCK、读缓存、静态 SSD 布局和在线交换保留原有读取逻辑。页锁与读 epoch 覆盖完整操作，DRAM 复制异常会先排空已提交 I/O，再传播到调用者。此选项不改变 SSD 行格式。</p>
 <h2 id="_3">配置骨架<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"engine_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"KVEngineComposite"</span><span class="p">,</span>
