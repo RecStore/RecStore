@@ -3143,7 +3143,6 @@
 65,536 次访问。把一张小表挤到 SSD 的吞吐代价与把一张 200K 大表挤下去接近。</p>
 <h2 id="cache-off">结果（cache-off 基线）<a class="headerlink" href="#cache-off" title="Permanent link">&para;</a></h2>
 <p>3 次重复，排除 warmup；<code>samples/s</code> 与 <code>step</code> 的重复 CV 均 &lt;2%。</p>
-<p>下表不含冷热交换（<code>cache_policy=none</code>），只是基线参考；默认配置的读缓存效果见「读缓存」。</p>
 <table>
 <thead>
 <tr>
@@ -3241,10 +3240,9 @@
 </tbody>
 </table>
 <h3 id="343">读缓存（#343 之后）<a class="headerlink" href="#343" title="Permanent link">&para;</a></h3>
-<p><code>tiering.cache_policy</code> 的库默认值是 <code>none</code>，benchmark server 模板默认也是 <code>none</code>
-（<code>src/python/pytorch/recstore/benchmark/server.py</code>），<code>rs_demo</code> 默认 <code>clock</code>；要复现本页基线需显式
-<code>--tiered-cache-policy none</code>。下面用同机 loopback、
-同样 15% 行在 SSD（16.3% 访问走 SSD）的两轮交错复测给出 cache-on 结果。</p>
+<p>复现本页基线需显式 <code>--tiered-cache-policy none</code>（库与 benchmark server 模板默认 <code>none</code>，<code>rs_demo</code>
+默认 <code>clock</code>）。下面用同机 loopback、同样 15% 行在 SSD（16.3% 访问走 SSD）的两轮交错复测给出
+cache-on 结果。</p>
 <p>每轮 64 steps、排除 5 步 warmup、3 次重复；下表是每次重复的 <code>step</code> 均值和中位数指标
 （<code>results/e2e_cache_recheck_11062048/</code>、<code>results/e2e_cache_recheck_11071449/</code>）：</p>
 <table>
@@ -3472,11 +3470,9 @@ dense / backward / sparse 基本不变。</p>
 刚好覆盖所有小表和三张 200K 大表。multiplier 0.30 的边界落在第 4 张 200K 大表中间，把它后面的一批
 小表整体挤到 SSD，访问占比从 21.9% 跳到 54.1%，step 从 74.8 ms 跳到 105.7 ms。能控制放置时，
 应优先保住小表和热点表，而不是简单按行数比例切。</p>
-<p><strong>本页数据是显式 cache-off，默认配置会做冷热交换。</strong> #343 给 <code>HybridValueStore</code> 加了可选的 LRU 读缓存：
-<code>tiering.cache_policy=lru</code> 时先从 <code>cache_budget_ratio</code>（默认 0.05）预留 DRAM，SSD 行在读完成且
-连续 miss 达到 <code>promote_min_misses</code>（默认 2）后提升；<code>Write</code> 写穿、<code>Free</code> 失效，没有后台线程。
-它不改变首次 <code>Alloc</code> 的放置，也不做后台冷热迁移。库与 benchmark server 模板默认是 <code>none</code>，
-<code>rs_demo</code> 默认 <code>clock</code>；本页 lane 全部显式设回 <code>none</code>，上表的放置结论仍按“先到先得”读。</p>
+<p><strong>本页数据是显式 cache-off，放置结论按“先到先得”读。</strong> 读缓存与主放置交换的机制见
+<a href="../../storage/composite_kvengine/#tiered-placement-cache">分层安放与读缓存</a>；本页 lane 全部用
+<code>cache_policy=none</code>，所以上表反映的是首次 <code>Alloc</code> 的放置，不含冷热迁移。</p>
 <p><strong>写回路径比读路径更早成为瓶颈。</strong> 49% 以后 commit 增量持续大于 pull 增量；SSD 行的更新走
 <code>SsdValueStore</code> 的 <code>Write</code>/<code>BatchWrite</code>，在 server 线程里同步完成。批量、异步写回，
 或把更新先写 DRAM 再后台刷盘，是值得试的方向。</p>
