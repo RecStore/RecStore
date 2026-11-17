@@ -2132,6 +2132,70 @@ TEST_F(StaticLayoutValueTest,
             TieredField(info, "tiered_dram_limit_bytes"));
 }
 
+TEST_F(StaticLayoutValueTest, ClockBatchWriteCoalescesSharedPages) {
+  // MaxEmbed keeps one Bandana copy per key (pages 0 and 1) plus a replica on
+  // page 2, so a six-row update touches three pages. Writing the rows one at
+  // a time rewrites each page once per row; the batch must rewrite each page
+  // once.
+  auto make_config = [&](const std::string& name) {
+    auto value                                = ClockConfig(root_, name, 0, 4);
+    value.json_config_["value"]["ssd_layout"] = {
+        {"strategy", "maxembed"}, {"mapping_path", Save(MaxEmbed()).string()}};
+    return value;
+  };
+  const std::vector<uint64_t> keys{0, 1, 2, 3, 4, 5};
+  std::vector<std::string> loaded;
+  for (uint64_t key : keys)
+    loaded.emplace_back(4, static_cast<char>('a' + key));
+  std::vector<ValueStore::WriteSpec> load_specs;
+  for (const auto& value : loaded)
+    load_specs.push_back({value.data(), value.size()});
+
+  // Two stores need their own value and SSD files; sharing a path makes the
+  // second open rebuild the first store's pages.
+  HybridValueStore batched(make_config("clock-batch-pages"));
+  const auto handles = batched.BatchAllocAndWrite(keys, load_specs);
+  ASSERT_EQ(handles.size(), keys.size());
+  const double loaded_writes =
+      TieredField(batched.ExtraResultFields(), "layout_page_writes");
+
+  std::vector<std::string> updated;
+  std::vector<ValueStore::WriteSpec> update_specs;
+  updated.reserve(keys.size());
+  for (size_t i = 0; i < keys.size(); ++i)
+    updated.emplace_back(4, static_cast<char>('A' + i));
+  // Four-byte values live inside the std::string object, so collect them all
+  // before taking pointers into them.
+  for (const auto& value : updated)
+    update_specs.push_back({value.data(), value.size()});
+  batched.BatchWrite(handles, update_specs);
+  const double batched_writes =
+      TieredField(batched.ExtraResultFields(), "layout_page_writes") -
+      loaded_writes;
+
+  HybridValueStore single(make_config("clock-batch-pages-single"));
+  const auto single_handles = single.BatchAllocAndWrite(keys, load_specs);
+  ASSERT_EQ(single_handles, handles);
+  const double single_loaded =
+      TieredField(single.ExtraResultFields(), "layout_page_writes");
+  for (size_t i = 0; i < keys.size(); ++i)
+    single.Write(single_handles[i], update_specs[i].data, update_specs[i].size);
+  const double single_writes =
+      TieredField(single.ExtraResultFields(), "layout_page_writes") -
+      single_loaded;
+
+  EXPECT_EQ(single_writes, 2.0 * keys.size());
+  EXPECT_EQ(batched_writes, 3.0);
+
+  std::string out;
+  for (size_t i = 0; i < keys.size(); ++i) {
+    batched.ReadValue(handles[i], out);
+    EXPECT_EQ(out, updated[i]);
+  }
+  EXPECT_EQ(TieredField(batched.ExtraResultFields(), "layout_page_writes"),
+            loaded_writes + batched_writes);
+}
+
 TEST_F(StaticLayoutValueTest, ClockFailedDemotionLeavesBothValuesIntact) {
   HybridValueStore store(ClockConfig(root_, "clock-failure", 1));
   const std::string cold(kCachedValueSize, 'c'), hot(kCachedValueSize, 'h');

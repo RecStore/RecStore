@@ -150,6 +150,105 @@ public:
     WriteLocked(*entry, data, size);
   }
 
+  // A sparse update reaches the store as one batch, and every cold row in it
+  // used to be written on its own. Static layouts pack several rows into one
+  // 4 KiB page, so per-row writes pay one page read and one page write per
+  // row instead of one per page. Group the cold rows and let the backing
+  // store coalesce them, as `FlushExchanges` already does for demotions.
+  void BatchWrite(const std::vector<uint64_t>& handles,
+                  const std::vector<WriteSpec>& specs) override {
+    if (handles.size() != specs.size())
+      throw std::invalid_argument("CLOCK batch size mismatch");
+    struct Row {
+      Entry* entry;
+      uint64_t handle;
+      const void* data;
+      size_t size;
+    };
+    std::vector<Row> rows;
+    rows.reserve(handles.size());
+    std::unordered_map<uint32_t, size_t> slots;
+    for (size_t i = 0; i < handles.size(); ++i) {
+      if (handles[i] == kValueHandleNone)
+        continue;
+      Entry* entry = Locate(handles[i]);
+      if (!entry)
+        continue;
+      // Duplicate keys are legal; the last write wins, exactly as it does
+      // when the rows are written one at a time.
+      const auto slot  = static_cast<uint32_t>(handles[i]);
+      const auto found = slots.emplace(slot, rows.size());
+      if (found.second)
+        rows.push_back({entry, handles[i], specs[i].data, specs[i].size});
+      else
+        rows[found.first->second] = {
+            entry, handles[i], specs[i].data, specs[i].size};
+    }
+    if (rows.empty())
+      return;
+    // Batch writers lock in slot order, so overlapping batches cannot
+    // interleave their acquisitions into a cycle. Only the first lock waits:
+    // a promotion holds two resident locks in an order this sort does not
+    // control, and falling back to `Write` is cheaper than risking a stall.
+    std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
+      return static_cast<uint32_t>(a.handle) < static_cast<uint32_t>(b.handle);
+    });
+    std::vector<std::unique_lock<ValueMutex>> locks;
+    locks.reserve(rows.size());
+    for (size_t i = 0; i < rows.size(); ++i) {
+      std::unique_lock<ValueMutex> lock(rows[i].entry->mutex, std::try_to_lock);
+      // Wait for the first slot so a batch always makes progress; the rest
+      // give up rather than block, because a promotion holds two resident
+      // locks in an order this sort does not control.
+      if (!lock.owns_lock() && i == 0)
+        lock.lock();
+      if (!lock.owns_lock()) {
+        locks.clear();
+        for (size_t j = 0; j < handles.size(); ++j)
+          if (handles[j] != kValueHandleNone)
+            Write(handles[j], specs[j].data, specs[j].size);
+        return;
+      }
+      locks.push_back(std::move(lock));
+    }
+    std::vector<Row*> cold_rows;
+    std::vector<uint64_t> cold_handles;
+    std::vector<WriteSpec> cold_specs;
+    cold_rows.reserve(rows.size());
+    cold_handles.reserve(rows.size());
+    cold_specs.reserve(rows.size());
+    for (auto& row : rows) {
+      if (!Matches(*row.entry, row.handle))
+        continue;
+      // Validate every row before the first byte is written, so a bad size
+      // leaves the whole batch unwritten instead of half applied.
+      ValidateSize(row.entry->key, row.size);
+      if (row.entry->ssd && row.size <= row.entry->capacity) {
+        cold_handles.push_back(row.entry->raw);
+        cold_specs.push_back({row.data, row.size});
+        cold_rows.push_back(&row);
+        continue;
+      }
+      // Residents and rows that outgrew their slot keep the single-row path;
+      // it also republishes the bytes to lock-free readers.
+      WriteLocked(*row.entry, row.data, row.size);
+    }
+    if (cold_handles.empty())
+      return;
+    ssd_->BatchWrite(cold_handles, cold_specs);
+    // Publish the new lengths only after the batch reached the SSD: a reader
+    // that takes the lock next must not pair them with the old bytes.
+    for (Row* row : cold_rows) {
+      Entry& entry           = *row->entry;
+      entry.dirty            = !entry.ssd;
+      entry.size             = row->size;
+      entry.fast->referenced = entry.initialized;
+      entry.initialized      = true;
+      entry.misses.store(0, std::memory_order_relaxed);
+      ++entry.version;
+    }
+  }
+
   size_t Read(uint64_t handle, void* out, size_t capacity) override {
     Fast* fast = LocateFast(handle);
     if (!fast || !out)
