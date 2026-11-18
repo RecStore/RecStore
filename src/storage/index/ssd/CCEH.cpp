@@ -813,7 +813,12 @@ Value_t CCEH::Put(Key_t key, Value_t value, unsigned tid) {
   }
 }
 
-bool CCEH::Delete(Key_t& key) { return false; }
+bool CCEH::Delete(Key_t& key) {
+  // Silent false makes callers believe the row was removed. The SSD index has
+  // no page-free path yet, so refuse loudly until a real Delete exists.
+  LOG(FATAL) << "CCEH::Delete is not implemented";
+  return false;
+}
 
 void CCEH::Get(coroutine<void>::push_type& sink,
                int index,
