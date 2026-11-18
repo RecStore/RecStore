@@ -629,11 +629,12 @@ bool PetPSClient::RequestPayloadFitsSlot(std::size_t payload_bytes) const {
          config_.request_slot_bytes;
 }
 
-float* PetPSClient::AllocateStatusReceiveBufferLocked() {
-  receive_buffers_.emplace_back(sizeof(std::int32_t), 0);
-  receive_buffer_index_.emplace(
-      receive_buffers_.back().data(), receive_buffers_.size() - 1);
-  return reinterpret_cast<float*>(receive_buffers_.back().data());
+float* PetPSClient::AllocateStatusReceiveBufferLocked(SlotContext* slot) {
+  // The status word belongs to one slot, and a slot hosts at most one in-flight
+  // RPC, so it needs no heap allocation. Allocating per RPC leaked one buffer
+  // (plus an index entry) on every PUT/UPDATE/INIT for the process lifetime.
+  std::memset(slot->status_buffer, 0, sizeof(slot->status_buffer));
+  return reinterpret_cast<float*>(slot->status_buffer);
 }
 
 void PetPSClient::MaybeReportProfile() {
@@ -1196,14 +1197,14 @@ int PetPSClient::PutParameter(const base::ConstArray<uint64_t>& keys,
         slot.busy = false;
         throw std::runtime_error("PUT request exceeds RC request slot");
       }
-      recv   = AllocateStatusReceiveBufferLocked();
+      recv   = AllocateStatusReceiveBufferLocked(&slot);
       rpc_id = SubmitRpcLocked(
           &slot, descriptor, payload.data(), payload_bytes, recv, 0, 0);
     }
     WaitRPCFinish(rpc_id);
-    const auto* status = reinterpret_cast<const std::int32_t*>(recv);
+    const auto status = *reinterpret_cast<const std::int32_t*>(recv);
     RevokeRPCResource(rpc_id);
-    if (*status != static_cast<std::int32_t>(RpcStatus::kOk)) {
+    if (status != static_cast<std::int32_t>(RpcStatus::kOk)) {
       return -1;
     }
     begin = end;
@@ -1237,7 +1238,7 @@ int PetPSClient::InitEmbeddingTable(
       slot.busy = false;
       throw std::runtime_error("INIT request exceeds RC request slot");
     }
-    recv   = AllocateStatusReceiveBufferLocked();
+    recv   = AllocateStatusReceiveBufferLocked(&slot);
     rpc_id = SubmitRpcLocked(
         &slot,
         descriptor,
@@ -1324,15 +1325,15 @@ int PetPSClient::UpdateParameter(
         slot.busy = false;
         throw std::runtime_error("UPDATE request exceeds RC request slot");
       }
-      recv   = AllocateStatusReceiveBufferLocked();
+      recv   = AllocateStatusReceiveBufferLocked(&slot);
       rpc_id = SubmitRpcLocked(
           &slot, descriptor, payload.data(), payload_bytes, recv, 0, 0);
     }
 
     WaitRPCFinish(rpc_id);
-    const auto* status = reinterpret_cast<const std::int32_t*>(recv);
+    const auto status = *reinterpret_cast<const std::int32_t*>(recv);
     RevokeRPCResource(rpc_id);
-    if (*status != static_cast<std::int32_t>(RpcStatus::kOk)) {
+    if (status != static_cast<std::int32_t>(RpcStatus::kOk)) {
       return -1;
     }
     begin = end;
@@ -1385,7 +1386,7 @@ int PetPSClient::SubmitUpdateParameterFlat(
       table_name,
       slot.view);
   descriptor.learning_rate = learning_rate;
-  float* recv              = AllocateStatusReceiveBufferLocked();
+  float* recv              = AllocateStatusReceiveBufferLocked(&slot);
   return SubmitRpcLocked(&slot, descriptor, payload, payload_bytes, recv, 0, 0);
 }
 
@@ -1446,7 +1447,7 @@ int PetPSClient::SubmitUpdateParameterFlatGather(
       table_name,
       slot.view);
   descriptor.learning_rate = learning_rate;
-  float* recv              = AllocateStatusReceiveBufferLocked();
+  float* recv              = AllocateStatusReceiveBufferLocked(&slot);
   return SubmitRpcLocked(
       &slot, descriptor, slot.view.payload, payload_bytes, recv, 0, 0);
 }
