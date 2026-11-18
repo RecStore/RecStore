@@ -87,6 +87,13 @@ public:
     if (dst == nullptr) {
       return;
     }
+    const size_t capacity = SlotCapacity(handle);
+    if (size > capacity) {
+      // Slab/buddy allocators reject an oversized payload at allocation time;
+      // a raw memcpy here would run past this slot into a neighbouring value.
+      throw std::invalid_argument(
+          "DramValueStore::Write exceeds slot capacity");
+    }
     std::memcpy(dst, data, size);
   }
 
@@ -167,6 +174,9 @@ public:
       if (src == nullptr) {
         return false;
       }
+      if (SlotCapacity(handles[row]) < row_bytes) {
+        return false;
+      }
       std::memcpy(row_dst, src, row_bytes);
     }
     if (missing_rows != nullptr) {
@@ -209,6 +219,9 @@ public:
       }
       const char* src = Ptr(handles[row]);
       if (src == nullptr) {
+        return false;
+      }
+      if (SlotCapacity(handles[row]) < source_offset_bytes + output_row_bytes) {
         return false;
       }
       std::memcpy(row_dst, src + source_offset_bytes, output_row_bytes);
@@ -272,6 +285,9 @@ private:
       if (src == nullptr) {
         return false;
       }
+      if (SlotCapacity(handles[row]) < row_bytes) {
+        return false;
+      }
       std::memcpy(row_dst, src, row_bytes);
     }
     if (missing_rows != nullptr) {
@@ -298,6 +314,9 @@ private:
       }
       const char* src = Ptr(handles[row]);
       if (src == nullptr) {
+        return false;
+      }
+      if (SlotCapacity(handles[row]) < source_offset_bytes + output_row_bytes) {
         return false;
       }
       std::memcpy(row_dst, src + source_offset_bytes, output_row_bytes);
