@@ -7,6 +7,7 @@
 
 #include "base/tensor.h"
 #include "ps/rdma/raw_verbs_transport.h"
+#include "ps/rdma/rdma_common.h"
 #include "ps/rdma/rdma_protocol.h"
 
 namespace {
@@ -14,6 +15,14 @@ namespace {
 TEST(RdmaRcProtocolTest, ComputesGetKeysPerRpcFor512BValue) {
   EXPECT_EQ(petps::GetKeysPerRpcByResponseBudget(512, 4096, 200),
             static_cast<std::size_t>(1600));
+}
+
+TEST(RdmaRcProtocolTest, GetPayloadLengthMustMatchKeyCount) {
+  EXPECT_TRUE(petps::GetPayloadMatchesKeyCount(3, 3 * sizeof(std::uint64_t)));
+  EXPECT_FALSE(petps::GetPayloadMatchesKeyCount(0, 0));
+  EXPECT_FALSE(petps::GetPayloadMatchesKeyCount(3, 2 * sizeof(std::uint64_t)));
+  EXPECT_FALSE(
+      petps::GetPayloadMatchesKeyCount(3, 3 * sizeof(std::uint64_t) + 1));
 }
 
 TEST(RdmaRcProtocolTest, DescriptorAndStatusAreCachelineAligned) {

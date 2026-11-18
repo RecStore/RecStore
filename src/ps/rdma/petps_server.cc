@@ -949,10 +949,8 @@ private:
     }
     // The key array is read straight out of the payload; a descriptor whose
     // payload does not hold exactly key_count keys would read past it.
-    if (descriptor.key_count == 0 ||
-        descriptor.payload_bytes !=
-            static_cast<std::size_t>(descriptor.key_count) *
-                sizeof(std::uint64_t)) {
+    if (!petps::GetPayloadMatchesKeyCount(
+            descriptor.key_count, descriptor.payload_bytes)) {
       response->status->status =
           static_cast<std::int32_t>(petps::RpcStatus::kInvalidPayload);
       response->status->response_bytes = 0;
