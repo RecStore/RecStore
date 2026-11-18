@@ -8,9 +8,7 @@
 #include <cstring>
 #include <iostream>
 #include <thread>
-
-size_t lockCount  = 0;
-size_t splitCount = 0;
+#include <unordered_set>
 
 namespace {
 
@@ -322,7 +320,25 @@ ExtendibleHash::ExtendibleHash(const BaseKVConfig& config)
   }
 }
 
-ExtendibleHash::~ExtendibleHash() {}
+ExtendibleHash::~ExtendibleHash() {
+  std::unordered_set<Block*> unique;
+  for (size_t i = 0; i < dir.capacity; ++i) {
+    if (dir._[i] != nullptr)
+      unique.insert(dir._[i]);
+  }
+  for (Block* block : unique)
+    delete block;
+  // ~Directory() releases dir._.
+}
+
+size_t ExtendibleHash::UniqueBlocks() const {
+  std::unordered_set<Block*> unique;
+  for (size_t i = 0; i < dir.capacity; ++i) {
+    if (dir._[i] != nullptr)
+      unique.insert(dir._[i]);
+  }
+  return unique.size();
+}
 
 void Directory::LSBUpdate(
     int local_depth, int global_depth, int dir_cap, int x, Block** s) {
@@ -359,21 +375,49 @@ Value_t ExtendibleHash::Insert(Key_t& key, Value_t value) {
   auto key_hash     = h(&key, sizeof(key));
   Value_t old_value = kValueHandleNone;
 
-RETRY:
-#ifdef LSB
-  // auto x = (key_hash & (pow(2, global_depth)-1));
-  auto x = (key_hash % dir.capacity);
-#else
-  auto x = (key_hash >> (8 * sizeof(key_hash) - global_depth));
-#endif
-  auto target = dir._[x];
-  auto ret    = target->Insert(key, value, key_hash, &old_value);
+  for (;;) {
+    // Fast path: a shared shard lock keeps readers and inserters running
+    // concurrently but excludes every structural writer.
+    size_t x = DirectoryIndex(key_hash);
+    {
+      std::shared_lock<std::shared_mutex> lock(ShardFor(key_hash));
+      // The directory may have grown before the lock was taken; recompute the
+      // index now that structural changes are excluded.
+      x              = DirectoryIndex(key_hash);
+      Block* target  = dir._[x];
+      const auto ret = target->Insert(key, value, key_hash, &old_value);
+      if (ret > -1) {
+        clflush((char*)&dir._[x]->_[ret], sizeof(Pair));
+        return old_value;
+      }
+      if (ret == -2) {
+        // Stale pointer or a split that completed just before we locked.
+        continue;
+      }
+    }
 
-  if (ret == -1) {
+    // Slow path: the block is full. Take every shard exclusively so the old
+    // block and the old directory array can be freed the moment they are
+    // unlinked: no reader can still hold them.
+    std::array<std::unique_lock<std::shared_mutex>, kShardCount> shards;
+    for (size_t i = 0; i < kShardCount; ++i)
+      shards[i] = std::unique_lock<std::shared_mutex>(shards_[i].mu);
+
     const auto split_start =
         g_hash_counters_enabled
             ? std::chrono::steady_clock::now()
             : std::chrono::steady_clock::time_point{};
+    x             = DirectoryIndex(key_hash);
+    Block* target = dir._[x];
+    auto ret      = target->Insert(key, value, key_hash, &old_value);
+    if (ret > -1) {
+      clflush((char*)&dir._[x]->_[ret], sizeof(Pair));
+      return old_value;
+    }
+    if (ret == -2) {
+      continue;
+    }
+
     Block** s = target->Split();
     if (g_hash_counters_enabled) {
       g_split_calls.fetch_add(1, std::memory_order_relaxed);
@@ -387,7 +431,7 @@ RETRY:
     if (s == nullptr) {
       // Another thread owns the split; give it the CPU it needs to finish.
       std::this_thread::yield();
-      goto RETRY;
+      continue;
     }
 
 #ifdef LSB
@@ -402,11 +446,8 @@ RETRY:
 
     // Directory management
     while (!dir.Acquire()) {
-      // lockCount ++;
     }
-    // dir.sema++;
     { // CRITICAL SECTION - directory update
-      // auto prev = x;
 #ifdef LSB
       x = (key_hash % dir.capacity);
 #else
@@ -483,40 +524,33 @@ RETRY:
         clflush((char*)&dir.capacity, sizeof(size_t));
         global_depth += 1;
         clflush((char*)&global_depth, sizeof(global_depth));
+        // Safe: every reader is excluded by the exclusive shard locks.
         delete[] d;
-        // TODO: requiered to do this atomically
-        // cout << x << " directory doubling " << target << " " << dir._[x]<<
-        // endl;
       }
 #ifdef INPLACE
       s[0]->sema = 0;
 #endif
     } // End of critical section
-    // dir.sema--;
     while (!dir.Release()) {
-      // lockCount ++;
     }
-    goto RETRY;
-  } else if (ret == -2) {
-    // Block is splitting, already retired, or directory pointers are stale;
-    // retry without recursion and let the splitter make progress.
-    std::this_thread::yield();
-    goto RETRY;
-  } else {
-    clflush((char*)&dir._[x]->_[ret], sizeof(Pair));
+
+    // s only held the two new pointers; readers never observe it.
+    delete[] s;
+#ifndef INPLACE
+    // Non-in-place splits replace the old block in every directory slot that
+    // used to point at it; no reader can still reference it under the
+    // exclusive shard locks.
+    delete target;
+#endif
+    // Loop: the key still has to land in one of the new blocks.
   }
-  return old_value;
 }
 
 // This function does not allow resizing
 bool ExtendibleHash::InsertOnly(Key_t& key, Value_t value) {
   auto key_hash = h(&key, sizeof(key));
-#ifdef LSB
-  auto x = (key_hash % dir.capacity);
-#else
-  auto x = (key_hash >> (8 * sizeof(key_hash) - global_depth));
-#endif
-
+  std::shared_lock<std::shared_mutex> lock(ShardFor(key_hash));
+  auto x   = DirectoryIndex(key_hash);
   auto ret = dir._[x]->Insert(key, value, key_hash);
   if (ret > -1) {
     clflush((char*)&dir._[x]->_[ret], sizeof(Pair));
@@ -528,12 +562,8 @@ bool ExtendibleHash::InsertOnly(Key_t& key, Value_t value) {
 
 bool ExtendibleHash::Delete(Key_t& key) {
   auto key_hash = h(&key, sizeof(key));
-#ifdef LSB
-  auto x = (key_hash % dir.capacity);
-#else
-  auto x = (key_hash >> (8 * sizeof(key_hash) - global_depth));
-#endif
-
+  std::shared_lock<std::shared_mutex> lock(ShardFor(key_hash));
+  auto x        = DirectoryIndex(key_hash);
   Block* target = dir._[x];
   bool success  = target->Delete(key);
 
@@ -554,6 +584,11 @@ size_t ExtendibleHash::DirectoryIndex(size_t key_hash) const {
 }
 
 Value_t ExtendibleHash::ExtractWithHash(Key_t& key, size_t key_hash) {
+  std::shared_lock<std::shared_mutex> lock(ShardFor(key_hash));
+  return ExtractWithHashUnlocked(key, key_hash);
+}
+
+Value_t ExtendibleHash::ExtractWithHashUnlocked(Key_t& key, size_t key_hash) {
   auto x = DirectoryIndex(key_hash);
 
   auto dir_ = dir._[x];
@@ -575,7 +610,6 @@ Value_t ExtendibleHash::ExtractWithHash(Key_t& key, size_t key_hash) {
 #endif
       return dir_->_[i].value;
     }
-    lockCount++;
   }
 
 #ifdef INPLACE
@@ -595,6 +629,9 @@ Value_t ExtendibleHash::Extract(Key_t& key) {
 // Debugging function
 Value_t ExtendibleHash::FindAnyway(Key_t& key) {
   using namespace std;
+  std::array<std::shared_lock<std::shared_mutex>, kShardCount> guards;
+  for (size_t i = 0; i < kShardCount; ++i)
+    guards[i] = std::shared_lock<std::shared_mutex>(shards_[i].mu);
   for (size_t i = 0; i < dir.capacity; ++i) {
     for (size_t j = 0; j < Block::kNumSlot; ++j) {
       if (dir._[i]->_[j].key == key) {
@@ -609,6 +646,9 @@ Value_t ExtendibleHash::FindAnyway(Key_t& key) {
 
 // Not accurate
 double ExtendibleHash::Utilization(void) {
+  std::array<std::shared_lock<std::shared_mutex>, kShardCount> guards;
+  for (size_t i = 0; i < kShardCount; ++i)
+    guards[i] = std::shared_lock<std::shared_mutex>(shards_[i].mu);
   size_t sum = 0;
   std::unordered_map<Block*, bool> set;
   for (size_t i = 0; i < dir.capacity; ++i) {
@@ -649,29 +689,21 @@ Value_t ExtendibleHash::Put(Key_t key, Value_t pointer, unsigned tid) {
   return Insert(key, static_cast<Value_t>(pointer));
 }
 
-void ExtendibleHash::HintPrefetch(size_t key_hash) const {
-  const auto x = DirectoryIndex(key_hash);
-  __builtin_prefetch(dir._ + x, 0, 1);
-  Block* block = dir._[x];
-  if (block != nullptr) {
-    __builtin_prefetch(block, 0, 1);
-  }
-}
-
 void ExtendibleHash::BatchGet(
     base::ConstArray<Key_t> keys, Value_t* pointers, unsigned tid) {
   if (pointers == nullptr || keys.Size() == 0) {
     LOG(FATAL) << "Invalid pointers array or empty keys";
   }
-  constexpr size_t kPrefetchDistance = 4;
+  // One shared acquisition for the whole batch: 500 keys would otherwise pay
+  // 500 lock/unlock pairs. Writers (splits, directory growth) are rare and
+  // wait for the batch to finish.
+  std::array<std::shared_lock<std::shared_mutex>, kShardCount> guards;
+  for (size_t i = 0; i < kShardCount; ++i)
+    guards[i] = std::shared_lock<std::shared_mutex>(shards_[i].mu);
   for (size_t i = 0; i < keys.Size(); ++i) {
     Key_t key     = keys[static_cast<int>(i)];
     auto key_hash = h(&key, sizeof(key));
-    if (i + kPrefetchDistance < static_cast<size_t>(keys.Size())) {
-      Key_t prefetch_key = keys[static_cast<int>(i + kPrefetchDistance)];
-      HintPrefetch(h(&prefetch_key, sizeof(prefetch_key)));
-    }
-    pointers[i] = ExtractWithHash(key, key_hash);
+    pointers[i]   = ExtractWithHashUnlocked(key, key_hash);
   }
 }
 
