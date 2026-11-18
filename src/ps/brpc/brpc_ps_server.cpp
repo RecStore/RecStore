@@ -231,162 +231,172 @@ void BRPCParameterServiceImpl::GetParameter(
   }
   bool isPerf = request->has_perf() && request->perf();
 
-  if (isPerf) {
-    xmh::PerfCounter::Record("PS Get Keys", keys_array.Size());
-  }
-
-  xmh::Timer timer_ps_get_req("PS GetParameter Req");
-  ParameterCompressor compressor;
-
-  RECSTORE_LOG_EVERY_MS(INFO, 1000)
-      << "[bRPC PS] Getting " << keys_array.Size() << " keys";
-
-  int total_dim = 0;
-
-#ifdef ENABLE_PERF_REPORT
-  auto cache_loop_start = std::chrono::high_resolution_clock::now();
-#endif
-  std::vector<ParameterPack> packs;
-  packs.reserve(keys_array.Size());
-  cache_ps_->GetParameterRun2Completion(keys_array, packs, 0);
-
-  {
-    int est_bytes = 0;
-    for (const auto& pack : packs) {
-      est_bytes += ParameterCompressItem::GetSize(pack.dim);
+  // Keep an engine exception inside this RPC: an uncaught throw would take
+  // down the whole server process, unlike the RDMA/local_shm transports.
+  try {
+    if (isPerf) {
+      xmh::PerfCounter::Record("PS Get Keys", keys_array.Size());
     }
-    compressor.Reserve(static_cast<int>(packs.size()), est_bytes);
-  }
 
-  for (auto& pack : packs) {
-    compressor.AddItem(pack, nullptr);
-    total_dim += pack.dim;
-  }
+    xmh::Timer timer_ps_get_req("PS GetParameter Req");
+    ParameterCompressor compressor;
+
+    RECSTORE_LOG_EVERY_MS(INFO, 1000)
+        << "[bRPC PS] Getting " << keys_array.Size() << " keys";
+
+    int total_dim = 0;
+
 #ifdef ENABLE_PERF_REPORT
-  auto cache_loop_end = std::chrono::high_resolution_clock::now();
-  auto cache_loop_duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          cache_loop_end - cache_loop_start)
-          .count();
-  double cache_loop_start_us =
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          cache_loop_start.time_since_epoch())
-          .count();
+    auto cache_loop_start = std::chrono::high_resolution_clock::now();
+#endif
+    std::vector<ParameterPack> packs;
+    packs.reserve(keys_array.Size());
+    cache_ps_->GetParameterRun2Completion(keys_array, packs, 0);
 
-  std::string report_id_cache =
-      "brpc_server::GetParameter|" +
-      std::to_string(static_cast<uint64_t>(cache_loop_start_us));
-  report("embread_stages",
-         report_id_cache.c_str(),
-         "cache_lookup_us",
-         static_cast<double>(cache_loop_duration));
+    {
+      int est_bytes = 0;
+      for (const auto& pack : packs) {
+        est_bytes += ParameterCompressItem::GetSize(pack.dim);
+      }
+      compressor.Reserve(static_cast<int>(packs.size()), est_bytes);
+    }
 
-  FlameGraphData cache_loop_fg = {
-      "brpc_server::CacheGet_Loop",
-      cache_loop_start_us,
-      4, // level
-      static_cast<double>(cache_loop_duration),
-      static_cast<double>(cache_loop_duration)};
-  if (trace_id != 0) {
-    std::string cache_unique_id =
-        "embread_debug|" +
+    for (auto& pack : packs) {
+      compressor.AddItem(pack, nullptr);
+      total_dim += pack.dim;
+    }
+#ifdef ENABLE_PERF_REPORT
+    auto cache_loop_end = std::chrono::high_resolution_clock::now();
+    auto cache_loop_duration =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            cache_loop_end - cache_loop_start)
+            .count();
+    double cache_loop_start_us =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            cache_loop_start.time_since_epoch())
+            .count();
+
+    std::string report_id_cache =
+        "brpc_server::GetParameter|" +
         std::to_string(static_cast<uint64_t>(cache_loop_start_us));
-    report_flame_graph(
-        "emb_read_flame_map", cache_unique_id.c_str(), cache_loop_fg);
-  }
+    report("embread_stages",
+           report_id_cache.c_str(),
+           "cache_lookup_us",
+           static_cast<double>(cache_loop_duration));
 
-  auto toblock_start = std::chrono::high_resolution_clock::now();
+    FlameGraphData cache_loop_fg = {
+        "brpc_server::CacheGet_Loop",
+        cache_loop_start_us,
+        4, // level
+        static_cast<double>(cache_loop_duration),
+        static_cast<double>(cache_loop_duration)};
+    if (trace_id != 0) {
+      std::string cache_unique_id =
+          "embread_debug|" +
+          std::to_string(static_cast<uint64_t>(cache_loop_start_us));
+      report_flame_graph(
+          "emb_read_flame_map", cache_unique_id.c_str(), cache_loop_fg);
+    }
+
+    auto toblock_start = std::chrono::high_resolution_clock::now();
 #endif
 
-  compressor.AppendToIOBuf(&cntl->response_attachment());
+    compressor.AppendToIOBuf(&cntl->response_attachment());
 
 #ifdef ENABLE_PERF_REPORT
-  auto toblock_end = std::chrono::high_resolution_clock::now();
-  auto toblock_duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          toblock_end - toblock_start)
-          .count();
-  double toblock_start_us =
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          toblock_start.time_since_epoch())
-          .count();
-  FlameGraphData toblock_fg = {
-      "brpc_server::Compressor_ToBlock",
-      toblock_start_us,
-      4, // level
-      static_cast<double>(toblock_duration),
-      static_cast<double>(toblock_duration)};
-  if (trace_id != 0) {
-    std::string toblock_unique_id =
-        "embread_debug|" +
-        std::to_string(static_cast<uint64_t>(toblock_start_us));
-    report_flame_graph(
-        "emb_read_flame_map", toblock_unique_id.c_str(), toblock_fg);
-  }
+    auto toblock_end = std::chrono::high_resolution_clock::now();
+    auto toblock_duration =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            toblock_end - toblock_start)
+            .count();
+    double toblock_start_us =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            toblock_start.time_since_epoch())
+            .count();
+    FlameGraphData toblock_fg = {
+        "brpc_server::Compressor_ToBlock",
+        toblock_start_us,
+        4, // level
+        static_cast<double>(toblock_duration),
+        static_cast<double>(toblock_duration)};
+    if (trace_id != 0) {
+      std::string toblock_unique_id =
+          "embread_debug|" +
+          std::to_string(static_cast<uint64_t>(toblock_start_us));
+      report_flame_graph(
+          "emb_read_flame_map", toblock_unique_id.c_str(), toblock_fg);
+    }
 #endif
 
-  total_get_requests_++;
-  total_get_keys_ += keys_array.Size();
-  total_get_bytes_ += total_dim * sizeof(float);
+    total_get_requests_++;
+    total_get_keys_ += keys_array.Size();
+    total_get_bytes_ += total_dim * sizeof(float);
 
-  if (isPerf) {
-    timer_ps_get_req.end();
-  } else {
-    timer_ps_get_req.destroy();
-  }
+    if (isPerf) {
+      timer_ps_get_req.end();
+    } else {
+      timer_ps_get_req.destroy();
+    }
 
 #ifdef ENABLE_PERF_REPORT
-  auto end_time = std::chrono::high_resolution_clock::now();
-  auto duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          end_time - start_time)
-          .count();
-  report("ps_server_latency",
-         "GetParameter",
-         "latency_us",
-         static_cast<double>(duration));
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            end_time - start_time)
+            .count();
+    report("ps_server_latency",
+           "GetParameter",
+           "latency_us",
+           static_cast<double>(duration));
 
-  double start_us_for_key =
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          start_time.time_since_epoch())
-          .count();
-  std::string op_latency_key =
-      "EmbRead|" + std::to_string(static_cast<uint64_t>(start_us_for_key));
-  report("op_latency",
-         op_latency_key.c_str(),
-         "recserver_us",
-         static_cast<double>(duration));
+    double start_us_for_key =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            start_time.time_since_epoch())
+            .count();
+    std::string op_latency_key =
+        "EmbRead|" + std::to_string(static_cast<uint64_t>(start_us_for_key));
+    report("op_latency",
+           op_latency_key.c_str(),
+           "recserver_us",
+           static_cast<double>(duration));
 
-  double start_us =
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          start_time.time_since_epoch())
-          .count();
+    double start_us =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            start_time.time_since_epoch())
+            .count();
 
-  std::string report_id = "brpc_server::GetParameter|" +
-                          std::to_string(static_cast<uint64_t>(start_us));
+    std::string report_id = "brpc_server::GetParameter|" +
+                            std::to_string(static_cast<uint64_t>(start_us));
 
-  report("embread_stages",
-         report_id.c_str(),
-         "duration_us",
-         static_cast<double>(duration));
+    report("embread_stages",
+           report_id.c_str(),
+           "duration_us",
+           static_cast<double>(duration));
 
-  report("embread_stages",
-         report_id.c_str(),
-         "request_size",
-         static_cast<double>(keys_array.Size()));
+    report("embread_stages",
+           report_id.c_str(),
+           "request_size",
+           static_cast<double>(keys_array.Size()));
 
-  FlameGraphData fg_data = {
-      "brpc_server::GetParameter",
-      start_us,
-      3, // level
-      static_cast<double>(duration),
-      static_cast<double>(duration)};
-  if (trace_id != 0) {
-    std::string req_unique_id =
-        "embread_debug|" + std::to_string(static_cast<uint64_t>(start_us));
-    report_flame_graph("emb_read_flame_map", req_unique_id.c_str(), fg_data);
-  }
+    FlameGraphData fg_data = {
+        "brpc_server::GetParameter",
+        start_us,
+        3, // level
+        static_cast<double>(duration),
+        static_cast<double>(duration)};
+    if (trace_id != 0) {
+      std::string req_unique_id =
+          "embread_debug|" + std::to_string(static_cast<uint64_t>(start_us));
+      report_flame_graph("emb_read_flame_map", req_unique_id.c_str(), fg_data);
+    }
 #endif
+  } catch (const std::exception& e) {
+    LOG(ERROR) << "[bRPC PS] GetParameter failed: " << e.what();
+    cntl->SetFailed(EINVAL, "GetParameter failed: %s", e.what());
+  } catch (...) {
+    LOG(ERROR) << "[bRPC PS] GetParameter failed: unknown exception";
+    cntl->SetFailed(EINVAL, "GetParameter failed: unknown exception");
+  }
 }
 
 void BRPCParameterServiceImpl::Command(
