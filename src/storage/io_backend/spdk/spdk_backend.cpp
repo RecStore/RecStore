@@ -29,6 +29,10 @@ private:
   inline static struct ns_entry shared_ns_entry_ = {};
   inline static char* shared_empty_page_         = nullptr;
   inline static std::atomic<int> instance_count_{0};
+  // Set by completion callbacks, which cannot throw across the SPDK C frames.
+  // The waiting path checks it and turns the failure into an exception before
+  // the caller consumes the (garbage) buffer.
+  inline static thread_local bool completion_failed_ = false;
 
   struct ThreadQpair {
     struct spdk_nvme_qpair* qpair = NULL;
@@ -136,10 +140,21 @@ private:
     }
   }
 
+  static void CheckCompletionFailure(const char* op, uint64_t page_id) {
+    if (!completion_failed_)
+      return;
+    completion_failed_ = false;
+    throw std::runtime_error(
+        std::string("SPDK ") + op + " completion failed: page " +
+        std::to_string(page_id));
+  }
+
   static void io_complete(void* arg, const struct spdk_nvme_cpl* cpl) {
     int64_t t = (int64_t)(intptr_t)arg;
-    if (!spdk_nvme_cpl_is_success(cpl))
+    if (!spdk_nvme_cpl_is_success(cpl)) {
+      completion_failed_ = true;
       fprintf(stderr, "I/O error!\n");
+    }
     pending--;
     if (t >= 0)
       (*coros[t])();
@@ -147,8 +162,10 @@ private:
 
   static void batch_write_complete(void* arg, const struct spdk_nvme_cpl* cpl) {
     int* inflight = reinterpret_cast<int*>(arg);
-    if (!spdk_nvme_cpl_is_success(cpl))
+    if (!spdk_nvme_cpl_is_success(cpl)) {
+      completion_failed_ = true;
       LOG(ERROR) << "BatchWritePages: I/O error!";
+    }
     (*inflight)--;
   }
 
@@ -278,6 +295,7 @@ public:
       throw std::runtime_error("Failed to read page:" + std::to_string(ret));
     }
     sink();
+    CheckCompletionFailure("read", page_id);
   }
   void ReadPageSync(PageID_t page_id, char* buffer) override {
     struct spdk_nvme_qpair* qpair = get_thread_qpair();
@@ -298,6 +316,7 @@ public:
     while (pending > 0) {
       spdk_nvme_qpair_process_completions(qpair, 0);
     }
+    CheckCompletionFailure("read", page_id);
   }
 
   void WritePageAsync(coroutine<void>::push_type& sink,
@@ -321,6 +340,7 @@ public:
       throw std::runtime_error("Failed to write page:" + std::to_string(ret));
     }
     sink();
+    CheckCompletionFailure("write", page_id);
   }
   void WritePageSync(PageID_t page_id, char* buffer) override {
     // LOG(INFO) << "WritePageSync: page_id=" << page_id
@@ -353,6 +373,7 @@ public:
         LOG(WARNING) << "WritePageSync: stuck polling, pending=" << pending
                      << " poll_count=" << poll_count << " completions=" << n;
     }
+    CheckCompletionFailure("write", page_id);
   }
 
   void submit() override {
@@ -395,6 +416,7 @@ public:
       }
       spdk_nvme_qpair_process_completions(qpair, 0);
     }
+    CheckCompletionFailure("batch write", entries.front().page_id);
   }
 
   void BatchReadPages(const std::vector<IOEntry>& entries) override {
@@ -428,6 +450,7 @@ public:
       }
       spdk_nvme_qpair_process_completions(qpair, 0);
     }
+    CheckCompletionFailure("batch read", entries.front().page_id);
   }
 };
 
