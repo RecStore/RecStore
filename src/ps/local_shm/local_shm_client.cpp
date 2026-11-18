@@ -69,7 +69,7 @@ bool IsFlatGetHandleClear(const LocalShmFlatGetHandle& handle) {
   return handle.slot_id == LocalShmFlatGetHandle::kInvalidSlotId &&
          handle.request_id == 0 && handle.values == nullptr &&
          handle.num_rows == 0 && handle.embedding_dim == 0 &&
-         handle.output_bytes == 0;
+         handle.output_bytes == 0 && !handle.quarantined;
 }
 
 void MarkError(LocalShmSlotHeader* header, LocalStatusCode code) {
@@ -365,11 +365,15 @@ int LocalShmPSClient::WaitGetParameterFlat(LocalShmFlatGetHandle* handle) {
             .count();
   }
   if (!ok) {
+    // Timed out: the server may still be writing this slot. Keep it out of the
+    // free queue so no other request can reuse the payload mid-flight.
+    handle->quarantined = true;
     LOG(ERROR) << "LocalShmPSClient::WaitGetParameterFlat wait_failed"
                << " pid=" << static_cast<int>(::getpid())
                << " backend=local_shm" << " region_name=" << region_name_
-               << " ready_queue_id=" << ready_queue_id_ << " slot_id="
-               << handle->slot_id << " request_id=" << handle->request_id;
+               << " ready_queue_id=" << ready_queue_id_
+               << " slot_id=" << handle->slot_id
+               << " request_id=" << handle->request_id << " quarantined=true";
     return -1;
   }
   if (header->status_code != static_cast<uint32_t>(LocalStatusCode::kOk)) {
@@ -425,6 +429,15 @@ void LocalShmPSClient::ReleaseGetParameterFlat(LocalShmFlatGetHandle* handle) {
                << " backend=local_shm" << " region_name=" << region_name_
                << " ready_queue_id=" << ready_queue_id_
                << " request_id=" << handle->request_id;
+    ResetFlatGetHandle(handle);
+    return;
+  }
+  if (handle->quarantined) {
+    LOG(ERROR) << "LocalShmPSClient::ReleaseGetParameterFlat quarantined_slot"
+               << " pid=" << static_cast<int>(::getpid())
+               << " backend=local_shm" << " region_name=" << region_name_
+               << " ready_queue_id=" << ready_queue_id_ << " slot_id="
+               << handle->slot_id << " request_id=" << handle->request_id;
     ResetFlatGetHandle(handle);
     return;
   }
@@ -537,15 +550,16 @@ int LocalShmPSClient::PutParameterFlat(
           .count();
 
   const auto wait_start = std::chrono::steady_clock::now();
+  const bool waited     = WaitForSlot(static_cast<uint32_t>(slot), request_id);
   const bool ok =
-      WaitForSlot(static_cast<uint32_t>(slot), request_id) &&
+      waited &&
       header->status_code == static_cast<uint32_t>(LocalStatusCode::kOk);
   g_active_request_profile.wait_us =
       std::chrono::duration_cast< std::chrono::duration<double, std::micro>>(
           std::chrono::steady_clock::now() - wait_start)
           .count();
   FinalizeActiveRequestProfile(header, g_active_request_profile.request_start);
-  ReleaseSlot(static_cast<uint32_t>(slot));
+  ReleaseSlotAfterWait(static_cast<uint32_t>(slot), waited);
   return ok ? 0 : -1;
 }
 
@@ -669,15 +683,16 @@ int LocalShmPSClient::UpdateParameterFlat(
           .count();
 
   const auto wait_start = std::chrono::steady_clock::now();
+  const bool waited     = WaitForSlot(static_cast<uint32_t>(slot), request_id);
   const bool ok =
-      WaitForSlot(static_cast<uint32_t>(slot), request_id) &&
+      waited &&
       header->status_code == static_cast<uint32_t>(LocalStatusCode::kOk);
   g_active_request_profile.wait_us =
       std::chrono::duration_cast< std::chrono::duration<double, std::micro>>(
           std::chrono::steady_clock::now() - wait_start)
           .count();
   FinalizeActiveRequestProfile(header, g_active_request_profile.request_start);
-  ReleaseSlot(static_cast<uint32_t>(slot));
+  ReleaseSlotAfterWait(static_cast<uint32_t>(slot), waited);
   return ok ? 0 : -1;
 }
 
@@ -715,14 +730,15 @@ int64_t LocalShmPSClient::ExchangeSparseGradientCommit(
   auto* ready      = region_.ready_queue_header(queue);
   CHECK(LocalShmQueueEnqueue(ready, region_.ready_queue_cells(queue), slot));
   FutexWakeOne(&ready->enqueue_pos);
+  const bool waited = WaitForSlot(slot, request_id);
   const bool ok =
-      WaitForSlot(slot, request_id) &&
+      waited &&
       header->status_code == static_cast<uint32_t>(LocalStatusCode::kOk) &&
       header->output_bytes == sizeof(int64_t);
   int64_t committed = -1;
   if (ok)
     std::memcpy(&committed, payload, sizeof(committed));
-  ReleaseSlot(slot);
+  ReleaseSlotAfterWait(slot, waited);
   if (!ok)
     throw std::runtime_error("SHM sparse gradient commit failed");
   return committed;
@@ -793,8 +809,9 @@ int LocalShmPSClient::InitEmbeddingTable(const std::string& table_name,
           .count();
 
   const auto wait_start = std::chrono::steady_clock::now();
+  const bool waited     = WaitForSlot(static_cast<uint32_t>(slot), request_id);
   const bool ok =
-      WaitForSlot(static_cast<uint32_t>(slot), request_id) &&
+      waited &&
       header->status_code == static_cast<uint32_t>(LocalStatusCode::kOk);
   g_active_request_profile.wait_us =
       std::chrono::duration_cast< std::chrono::duration<double, std::micro>>(
@@ -802,7 +819,7 @@ int LocalShmPSClient::InitEmbeddingTable(const std::string& table_name,
           .count();
   FinalizeActiveRequestProfile(header, g_active_request_profile.request_start);
   const int tag = ok ? static_cast<int>(header->user_tag) : -1;
-  ReleaseSlot(static_cast<uint32_t>(slot));
+  ReleaseSlotAfterWait(static_cast<uint32_t>(slot), waited);
   if (ok) {
     table_embedding_dims_[table_name] = config.embedding_dim;
   }
@@ -910,6 +927,17 @@ int LocalShmPSClient::AcquireSlot() {
     FutexWaitUntilValueChange(&queue_header->enqueue_pos, observed, remaining);
   }
   return -1;
+}
+
+void LocalShmPSClient::ReleaseSlotAfterWait(uint32_t slot_id, bool waited) {
+  if (waited) {
+    ReleaseSlot(slot_id);
+    return;
+  }
+  LOG(ERROR) << "LocalShmPSClient::ReleaseSlotAfterWait quarantined_slot"
+             << " pid=" << static_cast<int>(::getpid()) << " backend=local_shm"
+             << " region_name=" << region_name_ << " ready_queue_id="
+             << ready_queue_id_ << " slot_id=" << slot_id << " reason=timeout";
 }
 
 void LocalShmPSClient::ReleaseSlot(uint32_t slot_id) {

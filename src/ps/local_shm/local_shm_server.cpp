@@ -23,7 +23,18 @@ uint64_t SteadyNowNs() {
           .count());
 }
 
-void FinishWithStatus(LocalShmSlotHeader* header, LocalStatusCode code) {
+void FinishWithStatus(
+    LocalShmSlotHeader* header, LocalStatusCode code, uint64_t request_id) {
+  if (header->request_id != request_id) {
+    // The client timed out and recycled this slot while the request was still
+    // running. Completing it now would mark the new request done and publish
+    // this request's status/output_bytes to it.
+    LOG(WARNING) << "LocalShmStoreRuntime::FinishWithStatus stale_completion"
+                 << " slot_request_id=" << header->request_id
+                 << " completed_request_id=" << request_id
+                 << " status=" << static_cast<uint32_t>(code);
+    return;
+  }
   header->status_code = static_cast<uint32_t>(code);
   header->state.store(
       code == LocalStatusCode::kOk
@@ -98,9 +109,12 @@ void LocalShmStoreRuntime::Stop() {
 }
 
 void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
-  auto* header             = region_->slot_header(slot_id);
-  auto* payload            = region_->slot_payload(slot_id);
-  const auto process_start = std::chrono::steady_clock::now();
+  auto* header  = region_->slot_header(slot_id);
+  auto* payload = region_->slot_payload(slot_id);
+  // Ownership token captured at dequeue: completion must not touch the slot if
+  // a timed-out client has already handed it to another request.
+  const uint64_t request_id = header->request_id;
+  const auto process_start  = std::chrono::steady_clock::now();
   LocalShmStageReportScope stage_scope(
       header->request_id,
       header->opcode,
@@ -123,7 +137,7 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
           cache_ps_->SparseGradientCommit(table, data, worker_tid_);
       std::memcpy(payload, &committed, sizeof(committed));
       header->output_bytes = sizeof(committed);
-      FinishWithStatus(header, LocalStatusCode::kOk);
+      FinishWithStatus(header, LocalStatusCode::kOk, request_id);
       return;
     }
     case LocalOpcode::kInitTable: {
@@ -153,7 +167,8 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
           "server_process_total_us", LocalShmElapsedUs(process_start));
       FinishWithStatus(
           header,
-          tag >= 0 ? LocalStatusCode::kOk : LocalStatusCode::kUnknownError);
+          tag >= 0 ? LocalStatusCode::kOk : LocalStatusCode::kUnknownError,
+          request_id);
       return;
     }
     case LocalOpcode::kGet: {
@@ -175,7 +190,7 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
               "get_backend_us", LocalShmElapsedUs(backend_start));
           ReportLocalShmStageMetric(
               "server_process_total_us", LocalShmElapsedUs(process_start));
-          FinishWithStatus(header, LocalStatusCode::kUnknownError);
+          FinishWithStatus(header, LocalStatusCode::kUnknownError, request_id);
           return;
         }
         header->server_backend_duration_us =
@@ -202,7 +217,8 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
                      << " slot_buffer_bytes=" << region_->slot_buffer_bytes();
           ReportLocalShmStageMetric(
               "server_process_total_us", LocalShmElapsedUs(process_start));
-          FinishWithStatus(header, LocalStatusCode::kBufferTooSmall);
+          FinishWithStatus(
+              header, LocalStatusCode::kBufferTooSmall, request_id);
           return;
         }
         const auto payload_pack_start = std::chrono::steady_clock::now();
@@ -223,7 +239,7 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
         header->output_bytes  = output_bytes;
         ReportLocalShmStageMetric(
             "server_process_total_us", LocalShmElapsedUs(process_start));
-        FinishWithStatus(header, LocalStatusCode::kOk);
+        FinishWithStatus(header, LocalStatusCode::kOk, request_id);
         return;
       }
 
@@ -243,7 +259,7 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
                    << " slot_buffer_bytes=" << region_->slot_buffer_bytes();
         ReportLocalShmStageMetric(
             "server_process_total_us", LocalShmElapsedUs(process_start));
-        FinishWithStatus(header, LocalStatusCode::kBufferTooSmall);
+        FinishWithStatus(header, LocalStatusCode::kBufferTooSmall, request_id);
         return;
       }
       const auto backend_start = std::chrono::steady_clock::now();
@@ -263,7 +279,7 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
             "get_backend_us", LocalShmElapsedUs(backend_start));
         ReportLocalShmStageMetric(
             "server_process_total_us", LocalShmElapsedUs(process_start));
-        FinishWithStatus(header, LocalStatusCode::kUnknownError);
+        FinishWithStatus(header, LocalStatusCode::kUnknownError, request_id);
         return;
       }
       header->server_backend_duration_us =
@@ -273,7 +289,7 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
       header->output_bytes = output_bytes;
       ReportLocalShmStageMetric(
           "server_process_total_us", LocalShmElapsedUs(process_start));
-      FinishWithStatus(header, LocalStatusCode::kOk);
+      FinishWithStatus(header, LocalStatusCode::kOk, request_id);
       return;
     }
     case LocalOpcode::kPut: {
@@ -293,7 +309,7 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
           "put_backend_us", LocalShmElapsedUs(backend_start));
       ReportLocalShmStageMetric(
           "server_process_total_us", LocalShmElapsedUs(process_start));
-      FinishWithStatus(header, LocalStatusCode::kOk);
+      FinishWithStatus(header, LocalStatusCode::kOk, request_id);
       return;
     }
     case LocalOpcode::kUpdateFlat: {
@@ -320,13 +336,15 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
       ReportLocalShmStageMetric(
           "server_process_total_us", LocalShmElapsedUs(process_start));
       FinishWithStatus(
-          header, ok ? LocalStatusCode::kOk : LocalStatusCode::kUnknownError);
+          header,
+          ok ? LocalStatusCode::kOk : LocalStatusCode::kUnknownError,
+          request_id);
       return;
     }
     default:
       ReportLocalShmStageMetric(
           "server_process_total_us", LocalShmElapsedUs(process_start));
-      FinishWithStatus(header, LocalStatusCode::kUnsupportedOpcode);
+      FinishWithStatus(header, LocalStatusCode::kUnsupportedOpcode, request_id);
       return;
     }
   } catch (const std::exception& e) {
@@ -336,7 +354,7 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
                << " key_count=" << header->key_count << " what=" << e.what();
     ReportLocalShmStageMetric(
         "server_process_total_us", LocalShmElapsedUs(process_start));
-    FinishWithStatus(header, LocalStatusCode::kUnknownError);
+    FinishWithStatus(header, LocalStatusCode::kUnknownError, request_id);
     return;
   }
 }
