@@ -156,7 +156,7 @@ validation:
 cmake -S . -B build_release -DCMAKE_BUILD_TYPE=Release
 cmake --build build_release --target ps_transport_benchmark ps_server petps_server -j
 python3 -m unittest src/test/scripts/test_run_benchmark_ps.py
-ctest --test-dir build_release -R 'grpc_ps_client_test|dist_grpc_ps_client_test|brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_transport_benchmark|test_ps_server_launcher|test_ps_client_factory|test_allshards_ps_client' --output-on-failure
+ctest --test-dir build_release -R 'grpc_ps_client_test|dist_grpc_ps_client_test|brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_transport_benchmark|test_ps_server_launcher|test_ps_client_factory' --output-on-failure
 ./tools/benchmarks/kill_bench_procs.sh
 ```
 
@@ -194,7 +194,6 @@ cmake --build build --target \
   test_rdma_rc_protocol \
   test_raw_verbs_allocator \
   test_rdmaps_client_adapter \
-  test_allshards_ps_client \
   petps_server \
   petps_integration_test \
   -j
@@ -204,7 +203,7 @@ ctest --test-dir build -R 'test_rdma_rc_protocol|test_raw_verbs_allocator|test_r
 For client-side wait/coroutine changes, include:
 
 ```bash
-ctest --test-dir build -R 'test_allshards_ps_client|test_rdmaps_client_adapter' -VV
+ctest --test-dir build -R 'test_rdmaps_client_adapter' -VV
 ```
 
 Run real PetPS RDMA integration only when verbs devices exist:

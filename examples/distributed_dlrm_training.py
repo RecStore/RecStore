@@ -11,6 +11,7 @@ import argparse
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import torch
@@ -25,9 +26,10 @@ from torchrec.modules.embedding_configs import EmbeddingBagConfig
 from torchrec.optim import KeyedOptimizerWrapper
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 
-# 添加项目路径
-sys.path.append('/home/xieminhui/RecStore/src/executable/dlrm')
-sys.path.append('/home/xieminhui/RecStore/model_zoo/torchrec_dlrm')
+# 添加项目路径（相对本文件，避免绑定到某台机器的 checkout 位置）
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(_REPO_ROOT / "src/executable/dlrm"))
+sys.path.append(str(_REPO_ROOT / "model_zoo/torchrec_dlrm"))
 
 from dlrm_data_pytorch import CriteoDataset, collate_wrapper
 from dlrm import DLRMTrain, InteractionType
