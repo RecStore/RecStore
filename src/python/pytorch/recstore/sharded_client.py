@@ -1191,10 +1191,12 @@ class ShardedRecstoreClient:
             raise RuntimeError("ids and grads must have the same number of rows for update_async")
         handle = self._next_async_handle
         self._next_async_handle += 1
+        # Own the buffers: the caller may reuse or mutate the input tensors
+        # before wait(), which is also what KVClient stores for a staged update.
         self._pending_async_ops[handle] = (
             name,
-            normalized_ids,
-            normalized_grads,
+            normalized_ids.clone(),
+            normalized_grads.clone(),
             float(learning_rate),
         )
         return handle
