@@ -348,6 +348,8 @@ struct RawVerbsTransport::Impl {
   std::vector<RawVerbsRemoteMemory> remotes;
   std::vector<ibv_qp*> qps;
   std::vector<std::uint32_t> max_inline_data_per_node;
+  // SGEs per WR the device actually granted at QP creation, per peer node.
+  std::vector<std::uint32_t> max_send_sge_per_node;
   // Per-peer lane generation this side publishes. Indexed by node id.
   std::vector<std::uint64_t> lane_generations;
   // One control-plane channel shared by Publish()/Connect()/RefreshPeerMeta().
@@ -418,6 +420,7 @@ RawVerbsTransport::RawVerbsTransport(const RawVerbsConfig& config)
   impl_->qps.resize(static_cast<std::size_t>(node_count), nullptr);
   impl_->max_inline_data_per_node.assign(
       static_cast<std::size_t>(node_count), 0);
+  impl_->max_send_sge_per_node.assign(static_cast<std::size_t>(node_count), 0);
   impl_->lane_generations.assign(static_cast<std::size_t>(node_count), 0);
   for (int node = 0; node < node_count; ++node) {
     if (!ShouldRawVerbsConnectToNode(config, node)) {
@@ -439,6 +442,11 @@ RawVerbsTransport::RawVerbsTransport(const RawVerbsConfig& config)
     impl_->qps[static_cast<std::size_t>(node)] = qp;
     impl_->max_inline_data_per_node[static_cast<std::size_t>(node)] =
         init_attr.cap.max_inline_data;
+    // ibv_create_qp() writes the granted caps back, which may be lower than the
+    // requested values. A WR carrying more SGEs than the granted max_send_sge
+    // is rejected with EINVAL, so remember the negotiated value.
+    impl_->max_send_sge_per_node[static_cast<std::size_t>(node)] =
+        init_attr.cap.max_send_sge;
   }
 }
 
@@ -1066,6 +1074,13 @@ std::uint32_t RawVerbsTransport::max_inline_data(std::uint16_t node_id) const {
     throw std::runtime_error("raw verbs inline query remote node out of range");
   }
   return impl_->max_inline_data_per_node[static_cast<std::size_t>(node_id)];
+}
+
+std::uint32_t RawVerbsTransport::max_send_sge(std::uint16_t node_id) const {
+  if (node_id >= impl_->max_send_sge_per_node.size()) {
+    throw std::runtime_error("raw verbs sge query remote node out of range");
+  }
+  return impl_->max_send_sge_per_node[static_cast<std::size_t>(node_id)];
 }
 
 } // namespace petps

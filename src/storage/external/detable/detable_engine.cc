@@ -1,5 +1,6 @@
 #include <dlfcn.h>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <stdexcept>
@@ -229,12 +230,14 @@ public:
     }
   }
 
-  bool BatchGetFlat(base::ConstArray<uint64_t> keys,
-                    float* values,
-                    int64_t num_rows,
-                    int64_t embedding_dim,
-                    unsigned tid,
-                    BatchGetFlatStats* stats = nullptr) override {
+  bool BatchGetFlat(
+      base::ConstArray<uint64_t> keys,
+      float* values,
+      int64_t num_rows,
+      int64_t embedding_dim,
+      unsigned tid,
+      BatchGetFlatStats* stats = nullptr,
+      uint8_t* present         = nullptr) override {
     (void)tid;
     if (values == nullptr || num_rows != keys.Size() || num_rows < 0 ||
         embedding_dim <= 0 ||
@@ -244,6 +247,8 @@ public:
     }
     std::vector<uint8_t> found(keys.Size(), 0);
     BatchGetRaw(keys, values, found.data());
+    if (present != nullptr)
+      std::copy(found.begin(), found.end(), present);
     uint64_t missing = 0;
     for (int i = 0; i < keys.Size(); ++i) {
       if (!found[i]) {

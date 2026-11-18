@@ -167,6 +167,10 @@ public:
   // rebuild, so a caller that captured it before posting can tell whether the
   // slot it is about to write still belongs to the same client generation.
   std::uint64_t ResponseEpoch(int client_id, int qp_index) const;
+  // Largest SGE count a response payload WR toward (client_id, qp_index) may
+  // carry. The device can grant fewer SGEs per WR than the requested cap, and a
+  // WR above the granted value is rejected by ibv_post_send() with EINVAL.
+  std::size_t MaxResponseSgesPerWr(int client_id, int qp_index) const;
   // Number of response payload posts refused because the lane was rebuilt after
   // the request was accepted (RcLaneRebuiltDuringResponse). A non-zero value is
   // direct evidence that the rebuild fence fired instead of merely that no bad

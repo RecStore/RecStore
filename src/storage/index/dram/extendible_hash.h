@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -65,7 +66,12 @@ struct Block {
 
   Pair _[kNumSlot];
   size_t local_depth;
-  int64_t sema   = 0;
+  int64_t sema = 0;
+  // Set for the whole split, before `sema` reaches -1. Inserters that see it
+  // step back instead of taking another inserter slot, so the splitter can
+  // drain the count; without it a stream of inserters can keep `sema` positive
+  // and starve the split forever.
+  std::atomic<bool> splitting{false};
   size_t pattern = 0;
   size_t numElem(void);
 };

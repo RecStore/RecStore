@@ -1,5 +1,6 @@
 #include "../io_backend.h"
 #include <cerrno>
+#include <exception>
 
 thread_local int pending = 0;
 thread_local std::vector<std::unique_ptr<coroutine<void>::pull_type>> coros;
@@ -237,17 +238,30 @@ public:
     BatchIO(entries, false);
   }
 
+  void BatchReadPagesWithWork(const std::vector<IOEntry>& entries,
+                              const std::function<void()>& work) override {
+    RecordRead(entries);
+    BatchIO(entries, false, work);
+  }
+
 private:
-  void BatchIO(const std::vector<IOEntry>& entries, bool write) {
+  void BatchIO(const std::vector<IOEntry>& entries,
+               bool write,
+               const std::function<void()>& work = {}) {
     if (entries.empty()) {
+      if (work)
+        work();
       return;
     }
     struct io_uring* ring  = get_thread_ring();
     const int max_inflight = std::max(queue_cnt / 2, 1);
-    size_t submitted       = 0;
-    int inflight           = 0;
+    bool work_pending      = static_cast<bool>(work);
+    std::exception_ptr work_error;
+    size_t submitted = 0;
+    int inflight     = 0;
     while (submitted < entries.size() || inflight > 0) {
-      while (submitted < entries.size() && inflight < max_inflight) {
+      while (!work_error && submitted < entries.size() &&
+             inflight < max_inflight) {
         const auto& e            = entries[submitted];
         struct io_uring_sqe* sqe = io_uring_get_sqe(ring);
         CHECK_NE(sqe, nullptr) << "Failed to get SQE for batch I/O";
@@ -275,6 +289,14 @@ private:
       while (io_uring_sq_ready(ring) > 0) {
         submit();
       }
+      if (work_pending) {
+        work_pending = false;
+        try {
+          work();
+        } catch (...) {
+          work_error = std::current_exception();
+        }
+      }
       struct io_uring_cqe* cqe = nullptr;
       int ret                  = -EAGAIN;
       for (int spin = 0; spin < completion_poll_spins_ && ret == -EAGAIN;
@@ -295,6 +317,8 @@ private:
         io_uring_cqe_seen(ring, cqe);
         --inflight;
       } while (inflight > 0 && io_uring_peek_cqe(ring, &cqe) == 0);
+      if (work_error && inflight == 0)
+        std::rethrow_exception(work_error);
     }
   }
 };

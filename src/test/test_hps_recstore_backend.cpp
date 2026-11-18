@@ -1,3 +1,6 @@
+#include <thread>
+#include <future>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -168,4 +171,192 @@ TEST(HpsRecStoreBackendTest, TieredValueStoreInsertFetchAndMissCallback) {
 
   std::filesystem::remove_all(path);
   std::filesystem::remove_all(dram_path);
+}
+
+TEST(HpsRecStoreBackendTest,
+     FlatFetchPreservesZeroValuesDuplicatesAndMissCallbacks) {
+  auto params =
+      MakeParams("/dev/shm/test_hps_flat_" + std::to_string(getpid()));
+  params.index_type = "DRAM_PET_HASH";
+  recstore::storage::HpsRecStoreBackend<long long> backend(params);
+  const long long keys[] = {1, 2};
+  const float values[]   = {0, 0, 3, 4};
+  ASSERT_EQ(backend.insert(
+                "table", 2, keys, reinterpret_cast<const char*>(values), 8, 8),
+            2);
+  const long long query[] = {2, 99, 1, 2};
+  float output[8];
+  std::fill_n(output, 8, -1);
+  std::vector<size_t> misses;
+  EXPECT_EQ(
+      backend.fetch(
+          "table",
+          4,
+          query,
+          reinterpret_cast<char*>(output),
+          8,
+          [&](size_t row) {
+            misses.push_back(row);
+            output[row * 2] = output[row * 2 + 1] = 77;
+            const float short_value               = 9;
+            EXPECT_EQ(
+                backend.insert("table",
+                               1,
+                               query + row,
+                               reinterpret_cast<const char*>(&short_value),
+                               4,
+                               4),
+                1);
+          },
+          std::chrono::nanoseconds::zero()),
+      3);
+  EXPECT_EQ(misses, std::vector<size_t>({1}));
+  const float expected[] = {3, 4, 77, 77, 0, 0, 3, 4};
+  EXPECT_EQ(std::memcmp(output, expected, sizeof(expected)), 0);
+  float inserted[2] = {-1, -1};
+  EXPECT_EQ(
+      backend.fetch(
+          "table",
+          1,
+          query + 1,
+          reinterpret_cast<char*>(inserted),
+          8,
+          [](size_t) { ADD_FAILURE() << "missing callback insert"; },
+          std::chrono::nanoseconds::zero()),
+      1);
+  EXPECT_FLOAT_EQ(inserted[0], 9);
+  EXPECT_FLOAT_EQ(inserted[1], 0);
+  const long long absent = 1000;
+  char padded[14];
+  EXPECT_EQ(
+      backend.fetch(
+          "table",
+          1,
+          &absent,
+          padded + 1,
+          13,
+          [&](size_t) {
+            const float replacement[] = {5, 6};
+            backend.insert(
+                "table",
+                1,
+                &absent,
+                reinterpret_cast<const char*>(replacement),
+                8,
+                8);
+          },
+          std::chrono::nanoseconds::zero()),
+      0);
+  EXPECT_EQ(
+      backend.fetch(
+          "table",
+          1,
+          &absent,
+          reinterpret_cast<char*>(inserted),
+          8,
+          [](size_t) { ADD_FAILURE(); },
+          std::chrono::nanoseconds::zero()),
+      1);
+  EXPECT_FLOAT_EQ(inserted[0], 5);
+  EXPECT_FLOAT_EQ(inserted[1], 6);
+}
+
+TEST(HpsRecStoreBackendTest, FlatFetchFallsBackForPaddedUnalignedAndShortRows) {
+  auto params =
+      MakeParams("/dev/shm/test_hps_flat_fallback_" + std::to_string(getpid()));
+  recstore::storage::HpsRecStoreBackend<long long> backend(params);
+  const long long keys[] = {1, 2};
+  const float values[]   = {1, 2, 3, 4};
+  ASSERT_EQ(backend.insert(
+                "table", 2, keys, reinterpret_cast<const char*>(values), 8, 8),
+            2);
+  std::vector<char> output(32, static_cast<char>(0x55));
+  EXPECT_EQ(
+      backend.fetch(
+          "table",
+          2,
+          keys,
+          output.data() + 1,
+          13,
+          [](size_t) { ADD_FAILURE() << "unexpected miss"; },
+          std::chrono::nanoseconds::zero()),
+      2);
+  for (size_t row = 0; row < 2; ++row) {
+    EXPECT_EQ(std::memcmp(output.data() + 1 + row * 13, values + row * 2, 8),
+              0);
+    for (size_t byte = 8; byte < 13; ++byte)
+      EXPECT_EQ(output[1 + row * 13 + byte], 0);
+  }
+  EXPECT_EQ(output[0], 0x55);
+  EXPECT_EQ(output[27], 0x55);
+  const float short_row = 9;
+  ASSERT_EQ(
+      backend.insert(
+          "table", 1, keys, reinterpret_cast<const char*>(&short_row), 4, 4),
+      1);
+  float padded[] = {-1, -1};
+  EXPECT_EQ(
+      backend.fetch(
+          "table",
+          1,
+          keys,
+          reinterpret_cast<char*>(padded),
+          8,
+          [](size_t) { ADD_FAILURE() << "unexpected miss"; },
+          std::chrono::nanoseconds::zero()),
+      1);
+  EXPECT_FLOAT_EQ(padded[0], 9);
+  EXPECT_FLOAT_EQ(padded[1], 0);
+}
+
+TEST(HpsRecStoreBackendTest, ConcurrentInsertsReuseWorkerSlots) {
+  auto params =
+      MakeParams("/dev/shm/test_hps_concurrent_" + std::to_string(getpid()));
+  constexpr int workers      = 8;
+  constexpr int per_worker   = 4096;
+  params.capacity            = workers * per_worker;
+  params.num_threads         = 4;
+  params.dram_capacity_bytes = 4 * 1024 * 1024;
+  recstore::storage::HpsRecStoreBackend<long long> backend(params);
+  for (int round = 0; round < 2; ++round) {
+    std::vector<std::thread> threads;
+    for (int worker = 0; worker < workers; ++worker) {
+      threads.emplace_back([&, worker] {
+        for (int start = 0; start < per_worker; start += 32) {
+          long long keys[32];
+          float values[64];
+          for (int i = 0; i < 32; ++i) {
+            keys[i]           = worker * per_worker + start + i;
+            values[2 * i]     = static_cast<float>(keys[i]);
+            values[2 * i + 1] = static_cast<float>(round);
+          }
+          EXPECT_EQ(backend.insert("table",
+                                   32,
+                                   keys,
+                                   reinterpret_cast<const char*>(values),
+                                   8,
+                                   8),
+                    32);
+        }
+      });
+    }
+    for (auto& thread : threads)
+      thread.join();
+    const long long keys[] = {0, per_worker, workers * per_worker - 1};
+    float output[6]{};
+    EXPECT_EQ(
+        backend.fetch(
+            "table",
+            3,
+            keys,
+            reinterpret_cast<char*>(output),
+            8,
+            [](size_t) { ADD_FAILURE() << "missing inserted key"; },
+            std::chrono::nanoseconds::zero()),
+        3);
+    for (int i = 0; i < 3; ++i) {
+      EXPECT_FLOAT_EQ(output[2 * i], static_cast<float>(keys[i]));
+      EXPECT_FLOAT_EQ(output[2 * i + 1], static_cast<float>(round));
+    }
+  }
 }

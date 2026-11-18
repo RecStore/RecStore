@@ -29,11 +29,13 @@ graph TD
     Index --> IOIdx[IOBackend 仅 SSD 索引]
 ```
 
-**写路径**：`ValueStore::AllocAndWrite` → `Index::Put`（得到旧 handle）→ `ValueStore::Retire(old)`。
+**写路径**：`ValueStore::AllocAndWrite` → `Index::Put`（得到旧 handle）→ 退休旧版本。默认沿用 `ValueStore::Retire`；启用顶层 `read_epochs=true` 后，复制读取持有 epoch，后台线程等待读者退出后释放旧槽位。`read_epoch_retire_limit_rows` 限制待回收行数，写入在获取发布锁前等待回收；`DrainBackgroundWork` 排空并传播后台异常。此模式不提供借用行指针、RDMA backing 或静态原地 SGD，调用方须使用复制读取和 COW 更新。HPS 默认启用该模式，也可通过 `HpsRecStoreBackendParams::read_epochs` 关闭。
 
 **读路径**：`Index::Get` / `BatchGet` → `DirectPtr` 或 `Read` / `BatchRead`。
 
-`BatchPut` 遇到同一批次内重复 key 时退回逐条 `Put`，避免覆盖顺序不确定。
+`BatchPut` 合并同一批次内的重复 key，以最后一次赋值为准，仍通过批量分配与写入路径发布。`BatchGetFlat` 可通过调用者提供的 `found` 数组区分缺失 key 与全零值；HPS 在行宽、步长和对齐匹配时直接写入平坦输出，其余情况保留逐行复制路径。缺失回调在释放内部读锁后执行，允许回调重新进入后端。
+
+固定宽度、普通 SSD 布局可设置 `value.tiering.flat_read_mode="overlap"`：先提交 SSD 读取，再校验和复制 DRAM 行，最后等待完成。默认 `generic` 保持原路径，`serial` 用于相同输出路径的串行对照；CLOCK、读缓存、静态 SSD 布局和在线交换保留原有读取逻辑。页锁与读 epoch 覆盖完整操作，DRAM 复制异常会先排空已提交 I/O，再传播到调用者。此选项不改变 SSD 行格式。
 
 ## 配置骨架
 

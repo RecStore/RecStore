@@ -402,6 +402,9 @@ public:
   // thread pass a short bound so a sick control plane cannot stall it.
   RawVerbsNodeMeta RefreshPeerMeta(std::uint16_t node_id, int timeout_ms = -1);
   std::uint32_t max_inline_data(std::uint16_t node_id) const;
+  // Largest SGE count a single WR toward `node_id` may carry: the value
+  // ibv_create_qp() negotiated, which can be lower than the requested 32.
+  std::uint32_t max_send_sge(std::uint16_t node_id) const;
 
 private:
   struct Impl;

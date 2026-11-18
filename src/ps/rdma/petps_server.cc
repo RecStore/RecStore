@@ -853,6 +853,13 @@ private:
     std::uint64_t response_offset = 0;
     std::uint64_t wr_count        = 0;
     std::size_t zero_cursor       = 0;
+    // The QP may have been granted fewer SGEs per WR than requested, so the
+    // batch width follows the negotiated value instead of the compile-time cap.
+    const std::size_t max_sges = std::max<std::size_t>(
+        1,
+        std::min<std::size_t>(kMaxDirectSgesPerWr,
+                              transport_->MaxResponseSgesPerWr(
+                                  descriptor.client_id, descriptor.qp_index)));
     for (std::size_t row = 0; row < rows.size();) {
       std::array<petps::RawVerbsSge, kMaxDirectSgesPerWr> sges{};
       std::size_t sge_count = 0;
@@ -890,7 +897,7 @@ private:
             continue;
           }
         }
-        if (sge_count == kMaxDirectSgesPerWr) {
+        if (sge_count == max_sges) {
           break;
         }
         sges[sge_count++] = petps::RawVerbsSge{src, row_bytes};

@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <random>
 #include <thread>
+#include <chrono>
 #include <unordered_map>
 #include <vector>
 
@@ -233,4 +234,90 @@ TEST_F(ExtendibleHashTest, HashCollisions) {
     hash_table_->Get(i, retrieved, 0);
     EXPECT_EQ(retrieved, i * 3) << "Failed for key " << i;
   }
+}
+
+// 16 threads filling a fresh directory keep landing on blocks that need a
+// split, so the insert/split hand-off is exercised under contention.
+TEST_F(ExtendibleHashTest, ConcurrentSplitsKeepAllKeys) {
+  // One directory entry: every key starts in the same block, so all threads
+  // contend on the same split.
+  BaseKVConfig tight{0, {{"initial_capacity", 1}}};
+  ExtendibleHash hash(tight);
+  const int num_threads           = 16;
+  const int operations_per_thread = 5000;
+  std::vector<std::thread> threads;
+
+  for (int t = 0; t < num_threads; t++) {
+    threads.emplace_back([&hash, t, operations_per_thread]() {
+      for (int i = 0; i < operations_per_thread; i++) {
+        Key_t key = static_cast<Key_t>(t * operations_per_thread + i);
+        hash.Put(key, key + 1, t);
+      }
+    });
+  }
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  for (int t = 0; t < num_threads; t++) {
+    for (int i = 0; i < operations_per_thread; i++) {
+      Key_t key     = static_cast<Key_t>(t * operations_per_thread + i);
+      Value_t value = 0;
+      hash.Get(key, value, t);
+      ASSERT_EQ(value, key + 1) << "key=" << key;
+    }
+  }
+}
+// The splitter must wait for the inserters already inside the block instead of
+// giving up on the first failed CAS. With 16 threads the retry loop could never
+// observe `sema == 0`, and a load of one million keys spun there forever
+// (`Block::Split` returned nullptr, so every thread went back to RETRY). New
+// inserters now step back on `splitting`, so the wait terminates.
+TEST(ExtendibleHashBlockTest, SplitWaitsForActiveInserter) {
+  const size_t slots = Block::kNumSlot;
+  Block block(4);
+  for (size_t i = 0; i < slots; ++i) {
+    block._[i].key   = static_cast<Key_t>(i) + 1;
+    block._[i].value = 1;
+  }
+
+  // An inserter is already inside the block when the split starts, and leaves
+  // after 50 ms. Without the wait the splitter bails out immediately.
+  __atomic_store_n(&block.sema, int64_t{1}, __ATOMIC_RELEASE);
+  std::thread leaver([&block]() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    __atomic_store_n(&block.sema, int64_t{0}, __ATOMIC_RELEASE);
+  });
+  const auto start  = std::chrono::steady_clock::now();
+  Block** split     = block.Split();
+  const auto waited = std::chrono::steady_clock::now() - start;
+  leaver.join();
+
+  ASSERT_NE(split, nullptr);
+  EXPECT_GE(
+      std::chrono::duration_cast<std::chrono::milliseconds>(waited).count(),
+      40);
+  delete split[0];
+  delete split[1];
+  delete[] split;
+}
+
+// The splitter must release the announcement when it returns, not only when it
+// bails out. An in-place split keeps `this` as split[0] and the directory keeps
+// pointing at it, so a stale flag makes every later insert return -2 and spin
+// in `ExtendibleHash::Insert` forever.
+TEST(ExtendibleHashBlockTest, SplitReleasesSplittingFlag) {
+  Block block(4);
+  for (size_t i = 0; i < Block::kNumSlot; ++i) {
+    block._[i].key   = static_cast<Key_t>(i) + 1;
+    block._[i].value = 1;
+  }
+
+  Block** split = block.Split();
+  ASSERT_NE(split, nullptr);
+  EXPECT_FALSE(block.splitting.load(std::memory_order_acquire));
+  EXPECT_FALSE(split[0]->splitting.load(std::memory_order_acquire));
+  delete split[0];
+  delete split[1];
+  delete[] split;
 }

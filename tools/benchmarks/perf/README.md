@@ -90,6 +90,29 @@ Each run writes one directory (default `results/perf_<MMDDHHMM>/`):
 `env.json` is what makes a number defensible: without the build options,
 pinned cores, load average and binary hash it should not be quoted.
 
+## Profiling
+
+`run --profile cpu` wraps each repeat in gperftools and writes
+`profile/<case>.rNN.<role>.prof` plus a flattened `<...>.txt` produced by
+`google-pprof --text`.
+
+Profile runs are not measurements: `--profile` is rejected together with
+`--check` / `--write-baseline`, and the numbers must not be compared with a
+baseline. Build a separate tree with symbols and frame pointers:
+
+```bash
+cmake -S . -B build_profile -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CXX_FLAGS_RELEASE="-O2 -g -fno-omit-frame-pointer"
+cmake --build build_profile -j
+
+python3 tools/benchmarks/perf_suite.py run --case kvengine_c_read \
+    --build-dir build_profile --profile cpu --repeats 1
+```
+
+`kvengine` profiles the benchmark process. `ps_local_shm` profiles the client
+only: the server is stopped with `SIGTERM`, and gperftools does not flush a
+profile on that path. The machine needs `libprofiler.so.0` and `google-pprof`.
+
 ## Baselines
 
 Baselines live in `baselines/<env-id>/<case-id>.json`, one bucket per machine
