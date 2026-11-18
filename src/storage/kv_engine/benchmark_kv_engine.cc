@@ -110,6 +110,10 @@ DEFINE_int32(tiering_cache_shards, 16, "read cache shard count");
 DEFINE_int64(tiering_promote_min_misses,
              2,
              "SSD misses before a value is eligible for promotion");
+DEFINE_string(tiering_flat_read_mode,
+              "generic",
+              "value.tiering.flat_read_mode: generic/serial/overlap (plain "
+              "SSD layouts without cache/online placement only)");
 
 DEFINE_int64(record_count, 100000000, "YCSB record count");
 DEFINE_string(workload,
@@ -538,6 +542,7 @@ BaseKVConfig BuildConfig() {
                      FLAGS_tiering_promote_min_misses,
                      "tiered_cache_promote_min_misses",
                      FLAGS_tiered_cache_promote_min_misses)},
+        {"flat_read_mode", FLAGS_tiering_flat_read_mode},
         {"clock_frequency_admission", FLAGS_tiered_clock_frequency_admission},
         {"clock_cost_aware", FLAGS_tiered_clock_cost_aware},
         {"clock_async_exchange", FLAGS_tiered_clock_async_exchange},
