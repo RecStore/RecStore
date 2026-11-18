@@ -712,8 +712,27 @@ private:
       bool profile_enabled) {
     std::atomic_thread_fence(std::memory_order_release);
     const std::uint64_t complete_start_ns = profile_enabled ? NowNs() : 0;
-    transport_->CompleteResponse(
-        client_id, qp_index, slot_in_qp, response, seq);
+    try {
+      transport_->CompleteResponse(
+          client_id, qp_index, slot_in_qp, response, seq);
+    } catch (const std::exception& error) {
+      // The dispatch above is guarded for the same reason: an exception that
+      // escapes the polling thread terminates the process, taking every client
+      // on this shard down. A completion failure is reported and the sequence
+      // is still retired below so the poll loop does not spin on it; the client
+      // times out or rebuilds the lane instead.
+      RECSTORE_LOG_EVERY_MS(ERROR, 1000)
+          << "component=rdma_rc_server event=completion_exception"
+          << " shard=" << shard_id_ << " slot=" << slot
+          << " client_id=" << client_id << " qp=" << qp_index << " seq=" << seq
+          << " error=\"" << error.what() << "\"";
+    } catch (...) {
+      RECSTORE_LOG_EVERY_MS(ERROR, 1000)
+          << "component=rdma_rc_server event=completion_exception"
+          << " shard=" << shard_id_ << " slot=" << slot
+          << " client_id=" << client_id << " qp=" << qp_index << " seq=" << seq
+          << " error=\"unknown exception\"";
+    }
     if (profile_enabled) {
       profile_.complete_response_ns.fetch_add(
           NowNs() - complete_start_ns, std::memory_order_relaxed);
@@ -739,8 +758,22 @@ private:
       bool profile_enabled) {
     std::atomic_thread_fence(std::memory_order_release);
     const std::uint64_t complete_start_ns = profile_enabled ? NowNs() : 0;
-    transport_->CompleteResponseStatusOnly(
-        client_id, qp_index, slot_in_qp, response, seq);
+    try {
+      transport_->CompleteResponseStatusOnly(
+          client_id, qp_index, slot_in_qp, response, seq);
+    } catch (const std::exception& error) {
+      RECSTORE_LOG_EVERY_MS(ERROR, 1000)
+          << "component=rdma_rc_server event=completion_exception"
+          << " shard=" << shard_id_ << " slot=" << slot
+          << " client_id=" << client_id << " qp=" << qp_index << " seq=" << seq
+          << " error=\"" << error.what() << "\"";
+    } catch (...) {
+      RECSTORE_LOG_EVERY_MS(ERROR, 1000)
+          << "component=rdma_rc_server event=completion_exception"
+          << " shard=" << shard_id_ << " slot=" << slot
+          << " client_id=" << client_id << " qp=" << qp_index << " seq=" << seq
+          << " error=\"unknown exception\"";
+    }
     if (profile_enabled) {
       profile_.complete_response_ns.fetch_add(
           NowNs() - complete_start_ns, std::memory_order_relaxed);
