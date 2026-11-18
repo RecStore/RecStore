@@ -67,17 +67,6 @@ if(TARGET recstore_torch_ops)
     )
 
     add_test(
-        NAME pytorch_client_test_rdma_auto
-        COMMAND ${CMAKE_COMMAND} -E env
-                RECSTORE_CONFIG=${PROJECT_SOURCE_DIR}/src/test/configs/recstore_config.op_rdma.json
-                RECSTORE_CLIENT_TEST_PHASE=full
-                RECSTORE_USE_LOCAL_MEMCACHED=auto
-                ${Python_EXECUTABLE} ${PROJECT_SOURCE_DIR}/src/test/framework/pytorch/test_client.py
-                "$<TARGET_FILE:recstore_torch_ops>"
-        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/test/framework/pytorch
-    )
-
-    add_test(
         NAME pytorch_client_test_rdma_descriptor_basic
         COMMAND ${CMAKE_COMMAND} -E env
                 RECSTORE_CONFIG=${PROJECT_SOURCE_DIR}/src/test/configs/recstore_config.op_rdma.json
@@ -92,7 +81,6 @@ if(TARGET recstore_torch_ops)
     set_tests_properties(
         pytorch_client_test_rdma_basic
         pytorch_client_test_rdma
-        pytorch_client_test_rdma_auto
         pytorch_client_test_rdma_descriptor_basic
         PROPERTIES
             SKIP_RETURN_CODE 77

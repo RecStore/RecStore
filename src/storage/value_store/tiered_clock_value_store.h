@@ -371,7 +371,7 @@ public:
     Entry* entry = Locate(handle);
     if (!entry)
       return 0;
-    std::lock_guard<ValueMutex> lock(entry->mutex);
+    std::shared_lock<ValueMutex> lock(entry->mutex);
     return Matches(*entry, handle) ? entry->size : 0;
   }
 
