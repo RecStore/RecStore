@@ -743,7 +743,10 @@ public:
         break;
       pos = (pos + step) & (chunk_num_ - 1);
     }
-    return true;
+    // Report a miss so callers can tell "deleted" from "was not there".
+    // Returning true unconditionally makes a racing Put||Delete retire the
+    // same value handle twice (see KVEngineComposite::DeleteKeysLocked).
+    return false;
   }
 
   ValueT* GetById(uint64_t pos, KeyT* key = nullptr) {
