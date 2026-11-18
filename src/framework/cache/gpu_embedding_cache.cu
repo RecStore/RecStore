@@ -48,7 +48,6 @@ std::unique_ptr<CacheImpl> g_cache;
 int64_t g_capacity = 0, g_dim = 0;
 int g_device          = -1;
 cudaEvent_t g_last_op = nullptr;
-uint64_t g_generation = 0;
 
 void ReleaseLocked() {
   if (!g_cache)
@@ -170,7 +169,9 @@ bool EnableGpuCache(int64_t capacity, int64_t dim, int device) {
     g_capacity = capacity;
     g_dim      = dim;
     g_device   = device;
-    ++g_generation;
+    // Bump the shared epoch so latches on other threads reset on their next
+    // lookup, not only the calling thread's.
+    CacheAwareEpoch().fetch_add(1, std::memory_order_relaxed);
   }
   g_cache_aware_op.Reset();
   return true;
@@ -180,7 +181,7 @@ void DisableGpuCache() {
   ReleaseLocked();
   g_capacity = g_dim = 0;
   g_device           = -1;
-  ++g_generation;
+  CacheAwareEpoch().fetch_add(1, std::memory_order_relaxed);
   g_cache_aware_op.Reset();
 }
 void ClearGpuCache() {
@@ -190,10 +191,13 @@ void ClearGpuCache() {
   DeviceGuard guard(g_device);
   ReleaseLocked();
   g_cache = std::make_unique<CacheImpl>(g_capacity, g_dim);
-  ++g_generation;
 }
 void ResetGpuCache() {
   ClearGpuCache();
+  // ClearGpuCache intentionally leaves the bypass latch alone (a fallback
+  // clear must not re-enable a bypassed cache). An explicit reset does clear
+  // it, on every thread.
+  CacheAwareEpoch().fetch_add(1, std::memory_order_relaxed);
   g_cache_aware_op.Reset();
 }
 bool IsGpuCacheEnabled() {
@@ -201,8 +205,7 @@ bool IsGpuCacheEnabled() {
   return bool(g_cache);
 }
 uint64_t GetGpuCacheGeneration() {
-  std::lock_guard<std::mutex> lock(g_mu);
-  return g_generation;
+  return CacheAwareEpoch().load(std::memory_order_acquire);
 }
 bool CanUseGpuCache(int device, int64_t dim) {
   std::lock_guard<std::mutex> lock(g_mu);

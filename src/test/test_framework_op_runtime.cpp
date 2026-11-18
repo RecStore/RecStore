@@ -105,17 +105,27 @@ TEST(CacheAwareOp, MissPipelineBypassAndRecoveryShareOnePolicy) {
       [&] { order += 's'; },
       [&] { order += 'b'; },
       [&] { order += 'c'; }};
+  // A cold start must not disable the cache after one batch: the first two
+  // low-hit batches still go through the cache and only then trip the latch.
   op.Lookup(2048, io);
   EXPECT_EQ(order, "qrfs");
   order.clear();
   op.Lookup(2048, io);
-  EXPECT_EQ(order, "cb");
+  EXPECT_EQ(order, "qrfs");
   EXPECT_TRUE(op.Bypassed());
+
+  // Bypassed lookups read the backend and keep the resident rows for the
+  // re-probe instead of clearing them.
   order.clear();
+  op.Lookup(2048, io);
+  EXPECT_EQ(order, "b");
+
+  // The latch is re-probed periodically; a good hit rate restores the cache.
   missing = 0;
-  op.Lookup(1, io);
-  EXPECT_EQ(order, "cq");
+  for (int i = 0; i < 64 && op.Bypassed(); ++i)
+    op.Lookup(2048, io);
   EXPECT_FALSE(op.Bypassed());
+  EXPECT_NE(order.find('q'), std::string::npos);
 }
 
 TEST(CacheAwareOp, FailedFillFallsBackButNoEvictionPathPropagates) {
