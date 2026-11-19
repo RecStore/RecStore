@@ -616,6 +616,16 @@ set_tests_properties(
 )
 
 add_python_unittest(
+    test_check_test_registration
+    src/test/scripts/test_check_test_registration.py
+)
+set_tests_properties(
+    test_check_test_registration
+    PROPERTIES
+    LABELS "meta;python"
+)
+
+add_python_unittest(
     test_run_local_shm_mixed_benchmark_py
     src/test/scripts/test_run_local_shm_mixed_benchmark.py
 )

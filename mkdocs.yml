@@ -108,6 +108,7 @@ nav:
       - 存储层:
         - 总览: storage/index.md
         - KVEngineComposite: storage/composite_kvengine.md
+        - Tiered storage foundation: storage/tiered_storage_foundation.md
     - 扩展指南:
       - 添加算子: dev/feature/add_operator.md
       - 扩展存储组件: dev/feature/storage.md

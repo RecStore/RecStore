@@ -37,7 +37,17 @@ EXEMPT = {
     "test_sparse_sgd_topk_gloo": "manual runner (requires torch.distributed)",
 }
 
-CPP_EXEMPT: dict[str, str] = {}
+CPP_EXEMPT: dict[str, str] = {
+    # add_executable/test_f14_slab is commented out; the test needs a rewrite
+    # (folly/mimalloc) before it can run in ctest.
+    "test_f14_slab": "not registered: target commented out (stale)",
+}
+
+
+def _strip_cmake_comments(text: str) -> str:
+    # A commented-out add_executable() block used to satisfy the registration
+    # check. Strip CMake comments before matching.
+    return re.sub(r"#[^\n]*", "", text)
 
 
 def _cmake_text() -> str:
@@ -65,7 +75,7 @@ def _collect_tests() -> list[tuple[str, Path]]:
 
 
 def main() -> int:
-    text = _cmake_text()
+    text = _strip_cmake_comments(_cmake_text())
     missing: list[str] = []
     stale_exempt: list[str] = []
     seen: set[str] = set()

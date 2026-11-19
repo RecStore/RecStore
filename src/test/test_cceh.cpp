@@ -54,6 +54,14 @@ TEST_F(CCEHTest, SimpleInsertAndGet) {
   EXPECT_EQ(ret_val, NONE);
 }
 
+TEST_F(CCEHTest, DeleteIsExplicitlyUnsupported) {
+  CCEH cceh(config);
+  Key_t key = 100;
+  // The SSD index has no page-free path; it must report a miss so callers do
+  // not retire a value handle, and clear() must not abort the process.
+  EXPECT_FALSE(cceh.Delete(key));
+}
+
 TEST_F(CCEHTest, SplitTest) {
   CCEH cceh(config);
 

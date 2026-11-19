@@ -74,6 +74,25 @@ class TestShardedUpdateAsyncLearningRate(unittest.TestCase):
             self.assertEqual(learning_rate, 0.25)
         self.assertEqual(len(fake.ops.shard_configs), 2)
 
+    def test_update_async_owns_tensors_until_wait(self) -> None:
+        client, fake = self._build_client()
+        ids = torch.tensor([1, 2, 3, 4], dtype=torch.int64)
+        grads = torch.arange(16, dtype=torch.float32).reshape(4, 4)
+
+        handle = client.update_async("table", ids, grads, learning_rate=0.25)
+        # The caller reuses its buffers before wait(): the pending op must still
+        # apply the submitted values.
+        ids.fill_(-1)
+        grads.zero_()
+        client.wait(handle)
+
+        self.assertEqual(
+            {int(key) for _, keys, _, _ in fake.updates for key in keys.tolist()},
+            {1, 2, 3, 4},
+        )
+        for _, _, shard_grads, _ in fake.updates:
+            self.assertFalse(bool(torch.all(shard_grads == 0)))
+
 
 if __name__ == "__main__":
     unittest.main()

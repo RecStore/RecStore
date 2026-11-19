@@ -26,6 +26,9 @@ struct LocalShmFlatGetHandle {
   int64_t num_rows      = 0;
   int64_t embedding_dim = 0;
   uint64_t output_bytes = 0;
+  // Set when the wait timed out: the slot must not go back to the free queue
+  // because the server may still be writing into it.
+  bool quarantined = false;
 };
 
 struct LocalShmRequestProfile {
@@ -107,6 +110,11 @@ public:
 private:
   int AcquireSlot();
   void ReleaseSlot(uint32_t slot_id);
+  // Returns the slot only when the server actually finished this request.
+  // After a timeout the server may still be reading the request payload or
+  // writing the response, so recycling the slot would corrupt the next
+  // request; the slot is quarantined instead.
+  void ReleaseSlotAfterWait(uint32_t slot_id, bool waited);
   bool WaitForSlot(uint32_t slot_id, uint64_t request_id);
   uint64_t NextRequestId();
   uint32_t ResolveReadyQueueId(const json& config) const;

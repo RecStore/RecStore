@@ -36,7 +36,7 @@ Full documentation lives at [recstore.github.io/RecStore](https://recstore.githu
 - [Quickstart](https://recstore.github.io/RecStore/quickstart/) — environment setup and build
 - [Configuration](https://recstore.github.io/RecStore/config/) — project configuration
 - [Architecture](https://recstore.github.io/RecStore/architecture/overview/) — layered design
-- [Performance](https://recstore.github.io/RecStore/dev/performance/) — performance analysis
+- [Performance](https://recstore.github.io/RecStore/performance/) — performance analysis
 
 
 ## Citation

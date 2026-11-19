@@ -24,6 +24,9 @@ public:
         value_size_(value_size) {}
 
   void PreLoadDB(bool shuffle_load = false) {
+    // Both branches stage each row in a fixed 32KB heap buffer.
+    CHECK_LE(value_size_, 32 * 1024)
+        << "PreLoadDB staging buffer is 32KB; value size is too large";
     uint64_t warm_kv_per_thread =
         (warm_capacity_ + warm_thread_count_ - 1) / warm_thread_count_;
     uint64_t start = 1;

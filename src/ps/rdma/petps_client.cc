@@ -629,11 +629,12 @@ bool PetPSClient::RequestPayloadFitsSlot(std::size_t payload_bytes) const {
          config_.request_slot_bytes;
 }
 
-float* PetPSClient::AllocateStatusReceiveBufferLocked() {
-  receive_buffers_.emplace_back(sizeof(std::int32_t), 0);
-  receive_buffer_index_.emplace(
-      receive_buffers_.back().data(), receive_buffers_.size() - 1);
-  return reinterpret_cast<float*>(receive_buffers_.back().data());
+float* PetPSClient::AllocateStatusReceiveBufferLocked(SlotContext* slot) {
+  // The status word belongs to one slot, and a slot hosts at most one in-flight
+  // RPC, so it needs no heap allocation. Allocating per RPC leaked one buffer
+  // (plus an index entry) on every PUT/UPDATE/INIT for the process lifetime.
+  std::memset(slot->status_buffer, 0, sizeof(slot->status_buffer));
+  return reinterpret_cast<float*>(slot->status_buffer);
 }
 
 void PetPSClient::MaybeReportProfile() {
@@ -1050,12 +1051,14 @@ bool PetPSClient::QueryRPCFinished(int rpc_id) {
   return StatusWordDone(*slot.view.status, pending.seq);
 }
 
-void PetPSClient::WaitRPCFinish(int rpc_id) {
+std::int32_t PetPSClient::WaitRPCFinish(int rpc_id) {
   PendingRpc pending;
   {
     std::lock_guard<std::mutex> guard(mu_);
     if (!PendingRpcLocked(rpc_id, &pending)) {
-      return;
+      // Already revoked: the caller must not re-read slot memory, so report a
+      // neutral success like the previous void signature let it assume.
+      return static_cast<std::int32_t>(RpcStatus::kOk);
     }
     if (pending.failed) {
       throw ShardUnreachableError(
@@ -1100,6 +1103,7 @@ void PetPSClient::WaitRPCFinish(int rpc_id) {
       FixedSlotStatusWord(pending.recv_buffer, pending.key_count, value_size);
   *user_status = status_code;
   MaybeReportProfile();
+  return status_code;
 }
 
 void PetPSClient::RevokeRPCResource(int rpc_id) {
@@ -1196,14 +1200,13 @@ int PetPSClient::PutParameter(const base::ConstArray<uint64_t>& keys,
         slot.busy = false;
         throw std::runtime_error("PUT request exceeds RC request slot");
       }
-      recv   = AllocateStatusReceiveBufferLocked();
+      recv   = AllocateStatusReceiveBufferLocked(&slot);
       rpc_id = SubmitRpcLocked(
           &slot, descriptor, payload.data(), payload_bytes, recv, 0, 0);
     }
-    WaitRPCFinish(rpc_id);
-    const auto* status = reinterpret_cast<const std::int32_t*>(recv);
+    const std::int32_t status = WaitRPCFinish(rpc_id);
     RevokeRPCResource(rpc_id);
-    if (*status != static_cast<std::int32_t>(RpcStatus::kOk)) {
+    if (status != static_cast<std::int32_t>(RpcStatus::kOk)) {
       return -1;
     }
     begin = end;
@@ -1237,7 +1240,7 @@ int PetPSClient::InitEmbeddingTable(
       slot.busy = false;
       throw std::runtime_error("INIT request exceeds RC request slot");
     }
-    recv   = AllocateStatusReceiveBufferLocked();
+    recv   = AllocateStatusReceiveBufferLocked(&slot);
     rpc_id = SubmitRpcLocked(
         &slot,
         descriptor,
@@ -1324,15 +1327,14 @@ int PetPSClient::UpdateParameter(
         slot.busy = false;
         throw std::runtime_error("UPDATE request exceeds RC request slot");
       }
-      recv   = AllocateStatusReceiveBufferLocked();
+      recv   = AllocateStatusReceiveBufferLocked(&slot);
       rpc_id = SubmitRpcLocked(
           &slot, descriptor, payload.data(), payload_bytes, recv, 0, 0);
     }
 
-    WaitRPCFinish(rpc_id);
-    const auto* status = reinterpret_cast<const std::int32_t*>(recv);
+    const std::int32_t status = WaitRPCFinish(rpc_id);
     RevokeRPCResource(rpc_id);
-    if (*status != static_cast<std::int32_t>(RpcStatus::kOk)) {
+    if (status != static_cast<std::int32_t>(RpcStatus::kOk)) {
       return -1;
     }
     begin = end;
@@ -1385,7 +1387,7 @@ int PetPSClient::SubmitUpdateParameterFlat(
       table_name,
       slot.view);
   descriptor.learning_rate = learning_rate;
-  float* recv              = AllocateStatusReceiveBufferLocked();
+  float* recv              = AllocateStatusReceiveBufferLocked(&slot);
   return SubmitRpcLocked(&slot, descriptor, payload, payload_bytes, recv, 0, 0);
 }
 
@@ -1446,7 +1448,7 @@ int PetPSClient::SubmitUpdateParameterFlatGather(
       table_name,
       slot.view);
   descriptor.learning_rate = learning_rate;
-  float* recv              = AllocateStatusReceiveBufferLocked();
+  float* recv              = AllocateStatusReceiveBufferLocked(&slot);
   return SubmitRpcLocked(
       &slot, descriptor, slot.view.payload, payload_bytes, recv, 0, 0);
 }
@@ -1509,16 +1511,15 @@ int PetPSClient::WaitUpdateParameter(int rpc_id) {
   if (rpc_id == 0) {
     return 0;
   }
-  WaitRPCFinish(rpc_id);
-  PendingRpc pending;
   {
     std::lock_guard<std::mutex> guard(mu_);
-    if (!PendingRpcLocked(rpc_id, &pending)) {
+    if (!PendingRpcLocked(rpc_id, nullptr)) {
+      // An unknown handle is a caller error, not a completed RPC. Keep the
+      // -1 contract even though WaitRPCFinish treats "already revoked" as ok.
       return -1;
     }
   }
-  const auto status =
-      *reinterpret_cast<const std::int32_t*>(pending.recv_buffer);
+  const std::int32_t status = WaitRPCFinish(rpc_id);
   RevokeRPCResource(rpc_id);
   return status == static_cast<std::int32_t>(RpcStatus::kOk) ? 0 : -1;
 }

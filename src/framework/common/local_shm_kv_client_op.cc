@@ -114,7 +114,10 @@ void KVClientOp::LocalUpdateFlat(
         ps_backend_name_);
   }
   if (IsHierKVBackendName(ps_backend_name_)) {
-    EmbUpdate(table_name, keys, grads);
+    // The hierkv pipeline supports a per-request learning rate
+    // (kHierKVLearningRate is only the fallback); forward the advertised one
+    // like the local_shm branch below does.
+    EmbUpdateWithLearningRate(table_name, keys, grads, learning_rate);
     return;
   }
   LocalShmUpdateFlat(

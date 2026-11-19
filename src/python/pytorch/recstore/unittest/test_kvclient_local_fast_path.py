@@ -77,6 +77,19 @@ class TestKVClientLocalFastPath(unittest.TestCase):
         client._initialized = True
         return client
 
+    def test_delete_data_rejects_before_mutating_metadata(self):
+        client = self._build_client()
+
+        with self.assertRaisesRegex(NotImplementedError, "delete_data"):
+            client.delete_data("table_a")
+
+        # A half-deleted local state would disagree with the rows that are
+        # still in the backend, so nothing may be removed before the raise.
+        self.assertIn("table_a", client._tensor_meta)
+        self.assertIn("table_a", client._full_data_shape)
+        self.assertIn("table_a", client._data_name_list)
+        self.assertIn("table_a", client._gdata_name_list)
+
     def test_local_lookup_flat_uses_explicit_local_op(self):
         client = self._build_client()
 

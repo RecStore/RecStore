@@ -57,7 +57,10 @@ public:
       std::size_t* response_bytes,
       std::int32_t* status_code);
   bool QueryRPCFinished(int rpc_id);
-  void WaitRPCFinish(int rpc_id);
+  // Returns the server status word. Callers must use the value instead of
+  // reading the slot's status buffer afterwards: the slot may already belong
+  // to another thread.
+  std::int32_t WaitRPCFinish(int rpc_id);
   void RevokeRPCResource(int rpc_id);
   // Snapshot only: callers must serialize submissions around this check.
   bool HasAvailableSlots(std::size_t required) const;
@@ -110,6 +113,10 @@ private:
     RcClientQpView view;            // Local request/response slot view.
     std::uint64_t next_seq = 1;     // Monotonic request sequence for this lane.
     bool busy              = false; // True while one RPC is in flight.
+    // Receive target for the server-written status word. A slot hosts at most
+    // one in-flight RPC, so the buffer is reused with the slot instead of
+    // being allocated per RPC.
+    alignas(4) char status_buffer[sizeof(std::int32_t)] = {};
   };
 
   // Not copyable or movable: the lane state holds atomics and the vector that
@@ -223,7 +230,7 @@ private:
   // True when `rpc_id` was discarded by a lane rebuild. Requires mu_.
   bool RpcFailedLocked(int rpc_id) const;
   bool RequestPayloadFitsSlot(std::size_t payload_bytes) const;
-  float* AllocateStatusReceiveBufferLocked();
+  float* AllocateStatusReceiveBufferLocked(SlotContext* slot);
   void MaybeReportProfile();
   void FillGetDescriptor(
       RequestDescriptor* descriptor,

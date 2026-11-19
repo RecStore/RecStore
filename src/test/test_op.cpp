@@ -316,6 +316,35 @@ TEST_F(OpTest, HierKVWriteReadUpdateAndMissingRowsRoundTrip) {
             (std::vector<float>{0.9f, 1.8f, 2.7f, -0.01f, -0.02f, -0.03f}));
 }
 
+TEST_F(OpTest, HierKVLocalUpdateFlatForwardsLearningRate) {
+  std::vector<uint64_t> key_values{3001};
+  std::vector<float> value_values{1.0f, 2.0f, 3.0f};
+  auto keys          = UInt64Tensor(&key_values);
+  auto values_tensor = FloatTensor(&value_values, 1, 3);
+  op_.EmbWrite(keys, values_tensor);
+
+  std::vector<float> grads{10.0f, 20.0f, 30.0f};
+  std::vector<float> read_values(3, 0.0f);
+  auto grads_tensor = FloatTensor(&grads, 1, 3);
+  auto read_tensor  = FloatTensor(&read_values, 1, 3);
+
+  // The hierkv branch used to drop the advertised rate and fall back to the
+  // pipeline default (0.01); it must apply the value the caller passed.
+  op_.LocalUpdateFlat("default", keys, grads_tensor, 0.5f);
+  op_.EmbRead(keys, read_tensor);
+  EXPECT_NEAR(read_values[0], -4.0f, 1e-4f);
+  EXPECT_NEAR(read_values[1], -8.0f, 1e-4f);
+  EXPECT_NEAR(read_values[2], -12.0f, 1e-4f);
+
+  // lr=0 still means "not advertised" and keeps the legacy default.
+  op_.LocalUpdateFlat("default", keys, grads_tensor, 0.0f);
+  std::fill(read_values.begin(), read_values.end(), 0.0f);
+  op_.EmbRead(keys, read_tensor);
+  EXPECT_NEAR(read_values[0], -4.1f, 1e-4f);
+  EXPECT_NEAR(read_values[1], -8.2f, 1e-4f);
+  EXPECT_NEAR(read_values[2], -12.3f, 1e-4f);
+}
+
 TEST_F(OpTest, InitEmbeddingTableSucceedsForMatchingHierKVTable) {
   const recstore::EmbeddingTableConfig config{
       .num_embeddings = 1024,
