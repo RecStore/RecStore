@@ -190,7 +190,6 @@ def _process_generic_module_with_trace(
     backend_name = _get_sparse_backend_name(
         module_kv_client, strict=keep_ratio < 1.0
     )
-    direct_sgd = backend_name == "rdma"
     should_compress = keep_ratio < 1.0
     if should_compress:
         if not getattr(mod, "_enable_fusion", False):
@@ -208,21 +207,17 @@ def _process_generic_module_with_trace(
         else:
             all_ids = torch.cat([ids for ids, _ in entries], dim=0)
             all_grads = torch.cat([grads for _, grads in entries], dim=0)
-        if direct_sgd:
-            update_ids, update_grads = all_ids, all_grads
-        else:
-            unique_ids, inverse_indices = torch.unique(all_ids, return_inverse=True)
-            update_grads = torch.zeros(
-                (len(unique_ids), all_grads.size(1)),
-                device=all_grads.device,
-                dtype=all_grads.dtype,
+        # Aggregate duplicate ids before the backend update on every transport.
+        # The RDMA direct path used to send the raw trace: duplicate ids each
+        # read the same old value, compute independently and Put back, so all
+        # but the last gradient were silently dropped. That is only equivalent
+        # for additive SGD; AdamW/AdaGrad diverged. Aggregating first keeps the
+        # four backends consistent.
+        update_ids, update_grads = _aggregate_ids_and_grads(all_ids, all_grads)
+        if should_compress:
+            update_ids, update_grads = select_topk_rows(
+                update_ids, update_grads, keep_ratio
             )
-            update_grads.index_add_(0, inverse_indices, all_grads)
-            update_ids = unique_ids
-            if should_compress:
-                update_ids, update_grads = select_topk_rows(
-                    update_ids, update_grads, keep_ratio
-                )
         trace_done = perf_counter()
         _record_table_update_mode(module_kv_client, name, _SERVER_UPDATE_MODE)
         # Backend sparse optimizers own learning-rate application for these modules.
