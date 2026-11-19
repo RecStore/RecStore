@@ -3063,7 +3063,9 @@
 </table>
 <p>远端上报只发送 <code>table_name</code>、<code>unique_id</code>、<code>metric_name</code>、<code>metric_value</code>、<code>timestamp_us</code>、<code>source</code>
 六个字段，与历史 payload 保持兼容，避免部署方的 <code>report_service</code> 因未知字段拒绝；<code>host</code> / <code>pid</code> /
-<code>run_id</code> / <code>rank</code> / <code>shard</code> 只出现在 CSV 和自定义 sink 里。</p>
+<code>run_id</code> / <code>rank</code> / <code>shard</code> 只出现在 CSV 和自定义 sink 里。仓库自带接收端参考实现
+（<code>tools/observability/report_service.py</code>）、ClickHouse 建表脚本与示例 Grafana 看板，见
+<a href="../../performance/monitoring/">监控与 Grafana</a>。</p>
 <h2 id="csv">CSV 形态<a class="headerlink" href="#csv" title="Permanent link">&para;</a></h2>
 <p>长表，一行一个指标，列固定为：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>timestamp_us,host,pid,run_id,rank,shard,table_name,unique_id,metric_name,metric_value,source
