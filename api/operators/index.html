@@ -2810,6 +2810,10 @@
 <td>同步读取，返回 <code>[N, D]</code>。</td>
 </tr>
 <tr>
+<td><code>emb_read_with_found(keys, embedding_dim)</code></td>
+<td>同步读取，返回 <code>(values[N, D], found[N])</code>；<code>found</code> 为 bool，True 表示该 key 存在。当前只有 local_shm 后端支持，其它后端抛错。</td>
+</tr>
+<tr>
 <td><code>emb_write(keys, values)</code></td>
 <td>同步写入。</td>
 </tr>

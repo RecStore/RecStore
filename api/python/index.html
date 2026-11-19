@@ -2814,11 +2814,15 @@
 <tbody>
 <tr>
 <td><code>init_data(name, shape, dtype, init_func=None)</code></td>
-<td>初始化后端表，记录本地元数据，写入初始值。</td>
+<td>初始化后端表，记录本地元数据，写入初始值。可选 <code>mask</code>（长度为 <code>shape[0]</code> 的布尔张量）只写入选中的行；这是覆盖写，不是 insert-if-absent，掩码内的 live 行会被改掉。</td>
 </tr>
 <tr>
 <td><code>pull(name, ids)</code></td>
 <td>读取 <code>[N, D]</code> embedding。</td>
+</tr>
+<tr>
+<td><code>pull_with_found(name, ids)</code></td>
+<td>读取并返回 <code>(values, found)</code>；<code>found</code> 标记每一行是否存在。后端不支持时返回 <code>(values, None)</code>。</td>
 </tr>
 <tr>
 <td><code>push(name, ids, data)</code></td>
