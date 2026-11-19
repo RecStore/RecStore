@@ -170,6 +170,16 @@ private:
     return shards_[index % kShardCount].mu;
   }
 
+  // Structural snapshots (capacity, utilization, whole-directory scans) need
+  // every shard so a concurrent split cannot free a block under them.
+  std::array<std::shared_lock<std::shared_mutex>, kShardCount>
+  LockAllShared() const {
+    std::array<std::shared_lock<std::shared_mutex>, kShardCount> guards;
+    for (size_t i = 0; i < kShardCount; ++i)
+      guards[i] = std::shared_lock<std::shared_mutex>(shards_[i].mu);
+    return guards;
+  }
+
   Directory dir;
   size_t global_depth;
   mutable std::array<Shard, kShardCount> shards_;

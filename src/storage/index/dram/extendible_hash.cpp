@@ -332,6 +332,7 @@ ExtendibleHash::~ExtendibleHash() {
 }
 
 size_t ExtendibleHash::UniqueBlocks() const {
+  auto guards = LockAllShared();
   std::unordered_set<Block*> unique;
   for (size_t i = 0; i < dir.capacity; ++i) {
     if (dir._[i] != nullptr)
@@ -378,11 +379,11 @@ Value_t ExtendibleHash::Insert(Key_t& key, Value_t value) {
   for (;;) {
     // Fast path: a shared shard lock keeps readers and inserters running
     // concurrently but excludes every structural writer.
-    size_t x = DirectoryIndex(key_hash);
+    size_t x;
     {
       std::shared_lock<std::shared_mutex> lock(ShardFor(key_hash));
-      // The directory may have grown before the lock was taken; recompute the
-      // index now that structural changes are excluded.
+      // Read the index only under the lock: the directory may have grown
+      // before the lock was taken, and dir.capacity is not atomic.
       x              = DirectoryIndex(key_hash);
       Block* target  = dir._[x];
       const auto ret = target->Insert(key, value, key_hash, &old_value);
@@ -629,9 +630,7 @@ Value_t ExtendibleHash::Extract(Key_t& key) {
 // Debugging function
 Value_t ExtendibleHash::FindAnyway(Key_t& key) {
   using namespace std;
-  std::array<std::shared_lock<std::shared_mutex>, kShardCount> guards;
-  for (size_t i = 0; i < kShardCount; ++i)
-    guards[i] = std::shared_lock<std::shared_mutex>(shards_[i].mu);
+  auto guards = LockAllShared();
   for (size_t i = 0; i < dir.capacity; ++i) {
     for (size_t j = 0; j < Block::kNumSlot; ++j) {
       if (dir._[i]->_[j].key == key) {
@@ -646,10 +645,8 @@ Value_t ExtendibleHash::FindAnyway(Key_t& key) {
 
 // Not accurate
 double ExtendibleHash::Utilization(void) {
-  std::array<std::shared_lock<std::shared_mutex>, kShardCount> guards;
-  for (size_t i = 0; i < kShardCount; ++i)
-    guards[i] = std::shared_lock<std::shared_mutex>(shards_[i].mu);
-  size_t sum = 0;
+  auto guards = LockAllShared();
+  size_t sum  = 0;
   std::unordered_map<Block*, bool> set;
   for (size_t i = 0; i < dir.capacity; ++i) {
     set[dir._[i]] = true;
@@ -674,6 +671,7 @@ void Directory::SanityCheck(void* addr) {
 }
 
 size_t ExtendibleHash::Capacity(void) {
+  auto guards = LockAllShared();
   std::unordered_map<Block*, bool> set;
   for (size_t i = 0; i < dir.capacity; ++i) {
     set[dir._[i]] = true;
@@ -697,9 +695,7 @@ void ExtendibleHash::BatchGet(
   // One shared acquisition for the whole batch: 500 keys would otherwise pay
   // 500 lock/unlock pairs. Writers (splits, directory growth) are rare and
   // wait for the batch to finish.
-  std::array<std::shared_lock<std::shared_mutex>, kShardCount> guards;
-  for (size_t i = 0; i < kShardCount; ++i)
-    guards[i] = std::shared_lock<std::shared_mutex>(shards_[i].mu);
+  auto guards = LockAllShared();
   for (size_t i = 0; i < keys.Size(); ++i) {
     Key_t key     = keys[static_cast<int>(i)];
     auto key_hash = h(&key, sizeof(key));
