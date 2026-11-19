@@ -30,8 +30,9 @@ private:
   inline static char* shared_empty_page_         = nullptr;
   inline static std::atomic<int> instance_count_{0};
   // Set by completion callbacks, which cannot throw across the SPDK C frames.
-  // The waiting path checks it and turns the failure into an exception before
-  // the caller consumes the (garbage) buffer.
+  // Only the synchronous entry points may turn it into an exception: an async
+  // coroutine is resumed *inside* io_complete(), so code after sink() already
+  // runs on the callback stack.
   inline static thread_local bool completion_failed_ = false;
 
   struct ThreadQpair {
@@ -295,7 +296,8 @@ public:
       throw std::runtime_error("Failed to read page:" + std::to_string(ret));
     }
     sink();
-    CheckCompletionFailure("read", page_id);
+    // No CheckCompletionFailure here: resuming a coroutine runs this code on
+    // io_complete()'s stack. Async callers only get the stderr report.
   }
   void ReadPageSync(PageID_t page_id, char* buffer) override {
     struct spdk_nvme_qpair* qpair = get_thread_qpair();
@@ -340,7 +342,7 @@ public:
       throw std::runtime_error("Failed to write page:" + std::to_string(ret));
     }
     sink();
-    CheckCompletionFailure("write", page_id);
+    // See ReadPageAsync: throwing here would cross the SPDK C frames.
   }
   void WritePageSync(PageID_t page_id, char* buffer) override {
     // LOG(INFO) << "WritePageSync: page_id=" << page_id

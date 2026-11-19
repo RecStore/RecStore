@@ -57,9 +57,9 @@ TEST_F(CCEHTest, SimpleInsertAndGet) {
 TEST_F(CCEHTest, DeleteIsExplicitlyUnsupported) {
   CCEH cceh(config);
   Key_t key = 100;
-  // The SSD index has no page-free path; a silent false made callers believe
-  // the row was gone, so the unsupported call is fatal instead.
-  EXPECT_DEATH({ cceh.Delete(key); }, "CCEH::Delete is not implemented");
+  // The SSD index has no page-free path; it must report a miss so callers do
+  // not retire a value handle, and clear() must not abort the process.
+  EXPECT_FALSE(cceh.Delete(key));
 }
 
 TEST_F(CCEHTest, SplitTest) {

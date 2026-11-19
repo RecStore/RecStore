@@ -247,7 +247,7 @@ Op-layer and PyTorch wrapper checks use
 ```bash
 ctest --test-dir ./build -R '^test_op_runtime_support$|^test_op$' -VV
 ctest --test-dir ./build -R '^pytorch_client_test_rdma_basic$' -VV
-ctest --test-dir ./build -R '^pytorch_client_test_rdma$|^pytorch_client_test_rdma_auto$' -VV
+ctest --test-dir ./build -R '^pytorch_client_test_rdma$' -VV
 ```
 
 Script plumbing checks:

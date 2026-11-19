@@ -814,9 +814,11 @@ Value_t CCEH::Put(Key_t key, Value_t value, unsigned tid) {
 }
 
 bool CCEH::Delete(Key_t& key) {
-  // Silent false makes callers believe the row was removed. The SSD index has
-  // no page-free path yet, so refuse loudly until a real Delete exists.
-  LOG(FATAL) << "CCEH::Delete is not implemented";
+  // The SSD index has no page-free path yet, so report a miss: callers use the
+  // return value to decide whether to retire a value handle. Aborting here
+  // would kill the PS on every CLEAR_PS / BatchDelete round.
+  RECSTORE_LOG_EVERY_MS(ERROR, 60000)
+      << "CCEH::Delete is not implemented; the row is left in place";
   return false;
 }
 

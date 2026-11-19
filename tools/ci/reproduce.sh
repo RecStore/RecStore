@@ -109,7 +109,7 @@ docker run "${CONTAINER_ARGS[@]}" "${IMAGE}" bash -lc '
   CTEST_EXCLUDE_REGEX="test_io_backend"
   if ! command -v memcached >/dev/null 2>&1; then
     echo "memcached not found; skipping RDMA integration tests."
-    CTEST_EXCLUDE_REGEX="${CTEST_EXCLUDE_REGEX}|pytorch_client_test_rdma_basic|pytorch_client_test_rdma|pytorch_client_test_rdma_auto"
+    CTEST_EXCLUDE_REGEX="${CTEST_EXCLUDE_REGEX}|pytorch_client_test_rdma_basic|pytorch_client_test_rdma"
   fi
 
   run_lane() {
