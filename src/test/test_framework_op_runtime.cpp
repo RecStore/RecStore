@@ -93,10 +93,12 @@ TEST(SparseCommitRuntime, StagingFailureAbortsBeforeSendingGradients) {
 TEST(CacheAwareOp, MissPipelineBypassAndRecoveryShareOnePolicy) {
   CacheAwareOp op;
   std::string order;
+  int queries     = 0;
   int64_t missing = 2048;
   CacheLookupActions io{
       true,
       [&] {
+        ++queries;
         order += 'q';
         return missing;
       },
@@ -105,17 +107,63 @@ TEST(CacheAwareOp, MissPipelineBypassAndRecoveryShareOnePolicy) {
       [&] { order += 's'; },
       [&] { order += 'b'; },
       [&] { order += 'c'; }};
+  // A cold start must not disable the cache after one batch: the first two
+  // low-hit batches still go through the cache and only then trip the latch.
   op.Lookup(2048, io);
   EXPECT_EQ(order, "qrfs");
   order.clear();
   op.Lookup(2048, io);
-  EXPECT_EQ(order, "cb");
+  EXPECT_EQ(order, "qrfs");
   EXPECT_TRUE(op.Bypassed());
+
+  // Bypassed lookups read the backend and keep the resident rows for the
+  // re-probe instead of clearing them.
   order.clear();
+  op.Lookup(2048, io);
+  EXPECT_EQ(order, "b");
+
+  // The probe fires on exactly the 32nd bypassed lookup. A failed probe keeps
+  // the cache off and re-arms the interval.
+  for (int i = 0; i < 30; ++i)
+    op.Lookup(2048, io);
+  EXPECT_EQ(queries, 2);
+  op.Lookup(2048, io);
+  EXPECT_EQ(queries, 3);
+  EXPECT_TRUE(op.Bypassed());
+
+  // The latch is re-probed periodically; a good hit rate restores the cache.
   missing = 0;
-  op.Lookup(1, io);
-  EXPECT_EQ(order, "cq");
+  for (int i = 0; i < 64 && op.Bypassed(); ++i)
+    op.Lookup(2048, io);
   EXPECT_FALSE(op.Bypassed());
+  EXPECT_NE(order.find('q'), std::string::npos);
+}
+
+TEST(CacheAwareOp, UpdateDuringBypassStillInvalidates) {
+  // Bypass no longer clears the cache, and the probe can serve resident rows
+  // again. Every write that reaches the cache must therefore invalidate, even
+  // while the latch is down.
+  CacheAwareOp op;
+  int invalidations = 0;
+  CacheLookupActions lookup{
+      true,
+      [] { return int64_t{2048}; },
+      [] {},
+      [] {},
+      [] {},
+      [] {},
+      [] { FAIL() << "bypass must not clear the cache"; }};
+  op.Lookup(2048, lookup);
+  op.Lookup(2048, lookup);
+  ASSERT_TRUE(op.Bypassed());
+
+  CacheUpdateActions update{
+      [] { return true; },
+      [] { return true; },
+      [&] { ++invalidations; },
+      [] { FAIL() << "invalidate is available, clear should not run"; }};
+  op.Update(2048, update, [] {});
+  EXPECT_EQ(invalidations, 1);
 }
 
 TEST(CacheAwareOp, FailedFillFallsBackButNoEvictionPathPropagates) {

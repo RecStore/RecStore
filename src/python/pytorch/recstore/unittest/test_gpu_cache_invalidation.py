@@ -127,12 +127,14 @@ class TestGpuCacheInvalidation(unittest.TestCase):
         keys = torch.arange(2048, 2048 + 2048, dtype=torch.int64, device="cuda")
 
         # The first all-miss lookup records the low hit streak; the second one
-        # crosses the row threshold and turns the cache off for large reads.
+        # crosses the threshold and turns the cache off for large reads.
         self.client.local_lookup_flat(self.table, keys)
         self.assertFalse(self.client.is_gpu_cache_lookup_bypassed())
         self.client.local_lookup_flat(self.table, keys)
 
         self.assertTrue(self.client.is_gpu_cache_lookup_bypassed())
+        # Two 2048-row fills overflow the 128-row cache, so the warm rows are
+        # gone regardless of the bypass policy.
         self.assertEqual(self._residency(cached), [False, False])
 
         self.client.set_gpu_cache_lookup_bypass_enabled(False)

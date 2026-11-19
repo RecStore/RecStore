@@ -2,7 +2,9 @@
 #include "framework/cache/cache_aware_op.h"
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <atomic>
 #include <stdexcept>
+#include <thread>
 
 namespace {
 namespace cache = recstore::framework::gpu;
@@ -141,9 +143,12 @@ TEST_F(GpuCacheCore, LifecycleOwnsPolicyResetAndValidatesDevice) {
   g_cache_aware_op.Lookup(1024, io);
   g_cache_aware_op.Lookup(1024, io);
   ASSERT_TRUE(g_cache_aware_op.Bypassed());
+  // An internal clear wipes the resident rows, so a controller that owns them
+  // must see the generation change, but it must not re-enable the bypass.
+  auto generation = cache::GetGpuCacheGeneration();
   cache::ClearGpuCache();
   EXPECT_TRUE(g_cache_aware_op.Bypassed());
-  auto generation = cache::GetGpuCacheGeneration();
+  EXPECT_GT(cache::GetGpuCacheGeneration(), generation);
   cache::ResetGpuCache();
   EXPECT_FALSE(g_cache_aware_op.Bypassed());
   EXPECT_GT(cache::GetGpuCacheGeneration(), generation);
@@ -155,4 +160,83 @@ TEST_F(GpuCacheCore, LifecycleOwnsPolicyResetAndValidatesDevice) {
                std::runtime_error);
   EXPECT_NO_THROW(cache::ContainsGpuCache(nullptr, 0, nullptr, context));
 }
+TEST_F(GpuCacheCore, BypassKeepsResidencyAndReprobes) {
+  using recstore::framework::g_cache_aware_op;
+  int queries = 0, clears = 0, reads_all = 0;
+  int64_t missing = 1024;
+  recstore::framework::CacheLookupActions io;
+  io.usable       = true;
+  io.query        = [&] { return ++queries, missing; };
+  io.read_missing = io.fill = io.scatter = [] {};
+  io.read_all     = [&] { ++reads_all; };
+  io.clear        = [&] { ++clears; };
+  g_cache_aware_op.SetBypassEnabled(true);
+  g_cache_aware_op.Reset();
+
+  // Two consecutive low-hit batches trip the latch. Entering bypass must not
+  // clear the resident rows: they stay warm for the re-probe.
+  g_cache_aware_op.Lookup(1024, io);
+  g_cache_aware_op.Lookup(1024, io);
+  ASSERT_TRUE(g_cache_aware_op.Bypassed());
+  EXPECT_EQ(clears, 0);
+
+  // While bypassed, lookups go to the backend and do not query the cache.
+  const int queries_before = queries;
+  for (int i = 0; i < 31; ++i)
+    g_cache_aware_op.Lookup(1024, io);
+  EXPECT_EQ(queries, queries_before);
+
+  // The probe fires on exactly the 32nd bypassed lookup. Keep the hit rate low
+  // so it fails and re-arms the interval, which is what makes this a bounded
+  // probe instead of a permanent bypass.
+  g_cache_aware_op.Lookup(1024, io);
+  EXPECT_EQ(queries, queries_before + 1);
+  EXPECT_TRUE(g_cache_aware_op.Bypassed());
+
+  const int queries_after_failed_probe = queries;
+  for (int i = 0; i < 31; ++i)
+    g_cache_aware_op.Lookup(1024, io);
+  EXPECT_EQ(queries, queries_after_failed_probe);
+
+  // A probe with a good hit rate restores the cached path. The latch is
+  // re-probed periodically instead of disabling the cache for the rest of the
+  // process.
+  missing = 0;
+  for (int i = 0; i < 64 && g_cache_aware_op.Bypassed(); ++i)
+    g_cache_aware_op.Lookup(1024, io);
+  EXPECT_FALSE(g_cache_aware_op.Bypassed());
+}
+
+TEST_F(GpuCacheCore, ResetGpuCacheClearsBypassOnOtherThreads) {
+  std::atomic<bool> tripped{false}, allow_lookup{false}, reset_seen{false};
+  std::thread worker([&] {
+    using recstore::framework::g_cache_aware_op;
+    recstore::framework::CacheLookupActions io;
+    io.usable       = true;
+    io.query        = [] { return int64_t{1024}; };
+    io.read_missing = io.fill = io.scatter = io.read_all = io.clear = [] {};
+    g_cache_aware_op.SetBypassEnabled(true);
+    g_cache_aware_op.Reset();
+    g_cache_aware_op.Lookup(1024, io);
+    g_cache_aware_op.Lookup(1024, io);
+    tripped.store(g_cache_aware_op.Bypassed());
+    while (!allow_lookup.load(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+    // The reset ran on the main thread; this thread's latch must observe the
+    // bumped epoch and clear itself before touching the cache again.
+    g_cache_aware_op.Lookup(1024, io);
+    reset_seen.store(!g_cache_aware_op.Bypassed());
+  });
+  while (!tripped.load()) {
+    std::this_thread::yield();
+  }
+  const auto generation = cache::GetGpuCacheGeneration();
+  cache::ResetGpuCache();
+  EXPECT_GT(cache::GetGpuCacheGeneration(), generation);
+  allow_lookup.store(true, std::memory_order_release);
+  worker.join();
+  EXPECT_TRUE(reset_seen.load());
+}
+
 } // namespace

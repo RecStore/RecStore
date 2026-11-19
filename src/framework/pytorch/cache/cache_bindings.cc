@@ -220,6 +220,8 @@ bool is_gpu_cache_lookup_bypassed_torch() {
 
 void reset_gpu_cache_bypass_state_torch() {
 #ifdef RECSTORE_ENABLE_GPU_CACHE
+  // Explicit policy reset: clear the latch on every thread, not just here.
+  CacheAwareEpoch().fetch_add(1, std::memory_order_relaxed);
   g_cache_aware_op.Reset();
 #endif
 }

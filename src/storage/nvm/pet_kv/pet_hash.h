@@ -743,7 +743,11 @@ public:
         break;
       pos = (pos + step) & (chunk_num_ - 1);
     }
-    return true;
+    // Report a miss so callers can tell "deleted" from "was not there".
+    // DeleteKeysLocked reads a value handle before this call and only retires
+    // it when the delete actually removed the key; claiming success for an
+    // absent key would retire a handle this key no longer owns.
+    return false;
   }
 
   ValueT* GetById(uint64_t pos, KeyT* key = nullptr) {
