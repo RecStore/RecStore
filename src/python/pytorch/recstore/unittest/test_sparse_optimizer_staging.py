@@ -1,5 +1,4 @@
 import unittest
-from unittest import mock
 
 import torch
 
@@ -32,14 +31,14 @@ class TestSparseOptimizerStaging(KVClientIsolationMixin, unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Unknown async update handle"):
             client.wait(handle)
 
-    def test_rdma_update_is_submitted_before_wait(self):
+    def test_rdma_update_deduplicates_rows_before_wait(self):
         ebc, fake = self.build_module()
         submitted = {}
         wait_calls = []
 
         fake.current_ps_backend = lambda: "rdma"
 
-        def submit(name, ids, grads):
+        def submit(name, ids, grads, learning_rate=0.0):
             submitted[77] = (name, ids.clone(), grads.clone())
             return 77
 
@@ -55,21 +54,63 @@ class TestSparseOptimizerStaging(KVClientIsolationMixin, unittest.TestCase):
 
         optimizer.zero_grad()
         ebc(features).values().sum().backward()
-        with mock.patch.object(
-            torch,
-            "unique",
-            side_effect=AssertionError("RDMA SGD applies duplicate rows directly"),
-        ):
-            optimizer.step()
+        optimizer.step()
 
         self.assertIn(77, submitted)
         self.assertEqual(fake.update_calls, [])
-        self.assertTrue(torch.equal(submitted[77][1], torch.tensor([1, 1, 3])))
+        # RDMA no longer ships the raw trace: duplicate id 1 is aggregated
+        # before submit so AdamW/AdaGrad cannot lose one of the gradients.
+        self.assertTrue(torch.equal(submitted[77][1], torch.tensor([1, 3])))
+        self.assertTrue(
+            torch.equal(
+                submitted[77][2],
+                torch.tensor(
+                    [
+                        [2.0, 2.0, 2.0, 2.0],
+                        [1.0, 1.0, 1.0, 1.0],
+                    ],
+                    dtype=torch.float32,
+                ),
+            )
+        )
 
         optimizer.flush()
 
         self.assertEqual(wait_calls, [77])
         self.assertEqual(len(fake.update_calls), 1)
+
+    def test_rdma_update_aggregates_duplicate_ids_across_trace_entries(self):
+        ebc, fake = self.build_module()
+        submitted = {}
+
+        fake.current_ps_backend = lambda: "rdma"
+
+        def submit(name, ids, grads, learning_rate=0.0):
+            submitted[88] = (ids.clone(), grads.clone())
+            return 88
+
+        fake.emb_update_async = submit
+        fake.emb_update_wait = lambda handle: None
+        optimizer = SparseSGD([ebc], lr=0.1)
+        features = build_features()
+
+        # The same id can be traced by more than one forward/backward pair in a
+        # single step; aggregation must span entries, not only one of them.
+        optimizer.zero_grad()
+        ebc(features).values().sum().backward()
+        ebc(features).values().sum().backward()
+        optimizer.step()
+
+        self.assertTrue(torch.equal(submitted[88][0], torch.tensor([1, 3])))
+        self.assertTrue(
+            torch.equal(
+                submitted[88][1],
+                torch.tensor(
+                    [[4.0, 4.0, 4.0, 4.0], [2.0, 2.0, 2.0, 2.0]],
+                    dtype=torch.float32,
+                ),
+            )
+        )
 
     def test_sparse_optimizer_uses_module_specific_kv_client_for_async_updates(self):
         class _ProxyKVClient:

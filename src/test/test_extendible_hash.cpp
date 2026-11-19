@@ -268,6 +268,78 @@ TEST_F(ExtendibleHashTest, ConcurrentSplitsKeepAllKeys) {
     }
   }
 }
+TEST(ExtendibleHashLeakTest, DestructionReleasesEveryBlock) {
+  const int64_t live_before = Block::LiveBlockCount().load();
+  {
+    BaseKVConfig config{0, {{"initial_capacity", 16}}};
+    ExtendibleHash hash(config);
+    for (int i = 0; i < 20000; ++i) {
+      Key_t key = static_cast<Key_t>(i);
+      hash.Put(key, key + 1, 0);
+    }
+    // Every split used to leak the old block (and the two-pointer array); the
+    // live count must match what the directory can still reach.
+    EXPECT_EQ(Block::LiveBlockCount().load(),
+              live_before + static_cast<int64_t>(hash.UniqueBlocks()));
+  }
+  EXPECT_EQ(Block::LiveBlockCount().load(), live_before);
+}
+
+TEST_F(ExtendibleHashTest, ReadersStayValidWhileWritersSplit) {
+  BaseKVConfig tight{0, {{"initial_capacity", 1}}};
+  ExtendibleHash hash(tight);
+  constexpr int kBaseKeys     = 4000;
+  constexpr int kNewPerWriter = 20000;
+  constexpr int kWriterCount  = 2;
+
+  for (int i = 0; i < kBaseKeys; ++i) {
+    Key_t key = static_cast<Key_t>(i);
+    hash.Put(key, key * 3 + 1, 0);
+  }
+
+  std::atomic<bool> stop{false};
+  std::atomic<int> mismatches{0};
+  std::vector<std::thread> readers;
+  for (int r = 0; r < 2; ++r) {
+    readers.emplace_back([&] {
+      while (!stop.load(std::memory_order_relaxed)) {
+        for (int i = 0; i < kBaseKeys; ++i) {
+          Key_t key     = static_cast<Key_t>(i);
+          Value_t value = 0;
+          hash.Get(key, value, 0);
+          if (value != static_cast<Value_t>(key * 3 + 1))
+            mismatches.fetch_add(1, std::memory_order_relaxed);
+        }
+      }
+    });
+  }
+
+  std::vector<std::thread> writers;
+  for (int w = 0; w < kWriterCount; ++w) {
+    writers.emplace_back([&, w] {
+      for (int i = 0; i < kNewPerWriter; ++i) {
+        Key_t key = static_cast<Key_t>(kBaseKeys + w * kNewPerWriter + i);
+        hash.Put(key, key * 3 + 1, 0);
+      }
+    });
+  }
+  for (auto& writer : writers)
+    writer.join();
+  stop.store(true, std::memory_order_relaxed);
+  for (auto& reader : readers)
+    reader.join();
+
+  EXPECT_EQ(mismatches.load(), 0);
+  for (int w = 0; w < kWriterCount; ++w) {
+    for (int i = 0; i < kNewPerWriter; ++i) {
+      Key_t key     = static_cast<Key_t>(kBaseKeys + w * kNewPerWriter + i);
+      Value_t value = 0;
+      hash.Get(key, value, 0);
+      ASSERT_EQ(value, static_cast<Value_t>(key * 3 + 1));
+    }
+  }
+}
+
 // The splitter must wait for the inserters already inside the block instead of
 // giving up on the first failed CAS. With 16 threads the retry loop could never
 // observe `sema == 0`, and a load of one million keys spun there forever

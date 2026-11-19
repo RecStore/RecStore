@@ -88,17 +88,22 @@ TEST(PetHashTest, ConcurrentDeletesOfSameKeyCountOnce) {
     hash->Set(key, key);
 
   base::Barrier barrier(kThreadCount);
+  std::atomic<int> removed{0};
   std::vector<std::thread> threads;
   for (int tid = 0; tid < kThreadCount; ++tid) {
     threads.emplace_back([&] {
       for (uint64_t key = 1; key <= kKeyCount; ++key) {
         barrier.Wait();
-        hash->Delete(key);
+        if (hash->Delete(key))
+          removed.fetch_add(1, std::memory_order_relaxed);
       }
     });
   }
   for (auto& thread : threads)
     thread.join();
+  // A racing Delete on an already removed key must report a miss: callers use
+  // the return value to decide whether to retire the value handle.
+  EXPECT_EQ(removed.load(), static_cast<int>(kKeyCount));
   EXPECT_EQ(hash->Size(), 0);
   EXPECT_TRUE(hash->Valid(memory_size));
   for (uint64_t key = 1; key <= kKeyCount; ++key) {
@@ -107,6 +112,24 @@ TEST(PetHashTest, ConcurrentDeletesOfSameKeyCountOnce) {
   }
   EXPECT_EQ(hash->Size(), kKeyCount);
   EXPECT_TRUE(hash->Valid(memory_size));
+  hash->~Hash();
+  free(memory);
+}
+
+TEST(PetHashTest, DeleteReportsWhetherKeyWasPresent) {
+  using Hash                   = base::PetHash<uint64_t, uint64_t>;
+  constexpr uint64_t kCapacity = 64;
+  const uint64_t memory_size   = Hash::MemorySize(kCapacity);
+  void* memory                 = nullptr;
+  ASSERT_EQ(posix_memalign(&memory, alignof(Hash), memory_size), 0);
+  auto* hash = new (memory) Hash();
+  hash->Initialize(kCapacity);
+  hash->Set(7, 70);
+
+  EXPECT_FALSE(hash->Delete(8));
+  EXPECT_TRUE(hash->Delete(7));
+  EXPECT_FALSE(hash->Delete(7));
+
   hash->~Hash();
   free(memory);
 }
