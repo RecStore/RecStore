@@ -377,7 +377,11 @@ class RecStoreClient:
         meta = self._tensor_meta[name]
         ids = self._normalize_ids(ids, name=name)
         op = getattr(self.ops, "emb_read_with_found", None)
-        if not callable(op):
+        backend = self.ops.current_ps_backend() if callable(
+            getattr(self.ops, "current_ps_backend", None)) else None
+        # Only local_shm reports per-row presence today; other backends keep
+        # the plain read path.
+        if not callable(op) or backend != "local_shm":
             return self.pull(name, ids), None
         return op(ids, meta["shape"][1])
 

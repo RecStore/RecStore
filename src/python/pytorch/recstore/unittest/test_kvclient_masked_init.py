@@ -6,14 +6,17 @@ from ..KVClient import RecStoreClient
 
 
 class _FakeOps:
-    def __init__(self, with_found: bool = True):
+    def __init__(self, with_found: bool = True, backend: str = "local_shm"):
         self.writes = []
         self.reads = []
         self.found_reads = []
-        self._with_found = with_found
+        self.backend = backend
         if not with_found:
             return
         self.emb_read_with_found = self._emb_read_with_found
+
+    def current_ps_backend(self) -> str:
+        return self.backend
 
     def init_embedding_table(self, name, num_embeddings, embedding_dim, table_id):
         return 0
@@ -35,9 +38,11 @@ class _FakeOps:
 
 
 class TestKVClientMaskedInit(unittest.TestCase):
-    def _build_client(self, with_found: bool = True) -> RecStoreClient:
+    def _build_client(
+        self, with_found: bool = True, backend: str = "local_shm"
+    ) -> RecStoreClient:
         client = object.__new__(RecStoreClient)
-        client.ops = _FakeOps(with_found=with_found)
+        client.ops = _FakeOps(with_found=with_found, backend=backend)
         client._part_policy = {}
         client._tensor_meta = {}
         client._full_data_shape = {}
@@ -120,7 +125,7 @@ class TestKVClientMaskedInit(unittest.TestCase):
         self.assertEqual(client.ops.reads, [])
 
     def test_pull_with_found_falls_back_when_backend_lacks_it(self):
-        client = self._build_client(with_found=False)
+        client = self._build_client(with_found=False, backend="rdma")
         client.init_data("table_a", (4, 2), torch.float32)
 
         ids = torch.tensor([0, 1], dtype=torch.int64)
