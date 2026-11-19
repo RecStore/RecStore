@@ -385,6 +385,27 @@ void KVClientOp::EmbRead(const RecTensor& keys, RecTensor& values) {
 #  endif
 }
 
+bool KVClientOp::EmbReadWithFound(
+    const RecTensor& keys, RecTensor& values, uint8_t* found) {
+  if (ps_client_ == nullptr || found == nullptr) {
+    return false;
+  }
+  validate_keys(keys);
+  validate_embeddings(values, "Values");
+  const int64_t rows = keys.shape(0);
+  if (values.shape(0) != rows) {
+    throw std::invalid_argument(
+        "Dimension mismatch: Keys has length " + std::to_string(rows) +
+        " but values has length " + std::to_string(values.shape(0)));
+  }
+  if (rows == 0) {
+    return true;
+  }
+  base::ConstArray<uint64_t> keys_array(keys.data_as<uint64_t>(), rows);
+  return ps_client_->GetParameterFlatWithFound(
+      keys_array, values.data_as<float>(), found, rows, values.shape(1));
+}
+
 void KVClientOp::EmbUpdate(const base::RecTensor& keys,
                            const base::RecTensor& grads) {
   EmbUpdate("default", keys, grads);

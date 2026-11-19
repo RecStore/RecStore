@@ -324,7 +324,8 @@ public:
       int64_t num_rows,
       int64_t embedding_dim,
       int tid,
-      FlatGetProfile* profile = nullptr) {
+      FlatGetProfile* profile = nullptr,
+      uint8_t* found          = nullptr) {
     if (values == nullptr) {
       LOG(ERROR) << "GetParameterFlat values pointer is null";
       return false;
@@ -345,7 +346,7 @@ public:
     BaseKV::BatchGetFlatStats* flat_stats_ptr =
         profile != nullptr ? &flat_stats : nullptr;
     const bool flat_ok = base_kv_->BatchGetFlat(
-        keys, values, num_rows, embedding_dim, tid, flat_stats_ptr);
+        keys, values, num_rows, embedding_dim, tid, flat_stats_ptr, found);
     if (flat_ok) {
       if (profile != nullptr) {
         profile->batch_get_ns = static_cast<std::uint64_t>(
@@ -405,6 +406,9 @@ public:
     std::uint64_t missing_zero_fill_ns = 0;
     for (int64_t row = 0; row < num_rows; ++row) {
       const auto& slice = value_slices[static_cast<size_t>(row)];
+      if (found != nullptr) {
+        found[row] = slice.Size() > 0 ? 1 : 0;
+      }
       if (slice.Size() > 0) {
         std::memcpy(values + row * embedding_dim,
                     slice.Data(),

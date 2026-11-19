@@ -521,6 +521,42 @@ TEST_F(LocalShmPSClientTest, GetParameterFlatZerosMissingRowsOnly) {
   server_thread.join();
 }
 
+TEST_F(LocalShmPSClientTest, GetParameterFlatWithFoundReportsPerRowPresence) {
+  const auto config = MakeLocalShmConfig(
+      MakeUniqueRegionName("recstore_local_shm_ps_client_flat_found"));
+  LocalShmParameterServer server;
+  server.Init(config);
+
+  std::thread server_thread([&]() { server.Run(); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+  LocalShmPSClient client(config["local_shm"]);
+  ASSERT_EQ(client.InitEmbeddingTable("table_found", {128, 4}), 0);
+
+  std::vector<uint64_t> put_keys = {2};
+  std::vector<float> put_flat    = {2.0f, 3.0f, 4.0f, 5.0f};
+  base::RecTensor put_values(put_flat.data(), {1, 4});
+  base::ConstArray<uint64_t> put_key_array(put_keys);
+  ASSERT_EQ(client.PutParameter(put_key_array, put_values), 0);
+
+  std::vector<uint64_t> get_keys = {2, 999};
+  base::ConstArray<uint64_t> get_key_array(get_keys);
+  std::vector<float> readback(8, -1.0f);
+  std::vector<uint8_t> found(2, 0xFF);
+  ASSERT_TRUE(client.GetParameterFlatWithFound(
+      get_key_array, readback.data(), found.data(), 2, 4));
+
+  EXPECT_EQ(found[0], 1);
+  EXPECT_EQ(found[1], 0);
+  EXPECT_FLOAT_EQ(readback[0], 2.0f);
+  EXPECT_FLOAT_EQ(readback[3], 5.0f);
+  EXPECT_FLOAT_EQ(readback[4], 0.0f);
+  EXPECT_FLOAT_EQ(readback[7], 0.0f);
+
+  server.Stop();
+  server_thread.join();
+}
+
 TEST_F(LocalShmPSClientTest, TimedOutGetQuarantinesItsSlot) {
   auto config = MakeLocalShmConfig(
       MakeUniqueRegionName("recstore_local_shm_ps_client_timeout"));
