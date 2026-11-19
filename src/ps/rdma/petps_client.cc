@@ -1511,6 +1511,14 @@ int PetPSClient::WaitUpdateParameter(int rpc_id) {
   if (rpc_id == 0) {
     return 0;
   }
+  {
+    std::lock_guard<std::mutex> guard(mu_);
+    if (!PendingRpcLocked(rpc_id, nullptr)) {
+      // An unknown handle is a caller error, not a completed RPC. Keep the
+      // -1 contract even though WaitRPCFinish treats "already revoked" as ok.
+      return -1;
+    }
+  }
   const std::int32_t status = WaitRPCFinish(rpc_id);
   RevokeRPCResource(rpc_id);
   return status == static_cast<std::int32_t>(RpcStatus::kOk) ? 0 : -1;
