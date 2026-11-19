@@ -6,8 +6,11 @@
 
 namespace recstore {
 
-constexpr uint64_t kLocalShmMagic         = 0x52454353544F5245ULL; // "RECSTORE"
-constexpr uint32_t kLocalShmVersion       = 2;
+constexpr uint64_t kLocalShmMagic = 0x52454353544F5245ULL; // "RECSTORE"
+// Bump on every layout or opcode change. Clients and servers of different
+// versions must fail at attach with a version error instead of discovering the
+// mismatch later through an unknown opcode at runtime.
+constexpr uint32_t kLocalShmVersion       = 3;
 constexpr uint32_t kLocalShmReservedBytes = 64;
 
 enum class LocalQueueKind : uint32_t {
