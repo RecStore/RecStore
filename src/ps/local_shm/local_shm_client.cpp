@@ -63,6 +63,8 @@ void ResetFlatGetHandle(LocalShmFlatGetHandle* handle) {
   handle->num_rows      = 0;
   handle->embedding_dim = 0;
   handle->output_bytes  = 0;
+  handle->found         = nullptr;
+  handle->expect_found  = false;
   // The slot was either returned or deliberately leaked; either way this
   // handle no longer refers to it and must be reusable.
   handle->quarantined = false;
@@ -71,6 +73,7 @@ void ResetFlatGetHandle(LocalShmFlatGetHandle* handle) {
 bool IsFlatGetHandleClear(const LocalShmFlatGetHandle& handle) {
   return handle.slot_id == LocalShmFlatGetHandle::kInvalidSlotId &&
          handle.request_id == 0 && handle.values == nullptr &&
+         handle.found == nullptr && !handle.expect_found &&
          handle.num_rows == 0 && handle.embedding_dim == 0 &&
          handle.output_bytes == 0 && !handle.quarantined;
 }
@@ -222,25 +225,50 @@ bool LocalShmPSClient::GetParameterFlatWithFound(
                << num_rows << " embedding_dim=" << embedding_dim;
     return false;
   }
-  LocalShmFlatGetHandle handle;
-  handle.expect_found = true;
+  if (num_rows == 0) {
+    return true;
+  }
+  // The response carries one hit byte per key, so a slot holds slightly fewer
+  // keys than a plain flat read. Chunk like GetParameter instead of failing
+  // the whole batch with input_too_large.
+  const std::size_t per_key =
+      sizeof(uint64_t) +
+      sizeof(float) * static_cast<std::size_t>(embedding_dim) + 1;
+  const std::size_t max_keys = region_.slot_buffer_bytes() / per_key;
+  if (max_keys == 0) {
+    LOG(ERROR) << "LocalShmPSClient::GetParameterFlatWithFound slot_too_small"
+               << " slot_buffer_bytes=" << region_.slot_buffer_bytes()
+               << " embedding_dim=" << embedding_dim;
+    return false;
+  }
   ResetActiveRequestProfile();
   g_active_request_profile.active        = true;
   g_active_request_profile.request_start = std::chrono::steady_clock::now();
-  if (SubmitGetParameterFlat(keys, num_rows, embedding_dim, &handle, true) !=
-      0) {
-    return false;
+  for (int64_t start = 0; start < num_rows;
+       start += static_cast<int64_t>(max_keys)) {
+    const int64_t chunk =
+        std::min<int64_t>(static_cast<int64_t>(max_keys), num_rows - start);
+    base::ConstArray<uint64_t> chunk_keys(
+        keys.Data() + start, static_cast<int>(chunk));
+    LocalShmFlatGetHandle handle;
+    if (SubmitGetParameterFlat(
+            chunk_keys, chunk, embedding_dim, &handle, true) != 0) {
+      return false;
+    }
+    const int wait_rc = WaitGetParameterFlat(&handle);
+    if (wait_rc == 0) {
+      const std::size_t values_bytes =
+          sizeof(float) * static_cast<std::size_t>(chunk) *
+          static_cast<std::size_t>(embedding_dim);
+      std::memcpy(values + start * embedding_dim, handle.values, values_bytes);
+      std::memcpy(found + start, handle.found, static_cast<std::size_t>(chunk));
+    }
+    ReleaseGetParameterFlat(&handle);
+    if (wait_rc != 0) {
+      return false;
+    }
   }
-  const int wait_rc = WaitGetParameterFlat(&handle);
-  if (wait_rc == 0) {
-    const std::size_t values_bytes =
-        sizeof(float) * static_cast<std::size_t>(num_rows) *
-        static_cast<std::size_t>(embedding_dim);
-    std::memcpy(values, handle.values, values_bytes);
-    std::memcpy(found, handle.found, static_cast<std::size_t>(num_rows));
-  }
-  ReleaseGetParameterFlat(&handle);
-  return wait_rc == 0;
+  return true;
 }
 
 int LocalShmPSClient::SubmitGetParameterFlat(

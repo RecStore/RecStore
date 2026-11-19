@@ -111,6 +111,18 @@ class TestKVClientMaskedInit(unittest.TestCase):
 
         self.assertEqual(client.ops.writes, [])
 
+    def test_init_data_mask_rejects_already_registered_tensor(self):
+        client = self._build_client()
+        client.init_data("table_a", (4, 2), torch.float32)
+
+        with self.assertRaisesRegex(RuntimeError, "already registered"):
+            client.init_data(
+                "table_a",
+                (4, 2),
+                torch.float32,
+                mask=torch.tensor([True, False, False, False]),
+            )
+
     def test_pull_with_found_uses_backend_mask(self):
         client = self._build_client()
         client.init_data("table_a", (4, 2), torch.float32)

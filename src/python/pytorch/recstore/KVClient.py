@@ -232,11 +232,28 @@ class RecStoreClient:
         is_gdata : bool
             Whether the created tensor is a ndata/edata or not.
         mask : tensor, optional
-            Boolean mask of length ``shape[0]``. Only the selected rows are
-            written; useful for initializing just the keys a lookup reported
-            missing. Rows outside the mask keep whatever the server holds.
+            Boolean mask of length ``shape[0]`` selecting the rows to write.
+            This is a plain write, not insert-if-absent: rows outside the mask
+            are untouched, rows inside it are overwritten even if another
+            writer created them after the lookup that produced the mask.
         """
         # print(f"Initializing tensor '{name}' with shape {shape} and dtype {dtype} (base_offset={base_offset}).")
+
+        # Validate before touching the backend: a rejected mask must not leave
+        # a registered table with no values.
+        if mask is not None:
+            mask = torch.as_tensor(mask)
+            if mask.dtype != torch.bool:
+                mask = mask.bool()
+            if mask.dim() != 1 or mask.numel() != shape[0]:
+                raise ValueError(
+                    f"init_data mask must be a 1-D boolean tensor of length {shape[0]}"
+                )
+            if name in self._tensor_meta:
+                raise RuntimeError(
+                    f"Cannot backfill '{name}' with a mask: it is already "
+                    "registered, and this path only writes a new table"
+                )
 
         if name in self._tensor_meta and backend_table_id is None:
             print(f"Tensor '{name}' already exists. Skipping initialization.")
@@ -270,13 +287,6 @@ class RecStoreClient:
         if base_offset != 0:
             all_keys = all_keys + int(base_offset)
         if mask is not None:
-            mask = torch.as_tensor(mask)
-            if mask.dtype != torch.bool:
-                mask = mask.bool()
-            if mask.dim() != 1 or mask.numel() != shape[0]:
-                raise ValueError(
-                    f"init_data mask must be a 1-D boolean tensor of length {shape[0]}"
-                )
             mask_cpu = mask.cpu()
             if initial_data.device.type == "cpu":
                 initial_data = initial_data[mask_cpu]
