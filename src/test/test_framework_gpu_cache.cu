@@ -143,9 +143,12 @@ TEST_F(GpuCacheCore, LifecycleOwnsPolicyResetAndValidatesDevice) {
   g_cache_aware_op.Lookup(1024, io);
   g_cache_aware_op.Lookup(1024, io);
   ASSERT_TRUE(g_cache_aware_op.Bypassed());
+  // An internal clear wipes the resident rows, so a controller that owns them
+  // must see the generation change, but it must not re-enable the bypass.
+  auto generation = cache::GetGpuCacheGeneration();
   cache::ClearGpuCache();
   EXPECT_TRUE(g_cache_aware_op.Bypassed());
-  auto generation = cache::GetGpuCacheGeneration();
+  EXPECT_GT(cache::GetGpuCacheGeneration(), generation);
   cache::ResetGpuCache();
   EXPECT_FALSE(g_cache_aware_op.Bypassed());
   EXPECT_GT(cache::GetGpuCacheGeneration(), generation);
@@ -179,16 +182,25 @@ TEST_F(GpuCacheCore, BypassKeepsResidencyAndReprobes) {
 
   // While bypassed, lookups go to the backend and do not query the cache.
   const int queries_before = queries;
-  g_cache_aware_op.Lookup(1024, io);
+  for (int i = 0; i < 31; ++i)
+    g_cache_aware_op.Lookup(1024, io);
   EXPECT_EQ(queries, queries_before);
 
-  // The latch is re-probed periodically instead of disabling the cache for the
-  // rest of the process.
-  for (int i = 0; i < 64; ++i)
-    g_cache_aware_op.Lookup(1024, io);
-  EXPECT_GT(queries, queries_before);
+  // The probe fires on exactly the 32nd bypassed lookup. Keep the hit rate low
+  // so it fails and re-arms the interval, which is what makes this a bounded
+  // probe instead of a permanent bypass.
+  g_cache_aware_op.Lookup(1024, io);
+  EXPECT_EQ(queries, queries_before + 1);
+  EXPECT_TRUE(g_cache_aware_op.Bypassed());
 
-  // A probe with a good hit rate restores the cached path.
+  const int queries_after_failed_probe = queries;
+  for (int i = 0; i < 31; ++i)
+    g_cache_aware_op.Lookup(1024, io);
+  EXPECT_EQ(queries, queries_after_failed_probe);
+
+  // A probe with a good hit rate restores the cached path. The latch is
+  // re-probed periodically instead of disabling the cache for the rest of the
+  // process.
   missing = 0;
   for (int i = 0; i < 64 && g_cache_aware_op.Bypassed(); ++i)
     g_cache_aware_op.Lookup(1024, io);

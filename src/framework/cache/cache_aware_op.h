@@ -10,9 +10,12 @@
 
 namespace recstore::framework {
 
-// Monotonic epoch bumped by every policy-resetting GPU cache lifecycle call
-// (enable/disable/reset). CacheAwareOp is thread_local, so a reset performed on
-// one thread must also clear the bypass latch left behind on other threads.
+// Monotonic epoch bumped by GPU cache lifecycle calls that are meant to reset
+// the bypass policy: enable (when the cache is rebuilt), disable and reset.
+// CacheAwareOp is thread_local, so a reset performed on one thread must also
+// clear the bypass latch left behind on other threads. An internal fallback
+// clear does not bump it. SyncEpoch() only notices the bump on the next lookup
+// of a thread, so this is best-effort, not a synchronization barrier.
 inline std::atomic<uint64_t>& CacheAwareEpoch() {
   static std::atomic<uint64_t> epoch{0};
   return epoch;
@@ -71,8 +74,8 @@ public:
     if (!no_evict && use_cache && bypass_enabled_ && bypassed_ &&
         rows >= kMinRows) {
       // Stay off the cache for a while, then probe again. Entering bypass never
-      // clears the cache: the resident rows stay warm for the probe, and a
-      // caller that owns the cache policy (for example BagPipe) keeps them.
+      // clears the cache: the resident rows stay warm for the probe, so a
+      // controller that disabled the policy keeps whatever it cached.
       if (++probes_since_bypass_ < kReprobeInterval) {
         use_cache = false;
       }
@@ -113,9 +116,13 @@ public:
     io.read_all();
   }
 
+  // Bypass no longer clears the cache, so every write that reaches the cache
+  // must invalidate here; there is no bulk clear left to hide a missed policy
+  // hook. `rows` is kept for symmetry with Lookup and future heuristics.
   void AfterUpdate(int64_t rows,
                    const CacheUpdateActions& io,
                    bool force_invalidation = false) {
+    (void)rows;
     if (!io.enabled || !io.enabled())
       return;
     SyncEpoch();

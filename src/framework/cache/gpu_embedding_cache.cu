@@ -48,6 +48,10 @@ std::unique_ptr<CacheImpl> g_cache;
 int64_t g_capacity = 0, g_dim = 0;
 int g_device          = -1;
 cudaEvent_t g_last_op = nullptr;
+// Bumped whenever resident rows stop being the ones a caller owns: enable,
+// disable, clear and reset. Independent from CacheAwareEpoch(), which drives
+// the bypass latch and must stay untouched by an internal fallback clear.
+uint64_t g_generation = 0;
 
 void ReleaseLocked() {
   if (!g_cache)
@@ -171,6 +175,7 @@ bool EnableGpuCache(int64_t capacity, int64_t dim, int device) {
     g_device   = device;
     // Bump the shared epoch so latches on other threads reset on their next
     // lookup, not only the calling thread's.
+    ++g_generation;
     CacheAwareEpoch().fetch_add(1, std::memory_order_relaxed);
   }
   g_cache_aware_op.Reset();
@@ -181,6 +186,7 @@ void DisableGpuCache() {
   ReleaseLocked();
   g_capacity = g_dim = 0;
   g_device           = -1;
+  ++g_generation;
   CacheAwareEpoch().fetch_add(1, std::memory_order_relaxed);
   g_cache_aware_op.Reset();
 }
@@ -191,6 +197,10 @@ void ClearGpuCache() {
   DeviceGuard guard(g_device);
   ReleaseLocked();
   g_cache = std::make_unique<CacheImpl>(g_capacity, g_dim);
+  // Callers such as BagPipe track this counter to notice that someone else
+  // wiped the rows they own. The latch epoch stays put: a fallback clear must
+  // not re-enable a cache that tripped its bypass.
+  ++g_generation;
 }
 void ResetGpuCache() {
   ClearGpuCache();
@@ -205,7 +215,8 @@ bool IsGpuCacheEnabled() {
   return bool(g_cache);
 }
 uint64_t GetGpuCacheGeneration() {
-  return CacheAwareEpoch().load(std::memory_order_acquire);
+  std::lock_guard<std::mutex> lock(g_mu);
+  return g_generation;
 }
 bool CanUseGpuCache(int device, int64_t dim) {
   std::lock_guard<std::mutex> lock(g_mu);
