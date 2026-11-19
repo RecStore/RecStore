@@ -158,104 +158,116 @@ private:
 #ifdef ENABLE_PERF_REPORT
     auto start_time = std::chrono::high_resolution_clock::now();
 #endif
-    base::ConstArray<uint64_t> keys_array(request->keys());
-    bool isPerf = request->has_perf() && request->perf();
-    if (isPerf) {
-      xmh::PerfCounter::Record("PS Get Keys", keys_array.Size());
-    }
-    xmh::Timer timer_ps_get_req("PS GetParameter Req");
-    ParameterCompressor compressor(std::numeric_limits<int>::max());
-    std::vector<std::string> blocks;
-    RECSTORE_LOG_EVERY_MS(INFO, 1000)
-        << "[PS] Getting " << keys_array.Size() << " keys";
-    int total_dim = 0;
+    // One engine exception must not kill the whole server process; report it
+    // as an RPC error like the RDMA/local_shm transports do.
+    try {
+      base::ConstArray<uint64_t> keys_array(request->keys());
+      bool isPerf = request->has_perf() && request->perf();
+      if (isPerf) {
+        xmh::PerfCounter::Record("PS Get Keys", keys_array.Size());
+      }
+      xmh::Timer timer_ps_get_req("PS GetParameter Req");
+      ParameterCompressor compressor(std::numeric_limits<int>::max());
+      std::vector<std::string> blocks;
+      RECSTORE_LOG_EVERY_MS(INFO, 1000)
+          << "[PS] Getting " << keys_array.Size() << " keys";
+      int total_dim = 0;
 #ifdef ENABLE_PERF_REPORT
-    auto cache_start_time = std::chrono::high_resolution_clock::now();
+      auto cache_start_time = std::chrono::high_resolution_clock::now();
 #endif
-    std::vector<ParameterPack> packs;
-    packs.reserve(keys_array.Size());
-    cache_ps_->GetParameterRun2Completion(keys_array, packs, 0);
+      std::vector<ParameterPack> packs;
+      packs.reserve(keys_array.Size());
+      cache_ps_->GetParameterRun2Completion(keys_array, packs, 0);
 
-    for (auto& pack : packs) {
-      compressor.AddItem(pack, &blocks);
-      total_dim += pack.dim;
-    }
+      for (auto& pack : packs) {
+        compressor.AddItem(pack, &blocks);
+        total_dim += pack.dim;
+      }
 #ifdef ENABLE_PERF_REPORT
-    auto cache_end_time = std::chrono::high_resolution_clock::now();
-    auto cache_duration =
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            cache_end_time - cache_start_time)
-            .count();
-    double start_us_for_cache =
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            start_time.time_since_epoch())
-            .count();
-    std::string report_id_for_cache =
-        "grpc_server::GetParameter|" +
-        std::to_string(static_cast<uint64_t>(start_us_for_cache));
-    report("embread_stages",
-           report_id_for_cache.c_str(),
-           "cache_lookup_us",
-           static_cast<double>(cache_duration));
-#endif
-
-    compressor.ToBlock(&blocks);
-    CHECK_EQ(blocks.size(), 1);
-    reply->mutable_parameter_value()->swap(blocks[0]);
-    total_get_requests_++;
-    total_get_keys_ += keys_array.Size();
-    total_get_bytes_ += total_dim * sizeof(float);
-
-    if (isPerf) {
-      timer_ps_get_req.end();
-    } else {
-      timer_ps_get_req.destroy();
-    }
-
-#ifdef ENABLE_PERF_REPORT
-    auto end_time = std::chrono::high_resolution_clock::now();
-    double start_us =
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            start_time.time_since_epoch())
-            .count();
-    auto duration =
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            end_time - start_time)
-            .count();
-
-    std::string report_id = "grpc_server::GetParameter|" +
-                            std::to_string(static_cast<uint64_t>(start_us));
-
-    std::string op_latency_key =
-        "EmbRead|" + std::to_string(static_cast<uint64_t>(start_us));
-    report("op_latency",
-           op_latency_key.c_str(),
-           "recserver_us",
-           static_cast<double>(duration));
-
-    report("embread_stages",
-           report_id.c_str(),
-           "duration_us",
-           static_cast<double>(duration));
-
-    report("embread_stages",
-           report_id.c_str(),
-           "request_size",
-           static_cast<double>(keys_array.Size()));
-
-    std::string unique_id =
-        "embread_debug|" + std::to_string(static_cast<uint64_t>(start_us));
-    FlameGraphData grpc_server_data = {
-        "grpc_ps_server::GetParameter",
-        start_us,
-        2, // level
-        static_cast<double>(duration),
-        static_cast<double>(duration)};
-    report_flame_graph(
-        "emb_read_flame_map", unique_id.c_str(), grpc_server_data);
+      auto cache_end_time = std::chrono::high_resolution_clock::now();
+      auto cache_duration =
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              cache_end_time - cache_start_time)
+              .count();
+      double start_us_for_cache =
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              start_time.time_since_epoch())
+              .count();
+      std::string report_id_for_cache =
+          "grpc_server::GetParameter|" +
+          std::to_string(static_cast<uint64_t>(start_us_for_cache));
+      report("embread_stages",
+             report_id_for_cache.c_str(),
+             "cache_lookup_us",
+             static_cast<double>(cache_duration));
 #endif
 
-    return Status::OK;
+      compressor.ToBlock(&blocks);
+      CHECK_EQ(blocks.size(), 1);
+      reply->mutable_parameter_value()->swap(blocks[0]);
+      total_get_requests_++;
+      total_get_keys_ += keys_array.Size();
+      total_get_bytes_ += total_dim * sizeof(float);
+
+      if (isPerf) {
+        timer_ps_get_req.end();
+      } else {
+        timer_ps_get_req.destroy();
+      }
+
+#ifdef ENABLE_PERF_REPORT
+      auto end_time = std::chrono::high_resolution_clock::now();
+      double start_us =
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              start_time.time_since_epoch())
+              .count();
+      auto duration =
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              end_time - start_time)
+              .count();
+
+      std::string report_id = "grpc_server::GetParameter|" +
+                              std::to_string(static_cast<uint64_t>(start_us));
+
+      std::string op_latency_key =
+          "EmbRead|" + std::to_string(static_cast<uint64_t>(start_us));
+      report("op_latency",
+             op_latency_key.c_str(),
+             "recserver_us",
+             static_cast<double>(duration));
+
+      report("embread_stages",
+             report_id.c_str(),
+             "duration_us",
+             static_cast<double>(duration));
+
+      report("embread_stages",
+             report_id.c_str(),
+             "request_size",
+             static_cast<double>(keys_array.Size()));
+
+      std::string unique_id =
+          "embread_debug|" + std::to_string(static_cast<uint64_t>(start_us));
+      FlameGraphData grpc_server_data = {
+          "grpc_ps_server::GetParameter",
+          start_us,
+          2, // level
+          static_cast<double>(duration),
+          static_cast<double>(duration)};
+      report_flame_graph(
+          "emb_read_flame_map", unique_id.c_str(), grpc_server_data);
+#endif
+
+      return Status::OK;
+    } catch (const std::exception& e) {
+      LOG(ERROR) << "[PS] GetParameter failed: " << e.what();
+      reply->Clear();
+      return Status(grpc::StatusCode::INTERNAL, e.what());
+    } catch (...) {
+      LOG(ERROR) << "[PS] GetParameter failed: unknown exception";
+      reply->Clear();
+      return Status(grpc::StatusCode::INTERNAL, "unknown exception");
+    }
   }
 
   Status Command(ServerContext* context,
@@ -381,9 +393,14 @@ private:
 #ifdef ENABLE_PERF_REPORT
     auto start_time = std::chrono::high_resolution_clock::now();
 #endif
+    const auto& payload = request->parameter_value();
     const ParameterCompressReader* reader =
-        reinterpret_cast<const ParameterCompressReader*>(
-            request->parameter_value().data());
+        reinterpret_cast<const ParameterCompressReader*>(payload.data());
+    if (!reader->Valid(static_cast<int>(payload.size()))) {
+      LOG(ERROR) << "PutParameter invalid payload, size=" << payload.size();
+      return Status(
+          grpc::StatusCode::INVALID_ARGUMENT, "PutParameter invalid payload");
+    }
     int size = reader->item_size();
     LOG(INFO) << "[PS] PutParameter: " << size << " keys";
     uint64_t total_bytes = 0;
@@ -391,7 +408,12 @@ private:
     for (int i = 0; i < size; i++) {
       total_bytes += reader->item(i)->dim * sizeof(float);
     }
-    cache_ps_->PutParameter(reader, 0);
+    try {
+      cache_ps_->PutParameter(reader, 0);
+    } catch (const std::exception& error) {
+      LOG(ERROR) << "PutParameter failed: " << error.what();
+      return Status(grpc::StatusCode::INTERNAL, error.what());
+    }
     LOG(INFO) << "[PS] PutParameter done: " << size << " keys";
     total_put_requests_++;
     total_put_keys_ += size;

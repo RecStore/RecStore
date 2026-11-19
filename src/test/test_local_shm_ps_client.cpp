@@ -521,6 +521,33 @@ TEST_F(LocalShmPSClientTest, GetParameterFlatZerosMissingRowsOnly) {
   server_thread.join();
 }
 
+TEST_F(LocalShmPSClientTest, TimedOutGetQuarantinesItsSlot) {
+  auto config = MakeLocalShmConfig(
+      MakeUniqueRegionName("recstore_local_shm_ps_client_timeout"));
+  config["local_shm"]["client_timeout_ms"] = 20;
+  LocalShmParameterServer server;
+  server.Init(config);
+  // No server thread: every request times out, which is exactly the case that
+  // used to hand the slot back while the server could still write into it.
+  LocalShmPSClient client(config["local_shm"]);
+
+  std::vector<uint64_t> keys = {1};
+  base::ConstArray<uint64_t> key_array(keys);
+
+  LocalShmFlatGetHandle first;
+  ASSERT_EQ(client.SubmitGetParameterFlat(key_array, 1, 4, &first), 0);
+  const uint32_t first_slot = first.slot_id;
+  EXPECT_EQ(client.WaitGetParameterFlat(&first), -1);
+  EXPECT_TRUE(first.quarantined);
+  client.ReleaseGetParameterFlat(&first);
+
+  LocalShmFlatGetHandle second;
+  ASSERT_EQ(client.SubmitGetParameterFlat(key_array, 1, 4, &second), 0);
+  EXPECT_NE(second.slot_id, first_slot);
+  EXPECT_EQ(client.WaitGetParameterFlat(&second), -1);
+  client.ReleaseGetParameterFlat(&second);
+}
+
 TEST_F(LocalShmPSClientTest,
        SubmitWaitAndReleaseGetParameterFlatExposesSlotPayload) {
   const auto config = MakeLocalShmConfig(
