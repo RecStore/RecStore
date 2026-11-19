@@ -1,0 +1,79 @@
+{
+  "uid": "recstore-metrics",
+  "title": "RecStore Metrics",
+  "tags": ["recstore"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {"from": "now-30m", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "ClickHouse",
+        "type": "datasource",
+        "query": "grafana-clickhouse-datasource",
+        "current": {},
+        "hide": 0
+      },
+      {
+        "name": "table_name",
+        "label": "table_name",
+        "type": "query",
+        "datasource": {"type": "grafana-clickhouse-datasource", "uid": "${datasource}"},
+        "query": "SELECT DISTINCT table_name FROM recstore.metrics ORDER BY table_name",
+        "includeAll": true,
+        "multi": true,
+        "current": {"text": "All", "value": "$__all"},
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Samples per minute",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "${datasource}"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT toStartOfInterval(toDateTime(intDiv(timestamp_us, 1000000)), INTERVAL 1 MINUTE) AS t, count() AS samples FROM recstore.metrics WHERE $__timeFilter(toDateTime(intDiv(timestamp_us, 1000000))) AND table_name IN ($table_name) GROUP BY t ORDER BY t"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "metric_value p50 / p99 by metric",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "${datasource}"},
+      "fieldConfig": {"defaults": {"unit": "µs"}, "overrides": []},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT toStartOfInterval(toDateTime(intDiv(timestamp_us, 1000000)), INTERVAL 1 MINUTE) AS t, metric_name, quantile(0.5)(metric_value) AS p50, quantile(0.99)(metric_value) AS p99 FROM recstore.metrics WHERE $__timeFilter(toDateTime(intDiv(timestamp_us, 1000000))) AND metric_name IN ('duration_us', 'latency_us', 'recstore_us', 'recserver_us') GROUP BY t, metric_name ORDER BY t"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Recent metrics",
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 8},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "${datasource}"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT toDateTime(intDiv(timestamp_us, 1000000)) AS time, table_name, unique_id, metric_name, metric_value, source FROM recstore.metrics WHERE $__timeFilter(toDateTime(intDiv(timestamp_us, 1000000))) ORDER BY timestamp_us DESC LIMIT 200"
+        }
+      ]
+    }
+  ]
+}

@@ -32,7 +32,9 @@ report()
 
 远端上报只发送 `table_name`、`unique_id`、`metric_name`、`metric_value`、`timestamp_us`、`source`
 六个字段，与历史 payload 保持兼容，避免部署方的 `report_service` 因未知字段拒绝；`host` / `pid` /
-`run_id` / `rank` / `shard` 只出现在 CSV 和自定义 sink 里。
+`run_id` / `rank` / `shard` 只出现在 CSV 和自定义 sink 里。仓库自带接收端参考实现
+（`tools/observability/report_service.py`）、ClickHouse 建表脚本与示例 Grafana 看板，见
+[监控与 Grafana](../performance/monitoring.md)。
 
 ## CSV 形态
 
