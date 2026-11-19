@@ -1436,6 +1436,40 @@ TEST_F(StaticLayoutValueTest, TieredReadCachePromotesValuesSmallerThanSlot) {
   EXPECT_EQ(TieredField(store.ExtraResultFields(), "tiered_cache_hits"), 1.0);
 }
 
+TEST_F(StaticLayoutValueTest, DramValueStoreRejectsSlotOverruns) {
+  BaseKVConfig config;
+  config.json_config_ = {
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", (root_ / "dram-guard").string()},
+        {"dram_allocator",
+         {{"type", "PERSIST_LOOP_SLAB"},
+          {"capacity_bytes", 1 << 20},
+          {"path", (root_ / "dram-guard").string()}}}}}};
+  DramValueStore store(config);
+  const uint64_t handle = store.Alloc(64);
+  ASSERT_NE(handle, kValueHandleNone);
+  const size_t capacity = store.SlotCapacity(handle);
+  ASSERT_GE(capacity, 64u);
+
+  std::vector<char> wide(capacity + 1, 'x');
+  EXPECT_THROW(store.Write(handle, wide.data(), wide.size()),
+               std::invalid_argument);
+
+  // Fixed-row copies must refuse a row wider than the slot instead of reading
+  // into the neighbouring value.
+  uint64_t rows[] = {handle};
+  std::vector<char> out(capacity + 1, 0);
+  EXPECT_FALSE(
+      store.ReadFlatFixedRows(rows, 1, out.data(), capacity + 1, nullptr));
+  EXPECT_FALSE(store.ReadFlatFixedRowSlices(
+      rows, 1, out.data(), capacity + 1, 0, capacity + 1, nullptr));
+
+  std::vector<char> exact(capacity, 'y');
+  store.Write(handle, exact.data(), exact.size());
+  EXPECT_TRUE(store.ReadFlatFixedRows(rows, 1, out.data(), capacity, nullptr));
+}
+
 TEST_F(StaticLayoutValueTest, TieredReadCacheWriteThroughTracksShrunkValue) {
   BaseKVConfig config;
   config.json_config_ = {

@@ -87,6 +87,13 @@ public:
     if (dst == nullptr) {
       return;
     }
+    const size_t capacity = SlotCapacity(handle);
+    if (size > capacity) {
+      // Slab/buddy allocators reject an oversized payload at allocation time;
+      // a raw memcpy here would run past this slot into a neighbouring value.
+      throw std::invalid_argument(
+          "DramValueStore::Write exceeds slot capacity");
+    }
     std::memcpy(dst, data, size);
   }
 
@@ -103,9 +110,7 @@ public:
     if (src == nullptr || out_buf == nullptr) {
       return 0;
     }
-    const size_t n = std::min(
-        buf_size,
-        static_cast<size_t>(allocator_->GetMallocSize(DecodeOffset(handle))));
+    const size_t n = std::min(buf_size, StoredSize(DecodeOffset(handle)));
     std::memcpy(out_buf, src, n);
     return n;
   }
@@ -134,11 +139,18 @@ public:
     return static_cast<size_t>(allocator_->BackingSize());
   }
 
+  // GetMallocSize reports -1 for a handle it does not know; widening that to
+  // size_t would turn every capacity check into "unlimited".
+  size_t StoredSize(uint64_t offset) const {
+    const int size = allocator_->GetMallocSize(static_cast<int64_t>(offset));
+    return size > 0 ? static_cast<size_t>(size) : 0;
+  }
+
   size_t SlotCapacity(uint64_t handle) const override {
     if (handle == kValueHandleNone) {
       return 0;
     }
-    return static_cast<size_t>(allocator_->GetMallocSize(DecodeOffset(handle)));
+    return StoredSize(DecodeOffset(handle));
   }
 
   bool ReadFlatFixedRows(const uint64_t* handles,
@@ -165,6 +177,9 @@ public:
       }
       const char* src = Ptr(handles[row]);
       if (src == nullptr) {
+        return false;
+      }
+      if (SlotCapacity(handles[row]) < row_bytes) {
         return false;
       }
       std::memcpy(row_dst, src, row_bytes);
@@ -209,6 +224,9 @@ public:
       }
       const char* src = Ptr(handles[row]);
       if (src == nullptr) {
+        return false;
+      }
+      if (SlotCapacity(handles[row]) < source_offset_bytes + output_row_bytes) {
         return false;
       }
       std::memcpy(row_dst, src + source_offset_bytes, output_row_bytes);
@@ -272,6 +290,9 @@ private:
       if (src == nullptr) {
         return false;
       }
+      if (SlotCapacity(handles[row]) < row_bytes) {
+        return false;
+      }
       std::memcpy(row_dst, src, row_bytes);
     }
     if (missing_rows != nullptr) {
@@ -298,6 +319,9 @@ private:
       }
       const char* src = Ptr(handles[row]);
       if (src == nullptr) {
+        return false;
+      }
+      if (SlotCapacity(handles[row]) < source_offset_bytes + output_row_bytes) {
         return false;
       }
       std::memcpy(row_dst, src + source_offset_bytes, output_row_bytes);
