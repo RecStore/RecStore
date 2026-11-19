@@ -124,6 +124,10 @@ public:
   void EmbInit(const base::RecTensor& keys,
                const InitStrategy& strategy) override;
   void EmbRead(const base::RecTensor& keys, base::RecTensor& values) override;
+  // Optional flat read that also reports per-row presence. Returns false when
+  // the active transport cannot report misses.
+  bool EmbReadWithFound(
+      const base::RecTensor& keys, base::RecTensor& values, uint8_t* found);
   void EmbWrite(const base::RecTensor& keys,
                 const base::RecTensor& values) override;
   void EmbUpdate(const base::RecTensor& keys,

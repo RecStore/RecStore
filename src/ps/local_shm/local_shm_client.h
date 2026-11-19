@@ -20,12 +20,15 @@ struct LocalShmFlatGetHandle {
   static constexpr uint32_t kInvalidSlotId =
       std::numeric_limits<uint32_t>::max();
 
-  uint32_t slot_id      = kInvalidSlotId;
-  uint64_t request_id   = 0;
-  float* values         = nullptr;
+  uint32_t slot_id    = kInvalidSlotId;
+  uint64_t request_id = 0;
+  float* values       = nullptr;
+  // Trailing key_count-byte hit mask, valid only when expect_found is set.
+  uint8_t* found        = nullptr;
   int64_t num_rows      = 0;
   int64_t embedding_dim = 0;
   uint64_t output_bytes = 0;
+  bool expect_found     = false;
   // Set when the wait timed out: the slot must not go back to the free queue
   // because the server may still be writing into it.
   bool quarantined = false;
@@ -70,10 +73,19 @@ public:
                        float* values,
                        int64_t num_rows,
                        int64_t embedding_dim);
-  int SubmitGetParameterFlat(const base::ConstArray<uint64_t>& keys,
-                             int64_t num_rows,
-                             int64_t embedding_dim,
-                             LocalShmFlatGetHandle* handle);
+  // Same request as GetParameterFlat, plus a per-row hit mask (1 = present).
+  bool GetParameterFlatWithFound(
+      const base::ConstArray<uint64_t>& keys,
+      float* values,
+      uint8_t* found,
+      int64_t num_rows,
+      int64_t embedding_dim) override;
+  int SubmitGetParameterFlat(
+      const base::ConstArray<uint64_t>& keys,
+      int64_t num_rows,
+      int64_t embedding_dim,
+      LocalShmFlatGetHandle* handle,
+      bool want_found = false);
   int WaitGetParameterFlat(LocalShmFlatGetHandle* handle);
   void ReleaseGetParameterFlat(LocalShmFlatGetHandle* handle);
   int PutParameter(const base::ConstArray<uint64_t>& keys,

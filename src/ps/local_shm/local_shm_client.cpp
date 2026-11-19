@@ -208,11 +208,47 @@ int LocalShmPSClient::GetParameterFlat(
   return wait_rc;
 }
 
+bool LocalShmPSClient::GetParameterFlatWithFound(
+    const base::ConstArray<uint64_t>& keys,
+    float* values,
+    uint8_t* found,
+    int64_t num_rows,
+    int64_t embedding_dim) {
+  if (values == nullptr || found == nullptr) {
+    LOG(ERROR) << "LocalShmPSClient::GetParameterFlatWithFound invalid_state"
+               << " pid=" << static_cast<int>(::getpid())
+               << " backend=local_shm" << " region_name=" << region_name_
+               << " ready_queue_id=" << ready_queue_id_ << " key_count="
+               << num_rows << " embedding_dim=" << embedding_dim;
+    return false;
+  }
+  LocalShmFlatGetHandle handle;
+  handle.expect_found = true;
+  ResetActiveRequestProfile();
+  g_active_request_profile.active        = true;
+  g_active_request_profile.request_start = std::chrono::steady_clock::now();
+  if (SubmitGetParameterFlat(keys, num_rows, embedding_dim, &handle, true) !=
+      0) {
+    return false;
+  }
+  const int wait_rc = WaitGetParameterFlat(&handle);
+  if (wait_rc == 0) {
+    const std::size_t values_bytes =
+        sizeof(float) * static_cast<std::size_t>(num_rows) *
+        static_cast<std::size_t>(embedding_dim);
+    std::memcpy(values, handle.values, values_bytes);
+    std::memcpy(found, handle.found, static_cast<std::size_t>(num_rows));
+  }
+  ReleaseGetParameterFlat(&handle);
+  return wait_rc == 0;
+}
+
 int LocalShmPSClient::SubmitGetParameterFlat(
     const base::ConstArray<uint64_t>& keys,
     int64_t num_rows,
     int64_t embedding_dim,
-    LocalShmFlatGetHandle* handle) {
+    LocalShmFlatGetHandle* handle,
+    bool want_found) {
   if (handle == nullptr) {
     LOG(ERROR) << "LocalShmPSClient::SubmitGetParameterFlat null_handle"
                << " pid=" << static_cast<int>(::getpid())
@@ -270,7 +306,9 @@ int LocalShmPSClient::SubmitGetParameterFlat(
   auto* payload = region_.slot_payload(static_cast<uint32_t>(slot));
   const std::size_t input_bytes = GetPayloadBytes(keys.Size());
   const std::size_t payload_bytes =
-      GetFlatPayloadBytes(keys.Size(), static_cast<std::size_t>(embedding_dim));
+      GetFlatPayloadBytes(
+          keys.Size(), static_cast<std::size_t>(embedding_dim)) +
+      (want_found ? keys.Size() : 0);
   if (payload_bytes > region_.slot_buffer_bytes()) {
     LOG(ERROR)
         << "LocalShmPSClient::SubmitGetParameterFlat input_too_large"
@@ -286,7 +324,8 @@ int LocalShmPSClient::SubmitGetParameterFlat(
   }
 
   const uint64_t request_id = NextRequestId();
-  header->opcode            = static_cast<uint32_t>(LocalOpcode::kGet);
+  header->opcode            = static_cast<uint32_t>(
+      want_found ? LocalOpcode::kGetWithFound : LocalOpcode::kGet);
   MarkActiveRequestOpcode(header->opcode);
   header->status_code       = static_cast<uint32_t>(LocalStatusCode::kOk);
   header->client_id         = client_id_;
@@ -326,6 +365,8 @@ int LocalShmPSClient::SubmitGetParameterFlat(
   handle->slot_id       = static_cast<uint32_t>(slot);
   handle->request_id    = request_id;
   handle->values        = nullptr;
+  handle->found         = nullptr;
+  handle->expect_found  = want_found;
   handle->num_rows      = num_rows;
   handle->embedding_dim = embedding_dim;
   handle->output_bytes  = 0;
@@ -392,7 +433,8 @@ int LocalShmPSClient::WaitGetParameterFlat(LocalShmFlatGetHandle* handle) {
   if (handle->embedding_dim > 0) {
     const std::size_t expected_output_bytes =
         sizeof(float) * static_cast<std::size_t>(handle->num_rows) *
-        static_cast<std::size_t>(handle->embedding_dim);
+            static_cast<std::size_t>(handle->embedding_dim) +
+        (handle->expect_found ? static_cast<std::size_t>(handle->num_rows) : 0);
     if (header->output_bytes != expected_output_bytes) {
       LOG(ERROR)
           << "LocalShmPSClient::WaitGetParameterFlat output_size_mismatch"
@@ -408,8 +450,14 @@ int LocalShmPSClient::WaitGetParameterFlat(LocalShmFlatGetHandle* handle) {
   }
 
   auto* payload = region_.slot_payload(handle->slot_id);
+  const std::size_t values_bytes =
+      sizeof(float) * static_cast<std::size_t>(handle->num_rows) *
+      static_cast<std::size_t>(handle->embedding_dim);
   handle->values =
       reinterpret_cast<float*>(payload + GetPayloadBytes(handle->num_rows));
+  if (handle->expect_found) {
+    handle->found = payload + GetPayloadBytes(handle->num_rows) + values_bytes;
+  }
   handle->output_bytes = header->output_bytes;
   if (g_active_request_profile.active) {
     FinalizeActiveRequestProfile(

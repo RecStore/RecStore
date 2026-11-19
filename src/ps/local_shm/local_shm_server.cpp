@@ -171,11 +171,25 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
           request_id);
       return;
     }
-    case LocalOpcode::kGet: {
+    case LocalOpcode::kGet:
+    case LocalOpcode::kGetWithFound: {
+      const bool want_found =
+          header->opcode == static_cast<uint32_t>(LocalOpcode::kGetWithFound);
       const auto* keys = reinterpret_cast<const uint64_t*>(payload);
       const base::ConstArray<uint64_t> key_array(keys, header->key_count);
       const uint32_t embedding_dim = header->embedding_dim;
       if (embedding_dim == 0) {
+        if (want_found) {
+          LOG(ERROR) << "LocalShmStoreRuntime::ProcessSlot get_with_found"
+                     << " unsupported_for_dynamic_dim slot_id=" << slot_id
+                     << " request_id=" << header->request_id
+                     << " key_count=" << header->key_count;
+          ReportLocalShmStageMetric(
+              "server_process_total_us", LocalShmElapsedUs(process_start));
+          FinishWithStatus(
+              header, LocalStatusCode::kUnsupportedOpcode, request_id);
+          return;
+        }
         std::vector<ParameterPack> packs;
         packs.reserve(header->key_count);
         const auto backend_start = std::chrono::steady_clock::now();
@@ -248,27 +262,33 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
           static_cast<std::size_t>(embedding_dim);
       const std::size_t key_bytes =
           sizeof(uint64_t) * static_cast<std::size_t>(header->key_count);
-      const std::size_t payload_bytes = key_bytes + output_bytes;
+      const std::size_t found_bytes =
+          want_found ? static_cast<std::size_t>(header->key_count) : 0;
+      const std::size_t payload_bytes = key_bytes + output_bytes + found_bytes;
       if (payload_bytes > region_->slot_buffer_bytes()) {
         LOG(ERROR) << "LocalShmStoreRuntime::ProcessSlot get_buffer_too_small"
                    << " slot_id=" << slot_id << " request_id="
                    << header->request_id << " key_count=" << header->key_count
                    << " computed_embedding_dim=" << embedding_dim
-                   << " output_bytes=" << output_bytes
-                   << " payload_bytes=" << payload_bytes
+                   << " output_bytes=" << output_bytes << " found_bytes="
+                   << found_bytes << " payload_bytes=" << payload_bytes
                    << " slot_buffer_bytes=" << region_->slot_buffer_bytes();
         ReportLocalShmStageMetric(
             "server_process_total_us", LocalShmElapsedUs(process_start));
         FinishWithStatus(header, LocalStatusCode::kBufferTooSmall, request_id);
         return;
       }
+      uint8_t* found =
+          want_found ? payload + key_bytes + output_bytes : nullptr;
       const auto backend_start = std::chrono::steady_clock::now();
       if (!cache_ps_->GetParameterFlat(
               key_array,
               reinterpret_cast<float*>(payload + key_bytes),
               static_cast<int64_t>(header->key_count),
               static_cast<int64_t>(embedding_dim),
-              static_cast<int>(worker_tid_))) {
+              static_cast<int>(worker_tid_),
+              nullptr,
+              found)) {
         LOG(ERROR) << "LocalShmStoreRuntime::ProcessSlot get_failed"
                    << " slot_id=" << slot_id << " request_id="
                    << header->request_id << " key_count=" << header->key_count
@@ -286,7 +306,7 @@ void LocalShmStoreRuntime::ProcessSlot(uint32_t slot_id) {
           static_cast<uint64_t>(LocalShmElapsedUs(backend_start));
       ReportLocalShmStageMetric(
           "get_backend_us", LocalShmElapsedUs(backend_start));
-      header->output_bytes = output_bytes;
+      header->output_bytes = output_bytes + found_bytes;
       ReportLocalShmStageMetric(
           "server_process_total_us", LocalShmElapsedUs(process_start));
       FinishWithStatus(header, LocalStatusCode::kOk, request_id);

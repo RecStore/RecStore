@@ -12,6 +12,26 @@ torch::Tensor emb_read_torch(const torch::Tensor& keys, int64_t embedding_dim) {
   return std::get<0>(CachedReadTorch(keys, embedding_dim));
 }
 
+std::tuple<torch::Tensor, torch::Tensor>
+emb_read_with_found_torch(const torch::Tensor& keys, int64_t embedding_dim) {
+  TORCH_CHECK(keys.device().is_cpu(), "emb_read_with_found requires CPU keys");
+  TORCH_CHECK(embedding_dim > 0,
+              "emb_read_with_found requires a positive embedding dimension");
+  const int64_t rows = keys.numel();
+  auto values        = torch::empty(
+      {rows, embedding_dim}, keys.options().dtype(torch::kFloat32));
+  auto found = torch::empty({rows}, keys.options().dtype(torch::kBool));
+  if (rows == 0)
+    return {values, found};
+  auto k        = ToRecTensor(keys, base::DataType::UINT64);
+  auto v        = ToRecTensor(values, base::DataType::FLOAT32);
+  const bool ok = GetConcreteKVClientOp()->EmbReadWithFound(
+      k, v, reinterpret_cast<uint8_t*>(found.data_ptr<bool>()));
+  TORCH_CHECK(ok,
+              "emb_read_with_found is not supported by the active PS backend");
+  return {values, found};
+}
+
 void emb_read_into_torch(const torch::Tensor& keys,
                          const torch::Tensor& values) {
   CheckRows(keys, values);
@@ -155,6 +175,7 @@ std::string current_ps_backend_torch() {
 
 void RegisterBaseOps(torch::Library& m) {
   m.def("emb_read", emb_read_torch);
+  m.def("emb_read_with_found", emb_read_with_found_torch);
   m.def("emb_read_into(Tensor keys, Tensor(a!) values) -> ()",
         emb_read_into_torch);
   m.def("emb_update", emb_update_torch);
