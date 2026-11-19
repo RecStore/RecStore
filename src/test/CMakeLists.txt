@@ -731,6 +731,16 @@ if(TARGET recstore_torch_ops)
 endif()
 
 add_python_unittest(
+    test_kvclient_masked_init_py
+    src.python.pytorch.recstore.unittest.test_kvclient_masked_init
+)
+set_tests_properties(
+    test_kvclient_masked_init_py
+    PROPERTIES
+    LABELS "python;local_shm"
+)
+
+add_python_unittest(
     test_sparse_optimizer_config_py
     src.python.pytorch.recstore.unittest.test_sparse_optimizer_config
 )
