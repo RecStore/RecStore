@@ -35,8 +35,6 @@ EXEMPT = {
     "test_ebc_precision_distributed_runner": "manual runner (requires PS cluster)",
     "test_ebc_precision_multiprocess": "manual runner (requires PS cluster)",
     "test_sparse_sgd_topk_gloo": "manual runner (requires torch.distributed)",
-    # Stale after the perf-stats refactor; tracked for a follow-up rewrite.
-    "test_gpu_training_cache": "stale: merge helpers moved to perf stats API",
 }
 
 CPP_EXEMPT: dict[str, str] = {}
