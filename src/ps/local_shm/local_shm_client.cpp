@@ -63,6 +63,9 @@ void ResetFlatGetHandle(LocalShmFlatGetHandle* handle) {
   handle->num_rows      = 0;
   handle->embedding_dim = 0;
   handle->output_bytes  = 0;
+  // The slot was either returned or deliberately leaked; either way this
+  // handle no longer refers to it and must be reusable.
+  handle->quarantined = false;
 }
 
 bool IsFlatGetHandleClear(const LocalShmFlatGetHandle& handle) {

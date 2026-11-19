@@ -393,9 +393,14 @@ private:
 #ifdef ENABLE_PERF_REPORT
     auto start_time = std::chrono::high_resolution_clock::now();
 #endif
+    const auto& payload = request->parameter_value();
     const ParameterCompressReader* reader =
-        reinterpret_cast<const ParameterCompressReader*>(
-            request->parameter_value().data());
+        reinterpret_cast<const ParameterCompressReader*>(payload.data());
+    if (!reader->Valid(static_cast<int>(payload.size()))) {
+      LOG(ERROR) << "PutParameter invalid payload, size=" << payload.size();
+      return Status(
+          grpc::StatusCode::INVALID_ARGUMENT, "PutParameter invalid payload");
+    }
     int size = reader->item_size();
     LOG(INFO) << "[PS] PutParameter: " << size << " keys";
     uint64_t total_bytes = 0;
@@ -403,7 +408,12 @@ private:
     for (int i = 0; i < size; i++) {
       total_bytes += reader->item(i)->dim * sizeof(float);
     }
-    cache_ps_->PutParameter(reader, 0);
+    try {
+      cache_ps_->PutParameter(reader, 0);
+    } catch (const std::exception& error) {
+      LOG(ERROR) << "PutParameter failed: " << error.what();
+      return Status(grpc::StatusCode::INTERNAL, error.what());
+    }
     LOG(INFO) << "[PS] PutParameter done: " << size << " keys";
     total_put_requests_++;
     total_put_keys_ += size;

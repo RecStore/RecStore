@@ -517,14 +517,22 @@ void BRPCParameterServiceImpl::PutParameter(
       reinterpret_cast<const ParameterCompressReader*>(payload_data);
   if (!reader->Valid(payload_size)) {
     LOG(ERROR) << "PutParameter invalid payload, size=" << payload_size;
+    cntl->SetFailed(EINVAL, "PutParameter invalid payload");
     return;
   }
   int size             = reader->item_size();
   uint64_t total_bytes = 0;
 
-  for (int i = 0; i < size; i++) {
-    cache_ps_->PutSingleParameter(reader->item(i), 0);
-    total_bytes += reader->item(i)->dim * sizeof(float);
+  try {
+    for (int i = 0; i < size; i++) {
+      cache_ps_->PutSingleParameter(reader->item(i), 0);
+      total_bytes += reader->item(i)->dim * sizeof(float);
+    }
+  } catch (const std::exception& error) {
+    // An engine exception must not unwind through brpc's dispatch frame.
+    LOG(ERROR) << "PutParameter failed: " << error.what();
+    cntl->SetFailed(brpc::EINTERNAL, "PutParameter failed: %s", error.what());
+    return;
   }
 
   total_put_requests_++;

@@ -1051,12 +1051,14 @@ bool PetPSClient::QueryRPCFinished(int rpc_id) {
   return StatusWordDone(*slot.view.status, pending.seq);
 }
 
-void PetPSClient::WaitRPCFinish(int rpc_id) {
+std::int32_t PetPSClient::WaitRPCFinish(int rpc_id) {
   PendingRpc pending;
   {
     std::lock_guard<std::mutex> guard(mu_);
     if (!PendingRpcLocked(rpc_id, &pending)) {
-      return;
+      // Already revoked: the caller must not re-read slot memory, so report a
+      // neutral success like the previous void signature let it assume.
+      return static_cast<std::int32_t>(RpcStatus::kOk);
     }
     if (pending.failed) {
       throw ShardUnreachableError(
@@ -1101,6 +1103,7 @@ void PetPSClient::WaitRPCFinish(int rpc_id) {
       FixedSlotStatusWord(pending.recv_buffer, pending.key_count, value_size);
   *user_status = status_code;
   MaybeReportProfile();
+  return status_code;
 }
 
 void PetPSClient::RevokeRPCResource(int rpc_id) {
@@ -1201,8 +1204,7 @@ int PetPSClient::PutParameter(const base::ConstArray<uint64_t>& keys,
       rpc_id = SubmitRpcLocked(
           &slot, descriptor, payload.data(), payload_bytes, recv, 0, 0);
     }
-    WaitRPCFinish(rpc_id);
-    const auto status = *reinterpret_cast<const std::int32_t*>(recv);
+    const std::int32_t status = WaitRPCFinish(rpc_id);
     RevokeRPCResource(rpc_id);
     if (status != static_cast<std::int32_t>(RpcStatus::kOk)) {
       return -1;
@@ -1330,8 +1332,7 @@ int PetPSClient::UpdateParameter(
           &slot, descriptor, payload.data(), payload_bytes, recv, 0, 0);
     }
 
-    WaitRPCFinish(rpc_id);
-    const auto status = *reinterpret_cast<const std::int32_t*>(recv);
+    const std::int32_t status = WaitRPCFinish(rpc_id);
     RevokeRPCResource(rpc_id);
     if (status != static_cast<std::int32_t>(RpcStatus::kOk)) {
       return -1;
@@ -1510,16 +1511,7 @@ int PetPSClient::WaitUpdateParameter(int rpc_id) {
   if (rpc_id == 0) {
     return 0;
   }
-  WaitRPCFinish(rpc_id);
-  PendingRpc pending;
-  {
-    std::lock_guard<std::mutex> guard(mu_);
-    if (!PendingRpcLocked(rpc_id, &pending)) {
-      return -1;
-    }
-  }
-  const auto status =
-      *reinterpret_cast<const std::int32_t*>(pending.recv_buffer);
+  const std::int32_t status = WaitRPCFinish(rpc_id);
   RevokeRPCResource(rpc_id);
   return status == static_cast<std::int32_t>(RpcStatus::kOk) ? 0 : -1;
 }

@@ -57,7 +57,10 @@ public:
       std::size_t* response_bytes,
       std::int32_t* status_code);
   bool QueryRPCFinished(int rpc_id);
-  void WaitRPCFinish(int rpc_id);
+  // Returns the server status word. Callers must use the value instead of
+  // reading the slot's status buffer afterwards: the slot may already belong
+  // to another thread.
+  std::int32_t WaitRPCFinish(int rpc_id);
   void RevokeRPCResource(int rpc_id);
   // Snapshot only: callers must serialize submissions around this check.
   bool HasAvailableSlots(std::size_t required) const;
