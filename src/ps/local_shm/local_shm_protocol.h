@@ -21,6 +21,9 @@ enum class LocalOpcode : uint32_t {
   kPut                  = 3,
   kUpdateFlat           = 4,
   kSparseGradientCommit = 5,
+  // Same request as kGet; the response payload carries a trailing
+  // key_count-byte mask (1 = key present, 0 = missing).
+  kGetWithFound = 6,
 };
 
 enum class LocalSlotState : uint32_t {

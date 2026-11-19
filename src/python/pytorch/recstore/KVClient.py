@@ -212,6 +212,7 @@ class RecStoreClient:
         base_offset: int = 0,
         initialize_values: bool = True,
         backend_table_id: Optional[int] = None,
+        mask: Optional[torch.Tensor] = None,
     ):
         """Send message to kvserver to initialize new data tensor and mapping this
         data from server side to client side.
@@ -230,8 +231,29 @@ class RecStoreClient:
             UDF init function
         is_gdata : bool
             Whether the created tensor is a ndata/edata or not.
+        mask : tensor, optional
+            Boolean mask of length ``shape[0]`` selecting the rows to write.
+            This is a plain write, not insert-if-absent: rows outside the mask
+            are untouched, rows inside it are overwritten even if another
+            writer created them after the lookup that produced the mask.
         """
         # print(f"Initializing tensor '{name}' with shape {shape} and dtype {dtype} (base_offset={base_offset}).")
+
+        # Validate before touching the backend: a rejected mask must not leave
+        # a registered table with no values.
+        if mask is not None:
+            mask = torch.as_tensor(mask)
+            if mask.dtype != torch.bool:
+                mask = mask.bool()
+            if mask.dim() != 1 or mask.numel() != shape[0]:
+                raise ValueError(
+                    f"init_data mask must be a 1-D boolean tensor of length {shape[0]}"
+                )
+            if name in self._tensor_meta:
+                raise RuntimeError(
+                    f"Cannot backfill '{name}' with a mask: it is already "
+                    "registered, and this path only writes a new table"
+                )
 
         if name in self._tensor_meta and backend_table_id is None:
             print(f"Tensor '{name}' already exists. Skipping initialization.")
@@ -264,6 +286,13 @@ class RecStoreClient:
         all_keys = torch.arange(shape[0], dtype=torch.int64)
         if base_offset != 0:
             all_keys = all_keys + int(base_offset)
+        if mask is not None:
+            mask_cpu = mask.cpu()
+            if initial_data.device.type == "cpu":
+                initial_data = initial_data[mask_cpu]
+            else:
+                initial_data = initial_data[mask.to(initial_data.device)]
+            all_keys = all_keys[mask_cpu]
         self.ops.emb_write(self._encode_ids(name, all_keys), initial_data)
         self._clear_gpu_cache_if_available()
 
@@ -344,6 +373,27 @@ class RecStoreClient:
         report_metric("embread_stages", f"KVClient::pull|{start_us}", "request_size", float(ids.numel()))
         
         return res
+
+    def pull_with_found(self, name: str, ids: torch.Tensor):
+        """Read rows and report per-row presence.
+
+        Returns ``(values, found)`` where ``found`` is a boolean tensor of the
+        same length as ``ids`` (True = the key exists). Backends that cannot
+        report misses return ``(values, None)``; callers should keep the plain
+        ``pull`` path in that case.
+        """
+        if name not in self._tensor_meta:
+            raise RuntimeError(f"Tensor '{name}' has not been initialized.")
+        meta = self._tensor_meta[name]
+        ids = self._normalize_ids(ids, name=name)
+        op = getattr(self.ops, "emb_read_with_found", None)
+        backend = self.ops.current_ps_backend() if callable(
+            getattr(self.ops, "current_ps_backend", None)) else None
+        # Only local_shm reports per-row presence today; other backends keep
+        # the plain read path.
+        if not callable(op) or backend != "local_shm":
+            return self.pull(name, ids), None
+        return op(ids, meta["shape"][1])
 
     def pull_into(self, name: str, ids: torch.Tensor, values: torch.Tensor) -> torch.Tensor:
         """Read into caller-owned CPU storage, with compatibility for older ops libraries."""
