@@ -517,6 +517,9 @@ public:
                                int exact_owner_rank = -1) {
     recstore::SparseGradientCommitHeader h;
     try {
+      // InitTable()/Clear() mutate table_configs_ under checkpoint_mu_; take
+      // the same lock for the pre-check instead of reading it unlocked.
+      std::lock_guard<std::mutex> checkpoint_lock(checkpoint_mu_);
       h = recstore::DecodeSparseGradientCommit(payload);
       if (h.version == 4 &&
           (exact_owner_rank < 0 || exact_owner_rank >= 2 ||

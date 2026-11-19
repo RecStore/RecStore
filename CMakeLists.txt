@@ -7,6 +7,8 @@ option(ENABLE_CUDA "Build with CUDA support" ON)
 option(USE_BRPC_CPU_PROFILER "Enable bRPC builtin CPU profiler" OFF)
 option(USE_PERF_REPORT
   "Enable performance reporting (sinks selected at runtime in recstore_config.json)" OFF)
+option(USE_GPERF_PROFILING
+  "Enable gperf profiling hooks (referenced by docs/performance/profiling.md)" OFF)
 option(RECSTORE_ENABLE_THIRD_PARTY_ENGINES
   "Build the optional FASTERKV and HPS storage engines" OFF)
 

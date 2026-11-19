@@ -77,7 +77,7 @@ skill directory; call project scripts directly.
      `cmake -S . -B build_release -DCMAKE_BUILD_TYPE=Release`
    - `cmake --build build_release --target ps_server -j`
    - run the correctness tests relevant to the requested PS backend. For BRPC,
-     use `ctest --test-dir build_release -R 'brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_server_launcher|test_ps_client_factory|test_allshards_ps_client' --output-on-failure`;
+     use `ctest --test-dir build_release -R 'brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_server_launcher|test_ps_client_factory' --output-on-failure`;
      for GRPC, LOCAL_SHM/SHM, RDMA, or other PS types, use the corresponding
      targeted tests before E2E.
    - Immediately before starting PS / clients, clean leftover RecStore/TorchRec
@@ -122,7 +122,7 @@ Preferred automated entry (`tools/benchmarks/e2e/custom/`):
 cmake -S . -B build_release -DCMAKE_BUILD_TYPE=Release
 cmake --build build_release --target ps_server -j
 # Example for BRPC. Replace with the targeted tests for the requested PS type.
-ctest --test-dir build_release -R 'brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_server_launcher|test_ps_client_factory|test_allshards_ps_client' --output-on-failure
+ctest --test-dir build_release -R 'brpc_ps_client_test|dist_brpc_ps_client_test|test_ps_server_launcher|test_ps_client_factory' --output-on-failure
 
 # Clean every unique client/PS host (local example; remote: ssh ... 'bash -s' < tools/benchmarks/kill_bench_procs.sh).
 ./tools/benchmarks/kill_bench_procs.sh

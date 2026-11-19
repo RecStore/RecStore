@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "base/config.h"
+#include "base/factory.h"
 
 namespace {
 
@@ -117,6 +118,12 @@ TEST(ConfigPathTest, ResolveThrowsWhenConfigIsMissing) {
 
   EXPECT_THROW(detail::ResolveRecStoreConfigPath(missing_default, nested_path),
                std::runtime_error);
+}
+
+TEST(FactoryTest, UnknownKeyNamesTheKeyAndExitsImmediately) {
+  EXPECT_EXIT(base::Factory<int>::NewInstance("missing-key"),
+              ::testing::ExitedWithCode(255),
+              "no Factory instance for key: missing-key");
 }
 
 } // namespace base

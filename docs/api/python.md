@@ -19,4 +19,4 @@ client = RecStoreClient(role="default")
 | `update(name, ids, grads)` | 发送 sparse gradients。 |
 | `set_ps_config(host, port)` | 重建底层 PS client。 |
 | `set_ps_backend(backend)` | 切换 RPC、本地共享内存或 HierKV 路径。 |
-| `delete_data` | 清理 Python 本地元数据，后端数据保留。 |
+| `delete_data` | 未实现，调用直接抛异常；后端数据不受影响。 |

@@ -486,12 +486,12 @@ BaseKVConfig BuildConfig() {
     if (!FLAGS_dram_path.empty()) {
       config.json_config_["value"]["path"] = FLAGS_dram_path + "/value";
     }
-    config.json_config_["value"]["dram_allocator"] = {
-        {"type", FLAGS_dram_allocator}, {"capacity_bytes", dram_capacity}};
-    // TODO(xieminhui): fix BUG when R2_ALLOC is used, dram_capacity is not
-    // enough, should be 10 times of value_capacity
+    // R2_ALLOC rounds every row up to a power-of-two slot, so the usable
+    // capacity needs headroom; scale before the value is serialized.
     if (FLAGS_dram_allocator == "R2_ALLOC")
       dram_capacity *= 10;
+    config.json_config_["value"]["dram_allocator"] = {
+        {"type", FLAGS_dram_allocator}, {"capacity_bytes", dram_capacity}};
   } else if (FLAGS_value_store_type == "SSD_VALUE_STORE") {
     config.json_config_["value"]["path"] = FLAGS_ssd_path + "/value.db";
     config.json_config_["value"]["ssd_allocator"] = {

@@ -269,7 +269,7 @@ class RecStoreClient:
 
 
     def delete_data(self, name: str):
-        """Send message to kvserver to delete tensor and clear the meta data
+        """Reject tensor deletion: the ops-based backend cannot clear rows.
 
         Parameters
         ----------
@@ -279,14 +279,13 @@ class RecStoreClient:
         if name not in self._tensor_meta:
             print(f"Warning: Tensor '{name}' does not exist. Cannot delete.")
             return
-        
-        del self._tensor_meta[name]
-        del self._full_data_shape[name]
-        self._data_name_list.remove(name)
-        if name in self._gdata_name_list:
-            self._gdata_name_list.remove(name)
-        
-        raise NotImplementedError("delete_data is not fully implemented for the ops-based client; backend data is not cleared.")
+
+        # Raise before touching the client metadata: a half-deleted local state
+        # would disagree with the rows that are still in the backend.
+        raise NotImplementedError(
+            "delete_data is not implemented for the ops-based client; "
+            "backend data is not cleared."
+        )
 
     def map_shared_data(self, partition_book: Any):
         """Mapping shared-memory tensor from server to client.

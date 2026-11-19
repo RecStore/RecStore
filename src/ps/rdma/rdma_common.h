@@ -44,4 +44,11 @@ inline std::int32_t* FixedSlotStatusWord(
       key_count * static_cast<std::size_t>(value_size));
 }
 
+// kGet reads key_count uint64 keys directly out of the request payload, so a
+// descriptor whose payload length disagrees with key_count would overrun it.
+inline bool
+GetPayloadMatchesKeyCount(std::size_t key_count, std::size_t payload_bytes) {
+  return key_count != 0 && payload_bytes == key_count * sizeof(std::uint64_t);
+}
+
 } // namespace petps

@@ -25,11 +25,7 @@ struct Factory {
     auto creator = creators()[key];
     if (creator)
       return creator->create(args...);
-    for (int _ = 0; _ < 10; _++) {
-      std::cerr << "no Factory instance" << std::endl;
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-    assert(0), "no instance";
+    std::cerr << "no Factory instance for key: " << key << std::endl;
     std::exit(-1);
     return NULL;
   }

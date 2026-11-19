@@ -947,6 +947,15 @@ private:
       // request with kInternalError instead of leaving the client to time out.
       throw std::runtime_error("injected handler failure");
     }
+    // The key array is read straight out of the payload; a descriptor whose
+    // payload does not hold exactly key_count keys would read past it.
+    if (!petps::GetPayloadMatchesKeyCount(
+            descriptor.key_count, descriptor.payload_bytes)) {
+      response->status->status =
+          static_cast<std::int32_t>(petps::RpcStatus::kInvalidPayload);
+      response->status->response_bytes = 0;
+      return false;
+    }
     if (FLAGS_rdma_rc_fake_get_mode == "status_only") {
       response->status->status =
           static_cast<std::int32_t>(petps::RpcStatus::kOk);

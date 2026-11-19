@@ -813,7 +813,14 @@ Value_t CCEH::Put(Key_t key, Value_t value, unsigned tid) {
   }
 }
 
-bool CCEH::Delete(Key_t& key) { return false; }
+bool CCEH::Delete(Key_t& key) {
+  // The SSD index has no page-free path yet, so report a miss: callers use the
+  // return value to decide whether to retire a value handle. Aborting here
+  // would kill the PS on every CLEAR_PS / BatchDelete round.
+  RECSTORE_LOG_EVERY_MS(ERROR, 60000)
+      << "CCEH::Delete is not implemented; the row is left in place";
+  return false;
+}
 
 void CCEH::Get(coroutine<void>::push_type& sink,
                int index,

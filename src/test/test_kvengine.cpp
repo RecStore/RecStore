@@ -24,8 +24,16 @@
 
 #include "storage/kv_engine/engine_factory.h"
 #include "storage/kv_engine/engine_selector.h"
+#include "storage/kv_engine/load_db.h"
 #include "storage/nvm/pet_kv/pet_hash.h"
 #include "test_io_uring_helper.h"
+
+TEST(LoadDBHelperTest, RejectsValuesLargerThanTheStagingBuffer) {
+  // Both PreLoadDB branches stage rows in a fixed 32KB buffer. The guard fires
+  // before kv_ is touched, so a null backend is safe here.
+  LoadDBHelper helper(nullptr, 0, 1, 16, 64 * 1024);
+  EXPECT_DEATH(helper.PreLoadDB(false), "staging buffer is 32KB");
+}
 
 TEST(PetHashTest, ShardedSizeTracksConcurrentMutations) {
   using Hash                        = base::PetHash<uint64_t, uint64_t>;
