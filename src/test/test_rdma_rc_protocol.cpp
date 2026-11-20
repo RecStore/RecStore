@@ -17,6 +17,42 @@ TEST(RdmaRcProtocolTest, ComputesGetKeysPerRpcFor512BValue) {
             static_cast<std::size_t>(1600));
 }
 
+TEST(RdmaRcProtocolTest, RejectsPreviousProtocolVersion) {
+  // v2 added the hit mask, so a v1 descriptor must be refused instead of being
+  // decoded with the v2 response layout.
+  petps::RequestDescriptor descriptor;
+  descriptor.version = 1;
+  std::string error;
+  EXPECT_FALSE(
+      petps::ValidateRequestDescriptor(descriptor, 4096, 4096, &error));
+  EXPECT_FALSE(error.empty());
+}
+
+TEST(RdmaRcProtocolTest, FoundMaskBudgetChargesOneBytePerKey) {
+  // 512-byte rows share the response budget with one mask byte per key.
+  EXPECT_EQ(petps::GetKeysPerRpcByResponseBudget(512, 4096, 200, true),
+            static_cast<std::size_t>(4096 * 200 / 513));
+}
+
+TEST(RdmaRcProtocolTest, FoundMaskShiftsPayloadAndStatusLayout) {
+  const std::size_t keys       = 4;
+  const std::size_t value_size = 512;
+  EXPECT_EQ(petps::GetResponsePayloadBytes(keys, value_size, false), 2048u);
+  EXPECT_EQ(petps::GetResponsePayloadBytes(keys, value_size, true), 2052u);
+  EXPECT_EQ(petps::FixedSlotResponseBytes(keys, value_size, true), 2056u);
+
+  std::vector<char> buffer(
+      petps::FixedSlotResponseBytes(keys, value_size, true), 0);
+  const auto* mask = petps::FixedSlotFoundMask(buffer.data(), keys, value_size);
+  const auto* status =
+      petps::FixedSlotStatusWord(buffer.data(), keys, value_size, true);
+  // values | mask | status, with no padding in between.
+  EXPECT_EQ(reinterpret_cast<const char*>(mask) - buffer.data(),
+            static_cast<std::ptrdiff_t>(2048));
+  EXPECT_EQ(reinterpret_cast<const char*>(status) - buffer.data(),
+            static_cast<std::ptrdiff_t>(2052));
+}
+
 TEST(RdmaRcProtocolTest, GetPayloadLengthMustMatchKeyCount) {
   EXPECT_TRUE(petps::GetPayloadMatchesKeyCount(3, 3 * sizeof(std::uint64_t)));
   EXPECT_FALSE(petps::GetPayloadMatchesKeyCount(0, 0));

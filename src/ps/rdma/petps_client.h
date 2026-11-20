@@ -38,13 +38,24 @@ public:
 
   int GetParameter(const base::ConstArray<uint64_t>& keys,
                    base::RecTensor& values) override;
+  // `want_found` makes the server append a per-row hit mask to the response;
+  // `values` must then hold ResponseBufferBytes(keys.Size(), true) bytes and
+  // the mask lands right after the rows (see FixedSlotFoundMask).
   int GetParameter(base::ConstArray<uint64_t> keys,
                    float* values,
                    bool isAsync,
                    int async_req_id  = 0,
-                   int embedding_dim = 0);
+                   int embedding_dim = 0,
+                   bool want_found   = false);
+  bool GetParameterFlatWithFound(
+      const base::ConstArray<uint64_t>& keys,
+      float* values,
+      uint8_t* found,
+      int64_t num_rows,
+      int64_t embedding_dim) override;
 
-  std::size_t ResponseBufferBytes(std::size_t key_count) const;
+  std::size_t
+  ResponseBufferBytes(std::size_t key_count, bool with_found = false) const;
 
   void* GetReceiveBuffer(size_t size);
   // Return a GetReceiveBuffer() result to the pool once the owning batch has
@@ -151,8 +162,9 @@ private:
     std::uint64_t seq          = 0;       // Sequence number written into slot.
     float* recv_buffer         = nullptr; // User-visible response buffer.
     std::size_t key_count      = 0;       // Number of keys in this RPC.
-    std::size_t response_bytes = 0;       // Dense response payload bytes.
-    std::uint64_t lane_epoch   = 0;       // QpContext::epoch at submit time.
+    std::size_t response_bytes = 0;       // Response payload bytes (rows+mask).
+    std::size_t found_bytes    = 0; // Mask bytes included in response_bytes.
+    std::uint64_t lane_epoch   = 0; // QpContext::epoch at submit time.
     // Set when a lane rebuild discarded this RPC before its response arrived.
     // The entry is kept (not erased) so every waiter path reports an error
     // instead of a missing entry that looks like success; the slot was already
@@ -238,7 +250,8 @@ private:
       std::size_t key_count,
       std::size_t response_bytes,
       std::size_t value_size,
-      const RcClientQpView& view) const;
+      const RcClientQpView& view,
+      bool with_found = false) const;
   void FillPutDescriptor(RequestDescriptor* descriptor,
                          std::uint64_t seq,
                          std::size_t key_count,
@@ -273,7 +286,8 @@ private:
       std::size_t payload_bytes,
       float* recv_buffer,
       std::size_t key_count,
-      std::size_t response_bytes);
+      std::size_t response_bytes,
+      std::size_t found_bytes = 0);
 
   struct PrefetchState {
     int rpc_id            = -1;      // In-flight async GET handle.

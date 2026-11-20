@@ -37,6 +37,8 @@ public:
   // `write_status_word` asks for the batch status word at the end of
   // `values`; pass false when `values` has no room for it and read the status
   // from the returned WaitBatch result instead.
+  // `found`, when non-null, asks every shard RPC for a per-row hit mask; the
+  // masks are scattered into `found` at each key's original position.
   int SubmitGetParameter(
       const std::vector<shard_routing::ShardChunk>& chunks,
       std::size_t total_key_count,
@@ -45,7 +47,8 @@ public:
       bool is_async,
       int async_req_id,
       std::size_t max_in_flight,
-      bool write_status_word = true);
+      bool write_status_word = true,
+      std::uint8_t* found    = nullptr);
   bool QueryBatchFinished(int batch_id);
   // Returns true when the batch assembled with kOk.
   bool WaitBatch(int batch_id);

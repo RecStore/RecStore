@@ -81,6 +81,19 @@ server 通过它交换 `RawVerbsNodeMeta` 并等待 ready。控制面额外承�
 | `--rdma-control-plane-host` | shard 0 控制面地址 |
 | `--rdma-control-plane-port` | shard 0 控制面端口；跨主机运行时应为每次运行选择唯一端口 |
 
+### 2.4 GET 响应布局与 found 掩码
+
+GET 的响应 payload 默认是 `values`。带 `kRcFlagGetWithFound` 的请求在此基础上追加
+每 key 一个字节的命中掩码，即 `values | mask | StatusWord`：`1` 表示该行在读取时存在，
+`0` 表示不存在（值为补零）。掩码与行来自同一次底层批量读，因此两者是同一快照。
+
+掩码不是行 SGE，found 请求固定走 copy 路径，忽略 `--rdma_get_response_mode=direct_sg`。
+响应预算按每 key `value_size + 1` 字节折算，跨 shard 的掩码在 `RDMAPSClientAdapter`
+合并阶段按原 key 位置散回。
+
+该布局是协议版本 2 的一部分。v1 服务端会拒绝 v2 描述符，反之亦然，所以
+client 与 server 必须同版本部署。
+
 ## 3. 生命周期、错误处理与重试
 
 本节回答三个问题：一条 lane 从启动到报废经过哪些阶段；失败在什么时刻被谁发现；发现之后

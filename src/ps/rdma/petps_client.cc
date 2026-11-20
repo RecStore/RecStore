@@ -32,11 +32,13 @@ using petps::Exchange;
 using petps::NamespaceToken;
 using petps::NowNs;
 
-std::size_t ComputeMaxGetKeysPerRpc(std::size_t value_size) {
+std::size_t
+ComputeMaxGetKeysPerRpc(std::size_t value_size, bool with_found = false) {
   return GetKeysPerRpcByResponseBudget(
       value_size,
       static_cast<std::size_t>(FLAGS_rdma_rc_mtu_bytes),
-      static_cast<std::size_t>(FLAGS_rdma_rc_target_response_mtu));
+      static_cast<std::size_t>(FLAGS_rdma_rc_target_response_mtu),
+      with_found);
 }
 
 void FillBaseDescriptor(
@@ -180,10 +182,10 @@ void PetPSClient::InitThread() {
   thread_initialized_ = true;
 }
 
-std::size_t PetPSClient::ResponseBufferBytes(std::size_t key_count) const {
-  return GetResponseBytes(
-             key_count, static_cast<std::size_t>(FLAGS_value_size)) +
-         sizeof(std::int32_t);
+std::size_t
+PetPSClient::ResponseBufferBytes(std::size_t key_count, bool with_found) const {
+  return FixedSlotResponseBytes(
+      key_count, static_cast<std::size_t>(FLAGS_value_size), with_found);
 }
 
 void* PetPSClient::GetReceiveBuffer(size_t size) {
@@ -267,12 +269,17 @@ const float* PetPSClient::BorrowGetResultPayload(
     *status_code = rc_status;
   }
   if (pending.recv_buffer != nullptr) {
+    const std::size_t values_bytes =
+        pending.response_bytes - pending.found_bytes;
     const int value_size =
         pending.key_count == 0
             ? FLAGS_value_size
-            : static_cast<int>(pending.response_bytes / pending.key_count);
-    auto* user_status =
-        FixedSlotStatusWord(pending.recv_buffer, pending.key_count, value_size);
+            : static_cast<int>(values_bytes / pending.key_count);
+    auto* user_status = FixedSlotStatusWord(
+        pending.recv_buffer,
+        pending.key_count,
+        value_size,
+        pending.found_bytes != 0);
     *user_status = rc_status;
   }
   MaybeReportProfile();
@@ -691,7 +698,8 @@ void PetPSClient::FillGetDescriptor(
     std::size_t key_count,
     std::size_t response_bytes,
     std::size_t value_size,
-    const RcClientQpView& view) const {
+    const RcClientQpView& view,
+    bool with_found) const {
   FillBaseDescriptor(
       descriptor,
       seq,
@@ -704,7 +712,11 @@ void PetPSClient::FillGetDescriptor(
   descriptor->payload_bytes =
       static_cast<std::uint32_t>(GetRequestBytes(key_count));
   descriptor->response_bytes = static_cast<std::uint32_t>(response_bytes);
-  if (FLAGS_rdma_get_response_mode == "direct_sg") {
+  if (with_found) {
+    // A hit mask cannot be expressed as row SGEs, so found reads always take
+    // the copy path regardless of the configured response mode.
+    descriptor->flags |= kRcFlagGetWithFound;
+  } else if (FLAGS_rdma_get_response_mode == "direct_sg") {
     descriptor->flags |= kRcFlagGetDirectSg | kRcFlagGetAllowFallbackCopy;
   } else if (FLAGS_rdma_get_response_mode != "staging_copy") {
     LOG(FATAL) << "unsupported --rdma_get_response_mode="
@@ -779,7 +791,8 @@ int PetPSClient::SubmitRpcLocked(
     std::size_t payload_bytes,
     float* recv_buffer,
     std::size_t key_count,
-    std::size_t response_bytes) {
+    std::size_t response_bytes,
+    std::size_t found_bytes) {
   if (slot == nullptr) {
     throw std::runtime_error("slot context is null");
   }
@@ -827,6 +840,7 @@ int PetPSClient::SubmitRpcLocked(
           recv_buffer,
           key_count,
           response_bytes,
+          found_bytes,
           qps_[static_cast<std::size_t>(slot->view.qp_index)].epoch.load(
               std::memory_order_relaxed),
       });
@@ -984,7 +998,8 @@ int PetPSClient::GetParameter(
     float* values,
     bool isAsync,
     int,
-    int embedding_dim) {
+    int embedding_dim,
+    bool want_found) {
   if (keys.Size() == 0) {
     auto* status =
         reinterpret_cast<std::int32_t*>(reinterpret_cast<char*>(values));
@@ -995,11 +1010,12 @@ int PetPSClient::GetParameter(
       embedding_dim > 0
           ? static_cast<std::size_t>(embedding_dim) * sizeof(float)
           : static_cast<std::size_t>(FLAGS_value_size);
-  int rpc_id = 0;
+  const std::size_t found_bytes = want_found ? keys.Size() : 0;
+  int rpc_id                    = 0;
   {
     std::lock_guard<std::mutex> guard(mu_);
     EnsureThreadInitializedLocked();
-    if (keys.Size() > ComputeMaxGetKeysPerRpc(value_size)) {
+    if (keys.Size() > ComputeMaxGetKeysPerRpc(value_size, want_found)) {
       throw std::runtime_error(
           "single-shard GET batch exceeds RC response budget");
     }
@@ -1008,14 +1024,15 @@ int PetPSClient::GetParameter(
     auto& slot = SlotAt(slot_handle.qp_index, slot_handle.slot_in_qp);
     RequestDescriptor descriptor;
     const std::size_t response_bytes =
-        GetResponseBytes(keys.Size(), value_size);
+        GetResponsePayloadBytes(keys.Size(), value_size, want_found);
     FillGetDescriptor(
         &descriptor,
         slot.next_seq++,
         keys.Size(),
         response_bytes,
         value_size,
-        slot.view);
+        slot.view,
+        want_found);
     if (descriptor.payload_bytes >
         PutPayloadBudget(config_.request_slot_bytes)) {
       slot.busy = false;
@@ -1028,12 +1045,58 @@ int PetPSClient::GetParameter(
         descriptor.payload_bytes,
         values,
         keys.Size(),
-        response_bytes);
+        response_bytes,
+        found_bytes);
   }
   if (!isAsync) {
     WaitRPCFinish(rpc_id);
   }
   return rpc_id;
+}
+
+bool PetPSClient::GetParameterFlatWithFound(
+    const base::ConstArray<uint64_t>& keys,
+    float* values,
+    uint8_t* found,
+    int64_t num_rows,
+    int64_t embedding_dim) {
+  if (values == nullptr || found == nullptr || embedding_dim <= 0 ||
+      num_rows < 0 || keys.Size() != static_cast<std::size_t>(num_rows)) {
+    return false;
+  }
+  if (keys.Size() == 0) {
+    return true;
+  }
+  // The pooled buffer holds rows | mask | local status word.
+  const std::size_t value_size =
+      static_cast<std::size_t>(embedding_dim) * sizeof(float);
+  const std::size_t response_bytes =
+      FixedSlotResponseBytes(keys.Size(), value_size, /*with_found=*/true);
+  float* recv = static_cast<float*>(GetReceiveBuffer(response_bytes));
+  int rpc_id;
+  try {
+    rpc_id = GetParameter(
+        keys,
+        recv,
+        /*isAsync=*/false,
+        0,
+        static_cast<int>(embedding_dim),
+        /*want_found=*/true);
+  } catch (...) {
+    ReturnGetReceiveBuffer(recv);
+    throw;
+  }
+  const auto* status =
+      FixedSlotStatusWord(recv, keys.Size(), value_size, /*with_found=*/true);
+  const bool ok = *status == static_cast<std::int32_t>(RpcStatus::kOk);
+  if (ok) {
+    std::memcpy(values, recv, keys.Size() * value_size);
+    std::memcpy(
+        found, FixedSlotFoundMask(recv, keys.Size(), value_size), keys.Size());
+  }
+  RevokeRPCResource(rpc_id);
+  ReturnGetReceiveBuffer(recv);
+  return ok;
 }
 
 bool PetPSClient::QueryRPCFinished(int rpc_id) {
@@ -1086,6 +1149,8 @@ std::int32_t PetPSClient::WaitRPCFinish(int rpc_id) {
       slot.view.status->response_bytes, pending.response_bytes);
   if (actual_response_bytes > 0 && !FLAGS_rdma_rc_skip_client_copy) {
     const std::uint64_t copy_start_ns = profile_enabled ? NowNs() : 0;
+    // Rows and the optional hit mask travel in one payload, so a single copy
+    // fills the caller buffer (see FixedSlotFoundMask for the layout).
     std::memcpy(
         pending.recv_buffer, slot.view.response_payload, actual_response_bytes);
     if (profile_enabled) {
@@ -1095,12 +1160,16 @@ std::int32_t PetPSClient::WaitRPCFinish(int rpc_id) {
           actual_response_bytes, std::memory_order_relaxed);
     }
   }
+  const std::size_t values_bytes = pending.response_bytes - pending.found_bytes;
   const int value_size =
       pending.key_count == 0
           ? FLAGS_value_size
-          : static_cast<int>(pending.response_bytes / pending.key_count);
-  auto* user_status =
-      FixedSlotStatusWord(pending.recv_buffer, pending.key_count, value_size);
+          : static_cast<int>(values_bytes / pending.key_count);
+  auto* user_status = FixedSlotStatusWord(
+      pending.recv_buffer,
+      pending.key_count,
+      value_size,
+      pending.found_bytes != 0);
   *user_status = status_code;
   MaybeReportProfile();
   return status_code;

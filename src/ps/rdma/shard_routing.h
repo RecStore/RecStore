@@ -33,13 +33,17 @@ struct PendingShardRpc {
   std::vector<std::size_t> original_positions; // Positions in caller's batch.
   void* recv_buffer     = nullptr; // Caller-visible response buffer.
   std::size_t key_count = 0;       // Keys in this shard chunk.
+  bool with_found       = false;   // Response carries a key_count-byte mask.
   bool released         = false;   // True once the shard RPC slot was returned.
 };
 
 // A caller batch spread across one or more PendingShardRpc.
 struct BatchRequest {
   float* user_buffer = nullptr; // Final output buffer owned by caller.
-  bool assembled     = false;   // True once shard RPCs are merged.
+  // Per-row hit mask for the whole batch; only set when with_found is true.
+  std::uint8_t* user_found = nullptr;
+  bool with_found          = false; // Chunks asked for hit masks.
+  bool assembled           = false; // True once shard RPCs are merged.
   // The trailing status word lives just past the last row, which callers that
   // hand over their own exactly-sized buffer cannot host. Those callers read
   // the status from WaitBatch instead and turn this off.
@@ -126,7 +130,7 @@ inline std::int32_t
 DecodeBatchStatus(const BatchRequest& batch, int value_size) {
   for (const auto& pending : batch.shard_rpcs) {
     const auto* status_word = petps::FixedSlotStatusWord(
-        pending.recv_buffer, pending.key_count, value_size);
+        pending.recv_buffer, pending.key_count, value_size, pending.with_found);
     if (*status_word != static_cast<std::int32_t>(petps::RpcStatus::kOk)) {
       return *status_word;
     }
@@ -138,11 +142,19 @@ inline void MergeBatchRows(BatchRequest* batch, int value_size) {
   const int embedding_dim = value_size / sizeof(float);
   for (const auto& pending : batch->shard_rpcs) {
     const float* shard_values = static_cast<const float*>(pending.recv_buffer);
+    const std::uint8_t* shard_found =
+        pending.with_found
+            ? petps::FixedSlotFoundMask(
+                  pending.recv_buffer, pending.key_count, value_size)
+            : nullptr;
     for (std::size_t i = 0; i < pending.original_positions.size(); ++i) {
-      std::memcpy(
-          batch->user_buffer + pending.original_positions[i] * embedding_dim,
-          shard_values + i * embedding_dim,
-          value_size);
+      const std::size_t position = pending.original_positions[i];
+      std::memcpy(batch->user_buffer + position * embedding_dim,
+                  shard_values + i * embedding_dim,
+                  value_size);
+      if (batch->with_found) {
+        batch->user_found[position] = shard_found[i];
+      }
     }
   }
 }
@@ -150,7 +162,8 @@ inline void MergeBatchRows(BatchRequest* batch, int value_size) {
 inline void WriteBatchStatus(BatchRequest* batch, int value_size) {
   auto* batch_status_word = reinterpret_cast<std::int32_t*>(
       reinterpret_cast<char*>(batch->user_buffer) +
-      batch->total_key_count * static_cast<std::size_t>(value_size));
+      batch->total_key_count *
+          (static_cast<std::size_t>(value_size) + (batch->with_found ? 1 : 0)));
   *batch_status_word = batch->status_code;
 }
 

@@ -129,13 +129,16 @@ int RdmaDistributedExecutor::SubmitGetParameter(
     bool is_async,
     int async_req_id,
     std::size_t max_in_flight,
-    bool write_status_word) {
+    bool write_status_word,
+    std::uint8_t* found) {
   if (values == nullptr || value_size <= 0 || max_in_flight == 0) {
     throw std::invalid_argument("invalid RDMA GET request");
   }
 
   shard_routing::BatchRequest batch;
   batch.user_buffer       = values;
+  batch.user_found        = found;
+  batch.with_found        = found != nullptr;
   batch.total_key_count   = total_key_count;
   batch.value_size        = value_size;
   batch.write_status_word = write_status_word;
@@ -172,7 +175,7 @@ int RdmaDistributedExecutor::SubmitGetParameter(
       auto* client = ClientAt(chunk.client_index);
       batch.receive_buffers.push_back(AcquireReceiveBuffer(
           chunk.keys.size() * static_cast<std::size_t>(value_size) +
-          sizeof(std::int32_t)));
+          (batch.with_found ? chunk.keys.size() : 0) + sizeof(std::int32_t)));
       void* recv = batch.receive_buffers.back().data();
       shard_routing::PendingShardRpc pending{
           chunk.shard_id,
@@ -181,13 +184,15 @@ int RdmaDistributedExecutor::SubmitGetParameter(
           chunk.positions,
           recv,
           chunk.keys.size(),
+          batch.with_found,
       };
       pending.rpc_id = client->GetParameter(
           base::ConstArray<std::uint64_t>(chunk.keys),
           static_cast<float*>(recv),
           /*isAsync=*/true,
           async_req_id,
-          value_size / static_cast<int>(sizeof(float)));
+          value_size / static_cast<int>(sizeof(float)),
+          batch.with_found);
       if (pending.rpc_id < 0) {
         throw std::runtime_error("failed to submit RDMA GET");
       }
