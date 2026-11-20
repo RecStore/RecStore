@@ -149,9 +149,17 @@ bool LocalShmRegion::Attach(const std::string& region_name,
   slot_count_        = ctrl->slot_count;
   slot_buffer_bytes_ = ctrl->slot_buffer_bytes;
   ready_queue_count_ = ctrl->ready_queue_count;
-  if (ctrl->magic != kLocalShmMagic || ctrl->version != kLocalShmVersion) {
-    LOG(ERROR) << "LocalShmRegion attach validation failed for "
-               << region_name_;
+  if (ctrl->magic != kLocalShmMagic) {
+    LOG(ERROR) << "LocalShmRegion attach validation failed for " << region_name_
+               << ": bad magic";
+    Close();
+    return false;
+  }
+  if (ctrl->version != kLocalShmVersion) {
+    LOG(ERROR) << "LocalShmRegion attach version mismatch for " << region_name_
+               << ": expected " << kLocalShmVersion << ", found "
+               << ctrl->version
+               << "; restart the local_shm server after upgrading";
     Close();
     return false;
   }
