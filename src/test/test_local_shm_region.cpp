@@ -86,5 +86,36 @@ TEST(LocalShmRegionTest, CreateAndAttachRegion) {
   ::shm_unlink(NormalizeRegionNameForShm(region_name).c_str());
 }
 
+TEST(LocalShmRegionTest, AttachRejectsVersionMismatch) {
+  const std::string region_name       = UniqueRegionName();
+  constexpr uint32_t kSlotCount       = 2;
+  constexpr uint32_t kSlotBytes       = 4096;
+  constexpr uint32_t kReadyQueueCount = 1;
+
+  ::shm_unlink(NormalizeRegionNameForShm(region_name).c_str());
+
+  LocalShmRegion server_region;
+  ASSERT_TRUE(server_region.Create(
+      region_name, kSlotCount, kSlotBytes, kReadyQueueCount));
+  ASSERT_EQ(server_region.control()->version, kLocalShmVersion);
+
+  // Simulate a region created by an older server: the attach must fail at
+  // validation instead of failing later with an unknown opcode.
+  server_region.control()->version = kLocalShmVersion - 1;
+
+  LocalShmRegion client_region;
+  EXPECT_FALSE(client_region.Attach(
+      region_name, kSlotCount, kSlotBytes, kReadyQueueCount));
+  EXPECT_FALSE(client_region.IsOpen());
+
+  server_region.control()->version = kLocalShmVersion;
+  EXPECT_TRUE(client_region.Attach(
+      region_name, kSlotCount, kSlotBytes, kReadyQueueCount));
+
+  client_region.Close();
+  server_region.Close();
+  ::shm_unlink(NormalizeRegionNameForShm(region_name).c_str());
+}
+
 } // namespace
 } // namespace recstore
