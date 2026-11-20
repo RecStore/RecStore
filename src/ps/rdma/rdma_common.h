@@ -31,15 +31,38 @@ inline std::string NamespaceToken() {
 }
 
 inline const std::int32_t* FixedSlotStatusWord(
-    const void* buffer, std::size_t key_count, std::size_t value_size) {
+    const void* buffer,
+    std::size_t key_count,
+    std::size_t value_size,
+    bool with_found = false) {
   return reinterpret_cast<const std::int32_t*>(
+      reinterpret_cast<const char*>(buffer) +
+      key_count * static_cast<std::size_t>(value_size) +
+      (with_found ? key_count : 0));
+}
+
+inline std::int32_t* FixedSlotStatusWord(
+    void* buffer,
+    std::size_t key_count,
+    std::size_t value_size,
+    bool with_found = false) {
+  return reinterpret_cast<std::int32_t*>(
+      reinterpret_cast<char*>(buffer) +
+      key_count * static_cast<std::size_t>(value_size) +
+      (with_found ? key_count : 0));
+}
+
+// Hit mask the server writes after the rows in a kRcFlagGetWithFound response.
+inline const std::uint8_t* FixedSlotFoundMask(
+    const void* buffer, std::size_t key_count, std::size_t value_size) {
+  return reinterpret_cast<const std::uint8_t*>(
       reinterpret_cast<const char*>(buffer) +
       key_count * static_cast<std::size_t>(value_size));
 }
 
-inline std::int32_t* FixedSlotStatusWord(
+inline std::uint8_t* FixedSlotFoundMask(
     void* buffer, std::size_t key_count, std::size_t value_size) {
-  return reinterpret_cast<std::int32_t*>(
+  return reinterpret_cast<std::uint8_t*>(
       reinterpret_cast<char*>(buffer) +
       key_count * static_cast<std::size_t>(value_size));
 }

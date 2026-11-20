@@ -115,6 +115,48 @@ set_tests_properties(
 )
 
 add_test(
+    NAME petps_found_mask_test
+    COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/src/test/scripts/run_petps_integration.py
+            --server-count 1
+            --config-path ${PROJECT_SOURCE_DIR}/src/test/configs/recstore_config.rdma_test.json
+            --test-binary $<TARGET_FILE:petps_integration_test>
+            --gtest-filter=PetPSIntegrationTest.FoundMaskDistinguishesMissingRowsSingleShard:PetPSIntegrationTest.FoundMaskSharesResponseBufferWithStatus
+            --value-size 512
+            --max-kv-num-per-request 500
+            --client-timeout 45
+            --cluster-timeout 45
+)
+set_tests_properties(
+    petps_found_mask_test
+    PROPERTIES
+        SKIP_RETURN_CODE 77
+        TIMEOUT 90
+        LABELS "rdma_integration"
+)
+
+add_test(
+    NAME petps_adapter_found_mask_test
+    COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/src/test/scripts/run_petps_integration.py
+            --server-count 2
+            --config-path ${PROJECT_SOURCE_DIR}/src/test/configs/recstore_config.rdma_multishard_test.json
+            --test-binary $<TARGET_FILE:petps_integration_test>
+            --gtest-filter=PetPSIntegrationTest.AdapterFoundMaskMultiShard
+            --value-size 512
+            --max-kv-num-per-request 500
+            --client-timeout 90
+            --cluster-timeout 90
+)
+set_tests_properties(
+    petps_adapter_found_mask_test
+    PROPERTIES
+        SKIP_RETURN_CODE 77
+        TIMEOUT 180
+        LABELS "rdma_integration"
+)
+
+add_test(
     NAME petps_lane_rebuild_test
     COMMAND ${Python3_EXECUTABLE}
             ${PROJECT_SOURCE_DIR}/src/test/scripts/run_petps_integration.py

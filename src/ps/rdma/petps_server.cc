@@ -1033,7 +1033,25 @@ private:
     CachePS::FlatGetProfile get_profile;
     CachePS::FlatGetProfile* get_profile_ptr =
         FLAGS_rdma_rc_profile_interval_ms > 0 ? &get_profile : nullptr;
-    if ((descriptor.flags & petps::kRcFlagGetDirectSg) != 0) {
+    const bool want_found =
+        (descriptor.flags & petps::kRcFlagGetWithFound) != 0;
+    const std::size_t row_bytes =
+        static_cast<std::size_t>(descriptor.embedding_dim) * sizeof(float);
+    if (want_found &&
+        (row_bytes == 0 ||
+         static_cast<std::size_t>(descriptor.value_size) != row_bytes ||
+         static_cast<std::size_t>(descriptor.response_bytes) !=
+             static_cast<std::size_t>(descriptor.key_count) *
+                 (row_bytes + 1))) {
+      // The mask has its own fixed stride; a mismatched layout would make the
+      // client read rows out of the mask bytes.
+      response->status->status =
+          static_cast<std::int32_t>(petps::RpcStatus::kInvalidPayload);
+      response->status->response_bytes = 0;
+      return false;
+    }
+    // Found masks are not a row SGE, so a found GET always takes the copy path.
+    if (!want_found && (descriptor.flags & petps::kRcFlagGetDirectSg) != 0) {
       const bool direct_ok = HandleGetDirectSg(
           descriptor,
           keys,
@@ -1061,7 +1079,10 @@ private:
         descriptor.key_count,
         descriptor.embedding_dim,
         thread_id,
-        get_profile_ptr);
+        get_profile_ptr,
+        want_found ? petps::FixedSlotFoundMask(
+                         response->payload, descriptor.key_count, row_bytes)
+                   : nullptr);
     if (get_profile_ptr != nullptr) {
       AccumulateFlatGetProfile(get_profile);
     }

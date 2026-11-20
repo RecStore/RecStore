@@ -374,13 +374,15 @@ int64_t RDMAPSClientAdapter::EmbeddingDimForKeys(
   return it->second;
 }
 
-std::size_t RDMAPSClientAdapter::MaxGetKeysPerRpc(int64_t embedding_dim) const {
+std::size_t RDMAPSClientAdapter::MaxGetKeysPerRpc(int64_t embedding_dim,
+                                                  bool with_found) const {
   const std::size_t value_size =
       static_cast<std::size_t>(embedding_dim) * sizeof(float);
   const std::size_t response_limited = petps::GetKeysPerRpcByResponseBudget(
       value_size,
       static_cast<std::size_t>(FLAGS_rdma_rc_mtu_bytes),
-      static_cast<std::size_t>(FLAGS_rdma_rc_target_response_mtu));
+      static_cast<std::size_t>(FLAGS_rdma_rc_target_response_mtu),
+      with_found);
   const std::size_t request_limited =
       petps::PutPayloadBudget(
           static_cast<std::size_t>(FLAGS_rdma_rc_request_slot_bytes)) /
@@ -489,6 +491,40 @@ int RDMAPSClientAdapter::GetParameter(const base::ConstArray<uint64_t>& keys,
   const bool ok = executor_->WaitBatch(rpc_id);
   RevokeRPCResource(rpc_id);
   return ok ? 0 : -1;
+}
+
+bool RDMAPSClientAdapter::GetParameterFlatWithFound(
+    const base::ConstArray<uint64_t>& keys,
+    float* values,
+    uint8_t* found,
+    int64_t num_rows,
+    int64_t embedding_dim) {
+  if (values == nullptr || found == nullptr || embedding_dim <= 0 ||
+      num_rows < 0 || keys.Size() != static_cast<std::size_t>(num_rows)) {
+    return false;
+  }
+  if (keys.Size() == 0) {
+    return true;
+  }
+  EnsureThreadInitialized();
+  std::lock_guard<std::mutex> io_guard(io_mu_);
+  executor_->DrainBatchSlots();
+  const int value_size = static_cast<int>(embedding_dim * sizeof(float));
+  // The per-shard chunks ask for masks; the executor scatters each chunk's
+  // mask back into `found` at the caller's original key positions.
+  const int rpc_id = executor_->SubmitGetParameter(
+      BuildChunks(keys, MaxGetKeysPerRpc(embedding_dim, /*with_found=*/true)),
+      keys.Size(),
+      value_size,
+      values,
+      /*is_async=*/false,
+      /*async_req_id=*/0,
+      MaxInFlightGetRpcs(),
+      /*write_status_word=*/false,
+      found);
+  const bool ok = executor_->WaitBatch(rpc_id);
+  RevokeRPCResource(rpc_id);
+  return ok;
 }
 
 int RDMAPSClientAdapter::PutParameter(const base::ConstArray<uint64_t>& keys,
