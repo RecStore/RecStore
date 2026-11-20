@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -2823,6 +2823,10 @@
 <tr>
 <td><code>pull_with_found(name, ids)</code></td>
 <td>读取并返回 <code>(values, found)</code>；<code>found</code> 标记每一行是否存在。后端不支持时返回 <code>(values, None)</code>。</td>
+</tr>
+<tr>
+<td><code>init_missing(name, ids, found, init_func=None)</code></td>
+<td>给 <code>pull_with_found</code> 报为缺失的行写初值，返回写入行数；已存在的行不动。是覆盖写，不是原子 insert-if-absent。</td>
 </tr>
 <tr>
 <td><code>push(name, ids, data)</code></td>
