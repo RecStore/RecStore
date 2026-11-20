@@ -5,7 +5,7 @@
 | op | 作用 |
 |----|------|
 | `emb_read(keys, embedding_dim)` | 同步读取，返回 `[N, D]`。 |
-| `emb_read_with_found(keys, embedding_dim)` | 同步读取，返回 `(values[N, D], found[N])`；`found` 为 bool，True 表示该 key 存在。当前只有 local_shm 后端支持，其它后端抛错。 |
+| `emb_read_with_found(keys, embedding_dim)` | 同步读取，返回 `(values[N, D], found[N])`；`found` 为 bool，True 表示该 key 存在。local_shm、brpc 与 grpc（含 distributed_*）支持；其它后端抛错。 |
 | `emb_write(keys, values)` | 同步写入。 |
 | `emb_update_table(table, keys, grads)` | 带表名更新。 |
 | `init_embedding_table(name, num_embeddings, embedding_dim, table_id)` | 创建后端表，返回非负 tag。 |

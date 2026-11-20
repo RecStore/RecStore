@@ -182,6 +182,16 @@ target_link_libraries(test_rectensor PUBLIC
 )
 add_test(NAME test_rectensor COMMAND test_rectensor)
 
+add_executable(test_parameter_compress test_parameter_compress.cpp)
+target_link_libraries(test_parameter_compress PUBLIC
+    base
+    ps_base
+    gtest
+    gtest_main
+    pthread
+)
+add_test(NAME test_parameter_compress COMMAND test_parameter_compress)
+
 add_executable(test_sparse_gradient_commit test_sparse_gradient_commit.cpp)
 target_link_libraries(test_sparse_gradient_commit PUBLIC base gtest gtest_main pthread)
 add_test(NAME test_sparse_gradient_commit COMMAND test_sparse_gradient_commit)
