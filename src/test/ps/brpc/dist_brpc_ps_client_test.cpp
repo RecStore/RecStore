@@ -167,8 +167,26 @@ void TestDirectClient() {
     CHECK(client.GetParameter(keys_array, values) == 0);
     CHECK(TensorEq(values, {1, 0, 1, 2, 2, 0, 3, 3, 3}));
 
+    {
+      std::vector<float> flat(9, 0.0f);
+      std::vector<uint8_t> found(3, 0xff);
+      CHECK(client.GetParameterFlatWithFound(
+          keys_array, flat.data(), found.data(), 3, 3));
+      CHECK(found == std::vector<uint8_t>({1, 1, 1}));
+      CHECK(flat == std::vector<float>({1, 0, 1, 2, 2, 0, 3, 3, 3}));
+    }
+
     client.ClearPS();
     CHECK(client.GetParameter(keys_array, values) == 0);
+
+    {
+      std::vector<float> flat(9, -1.0f);
+      std::vector<uint8_t> found(3, 0xff);
+      CHECK(client.GetParameterFlatWithFound(
+          keys_array, flat.data(), found.data(), 3, 3));
+      CHECK(found == std::vector<uint8_t>({0, 0, 0}));
+      CHECK(flat == std::vector<float>(9, 0.0f));
+    }
 
     std::cout << "All direct bRPC client operations passed!" << std::endl;
   } catch (const std::exception& e) {

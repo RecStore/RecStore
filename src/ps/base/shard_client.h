@@ -19,7 +19,23 @@ public:
   virtual ~ShardClient() = default;
 
   virtual int GetParameter(const base::ConstArray<uint64_t>& keys,
-                           base::RecTensor& values)                  = 0;
+                           base::RecTensor& values) = 0;
+  // Optional per-row hit mask for flat reads: found[row] is 1 when the key is
+  // present and the row was filled. Backends that cannot report presence
+  // return false and leave the caller's buffers untouched.
+  virtual bool GetParameterFlatWithFound(
+      const base::ConstArray<uint64_t>& keys,
+      float* values,
+      uint8_t* found,
+      int64_t num_rows,
+      int64_t embedding_dim) {
+    (void)keys;
+    (void)values;
+    (void)found;
+    (void)num_rows;
+    (void)embedding_dim;
+    return false;
+  }
   virtual int PutParameter(const base::ConstArray<uint64_t>& keys,
                            const base::RecTensor& values)            = 0;
   virtual int UpdateParameter(const std::string& table_name,

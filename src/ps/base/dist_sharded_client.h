@@ -300,6 +300,99 @@ public:
     return 0;
   }
 
+  bool GetParameterFlatWithFound(
+      const base::ConstArray<uint64_t>& keys,
+      float* values,
+      uint8_t* found,
+      int64_t num_rows,
+      int64_t embedding_dim) override {
+    if (values == nullptr || found == nullptr || embedding_dim <= 0) {
+      return false;
+    }
+    if (num_rows != static_cast<int64_t>(keys.Size())) {
+      return false;
+    }
+    if (num_rows == 0) {
+      return true;
+    }
+    std::memset(found, 0, static_cast<size_t>(num_rows));
+
+    const int64_t D = embedding_dim;
+    std::vector<std::vector<uint64_t>> partitioned_keys;
+    PartitionKeys(keys, partitioned_keys);
+
+    std::vector<std::vector<float>> shard_values(
+        static_cast<size_t>(num_shards_));
+    std::vector<std::vector<uint8_t>> shard_found(
+        static_cast<size_t>(num_shards_));
+    std::vector<char> shard_ok(static_cast<size_t>(num_shards_), 1);
+
+    std::vector<std::future<void>> futures;
+    for (int shard_id = 0; shard_id < num_shards_; ++shard_id) {
+      const size_t rows = partitioned_keys[shard_id].size();
+      if (rows == 0) {
+        continue;
+      }
+      auto it = shard_to_client_index_.find(shard_id);
+      if (it == shard_to_client_index_.end()) {
+        LOG(ERROR) << "No client found for shard " << shard_id;
+        return false;
+      }
+
+      auto* client = clients_[it->second].get();
+      shard_values[shard_id].assign(rows * static_cast<size_t>(D), 0.0f);
+      shard_found[shard_id].assign(rows, 0);
+
+      futures.push_back(std::async(
+          std::launch::async,
+          [=, &partitioned_keys, &shard_values, &shard_found, &shard_ok]() {
+            const auto& shard_keys_vec = partitioned_keys[shard_id];
+            for (size_t start = 0; start < shard_keys_vec.size();
+                 start += static_cast<size_t>(max_keys_per_request_)) {
+              size_t end =
+                  std::min(start + static_cast<size_t>(max_keys_per_request_),
+                           shard_keys_vec.size());
+              const int chunk_rows = static_cast<int>(end - start);
+              base::ConstArray<uint64_t> shard_chunk(
+                  shard_keys_vec.data() + start, chunk_rows);
+              if (!client->GetParameterFlatWithFound(
+                      shard_chunk,
+                      shard_values[shard_id].data() + start * D,
+                      shard_found[shard_id].data() + start,
+                      chunk_rows,
+                      D)) {
+                shard_ok[shard_id] = 0;
+                return;
+              }
+            }
+          }));
+    }
+
+    for (auto& future : futures) {
+      future.get();
+    }
+    for (int shard_id = 0; shard_id < num_shards_; ++shard_id) {
+      if (!shard_ok[shard_id]) {
+        LOG(ERROR) << "Failed to get parameters with found mask from shard "
+                   << shard_id;
+        return false;
+      }
+    }
+
+    for (int shard_id = 0; shard_id < num_shards_; ++shard_id) {
+      const auto& indices  = key_index_mapping_[shard_id];
+      const auto& src      = shard_values[shard_id];
+      const auto& src_mask = shard_found[shard_id];
+      for (size_t i = 0; i < indices.size(); ++i) {
+        std::memcpy(values + indices[i] * static_cast<size_t>(D),
+                    src.data() + i * static_cast<size_t>(D),
+                    static_cast<size_t>(D) * sizeof(float));
+        found[indices[i]] = src_mask[i];
+      }
+    }
+    return true;
+  }
+
   int PutParameter(const base::ConstArray<uint64_t>& keys,
                    const base::RecTensor& values) override {
     if (!IsFloatEmbeddingValues(values, static_cast<int64_t>(keys.Size()))) {

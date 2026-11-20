@@ -6,11 +6,17 @@ from ..KVClient import RecStoreClient
 
 
 class _FakeOps:
-    def __init__(self, with_found: bool = True, backend: str = "local_shm"):
+    def __init__(
+        self,
+        with_found: bool = True,
+        backend: str = "local_shm",
+        unsupported: bool = False,
+    ):
         self.writes = []
         self.reads = []
         self.found_reads = []
         self.backend = backend
+        self.unsupported = unsupported
         if not with_found:
             return
         self.emb_read_with_found = self._emb_read_with_found
@@ -31,6 +37,10 @@ class _FakeOps:
 
     def _emb_read_with_found(self, keys: torch.Tensor, embedding_dim: int):
         self.found_reads.append(keys.clone())
+        if self.unsupported:
+            raise RuntimeError(
+                "emb_read_with_found is not supported by the active PS backend"
+            )
         rows = keys.numel()
         values = torch.zeros((rows, int(embedding_dim)), dtype=torch.float32)
         found = torch.arange(rows) % 2 == 0
@@ -39,10 +49,15 @@ class _FakeOps:
 
 class TestKVClientMaskedInit(unittest.TestCase):
     def _build_client(
-        self, with_found: bool = True, backend: str = "local_shm"
+        self,
+        with_found: bool = True,
+        backend: str = "local_shm",
+        unsupported: bool = False,
     ) -> RecStoreClient:
         client = object.__new__(RecStoreClient)
-        client.ops = _FakeOps(with_found=with_found, backend=backend)
+        client.ops = _FakeOps(
+            with_found=with_found, backend=backend, unsupported=unsupported
+        )
         client._part_policy = {}
         client._tensor_meta = {}
         client._full_data_shape = {}
@@ -146,6 +161,33 @@ class TestKVClientMaskedInit(unittest.TestCase):
         self.assertEqual(values.shape, (2, 2))
         self.assertIsNone(found)
         self.assertEqual(len(client.ops.reads), 1)
+
+    def test_pull_with_found_falls_back_when_backend_reports_unsupported(self):
+        client = self._build_client(
+            backend="rdma", unsupported=True
+        )
+        client.init_data("table_a", (4, 2), torch.float32)
+
+        ids = torch.tensor([0, 1], dtype=torch.int64)
+        values, found = client.pull_with_found("table_a", ids)
+
+        self.assertEqual(values.shape, (2, 2))
+        self.assertIsNone(found)
+        self.assertEqual(len(client.ops.found_reads), 1)
+        self.assertEqual(len(client.ops.reads), 1)
+
+    def test_pull_with_found_propagates_unrelated_runtime_errors(self):
+        client = self._build_client()
+        client.init_data("table_a", (4, 2), torch.float32)
+
+        def failing_op(keys, embedding_dim):
+            raise RuntimeError("PS client is not initialized")
+
+        client.ops.emb_read_with_found = failing_op
+
+        ids = torch.tensor([0, 1], dtype=torch.int64)
+        with self.assertRaisesRegex(RuntimeError, "PS client is not initialized"):
+            client.pull_with_found("table_a", ids)
 
     def test_init_missing_writes_only_missing_rows(self):
         client = self._build_client()
