@@ -147,6 +147,89 @@ class TestKVClientMaskedInit(unittest.TestCase):
         self.assertIsNone(found)
         self.assertEqual(len(client.ops.reads), 1)
 
+    def test_init_missing_writes_only_missing_rows(self):
+        client = self._build_client()
+        client.init_data("table_a", (4, 2), torch.float32)
+        writes_before = len(client.ops.writes)
+
+        written = client.init_missing(
+            "table_a",
+            torch.tensor([0, 1, 2, 3], dtype=torch.int64),
+            torch.tensor([True, False, True, False]),
+        )
+
+        self.assertEqual(written, 2)
+        self.assertEqual(len(client.ops.writes), writes_before + 1)
+        keys, values = client.ops.writes[-1]
+        self.assertEqual(keys.tolist(), [1, 3])
+        self.assertEqual(values.shape, (2, 2))
+        self.assertEqual(values.tolist(), [[0.0, 0.0], [0.0, 0.0]])
+
+    def test_init_missing_writes_nothing_when_all_rows_exist(self):
+        client = self._build_client()
+        client.init_data("table_a", (4, 2), torch.float32)
+        writes_before = len(client.ops.writes)
+
+        written = client.init_missing(
+            "table_a",
+            torch.tensor([0, 1], dtype=torch.int64),
+            torch.tensor([True, True]),
+        )
+
+        self.assertEqual(written, 0)
+        self.assertEqual(len(client.ops.writes), writes_before)
+
+    def test_init_missing_uses_init_func(self):
+        client = self._build_client()
+        client.init_data("table_a", (4, 2), torch.float32)
+
+        def init_func(shape, dtype):
+            return torch.full(shape, 7.0, dtype=dtype)
+
+        client.init_missing(
+            "table_a",
+            torch.tensor([0, 1, 2], dtype=torch.int64),
+            torch.tensor([False, True, False]),
+            init_func=init_func,
+        )
+
+        keys, values = client.ops.writes[-1]
+        self.assertEqual(keys.tolist(), [0, 2])
+        self.assertEqual(values.tolist(), [[7.0, 7.0], [7.0, 7.0]])
+
+    def test_init_missing_rejects_found_length_mismatch(self):
+        client = self._build_client()
+        client.init_data("table_a", (4, 2), torch.float32)
+
+        with self.assertRaisesRegex(ValueError, "found mask"):
+            client.init_missing(
+                "table_a",
+                torch.tensor([0, 1], dtype=torch.int64),
+                torch.tensor([True, False, True]),
+            )
+
+    def test_init_missing_rejects_init_func_shape(self):
+        client = self._build_client()
+        client.init_data("table_a", (4, 2), torch.float32)
+
+        with self.assertRaisesRegex(ValueError, "init_func"):
+            client.init_missing(
+                "table_a",
+                torch.tensor([0], dtype=torch.int64),
+                torch.tensor([False]),
+                init_func=lambda shape, dtype: torch.zeros((3, 2), dtype=dtype),
+            )
+
+    def test_init_missing_requires_registered_table(self):
+        client = self._build_client()
+
+        with self.assertRaisesRegex(RuntimeError, "has not been initialized"):
+            client.init_missing(
+                "table_a",
+                torch.tensor([0], dtype=torch.int64),
+                torch.tensor([False]),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

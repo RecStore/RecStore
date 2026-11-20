@@ -395,6 +395,58 @@ class RecStoreClient:
             return self.pull(name, ids), None
         return op(ids, meta["shape"][1])
 
+    def init_missing(
+        self,
+        name: str,
+        ids: torch.Tensor,
+        found: torch.Tensor,
+        init_func: Optional[Callable] = None,
+    ) -> int:
+        """Write initial values for the keys a lookup reported as missing.
+
+        Parameters
+        ----------
+        name : str
+            Registered table name.
+        ids : tensor
+            The ids that produced ``found``, in the same order.
+        found : tensor
+            Per-row presence flag returned by :meth:`pull_with_found`.
+        init_func : func, optional
+            ``init_func(shape, dtype)``; defaults to zeros.
+
+        Rows with ``found == False`` are written, rows already present are left
+        untouched, and the number of rows written is returned. This is a plain
+        write of the missing rows, not an atomic insert-if-absent: a row created
+        by another writer between the lookup and this call is overwritten.
+        """
+        if name not in self._tensor_meta:
+            raise RuntimeError(f"Tensor '{name}' has not been initialized.")
+        meta = self._tensor_meta[name]
+        ids = self._normalize_ids(ids, name=name)
+        found = torch.as_tensor(found)
+        if found.dim() != 1 or found.numel() != ids.numel():
+            raise ValueError(
+                "init_missing found mask must be a 1-D tensor of length "
+                f"{ids.numel()}"
+            )
+        missing_keys = ids[~found.to(device="cpu", dtype=torch.bool)]
+        if missing_keys.numel() == 0:
+            return 0
+        shape = (int(missing_keys.numel()), int(meta["shape"][1]))
+        if init_func is not None:
+            initial_data = init_func(shape, meta["dtype"])
+            if tuple(initial_data.shape) != shape:
+                raise ValueError(
+                    f"init_missing init_func must return shape {shape}, got "
+                    f"{tuple(initial_data.shape)}"
+                )
+        else:
+            initial_data = torch.zeros(shape, dtype=meta["dtype"])
+        self.ops.emb_write(missing_keys, initial_data)
+        self._clear_gpu_cache_if_available()
+        return shape[0]
+
     def pull_into(self, name: str, ids: torch.Tensor, values: torch.Tensor) -> torch.Tensor:
         """Read into caller-owned CPU storage, with compatibility for older ops libraries."""
         if name not in self._tensor_meta:
