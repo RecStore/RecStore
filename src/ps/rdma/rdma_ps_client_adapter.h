@@ -47,6 +47,12 @@ public:
 
   int GetParameter(const base::ConstArray<uint64_t>& keys,
                    base::RecTensor& values) override;
+  bool GetParameterFlatWithFound(
+      const base::ConstArray<uint64_t>& keys,
+      float* values,
+      uint8_t* found,
+      int64_t num_rows,
+      int64_t embedding_dim) override;
   int PutParameter(const base::ConstArray<uint64_t>& keys,
                    const base::RecTensor& values) override;
   int UpdateParameter(const std::string& table_name,
@@ -81,7 +87,8 @@ private:
   void EnsureTableReady(const std::string& table_name, int64_t embedding_dim);
   int64_t DefaultEmbeddingDimOrThrow() const;
   int64_t EmbeddingDimForKeys(base::ConstArray<uint64_t> keys) const;
-  std::size_t MaxGetKeysPerRpc(int64_t embedding_dim) const;
+  std::size_t
+  MaxGetKeysPerRpc(int64_t embedding_dim, bool with_found = false) const;
   std::size_t MaxPutKeysPerRpc(int64_t embedding_dim) const;
   std::size_t MaxInFlightGetRpcs() const;
   std::vector<ShardChunk> BuildChunks(base::ConstArray<uint64_t> keys,

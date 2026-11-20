@@ -628,6 +628,78 @@ TEST(PetPSIntegrationTest, MissingKeysReturnZeroSlots) {
   client.RevokeRPCResource(rpc_id);
 }
 
+TEST(PetPSIntegrationTest, FoundMaskDistinguishesMissingRowsSingleShard) {
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  auto& client            = SingleShardClient();
+
+  std::vector<std::uint64_t> present = {7001, 7002};
+  auto stored                        = MakeValues(present, embedding_dim);
+  ASSERT_EQ(client.PutParameter(present, stored), 0);
+
+  // Interleave stored and absent keys so the mask cannot pass by accident.
+  std::vector<std::uint64_t> keys = {7001, 999007, 7002, 999008};
+  std::vector<float> output(
+      keys.size() * static_cast<std::size_t>(embedding_dim), -1.0f);
+  std::vector<std::uint8_t> found(keys.size(), 0xFF);
+
+  ASSERT_TRUE(client.GetParameterFlatWithFound(
+      base::ConstArray<std::uint64_t>(keys),
+      output.data(),
+      found.data(),
+      static_cast<int64_t>(keys.size()),
+      embedding_dim));
+
+  EXPECT_EQ(found[0], 1);
+  EXPECT_EQ(found[1], 0);
+  EXPECT_EQ(found[2], 1);
+  EXPECT_EQ(found[3], 0);
+
+  const float* stored_values = stored.data_as<float>();
+  for (int dim = 0; dim < embedding_dim; ++dim) {
+    EXPECT_FLOAT_EQ(output[static_cast<std::size_t>(dim)], stored_values[dim]);
+    EXPECT_FLOAT_EQ(output[2 * static_cast<std::size_t>(embedding_dim) + dim],
+                    stored_values[embedding_dim + dim]);
+    EXPECT_FLOAT_EQ(output[embedding_dim + dim], 0.0f);
+    EXPECT_FLOAT_EQ(
+        output[3 * static_cast<std::size_t>(embedding_dim) + dim], 0.0f);
+  }
+}
+
+TEST(PetPSIntegrationTest, FoundMaskSharesResponseBufferWithStatus) {
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  auto& client            = SingleShardClient();
+
+  std::vector<std::uint64_t> present = {7101};
+  ASSERT_EQ(client.PutParameter(present, MakeValues(present, embedding_dim)),
+            0);
+
+  std::vector<std::uint64_t> keys = {7101, 999101};
+  void* recv_buffer               = client.GetReceiveBuffer(
+      client.ResponseBufferBytes(keys.size(), /*with_found=*/true));
+  const int rpc_id = client.GetParameter(
+      base::ConstArray<std::uint64_t>(keys),
+      static_cast<float*>(recv_buffer),
+      /*isAsync=*/false,
+      0,
+      embedding_dim,
+      /*want_found=*/true);
+
+  // Layout is rows | mask | status; the status word must not overlap the mask.
+  const auto* status = petps::FixedSlotStatusWord(
+      recv_buffer,
+      keys.size(),
+      static_cast<std::size_t>(embedding_dim) * sizeof(float),
+      /*with_found=*/true);
+  EXPECT_EQ(*status, static_cast<std::int32_t>(petps::RpcStatus::kOk));
+  const auto* mask = petps::FixedSlotFoundMask(
+      recv_buffer,
+      keys.size(),
+      static_cast<std::size_t>(embedding_dim) * sizeof(float));
+  EXPECT_EQ(mask[0], 1);
+  EXPECT_EQ(mask[1], 0);
+  client.RevokeRPCResource(rpc_id);
+}
+
 TEST(PetPSIntegrationTest, HashedValueBatchGetTransferSingleShard) {
   ASSERT_EQ(FLAGS_value_size % static_cast<int>(sizeof(float)), 0);
   const int embedding_dim = FLAGS_value_size / sizeof(float);
@@ -1043,6 +1115,67 @@ TEST(PetPSIntegrationTest, AdapterSplitGetRoundTripMultiShard) {
       adapter.GetParameter(base::ConstArray<std::uint64_t>(keys), output_t), 0);
 
   ExpectFlatSlots(output.data(), values, embedding_dim);
+}
+
+TEST(PetPSIntegrationTest, AdapterFoundMaskMultiShard) {
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  const char* config_path = std::getenv("RECSTORE_CONFIG");
+  ASSERT_NE(config_path, nullptr);
+  json config = ParseFile2Json(config_path);
+  ASSERT_TRUE(config.contains("distributed_client"));
+  recstore::RDMAPSClientAdapter adapter(config);
+  ASSERT_EQ(adapter.InitEmbeddingTable(
+                "found_mask",
+                recstore::EmbeddingTableConfig{
+                    10000000, static_cast<uint64_t>(embedding_dim)}),
+            0);
+
+  // Even positions exist, odd ones stay missing, so every shard chunk carries
+  // both verdicts whichever shard a key routes to.
+  std::vector<std::uint64_t> keys;
+  std::vector<std::uint64_t> present;
+  keys.reserve(200);
+  for (std::uint64_t index = 0; index < 200; ++index) {
+    keys.push_back(6000000ULL + index);
+    if (index % 2 == 0) {
+      present.push_back(6000000ULL + index);
+    }
+  }
+  auto stored = MakeValues(present, embedding_dim);
+  ASSERT_EQ(
+      adapter.PutParameter(base::ConstArray<std::uint64_t>(present), stored),
+      0);
+
+  std::vector<float> output(
+      keys.size() * static_cast<std::size_t>(embedding_dim), -1.0f);
+  std::vector<std::uint8_t> found(keys.size(), 0xFF);
+  ASSERT_TRUE(adapter.GetParameterFlatWithFound(
+      base::ConstArray<std::uint64_t>(keys),
+      output.data(),
+      found.data(),
+      static_cast<int64_t>(keys.size()),
+      embedding_dim));
+
+  const float* stored_values = stored.data_as<float>();
+  std::size_t present_row    = 0;
+  for (std::size_t row = 0; row < keys.size(); ++row) {
+    const bool exists = row % 2 == 0;
+    EXPECT_EQ(found[row], exists ? 1 : 0) << "row=" << row;
+    for (int dim = 0; dim < embedding_dim; ++dim) {
+      const float expected =
+          exists ? stored_values[present_row *
+                                     static_cast<std::size_t>(embedding_dim) +
+                                 static_cast<std::size_t>(dim)]
+                 : 0.0f;
+      EXPECT_FLOAT_EQ(output[row * static_cast<std::size_t>(embedding_dim) +
+                             static_cast<std::size_t>(dim)],
+                      expected)
+          << "row=" << row << " dim=" << dim;
+    }
+    if (exists) {
+      ++present_row;
+    }
+  }
 }
 
 TEST(PetPSIntegrationTest, AdapterFlatUpdateRoundTripMultiShard) {

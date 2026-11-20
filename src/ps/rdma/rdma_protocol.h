@@ -22,13 +22,18 @@
 
 namespace petps {
 
+// v2 added the optional per-row hit mask to GET responses, so a peer running
+// v1 must not decode a v2 descriptor: the version gate doubles as the "found
+// masks are supported" check.
 inline constexpr std::uint32_t kRcProtocolMagic            = 0x52435053;
-inline constexpr std::uint16_t kRcProtocolVersion          = 1;
+inline constexpr std::uint16_t kRcProtocolVersion          = 2;
 inline constexpr std::size_t kTableNameBytes               = 64;
 inline constexpr std::uint32_t kRcSlotReady                = 1;
 inline constexpr std::uint32_t kRcSlotDone                 = 2;
 inline constexpr std::uint32_t kRcFlagGetDirectSg          = 1U << 0;
 inline constexpr std::uint32_t kRcFlagGetAllowFallbackCopy = 1U << 1;
+// GET response payload becomes values | key_count-byte hit mask.
+inline constexpr std::uint32_t kRcFlagGetWithFound = 1U << 2;
 
 enum class RcOp : std::uint16_t {
   kGet                  = 1,
@@ -100,11 +105,15 @@ inline std::size_t Align64(std::size_t value) {
 }
 
 inline std::size_t GetKeysPerRpcByResponseBudget(
-    std::size_t value_size, std::size_t mtu_bytes, std::size_t response_mtu) {
+    std::size_t value_size,
+    std::size_t mtu_bytes,
+    std::size_t response_mtu,
+    bool with_found = false) {
+  const std::size_t stride = value_size + (with_found ? 1 : 0);
   if (value_size == 0 || mtu_bytes == 0 || response_mtu == 0) {
     return 0;
   }
-  return (mtu_bytes * response_mtu) / value_size;
+  return (mtu_bytes * response_mtu) / stride;
 }
 
 inline std::size_t GetRequestBytes(std::size_t key_count) {
@@ -116,9 +125,18 @@ GetResponseBytes(std::size_t key_count, std::size_t value_size) {
   return key_count * value_size;
 }
 
-inline std::size_t
-FixedSlotResponseBytes(std::size_t key_count, std::size_t value_size) {
-  return GetResponseBytes(key_count, value_size) + sizeof(std::int32_t);
+// Payload the server writes: the rows, plus one hit-mask byte per key when the
+// request asked for one.
+inline std::size_t GetResponsePayloadBytes(
+    std::size_t key_count, std::size_t value_size, bool with_found) {
+  return GetResponseBytes(key_count, value_size) + (with_found ? key_count : 0);
+}
+
+// Client-side receive buffer: payload plus the locally written status word.
+inline std::size_t FixedSlotResponseBytes(
+    std::size_t key_count, std::size_t value_size, bool with_found = false) {
+  return GetResponsePayloadBytes(key_count, value_size, with_found) +
+         sizeof(std::int32_t);
 }
 
 inline std::size_t InitTablePayloadBytes() { return sizeof(std::uint64_t) * 3; }
