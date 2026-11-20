@@ -387,13 +387,15 @@ class RecStoreClient:
         meta = self._tensor_meta[name]
         ids = self._normalize_ids(ids, name=name)
         op = getattr(self.ops, "emb_read_with_found", None)
-        backend = self.ops.current_ps_backend() if callable(
-            getattr(self.ops, "current_ps_backend", None)) else None
-        # Only local_shm reports per-row presence today; other backends keep
-        # the plain read path.
-        if not callable(op) or backend != "local_shm":
-            return self.pull(name, ids), None
-        return op(ids, meta["shape"][1])
+        if callable(op):
+            try:
+                return op(ids, meta["shape"][1])
+            except RuntimeError as error:
+                # Older backends do not implement the flat found channel; fall
+                # back instead of turning every read into a hard failure.
+                if "not supported by the active PS backend" not in str(error):
+                    raise
+        return self.pull(name, ids), None
 
     def init_missing(
         self,

@@ -175,10 +175,6 @@ bool BRPCParameterClient::Initialize() { return true; }
 
 int BRPCParameterClient::GetParameter(const base::ConstArray<uint64_t>& keys,
                                       base::RecTensor& values) {
-#ifdef ENABLE_PERF_REPORT
-  auto start_time = std::chrono::high_resolution_clock::now();
-#endif
-
   if (!recstore::IsFloatEmbeddingValues(
           values, static_cast<int64_t>(keys.Size()))) {
     return -1;
@@ -186,12 +182,46 @@ int BRPCParameterClient::GetParameter(const base::ConstArray<uint64_t>& keys,
   if (keys.Size() == 0) {
     return 0;
   }
-  const int64_t D = values.shape(1);
-  float* dst      = values.data_as<float>();
+  return GetParameterImpl(
+      keys, values.data_as<float>(), values.shape(1), nullptr);
+}
+
+bool BRPCParameterClient::GetParameterFlatWithFound(
+    const base::ConstArray<uint64_t>& keys,
+    float* values,
+    uint8_t* found,
+    int64_t num_rows,
+    int64_t embedding_dim) {
+  if (values == nullptr || found == nullptr || embedding_dim <= 0) {
+    return false;
+  }
+  if (num_rows != static_cast<int64_t>(keys.Size())) {
+    return false;
+  }
+  if (num_rows == 0) {
+    return true;
+  }
+  std::memset(found, 0, static_cast<size_t>(num_rows));
+  return GetParameterImpl(keys, values, embedding_dim, found) == 0;
+}
+
+int BRPCParameterClient::GetParameterImpl(
+    const base::ConstArray<uint64_t>& keys,
+    float* dst,
+    int64_t embedding_dim,
+    uint8_t* found) {
+#ifdef ENABLE_PERF_REPORT
+  auto start_time = std::chrono::high_resolution_clock::now();
+#endif
+
+  const int64_t D = embedding_dim;
   std::memset(dst, 0, keys.Size() * static_cast<size_t>(D) * sizeof(float));
 
   if (FLAGS_parameter_client_random_init_brpc) {
     std::fill(dst, dst + keys.Size() * static_cast<size_t>(D), 0.1f);
+    if (found != nullptr) {
+      std::fill(found, found + keys.Size(), static_cast<uint8_t>(1));
+    }
     return 0;
   }
 
@@ -306,7 +336,7 @@ int BRPCParameterClient::GetParameter(const base::ConstArray<uint64_t>& keys,
       return -1;
     }
 
-    CopyCompressItemsToFlat(parameters, dst, D, row_offset);
+    CopyCompressItemsToFlat(parameters, dst, D, row_offset, found);
     row_offset += static_cast<size_t>(key_size);
   }
 

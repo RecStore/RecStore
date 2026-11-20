@@ -99,6 +99,13 @@ public:
   int GetParameter(const base::ConstArray<uint64_t>& keys,
                    base::RecTensor& values) override;
 
+  bool GetParameterFlatWithFound(
+      const base::ConstArray<uint64_t>& keys,
+      float* values,
+      uint8_t* found,
+      int64_t num_rows,
+      int64_t embedding_dim) override;
+
   int PutParameter(const base::ConstArray<uint64_t>& keys,
                    const base::RecTensor& values) override;
 
@@ -162,6 +169,14 @@ protected:
   std::unique_ptr<grpc::CompletionQueue> cq_;
 
 private:
+  // Shared request/response loop for GetParameter and
+  // GetParameterFlatWithFound. When found != nullptr each row is marked
+  // present iff the server returned a non-empty compressed item for it.
+  int GetParameterImpl(const base::ConstArray<uint64_t>& keys,
+                       float* dst,
+                       int64_t embedding_dim,
+                       uint8_t* found);
+
   std::mutex prefetch_mu_;
   std::unordered_map<uint64_t, struct PrefetchBatch> prefetch_batches_;
   // start from 1

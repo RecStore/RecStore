@@ -43,14 +43,18 @@ inline void CopyCompressItemsToFlat(
     const ParameterCompressReader* reader,
     float* dst,
     int64_t embedding_dim,
-    size_t dst_row_offset = 0) {
+    size_t dst_row_offset = 0,
+    uint8_t* found        = nullptr) {
   if (reader == nullptr || dst == nullptr || embedding_dim <= 0) {
     return;
   }
   for (int index = 0; index < reader->item_size(); ++index) {
-    auto item  = reader->item(index);
-    float* row = dst + (dst_row_offset + static_cast<size_t>(index)) *
-                           static_cast<size_t>(embedding_dim);
+    auto item              = reader->item(index);
+    const size_t row_index = dst_row_offset + static_cast<size_t>(index);
+    float* row = dst + row_index * static_cast<size_t>(embedding_dim);
+    if (found != nullptr) {
+      found[row_index] = item->dim > 0 ? 1 : 0;
+    }
     if (item->dim == 0) {
       std::memset(row, 0, static_cast<size_t>(embedding_dim) * sizeof(float));
       continue;
