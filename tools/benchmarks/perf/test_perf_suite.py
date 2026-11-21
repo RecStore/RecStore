@@ -557,13 +557,65 @@ class ProfileTest(unittest.TestCase):
     def test_profile_env_points_cpuprofile_at_the_run(self) -> None:
         case = perf_suite.load_cases()[0]
         with tempfile.TemporaryDirectory() as tmp:
-            setup = perf_suite._profile_env(Path(tmp), case, 0, "kvengine")
+            request = perf_suite.ProfileRequest("cpu", Path(tmp))
+            setup = perf_suite._profile_env(request, case, 0, "kvengine")
             self.assertIsNotNone(setup)
             env, path = setup
             self.assertEqual(env["CPUPROFILE"], str(path))
             self.assertEqual(env["LD_PRELOAD"], "libprofiler.so.0")
             self.assertEqual(path.parent, Path(tmp))
             self.assertTrue(path.parent.is_dir())
+
+    def test_cpu_preset_skips_non_cpu_cases(self) -> None:
+        case = perf_suite.load_cases()[0]
+        request = perf_suite.ProfileRequest("stages", Path("/tmp/unused"))
+        self.assertIsNone(perf_suite._profile_env(request, case, 0, "kvengine"))
+
+    def test_stages_preset_rejects_cases_without_an_event_log(self) -> None:
+        case = next(c for c in perf_suite.load_cases() if c.runner == "kvengine")
+        with tempfile.TemporaryDirectory() as tmp:
+            args = argparse.Namespace(
+                case=[case.id],
+                label=None,
+                build_dir=None,
+                output_dir=tmp,
+                repeats=1,
+                timeout=1.0,
+                env_id="test",
+                baseline_dir=None,
+                check=False,
+                profile="stages",
+                write_baseline=False,
+                noise_floor_pct=None,
+            )
+            self.assertEqual(perf_suite.cmd_run(args), 2)
+
+    def test_measured_column_drops_warmup_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "main.csv"
+            path.write_text(
+                "warmup_excluded,step_total_ms\n"
+                "1,100\n"
+                "0,10\n"
+                "0,20\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(perf_suite._mean_measured_column(path, "step_total_ms"), 15.0)
+
+    def test_rs_demo_command_wires_case_params(self) -> None:
+        case = next(c for c in perf_suite.load_cases() if c.runner == "rs_demo")
+        work_dir = Path("/tmp/probe/work")
+        cmd, jsonl, main_csv = perf_suite._rs_demo_command(case, work_dir, "perf_r00")
+        self.assertEqual(jsonl, work_dir / "events.jsonl")
+        self.assertEqual(
+            main_csv, work_dir / "outputs" / "perf_r00" / "recstore_main.csv"
+        )
+        joined = " ".join(str(part) for part in cmd)
+        self.assertIn("--steps=20", joined)
+        self.assertIn("--warmup-steps=5", joined)
+        self.assertIn("--output-root", joined)
+        self.assertIn(str(case.params["data_dir"]), joined)
+        self.assertNotIn("--stages-table", joined)
 
 
 if __name__ == "__main__":

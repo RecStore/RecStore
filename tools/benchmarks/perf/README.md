@@ -20,7 +20,7 @@ so they must never produce numbers. They only prove the harness still works.
 {
   "id": "kvengine_c_read",
   "layer": "storage | ps_transport | e2e",
-  "runner": "kvengine | ps_local_shm",
+  "runner": "kvengine | ps_local_shm | rs_demo",
   "labels": ["perf_smoke", "perf"],
   "repeats": 3,
   "noise_floor_pct": 5.0,
@@ -46,6 +46,11 @@ so they must never produce numbers. They only prove the harness still works.
   before every repeat, because a leftover file silently changes the residency
   pattern. A `ssd_path` outside the per-repeat work directory is rejected rather
   than cleaned.
+- `rs_demo` params become rs_demo flags for the keys listed in
+  `_RS_DEMO_PARAM_FLAGS` (`steps`, `batch_size`, `num_embeddings`, ...). The
+  runner always adds `--backend`, `--single-node-ps-backend`, `--output-root`,
+  `--run-id`, `--jsonl` and `--server-log`, so every repeat writes its event log
+  and step CSV under `work/<case>/rNN`. `stages_table` stays perf_suite-local.
 
 ## Commands
 
@@ -112,6 +117,20 @@ python3 tools/benchmarks/perf_suite.py run --case kvengine_c_read \
 `kvengine` profiles the benchmark process. `ps_local_shm` profiles the client
 only: the server is stopped with `SIGTERM`, and gperftools does not flush a
 profile on that path. The machine needs `libprofiler.so.0` and `google-pprof`.
+
+`run --profile stages` applies to `rs_demo` cases. It keeps the run's JSONL
+event log and runs `src/test/scripts/analyze_embupdate_stages.py` over it,
+writing `profile/<case>.rNN.stages.log` (stage summary, grouped by trace prefix)
+and `profile/<case>.rNN.stages.csv`. The report table comes from the case's
+`stages_table` param, default `embupdate_stages`; the single-node `local_shm`
+lane reports `local_shm_server_stages` instead. `rs_demo` prints a stage summary
+itself, but that output goes to the case log; this preset keeps the summary and
+CSV next to the other perf artifacts.
+
+```bash
+python3 tools/benchmarks/perf_suite.py run --case e2e_local_shm_pipeline \
+    --profile stages --repeats 1
+```
 
 ## Baselines
 

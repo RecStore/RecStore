@@ -251,6 +251,39 @@
           "direction": "lower"
         }
       ]
+    },
+    {
+      "id": "e2e_local_shm_pipeline",
+      "layer": "e2e",
+      "runner": "rs_demo",
+      "labels": [
+        "perf"
+      ],
+      "repeats": 3,
+      "noise_floor_pct": 15.0,
+      "description": "Single-node rs_demo DLRM loop over the local_shm PS: step time and samples/s with warmup dropped.",
+      "params": {
+        "steps": 20,
+        "warmup_steps": 5,
+        "batch_size": 1024,
+        "num_embeddings": 200000,
+        "embedding_dim": 128,
+        "seed": 20260330,
+        "data_dir": "model_zoo/torchrec_dlrm/processed_day_0_data",
+        "stages_table": "local_shm_server_stages"
+      },
+      "metrics": [
+        {
+          "key": "step_total_ms",
+          "unit": "ms",
+          "direction": "lower"
+        },
+        {
+          "key": "samples_per_sec",
+          "unit": "samples/s",
+          "direction": "higher"
+        }
+      ]
     }
   ]
 }
