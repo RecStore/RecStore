@@ -109,7 +109,7 @@ def parse_server_spec(raw: str) -> ServerSpec:
         ssh_port=ssh_port,
         repo_root=Path(values.get("repo", values.get("repo_root", str(ROOT)))),
         ip=values.get("ip", "127.0.0.1"),
-        port=int(values.get("port", "15000")),
+        port=int(values.get("port", values.get("ps_port", "15000"))),
         shard_id=int(values.get("shard", values.get("shard_id", "0"))),
     )
 

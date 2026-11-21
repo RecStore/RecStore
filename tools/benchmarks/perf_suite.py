@@ -323,23 +323,23 @@ def _run_kvengine(
     output_dir: Path,
     repeat: int,
     timeout_s: float,
-    profile_dir: Path | None = None,
+    profile: ProfileRequest | None = None,
 ) -> dict[str, float]:
     work_dir = output_dir / "work" / case.id / f"r{repeat:02d}"
     _prepare_work_dir(case, work_dir)
     log_path = output_dir / "logs" / case.id / f"r{repeat:02d}.log"
-    profile = _profile_env(profile_dir, case, repeat, "kvengine")
+    cpu_profile = _profile_env(profile, case, repeat, "kvengine")
     output = _run_command(
         _kvengine_command(case, build_dir, work_dir),
         log_path,
         timeout_s,
-        env_extra=profile[0] if profile else None,
+        env_extra=cpu_profile[0] if cpu_profile else None,
     )
-    if profile:
+    if cpu_profile:
         _write_pprof(
             build_dir / "bin" / "benchmark_kv_engine",
-            profile[1],
-            profile_dir / f"{case.id}.r{repeat:02d}.kvengine.txt",
+            cpu_profile[1],
+            profile.dir / f"{case.id}.r{repeat:02d}.kvengine.txt",
         )
     return _parse_kvengine(output)
 
@@ -398,7 +398,7 @@ def _run_ps_local_shm(
     output_dir: Path,
     repeat: int,
     timeout_s: float,
-    profile_dir: Path | None = None,
+    profile: ProfileRequest | None = None,
 ) -> dict[str, float]:
     params = case.params
     run_id = f"{int(time.time())}_{repeat:02d}_{uuid.uuid4().hex[:6]}"
@@ -420,7 +420,7 @@ def _run_ps_local_shm(
     shm_path.unlink(missing_ok=True)
     # The server is stopped with SIGTERM, which does not flush a gperftools
     # profile, so only the client is profiled here.
-    profile = _profile_env(profile_dir, case, repeat, "ps_client")
+    cpu_profile = _profile_env(profile, case, repeat, "ps_client")
     with server_log.open("w", encoding="utf-8") as sink:
         server = subprocess.Popen(
             [
@@ -449,7 +449,7 @@ def _run_ps_local_shm(
             _flag("report_mode", "summary"),
         ]
         output = _run_command(
-            cmd, client_log, timeout_s, env_extra=profile[0] if profile else None
+            cmd, client_log, timeout_s, env_extra=cpu_profile[0] if cpu_profile else None
         )
     finally:
         server.terminate()
@@ -460,17 +460,17 @@ def _run_ps_local_shm(
             server.wait()
         shm_path.unlink(missing_ok=True)
 
-    if profile:
+    if cpu_profile:
         _write_pprof(
             build_dir / "bin" / "ps_transport_benchmark",
-            profile[1],
-            profile_dir / f"{case.id}.r{repeat:02d}.ps_client.txt",
+            cpu_profile[1],
+            profile.dir / f"{case.id}.r{repeat:02d}.ps_client.txt",
         )
 
     metrics = {"throughput_keys_sec": _parse_float(_PS_RESULT, output, "PS_BENCHMARK_RESULT")}
-    profile = _PS_PROFILE.search(output)
-    if profile is not None:
-        metrics["request_total_us"] = float(profile.group("value"))
+    request_profile = _PS_PROFILE.search(output)
+    if request_profile is not None:
+        metrics["request_total_us"] = float(request_profile.group("value"))
     return metrics
 
 
@@ -481,20 +481,162 @@ def _parse_float(pattern: re.Pattern, output: str, label: str) -> float:
     return float(match.group("value"))
 
 
+# ── rs_demo e2e runner ───────────────────────────────────────────────────────
+
+_RS_DEMO = REPO_ROOT / "model_zoo" / "rs_demo" / "run_mock_stress.py"
+
+# Case params that map straight onto rs_demo flags. Everything else in a case's
+# params is perf_suite-local (e.g. stages_table).
+_RS_DEMO_PARAM_FLAGS = (
+    ("steps", "steps"),
+    ("warmup_steps", "warmup-steps"),
+    ("batch_size", "batch-size"),
+    ("num_embeddings", "num-embeddings"),
+    ("embedding_dim", "embedding-dim"),
+    ("seed", "seed"),
+    ("table_name", "table-name"),
+    ("ps_kv_backend", "ps-kv-backend"),
+    ("recstore_index_type", "recstore-index-type"),
+    ("prefetch_depth", "prefetch-depth"),
+    ("data_dir", "data-dir"),
+)
+
+
+def _rs_demo_paths(work_dir: Path, run_id: str) -> tuple[Path, Path]:
+    """Per-repeat event log and step CSV that rs_demo writes."""
+    jsonl = work_dir / "events.jsonl"
+    main_csv = work_dir / "outputs" / run_id / "recstore_main.csv"
+    return jsonl, main_csv
+
+
+def _rs_demo_command(
+    case: Case, work_dir: Path, run_id: str
+) -> tuple[list[str], Path, Path]:
+    params = case.params
+    jsonl, main_csv = _rs_demo_paths(work_dir, run_id)
+    cmd = [
+        sys.executable,
+        str(_RS_DEMO),
+        _flag("backend", params.get("backend", "recstore")),
+        _flag(
+            "single-node-ps-backend",
+            params.get("single_node_ps_backend", "local_shm"),
+        ),
+        _flag("output-root", work_dir),
+        _flag("run-id", run_id),
+        _flag("jsonl", jsonl),
+        _flag("server-log", work_dir / "logs" / f"{run_id}.server.log"),
+    ]
+    for param, flag in _RS_DEMO_PARAM_FLAGS:
+        if param in params:
+            cmd.extend([_flag(flag, params[param])])
+    return cmd, jsonl, main_csv
+
+
+def _mean_measured_column(csv_path: Path, column: str) -> float:
+    """Mean of a step CSV column with warmup rows dropped."""
+    with csv_path.open("r", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    if not rows:
+        raise SuiteError(f"no rows in {csv_path}")
+    if column not in rows[0]:
+        raise SuiteError(f"column {column!r} missing from {csv_path}")
+    measured = [row for row in rows if row.get("warmup_excluded") != "1"] or rows
+    values = [float(row[column]) for row in measured if row.get(column, "") != ""]
+    if not values:
+        raise SuiteError(f"no numeric {column!r} values in {csv_path}")
+    return sum(values) / len(values)
+
+
+def _run_rs_demo(
+    case: Case,
+    build_dir: Path,
+    output_dir: Path,
+    repeat: int,
+    timeout_s: float,
+    profile: ProfileRequest | None = None,
+) -> dict[str, float]:
+    work_dir = output_dir / "work" / case.id / f"r{repeat:02d}"
+    shutil.rmtree(work_dir, ignore_errors=True)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    log_path = output_dir / "logs" / case.id / f"r{repeat:02d}.log"
+    run_id = f"perf_r{repeat:02d}"
+    cmd, jsonl, main_csv = _rs_demo_command(case, work_dir, run_id)
+    _run_command(cmd, log_path, timeout_s)
+    if not main_csv.exists():
+        raise SuiteError(f"rs_demo wrote no step csv: {main_csv} (log: {log_path})")
+    _write_stages(profile, case, repeat, jsonl)
+    return {
+        "step_total_ms": _mean_measured_column(main_csv, "step_total_ms"),
+        "samples_per_sec": _mean_measured_column(main_csv, "samples_per_sec"),
+    }
+
+
 # ── Profiling ────────────────────────────────────────────────────────────────
 
 _PROFILER_LIBRARY = "libprofiler.so.0"
+_STAGES_SCRIPT = REPO_ROOT / "src" / "test" / "scripts" / "analyze_embupdate_stages.py"
+_DEFAULT_STAGES_TABLE = "embupdate_stages"
+
+# Which runners can honour each --profile preset.
+_PROFILE_RUNNERS = {
+    "cpu": ("kvengine", "ps_local_shm"),
+    "stages": ("rs_demo",),
+}
+
+
+@dataclass(frozen=True)
+class ProfileRequest:
+    """One ``--profile`` preset: what to collect and where to put it."""
+
+    kind: str
+    dir: Path
 
 
 def _profile_env(
-    profile_dir: Path | None, case: Case, repeat: int, role: str
+    profile: ProfileRequest | None, case: Case, repeat: int, role: str
 ) -> tuple[dict[str, str], Path] | None:
     """Return the environment that makes gperftools dump one profile file."""
-    if profile_dir is None:
+    if profile is None or profile.kind != "cpu":
         return None
-    path = profile_dir / f"{case.id}.r{repeat:02d}.{role}.prof"
+    path = profile.dir / f"{case.id}.r{repeat:02d}.{role}.prof"
     path.parent.mkdir(parents=True, exist_ok=True)
     return {"CPUPROFILE": str(path), "LD_PRELOAD": _PROFILER_LIBRARY}, path
+
+
+def _write_stages(
+    profile: ProfileRequest | None,
+    case: Case,
+    repeat: int,
+    jsonl_path: Path,
+    timeout_s: float = 120.0,
+) -> None:
+    """Run the stage analyzer over one run's event log, if stages were asked for."""
+    if profile is None or profile.kind != "stages":
+        return
+    if not jsonl_path.exists():
+        raise SuiteError(f"no event log written: {jsonl_path}")
+    table = str(case.params.get("stages_table", _DEFAULT_STAGES_TABLE))
+    profile.dir.mkdir(parents=True, exist_ok=True)
+    out_log = profile.dir / f"{case.id}.r{repeat:02d}.stages.log"
+    out_csv = profile.dir / f"{case.id}.r{repeat:02d}.stages.csv"
+    _run_command(
+        [
+            sys.executable,
+            str(_STAGES_SCRIPT),
+            "--input",
+            str(jsonl_path),
+            "--group-by-prefix",
+            "--table-name",
+            table,
+            "--export-csv",
+            str(out_csv),
+            "--top",
+            "20",
+        ],
+        out_log,
+        timeout_s,
+    )
 
 
 def _write_pprof(
@@ -510,11 +652,14 @@ def _write_pprof(
     _run_command([pprof, "--text", str(binary), str(profile)], out_path, timeout_s)
 
 
-Runner = Callable[[Case, Path, Path, int, float, "Path | None"], dict[str, float]]
+Runner = Callable[
+    [Case, Path, Path, int, float, "ProfileRequest | None"], dict[str, float]
+]
 
 RUNNERS: dict[str, Runner] = {
     "kvengine": _run_kvengine,
     "ps_local_shm": _run_ps_local_shm,
+    "rs_demo": _run_rs_demo,
 }
 
 
@@ -634,6 +779,9 @@ def _case_binaries(case: Case, build_dir: Path) -> list[Path]:
             build_dir / "bin" / "local_shm_ps_server",
             build_dir / "bin" / "ps_transport_benchmark",
         ]
+    if case.runner == "rs_demo":
+        # The demo imports the framework ops library from the build tree.
+        return [build_dir / "lib" / "lib_recstore_ops.so"]
     return []
 
 
@@ -982,7 +1130,7 @@ def run_cases(
     timeout_s: float,
     label: str,
     env_id: str | None = None,
-    profile_dir: Path | None = None,
+    profile: ProfileRequest | None = None,
 ) -> tuple[list[dict], dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
     _reset_failure_marker(output_dir)
@@ -1002,7 +1150,7 @@ def run_cases(
         for repeat in range(repeats):
             try:
                 metrics = runner(
-                    case, build_dir, output_dir, repeat, timeout_s, profile_dir
+                    case, build_dir, output_dir, repeat, timeout_s, profile
                 )
             except SuiteError as exc:
                 failures.append(f"{case.id} repeat {repeat}: {exc}")
@@ -1047,8 +1195,8 @@ def run_cases(
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    profile = getattr(args, "profile", None)
-    if profile and (args.check or args.write_baseline):
+    profile_kind = getattr(args, "profile", None)
+    if profile_kind and (args.check or args.write_baseline):
         print(
             "[perf] --profile cannot be combined with --check or --write-baseline: "
             "profiling changes the runtime and must not produce numbers",
@@ -1056,10 +1204,25 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
         return 2
     cases = select_cases(load_cases(), args.case, args.label)
+    if profile_kind:
+        supported = _PROFILE_RUNNERS[profile_kind]
+        unsupported = sorted(
+            {case.runner for case in cases if case.runner not in supported}
+        )
+        if unsupported:
+            print(
+                f"[perf] --profile {profile_kind} needs runner(s) "
+                f"{', '.join(sorted(supported))}; selected cases use "
+                f"{', '.join(unsupported)}",
+                file=sys.stderr,
+            )
+            return 2
     build_dir = _resolve_build_dir(args.build_dir)
     output_dir = _resolve_output_dir(args.output_dir)
     env_id = args.env_id or default_env_id()
-    profile_dir = output_dir / "profile" if profile else None
+    profile = (
+        ProfileRequest(profile_kind, output_dir / "profile") if profile_kind else None
+    )
     rows, env = run_cases(
         cases,
         build_dir,
@@ -1068,7 +1231,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         args.timeout,
         args.label or "all",
         env_id=env_id,
-        profile_dir=profile_dir,
+        profile=profile,
     )
     (output_dir / "metrics.json").write_text(
         json.dumps({"schema": 1, "env": env, "rows": rows}, indent=2, sort_keys=True)
@@ -1402,9 +1565,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--check", action="store_true", help="compare with the baseline")
     run_parser.add_argument(
         "--profile",
-        choices=["cpu"],
-        help="write a gperftools CPU profile per repeat (requires a profile build; "
-        "cannot be combined with --check/--write-baseline)",
+        choices=sorted(_PROFILE_RUNNERS),
+        help="write per-repeat profiling output into <output-dir>/profile: "
+        "cpu = gperftools profile + google-pprof text (requires a profile build), "
+        "stages = embupdate stage analysis over the run's JSONL event log "
+        "(rs_demo cases only). Cannot be combined with --check/--write-baseline",
     )
     run_parser.add_argument(
         "--noise-floor-pct", type=float, help="override the per-case noise floor"

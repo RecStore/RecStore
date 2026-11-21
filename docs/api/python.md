@@ -22,3 +22,10 @@ client = RecStoreClient(role="default")
 | `set_ps_config(host, port)` | 重建底层 PS client。 |
 | `set_ps_backend(backend)` | 切换 RPC、本地共享内存或 HierKV 路径。 |
 | `delete_data` | 未实现，调用直接抛异常；后端数据不受影响。 |
+
+缺失行的语义：
+
+- `found` 与 `values` 来自同一次读取，`True` 表示该行在这次读取时存在。不能按“值全零”判断缺失：所有实现了这条通道的后端都会把缺失行填零（copy 路径清零输出缓冲，RDMA direct 路径从注册的零区取行）。
+- 目前 `local_shm`、`brpc`、`gRPC`、`RDMA` 实现了该通道；其他后端返回 `(values, None)`，Python 侧回落到 `pull`。
+- `init_missing` 只写 `found == False` 的行，但它是普通覆盖写，不是原子 insert-if-absent：查找与写入之间由其他写入者创建的行会被覆盖。
+- 通道只回传每 key 一字节的掩码，不回传紧凑位置。引擎侧的 `BatchGetFlatRangeWithMissing` 会给出缺失行的位置，但那只对 C++ 调用方有意义：掩码是 1 字节/key，位置是 8 字节/缺失行，走 RPC 反而更大。
