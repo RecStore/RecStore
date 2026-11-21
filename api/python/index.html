@@ -2854,6 +2854,13 @@
 </tr>
 </tbody>
 </table>
+<p>缺失行的语义：</p>
+<ul>
+<li><code>found</code> 与 <code>values</code> 来自同一次读取，<code>True</code> 表示该行在这次读取时存在。不能按“值全零”判断缺失：所有实现了这条通道的后端都会把缺失行填零（copy 路径清零输出缓冲，RDMA direct 路径从注册的零区取行）。</li>
+<li>目前 <code>local_shm</code>、<code>brpc</code>、<code>gRPC</code>、<code>RDMA</code> 实现了该通道；其他后端返回 <code>(values, None)</code>，Python 侧回落到 <code>pull</code>。</li>
+<li><code>init_missing</code> 只写 <code>found == False</code> 的行，但它是普通覆盖写，不是原子 insert-if-absent：查找与写入之间由其他写入者创建的行会被覆盖。</li>
+<li>通道只回传每 key 一字节的掩码，不回传紧凑位置。引擎侧的 <code>BatchGetFlatRangeWithMissing</code> 会给出缺失行的位置，但那只对 C++ 调用方有意义：掩码是 1 字节/key，位置是 8 字节/缺失行，走 RPC 反而更大。</li>
+</ul>
 
 
 
