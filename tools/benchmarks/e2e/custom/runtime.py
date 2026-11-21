@@ -19,17 +19,27 @@ def _server_entries(servers: tuple[ServerSpec, ...]) -> list[dict[str, Any]]:
     ]
 
 
+def _rdma_fabric_spec(role: str) -> str:
+    # Cross-host runs need a different device name on each side (for example
+    # ibp139s0 on the PS host and mlx5_0 on the client host), so the role key
+    # wins over the shared one. Single-host runs keep using the shared key.
+    role_key = f"RS_DEMO_RDMA_FABRIC_{role.upper()}"
+    return os.environ.get(role_key) or os.environ.get("RS_DEMO_RDMA_FABRIC", "mlx5_3:1:7:rocev2")
+
+
 def _rdma_fabric_node(node_id: int, role: str) -> dict[str, Any]:
     # petps_server and the trainer's embedded RDMA client both parse the
     # rdma_deployment section (ParseResolvedRdmaDeploymentConfig) and resolve
     # their fabric node by node_id. Defaults match the pc160/commA RoCE v2
     # fabric (mlx5_3 port 1, gid_index 7 is the routable GID); override for
     # other clusters via RS_DEMO_RDMA_FABRIC
-    # =device:port:gid_index:mode[:hop_limit:traffic_class:flow_label].
-    parts = os.environ.get("RS_DEMO_RDMA_FABRIC", "mlx5_3:1:7:rocev2").split(":")
+    # =device:port:gid_index:mode[:hop_limit:traffic_class:flow_label], or per
+    # role via RS_DEMO_RDMA_FABRIC_SERVER / RS_DEMO_RDMA_FABRIC_CLIENT.
+    parts = _rdma_fabric_spec(role).split(":")
     if len(parts) not in (4, 7):
         raise ValueError(
-            "RS_DEMO_RDMA_FABRIC must be device:port:gid_index:mode"
+            "RS_DEMO_RDMA_FABRIC[_SERVER|_CLIENT] must be "
+            "device:port:gid_index:mode"
             "[:hop_limit:traffic_class:flow_label]"
         )
     device, port, gid_index, mode = parts[:4]
