@@ -19,7 +19,7 @@ namespace recstore {
 // bRPC parameter service implementation
 class BRPCParameterServiceImpl : public recstoreps_brpc::ParameterService {
 public:
-  explicit BRPCParameterServiceImpl(CachePS* cache_ps);
+  explicit BRPCParameterServiceImpl(CachePS* cache_ps, int shard_id = 0);
 
   virtual ~BRPCParameterServiceImpl() = default;
 
@@ -60,6 +60,7 @@ public:
 
 private:
   CachePS* cache_ps_;
+  int shard_id_;
   std::atomic<uint64_t> total_get_requests_{0};
   std::atomic<uint64_t> total_put_requests_{0};
   std::atomic<uint64_t> total_get_keys_{0};

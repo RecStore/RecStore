@@ -171,8 +171,9 @@ SelectBRPCShardConfigs(const nlohmann::json& cache_ps_config,
   return SelectShardConfigsInternal(cache_ps_config, local_shard_id);
 }
 
-BRPCParameterServiceImpl::BRPCParameterServiceImpl(CachePS* cache_ps)
-    : cache_ps_(cache_ps) {
+BRPCParameterServiceImpl::BRPCParameterServiceImpl(CachePS* cache_ps,
+                                                   int shard_id)
+    : cache_ps_(cache_ps), shard_id_(shard_id) {
   start_time_ = std::chrono::steady_clock::now();
 }
 
@@ -428,6 +429,40 @@ void BRPCParameterServiceImpl::Command(
       arg2.push_back(each);
     }
     cache_ps_->Initialize(arg1, arg2);
+  } else if (request->command() ==
+                 recstoreps_brpc::PSCommand::SAVE_CHECKPOINT ||
+             request->command() ==
+                 recstoreps_brpc::PSCommand::LOAD_CHECKPOINT) {
+    if (request->arg1_size() != 1 || request->arg2_size() != 1 ||
+        request->arg1(0).empty() || request->arg2(0).empty()) {
+      cntl->SetFailed(EINVAL, "checkpoint command requires path and metadata");
+      return;
+    }
+    std::string shard_metadata;
+    std::string metadata_error;
+    if (!CachePS::PrepareCheckpointMetadata(
+            request->arg2(0), shard_id_, &shard_metadata, &metadata_error)) {
+      cntl->SetFailed(EINVAL, "%s", metadata_error.c_str());
+      return;
+    }
+    const bool save =
+        request->command() == recstoreps_brpc::PSCommand::SAVE_CHECKPOINT;
+    try {
+      const bool ok =
+          save ? cache_ps_->SaveCheckpoint(request->arg1(0), shard_metadata)
+               : cache_ps_->LoadCheckpoint(request->arg1(0), shard_metadata);
+      if (!ok) {
+        cntl->SetFailed(
+            EIO,
+            "%s",
+            save ? "checkpoint save failed" : "checkpoint load failed");
+        return;
+      }
+      response->set_reply("ok");
+    } catch (const std::exception& e) {
+      cntl->SetFailed(EIO, "%s", e.what());
+      return;
+    }
   } else if (request->command() == recstoreps_brpc::PSCommand::LOAD_FAKE_DATA) {
     if (request->arg1_size() != 1 ||
         static_cast<size_t>(request->arg1(0).size()) != sizeof(int64_t)) {
@@ -810,7 +845,7 @@ public:
 
           auto cache_ps = std::make_unique<CachePS>(shard_config);
           auto service =
-              std::make_unique<BRPCParameterServiceImpl>(cache_ps.get());
+              std::make_unique<BRPCParameterServiceImpl>(cache_ps.get(), shard);
 
           brpc::Server server;
           brpc::ServerOptions options;
@@ -849,11 +884,13 @@ public:
       std::cout << "Starting single parameter server (bRPC)" << std::endl;
       std::string server_address =
           "0.0.0.0:" + std::to_string(FLAGS_brpc_server_port);
+      int service_shard_id = 0;
       try {
         const auto endpoint = recstore::SelectSingleShardEndpoint(
             config_["cache_ps"], local_shard_id);
         if (endpoint.has_value()) {
-          server_address = recstore::FormatShardEndpoint(*endpoint);
+          server_address   = recstore::FormatShardEndpoint(*endpoint);
+          service_shard_id = endpoint->shard;
           std::cout << "Using configured single-shard listen address "
                     << server_address << std::endl;
         } else {
@@ -865,7 +902,8 @@ public:
         return;
       }
       auto cache_ps = std::make_unique<CachePS>(config_["cache_ps"]);
-      auto service = std::make_unique<BRPCParameterServiceImpl>(cache_ps.get());
+      auto service  = std::make_unique<BRPCParameterServiceImpl>(
+          cache_ps.get(), service_shard_id);
 
       std::atomic<bool> metrics_running{true};
       std::thread metrics_thread([&service, &metrics_running]() {
