@@ -793,6 +793,8 @@ class TestRecStoreRunner(unittest.TestCase):
     def test_validate_recstore_config_rejects_sparse_checkpoint_on_rdma(self) -> None:
         cfg = RunConfig(
             backend="recstore",
+            nnodes=2,
+            recstore_runtime_dir="/tmp/recstore-shared-runtime",
             ps_type="RDMA",
             sparse_checkpoint_every_steps=5,
         )
@@ -802,9 +804,22 @@ class TestRecStoreRunner(unittest.TestCase):
         ):
             config.validate_recstore_config(cfg)
 
+    def test_validate_recstore_config_rejects_sparse_checkpoint_single_node(self) -> None:
+        cfg = RunConfig(
+            backend="recstore",
+            nnodes=1,
+            ps_type="GRPC",
+            sparse_checkpoint_every_steps=5,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "requires a real PS"):
+            config.validate_recstore_config(cfg)
+
     def test_validate_recstore_config_accepts_sparse_checkpoint_on_brpc(self) -> None:
         cfg = RunConfig(
             backend="recstore",
+            nnodes=2,
+            recstore_runtime_dir="/tmp/recstore-shared-runtime",
             ps_type="BRPC",
             sparse_checkpoint_every_steps=5,
         )

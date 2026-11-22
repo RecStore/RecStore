@@ -606,7 +606,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--sparse-checkpoint-every-steps",
         type=int,
         default=0,
-        help="Rank 0 saves a committed PS (sparse) checkpoint every N steps; 0 disables it.",
+        help="Rank 0 saves a committed PS (sparse) checkpoint every N steps; requires a multi-node GRPC/BRPC run, 0 disables it.",
     )
     parser.add_argument(
         "--sparse-checkpoint-dir",
@@ -781,11 +781,18 @@ def validate_recstore_config(cfg: RunConfig) -> None:
         raise RuntimeError("--sparse-checkpoint-every-steps must be non-negative.")
     if cfg.sparse_checkpoint_keep < 1:
         raise RuntimeError("--sparse-checkpoint-keep must be at least 1.")
-    if cfg.sparse_checkpoint_every_steps > 0 and cfg.ps_type.upper() not in {"GRPC", "BRPC"}:
-        raise RuntimeError(
-            "--sparse-checkpoint-every-steps requires --ps-type GRPC or BRPC; "
-            "the RDMA data plane and local_shm have no checkpoint command"
-        )
+    if cfg.sparse_checkpoint_every_steps > 0:
+        if cfg.nnodes == 1:
+            raise RuntimeError(
+                "--sparse-checkpoint-every-steps requires a real PS: the "
+                "single-node path runs local_shm or hierkv, neither of which "
+                "has a checkpoint command"
+            )
+        if cfg.ps_type.upper() not in {"GRPC", "BRPC"}:
+            raise RuntimeError(
+                "--sparse-checkpoint-every-steps requires --ps-type GRPC or BRPC; "
+                "the RDMA data plane has no checkpoint command"
+            )
     validate_dense_cuda_graph(cfg)
     resolve_num_embeddings_per_feature(cfg.num_embeddings, cfg.num_embeddings_per_feature)
 
