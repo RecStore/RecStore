@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <future>
 #include <mutex>
@@ -124,6 +125,9 @@ public:
   bool LoadCkpt(const std::vector<std::string>& model_config_path,
                 const std::vector<std::string>& emb_file_path);
 
+  // Transport-level GET retries this client has issued so far (cumulative).
+  int64_t GetParameterRetryCount() const { return get_param_retries_; }
+
   bool
   SaveCheckpoint(const std::string& path, const std::string& metadata) override;
   bool
@@ -161,6 +165,7 @@ protected:
   std::vector<GetParameterRequest> get_param_requests_;
   std::vector<GetParameterResponse> get_param_responses_;
   std::vector<std::unique_ptr<grpc::ClientContext>> get_param_contexts_;
+  std::atomic<int64_t> get_param_retries_{0};
   std::vector<
       std::unique_ptr<grpc::ClientAsyncResponseReader<GetParameterResponse>>>
       get_param_resonse_readers_;

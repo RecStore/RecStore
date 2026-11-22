@@ -232,7 +232,18 @@ void TestRpcFailureReporting() {
   std::vector<uint64_t> keys = {1, 2, 3};
   base::ConstArray<uint64_t> keys_array(keys);
   auto values = OwnedEmbedding(3, 4, std::vector<float>(12, -1.0f));
+
+  // A refused connection is UNAVAILABLE, which the client retries twice by
+  // default. The call must still fail instead of returning zeros.
+  const int64_t retries_before = client.GetParameterRetryCount();
   CHECK(client.GetParameter(keys_array, values) == -1);
+  CHECK(client.GetParameterRetryCount() - retries_before == 2);
+
+  google::SetCommandLineOption("grpc_get_max_attempts", "1");
+  const int64_t no_retry_before = client.GetParameterRetryCount();
+  CHECK(client.GetParameter(keys_array, values) == -1);
+  CHECK(client.GetParameterRetryCount() == no_retry_before);
+  google::SetCommandLineOption("grpc_get_max_attempts", "3");
 
   const uint64_t prefetch_id = client.PrefetchParameter(keys_array);
   CHECK(prefetch_id != 0);
