@@ -613,6 +613,15 @@ constexpr uint64_t kAdamWStepKey = (std::numeric_limits<uint64_t>::max() >> 8);
 int AdamW::Init(const std::vector<std::string> table_name,
                 const EmbeddingTableConfig& config,
                 BaseKV* base_kv) {
+  // #400: every tensor below is tagged with its role only, so the tag is the
+  // upper key byte and all tables share one key space. Reject multi-table
+  // setups until the tags carry table_id (needs a TAG_TYPE width decision).
+  if (config.table_id != 0) {
+    throw std::runtime_error(
+        "AdamW does not namespace optimizer state by table: table_id=" +
+        std::to_string(config.table_id) +
+        " would share keys with table 0 (RecStore issue #400)");
+  }
   for (const auto& name : table_name) {
     const std::vector<uint64_t> shape = {
         config.num_embeddings, config.embedding_dim};

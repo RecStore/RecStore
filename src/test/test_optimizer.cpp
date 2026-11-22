@@ -143,6 +143,15 @@ TEST(AdamWTest, MatchesTwoStepBiasCorrectedFormulaAndPersistsState) {
       2.0f);
 }
 
+TEST(AdamWTest, RejectsNonZeroTableIdUntilKeysAreNamespaced) {
+  InMemoryKV kv;
+  AdamW optimizer(0.001f, 0.9f, 0.98f, 1e-8f, 0.1f);
+  EmbeddingTableConfig config{16, 2};
+  config.table_id = 1;
+  EXPECT_THROW(optimizer.Init({"table"}, config, &kv), std::runtime_error)
+      << "table_id > 0 must fail loudly instead of sharing keys with table 0";
+}
+
 TEST(RowWiseAdaGradTest, MatchesTwoStepFormulaAndInitializesMissingRows) {
   constexpr float learning_rate   = 0.001f;
   constexpr float epsilon         = 1e-8f;
