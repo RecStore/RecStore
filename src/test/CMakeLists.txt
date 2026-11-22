@@ -287,6 +287,15 @@ target_link_libraries(test_kvengine_checkpoint PUBLIC
 )
 add_test(NAME test_kvengine_checkpoint COMMAND test_kvengine_checkpoint)
 
+add_executable(test_checkpoint_restore test_checkpoint_restore.cpp)
+target_link_libraries(test_checkpoint_restore PUBLIC
+    base
+    gtest
+    gtest_main
+)
+add_test(NAME test_checkpoint_restore COMMAND test_checkpoint_restore)
+set_tests_properties(test_checkpoint_restore PROPERTIES LABELS "ps_unit")
+
 add_executable(test_petkv_unsupported test_petkv_unsupported.cpp)
 target_link_libraries(test_petkv_unsupported PUBLIC
     kv_engine

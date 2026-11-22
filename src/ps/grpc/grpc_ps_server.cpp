@@ -21,6 +21,7 @@
 #include "ps.pb.h"
 #include "ps/base/base_ps_server.h"
 #include "ps/base/cache_ps_impl.h"
+#include "ps/base/checkpoint_restore_startup.h"
 #include "ps/base/parameters.h"
 #include "ps/base/shard_endpoint.h"
 #include "src/base/config.h"
@@ -674,6 +675,8 @@ public:
             }
 
             auto cache_ps = std::make_unique<CachePS>(shard_config);
+            recstore::RestoreCheckpointFromServerConfig(
+                cache_ps.get(), shard, config_["cache_ps"]);
             ParameterServiceImpl service(cache_ps.get(), shard);
 
             grpc::EnableDefaultHealthCheckService(true);
@@ -741,6 +744,8 @@ public:
         return;
       }
       auto cache_ps = std::make_unique<CachePS>(config_["cache_ps"]);
+      recstore::RestoreCheckpointFromServerConfig(
+          cache_ps.get(), service_shard_id, config_["cache_ps"]);
       ParameterServiceImpl service(cache_ps.get(), service_shard_id);
 
       std::atomic<bool> metrics_running{true};
