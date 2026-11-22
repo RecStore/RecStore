@@ -149,7 +149,7 @@ inline bool RestoreCheckpointOnStartup(
     }
     LOG(INFO) << "Restored shard " << shard_id << " from " << file_path
               << " (checkpoint " << manifest["checkpoint_id"].get<std::string>()
-              << ", step " << manifest.value("step", 0) << ")";
+              << ", manifest step " << manifest.value("step", 0) << ")";
     return true;
   } catch (const json::exception& e) {
     *error = std::string("invalid checkpoint manifest: ") + e.what();
