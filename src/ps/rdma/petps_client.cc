@@ -899,7 +899,15 @@ int PetPSClient::InitEmbeddingTable(
       table_name, config.num_embeddings, config.embedding_dim, config.table_id);
 }
 
-void PetPSClient::Command(recstore::PSCommand) { Barrier("rdma_command", 0); }
+void PetPSClient::Command(recstore::PSCommand command) {
+  if (command == recstore::PSCommand::SAVE_CHECKPOINT ||
+      command == recstore::PSCommand::LOAD_CHECKPOINT) {
+    LOG(ERROR) << "The RDMA data plane has no checkpoint command; save or "
+                  "load through a gRPC or bRPC PS deployment";
+    return;
+  }
+  Barrier("rdma_command", 0);
+}
 
 uint64_t
 PetPSClient::PrefetchParameter(const base::ConstArray<uint64_t>& keys) {
