@@ -67,6 +67,31 @@
 | CLEAR_PS | 清空参数服务器 |
 | RELOAD_PS | 重新加载参数 |
 | LOAD_FAKE_DATA | 加载测试数据 |
+| DUMP_FAKE_DATA | 读出指定字节数的测试数据 |
+| SAVE_CHECKPOINT | 全量存档一个分片（gRPC / bRPC） |
+| LOAD_CHECKPOINT | 从存档恢复一个分片（gRPC / bRPC） |
+
+## 存档与恢复
+
+`SAVE_CHECKPOINT` / `LOAD_CHECKPOINT` 的 payload 是 `arg1[0]` 路径加 `arg2[0]` metadata JSON；metadata 必须含非空的 `checkpoint_id` 和对象型 `identity`，服务端补上 `shard_id` 后再交给引擎。加载只在全新分片上成立：不能有未存档的更新、不能已绑定过另一个 identity、引擎必须为空。metadata 逐字节比较，所以存档和加载要用同一份 identity。
+
+| 能力 | 现状 |
+|------|------|
+| gRPC / bRPC | `KVClient.save_checkpoint()` / `load_checkpoint()` 逐分片 fan-out |
+| RDMA | 数据面没有 checkpoint 命令；`Command` 会报错，不会假装成功 |
+| `KVEnginePetKV` | 明确不支持（共享内存不持久） |
+| 其他引擎 | 全量快照：持引擎写锁 dump 所有 key，参数与 optimizer slot 一起落盘 |
+
+自动化的最小闭环由 `recstore.checkpoint` 提供：`save_sparse_checkpoint()` 把分片写进 `root/<checkpoint_id>/` 的临时目录，落完后写 `manifest.json`（checkpoint_id / step / identity / 分片文件名与大小），最后整目录改名为正式版本；读端只认带 manifest 的目录，因此半截存档不会被当成可用版本。`PeriodicSparseCheckpoint.maybe_save(step)` 在步边界按间隔存档并保留最近 N 份。
+
+服务端启动恢复读取 `cache_ps.checkpoint`：
+
+| 字段 | 说明 |
+|------|------|
+| `restore_dir` | 存档根目录（取 step 最大的已提交版本）或单个版本目录；空表示不恢复 |
+| `on_missing` | `fail`（默认）没有 manifest 即启动失败；`start_empty` 空分片启动 |
+
+恢复在 RPC 服务开始监听前完成，失败即启动失败。多机部署时 `restore_dir` 必须是所有分片都能读到的共享目录。跨分片快照不是同一个逻辑步：每个分片各自持写锁 dump，加载只保证每片内部一致。
 
 ## 文件组织
 
