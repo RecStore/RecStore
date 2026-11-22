@@ -43,4 +43,4 @@ saver = PeriodicSparseCheckpoint(
 saver.maybe_save(step)  # 只在 step % every_n_steps == 0 时写一版
 ```
 
-`save_sparse_checkpoint()` 写 `<root>/<checkpoint_id>/` 和 `manifest.json`，先落分片再发布 manifest；读端忽略没有 manifest 的目录，写失败不会破坏上一版。要恢复时把 `cache_ps.checkpoint.restore_dir` 指向同一个 root（或在训练侧读取 manifest 后调 `load_checkpoint`），语义见 [PS 存档与恢复](../parameter_server/base.md#存档与恢复)。
+`save_sparse_checkpoint()` 写 `<root>/<checkpoint_id>/` 和 `manifest.json`，先落分片再发布 manifest；读端忽略没有 manifest 的目录，写失败不会破坏上一版。要恢复时把 `cache_ps.checkpoint.restore_dir` 指向同一个 root（或在训练侧读取 manifest 后调 `load_checkpoint`），语义见 [PS 存档与恢复](../parameter_server/base.md#checkpoint-restore)。

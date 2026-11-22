@@ -71,7 +71,7 @@
 | SAVE_CHECKPOINT | 全量存档一个分片（gRPC / bRPC） |
 | LOAD_CHECKPOINT | 从存档恢复一个分片（gRPC / bRPC） |
 
-## 存档与恢复
+## 存档与恢复 {#checkpoint-restore}
 
 `SAVE_CHECKPOINT` / `LOAD_CHECKPOINT` 的 payload 是 `arg1[0]` 路径加 `arg2[0]` metadata JSON；metadata 必须含非空的 `checkpoint_id` 和对象型 `identity`，服务端补上 `shard_id` 后再交给引擎。加载只在全新分片上成立：不能有未存档的更新、不能已绑定过另一个 identity、引擎必须为空。metadata 逐字节比较，所以存档和加载要用同一份 identity。
 
