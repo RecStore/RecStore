@@ -822,6 +822,7 @@ set_tests_properties(
 add_recstore_unittest(
     test_recstore_client_py
     recstore.unittest.test_bagpipe_cache
+    recstore.unittest.test_checkpoint_manifest
     recstore.unittest.test_dist_emb
     recstore.unittest.test_embedding_collection
     recstore.unittest.test_embedding_read_path

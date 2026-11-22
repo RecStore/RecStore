@@ -769,6 +769,73 @@ class TestRecStoreRunner(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "--prefetch-issue-depth must be non-negative"):
             config.validate_recstore_config(cfg)
 
+    def test_parse_config_defaults_disable_sparse_checkpoint(self) -> None:
+        cfg = config.parse_config(["--backend", "recstore"])
+
+        self.assertEqual(cfg.sparse_checkpoint_every_steps, 0)
+        self.assertEqual(cfg.sparse_checkpoint_keep, 2)
+        self.assertEqual(cfg.sparse_checkpoint_dir, "")
+
+    def test_populate_default_paths_places_sparse_checkpoint_under_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = RunConfig(
+                backend="recstore",
+                output_root=tmpdir,
+                run_id="run_sparse_ckpt",
+            )
+            config.populate_default_paths(cfg)
+
+        self.assertEqual(
+            cfg.sparse_checkpoint_dir,
+            str(Path(tmpdir).resolve() / "outputs" / "run_sparse_ckpt" / "sparse_checkpoints"),
+        )
+
+    def test_validate_recstore_config_rejects_sparse_checkpoint_on_rdma(self) -> None:
+        cfg = RunConfig(
+            backend="recstore",
+            ps_type="RDMA",
+            sparse_checkpoint_every_steps=5,
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError, "requires --ps-type GRPC or BRPC"
+        ):
+            config.validate_recstore_config(cfg)
+
+    def test_validate_recstore_config_accepts_sparse_checkpoint_on_brpc(self) -> None:
+        cfg = RunConfig(
+            backend="recstore",
+            ps_type="BRPC",
+            sparse_checkpoint_every_steps=5,
+        )
+
+        config.validate_recstore_config(cfg)
+
+    def test_sparse_checkpoint_identity_ignores_table_order(self) -> None:
+        cfg = RunConfig(backend="recstore", ps_type="BRPC")
+        tables = [
+            {"name": "t_b", "num_embeddings": 8, "embedding_dim": 4},
+            {"name": "t_a", "num_embeddings": 16, "embedding_dim": 4},
+        ]
+
+        forward = recstore_runner._sparse_checkpoint_identity(cfg, tables)
+        backward = recstore_runner._sparse_checkpoint_identity(
+            cfg, list(reversed(tables))
+        )
+
+        self.assertEqual(forward, backward)
+        self.assertEqual([item["name"] for item in forward["tables"]], ["t_a", "t_b"])
+
+    def test_sparse_checkpoint_identity_tracks_table_shape(self) -> None:
+        cfg = RunConfig(backend="recstore", ps_type="BRPC")
+        base = [{"name": "t_a", "num_embeddings": 16, "embedding_dim": 4}]
+        wider = [{"name": "t_a", "num_embeddings": 16, "embedding_dim": 8}]
+
+        self.assertNotEqual(
+            recstore_runner._sparse_checkpoint_identity(cfg, base),
+            recstore_runner._sparse_checkpoint_identity(cfg, wider),
+        )
+
     def test_validate_recstore_config_allows_single_node_ps_backend(self) -> None:
         cfg = RunConfig(
             backend="recstore",
