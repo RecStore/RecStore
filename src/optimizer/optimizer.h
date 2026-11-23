@@ -129,6 +129,9 @@ private:
   float beta2_;
   float epsilon_;
   float weight_decay_;
+  // #400: AdamW tags its tensors with the role only, so only one table may
+  // own the key space until the tag carries table_id.
+  std::string owner_table_;
 
   void UpdateRows(const std::string& table,
                   const uint64_t* keys,

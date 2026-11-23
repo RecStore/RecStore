@@ -56,7 +56,7 @@ Python 侧 optimizer 先消费模块 `_trace`。EBC 和 `DistEmbedding` 后续�
 
 ??? note "后端 optimizer"
 
-    后端实现位于 `src/optimizer/optimizer.cpp`。SGD 无额外状态；AdaGrad 和 RowWiseAdaGrad 的累积状态都在后端维护。EBC 的远端更新应保持这个边界。
+    后端实现位于 `src/optimizer/optimizer.cpp`。SGD 无额外状态；AdaGrad 和 RowWiseAdaGrad 的累积状态都在后端维护。EBC 的远端更新应保持这个边界。AdamW 持久化参数、两个 moment 与 step，但 tensor tag 不带 `table_id`，因此**每台 PS 只支持一张 AdamW 表**：注册第二张不同表名时 `AdamW::Init` 报错，避免静默共享键空间（[#400](https://github.com/RecStore/RecStore/issues/400)）。
 
 ## 修改检查
 
