@@ -741,7 +741,13 @@ int RDMAPSClientAdapter::InitEmbeddingTable(
   return tag;
 }
 
-void RDMAPSClientAdapter::Command(PSCommand) {
+void RDMAPSClientAdapter::Command(PSCommand command) {
+  if (command == PSCommand::SAVE_CHECKPOINT ||
+      command == PSCommand::LOAD_CHECKPOINT) {
+    throw std::runtime_error(
+        "The RDMA data plane has no checkpoint command; save or load through "
+        "a gRPC or bRPC PS deployment");
+  }
   EnsureThreadInitialized();
   std::lock_guard<std::mutex> io_guard(io_mu_);
   if (deployment_.num_shards <= 1) {
