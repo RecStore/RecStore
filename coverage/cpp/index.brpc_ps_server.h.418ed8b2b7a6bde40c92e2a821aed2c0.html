@@ -255,7 +255,7 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">explicit</span><span class="w"> </span><span class="n">BRPCParameterServiceImpl</span><span class="p">(</span><span class="n">CachePS</span><span class="o">*</span><span class="w"> </span><span class="n">cache_ps</span><span class="p">);</span></td>
+        <td class="src"><span class="w">  </span><span class="n">explicit</span><span class="w"> </span><span class="n">BRPCParameterServiceImpl</span><span class="p">(</span><span class="n">CachePS</span><span class="o">*</span><span class="w"> </span><span class="n">cache_ps</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">shard_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L23" href="#L23">23</a></td>
@@ -542,101 +542,108 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">total_get_requests_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
+        <td class="src"><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">shard_id_</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L64" href="#L64">64</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">total_put_requests_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">total_get_requests_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L65" href="#L65">65</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">total_get_keys_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">total_put_requests_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L66" href="#L66">66</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">total_put_keys_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">total_get_keys_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L67" href="#L67">67</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">total_get_bytes_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">total_put_keys_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L68" href="#L68">68</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">total_put_bytes_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">total_get_bytes_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L69" href="#L69">69</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">chrono</span><span class="o">::</span><span class="n">steady_clock</span><span class="o">::</span><span class="n">time_point</span><span class="w"> </span><span class="n">start_time_</span><span class="p">;</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">total_put_bytes_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L70" href="#L70">70</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">};</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">chrono</span><span class="o">::</span><span class="n">steady_clock</span><span class="o">::</span><span class="n">time_point</span><span class="w"> </span><span class="n">start_time_</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L71" href="#L71">71</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L72" href="#L72">72</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">nlohmann</span><span class="o">::</span><span class="n">json</span><span class="o">&gt;</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L73" href="#L73">73</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="n">SelectBRPCShardConfigs</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">nlohmann</span><span class="o">::</span><span class="n">json</span><span class="o">&amp;</span><span class="w"> </span><span class="n">cache_ps_config</span><span class="p">,</span></td>
+        <td class="src"><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">nlohmann</span><span class="o">::</span><span class="n">json</span><span class="o">&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L74" href="#L74">74</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                       </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">local_shard_id</span><span class="p">);</span></td>
+        <td class="src"><span class="n">SelectBRPCShardConfigs</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">nlohmann</span><span class="o">::</span><span class="n">json</span><span class="o">&amp;</span><span class="w"> </span><span class="n">cache_ps_config</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L75" href="#L75">75</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="w">                       </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">local_shard_id</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L76" href="#L76">76</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace recstore</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L77" href="#L77">77</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace recstore</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L78" href="#L78">78</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
@@ -649,7 +656,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
-          at 2026-11-23 02:37:17+00:00
+          at 2026-11-23 03:28:56+00:00
         </footer>
       </div>
     </div>
