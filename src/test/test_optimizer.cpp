@@ -143,6 +143,35 @@ TEST(AdamWTest, MatchesTwoStepBiasCorrectedFormulaAndPersistsState) {
       2.0f);
 }
 
+TEST(AdamWTest, RejectsSecondDistinctTableUntilKeysAreNamespaced) {
+  InMemoryKV kv;
+  AdamW optimizer(0.001f, 0.9f, 0.98f, 1e-8f, 0.1f);
+  optimizer.Init({"table_a"}, EmbeddingTableConfig{16, 2}, &kv);
+  // The tag carries no table_id, so the second table would map its parameter,
+  // moments and step onto the same keys as the first.
+  EXPECT_THROW(optimizer.Init({"table_b"}, EmbeddingTableConfig{16, 2}, &kv),
+               std::runtime_error);
+}
+
+TEST(AdamWTest, AllowsSingleTableWithNonZeroTableId) {
+  InMemoryKV kv;
+  AdamW optimizer(0.001f, 0.9f, 0.98f, 1e-8f, 0.1f);
+  EmbeddingTableConfig config{16, 2};
+  config.table_id = 5;
+  // A single fused table may be registered under any backend table id; only a
+  // second table would collide.
+  EXPECT_NO_THROW(optimizer.Init({"fused"}, config, &kv));
+}
+
+TEST(AdamWTest, AllowsReRegisteringTheSameTable) {
+  InMemoryKV kv;
+  AdamW optimizer(0.001f, 0.9f, 0.98f, 1e-8f, 0.1f);
+  optimizer.Init({"table"}, EmbeddingTableConfig{16, 2}, &kv);
+  // Ranks and restarts re-register the same table; only a different name is
+  // rejected.
+  EXPECT_NO_THROW(optimizer.Init({"table"}, EmbeddingTableConfig{16, 2}, &kv));
+}
+
 TEST(RowWiseAdaGradTest, MatchesTwoStepFormulaAndInitializesMissingRows) {
   constexpr float learning_rate   = 0.001f;
   constexpr float epsilon         = 1e-8f;
