@@ -9,6 +9,7 @@
 #include <cstring>
 #include <future>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "base/array.h"
@@ -43,9 +44,19 @@ using recstoreps::UpdateParameterResponse;
 
 namespace {
 
-constexpr int kDefaultRpcDeadlineMs   = 15000;
-constexpr int kPrefetchPollIntervalMs = 200;
-constexpr int kPrefetchMaxIdleRounds  = 150; // 200 ms * 150 = 30 s
+constexpr int kDefaultRpcDeadlineMs    = 15000;
+constexpr int kPrefetchPollIntervalMs  = 200;
+constexpr int kPrefetchMaxIdleRounds   = 150; // 200 ms * 150 = 30 s
+constexpr int kGetRetryFirstBackoffMs  = 50;
+constexpr int kGetRetrySecondBackoffMs = 200;
+
+// A shard that is temporarily unreachable surfaces as UNAVAILABLE; a request
+// that outlived its deadline is worth one more try as long as budget remains.
+// Every other code means the peer answered and the answer must not be replayed.
+bool IsRetryableGetStatus(const grpc::Status& status) {
+  return status.error_code() == grpc::StatusCode::UNAVAILABLE ||
+         status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED;
+}
 
 void SetRpcDeadline(grpc::ClientContext* context,
                     int timeout_ms = kDefaultRpcDeadlineMs) {
@@ -91,6 +102,10 @@ void ConsumePrefetchCompletion(PrefetchBatch* batch, void* tag, bool ok) {
 
 DEFINE_int32(get_parameter_threads, 4, "get clients per shard");
 DEFINE_bool(parameter_client_random_init, false, "");
+DEFINE_int32(grpc_get_max_attempts,
+             3,
+             "Attempts for a transport-level GET failure (UNAVAILABLE or "
+             "DEADLINE_EXCEEDED); 1 disables the retry.");
 
 // New constructor that takes JSON config.
 /*
@@ -205,76 +220,130 @@ int GRPCParameterClient::GetParameterImpl(
     }
     return 0;
   }
-  get_param_key_sizes_.clear();
-  get_param_status_.clear();
-  get_param_requests_.clear();
-  get_param_responses_.clear();
-  get_param_resonse_readers_.clear();
-  get_param_contexts_.clear();
-
   int request_num =
       (keys.Size() + MAX_PARAMETER_BATCH - 1) / MAX_PARAMETER_BATCH;
 
-  get_param_status_.resize(request_num);
-  get_param_requests_.resize(request_num);
-  get_param_responses_.resize(request_num);
-  get_param_contexts_.resize(request_num);
+  // Retry only transport-level failures. A server-side or payload error is
+  // final: replaying it would just repeat the same rejection.
+#ifdef ENABLE_PERF_REPORT
+  const int64_t retries_before = get_param_retries_;
+#endif
+  const int max_attempts = std::max(1, FLAGS_grpc_get_max_attempts);
+  const auto overall_deadline =
+      std::chrono::steady_clock::now() +
+      std::chrono::milliseconds(kDefaultRpcDeadlineMs);
+  bool rpc_ok = false;
+  for (int attempt = 0; attempt < max_attempts && !rpc_ok; ++attempt) {
+    if (attempt > 0) {
+      const int backoff_ms =
+          attempt == 1 ? kGetRetryFirstBackoffMs : kGetRetrySecondBackoffMs;
+      const auto remaining =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              overall_deadline - std::chrono::steady_clock::now());
+      if (remaining.count() <= backoff_ms + 100) {
+        LOG(WARNING) << "GetParameter retry budget exhausted before attempt "
+                     << attempt + 1;
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+    }
 
-  for (int start = 0, index = 0; start < keys.Size();
-       start += MAX_PARAMETER_BATCH, ++index) {
-    int key_size = std::min((int)(keys.Size() - start), MAX_PARAMETER_BATCH);
-    get_param_key_sizes_.emplace_back(key_size);
-    auto& status   = get_param_status_[index];
-    auto& request  = get_param_requests_[index];
-    auto& response = get_param_responses_[index];
-    request.set_keys(reinterpret_cast<const char*>(&keys[start]),
-                     sizeof(uint64_t) * key_size);
-    // rpc
-    // grpc::ClientContext context;
-    if (!get_param_contexts_[index]) {
+    get_param_key_sizes_.clear();
+    get_param_status_.clear();
+    get_param_requests_.clear();
+    get_param_responses_.clear();
+    get_param_resonse_readers_.clear();
+    get_param_contexts_.clear();
+
+    get_param_status_.resize(request_num);
+    get_param_requests_.resize(request_num);
+    get_param_responses_.resize(request_num);
+    get_param_contexts_.resize(request_num);
+
+    const auto remaining =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            overall_deadline - std::chrono::steady_clock::now());
+    const int deadline_ms = std::max(1, static_cast<int>(remaining.count()));
+
+    for (int start = 0, index = 0; start < keys.Size();
+         start += MAX_PARAMETER_BATCH, ++index) {
+      int key_size = std::min((int)(keys.Size() - start), MAX_PARAMETER_BATCH);
+      get_param_key_sizes_.emplace_back(key_size);
+      auto& status   = get_param_status_[index];
+      auto& request  = get_param_requests_[index];
+      auto& response = get_param_responses_[index];
+      request.set_keys(reinterpret_cast<const char*>(&keys[start]),
+                       sizeof(uint64_t) * key_size);
+      // Each attempt needs fresh contexts: a ClientContext belongs to one RPC.
       get_param_contexts_[index] = std::make_unique<grpc::ClientContext>();
+      SetRpcDeadline(get_param_contexts_[index].get(), deadline_ms);
+      get_param_resonse_readers_.emplace_back(stubs_[0]->AsyncGetParameter(
+          get_param_contexts_[index].get(), request, cq_.get()));
+      auto& rpc = get_param_resonse_readers_.back();
+      rpc->Finish(&response,
+                  &status,
+                  reinterpret_cast<void*>(static_cast<intptr_t>(index)));
     }
-    SetRpcDeadline(get_param_contexts_[index].get());
-    get_param_resonse_readers_.emplace_back(stubs_[0]->AsyncGetParameter(
-        get_param_contexts_[index].get(), request, cq_.get()));
-    auto& rpc = get_param_resonse_readers_.back();
-    // GetParameter(&context, request, &response);
-    rpc->Finish(&response,
-                &status,
-                reinterpret_cast<void*>(static_cast<intptr_t>(index)));
-  }
 
-  bool transport_ok = true;
-  for (int completed = 0; completed < request_num; ++completed) {
-    void* got_tag = nullptr;
-    bool ok       = false;
-    if (!cq_->Next(&got_tag, &ok)) {
-      LOG(ERROR) << "GetParameter completion queue shut down after "
-                 << completed << "/" << request_num << " responses";
-      return -1;
+    bool transport_ok = true;
+    for (int completed = 0; completed < request_num; ++completed) {
+      void* got_tag = nullptr;
+      bool ok       = false;
+      if (!cq_->Next(&got_tag, &ok)) {
+        LOG(ERROR) << "GetParameter completion queue shut down after "
+                   << completed << "/" << request_num << " responses";
+        return -1;
+      }
+      const auto index = reinterpret_cast<intptr_t>(got_tag);
+      if (index < 0 || index >= request_num) {
+        LOG(ERROR) << "GetParameter unexpected completion tag " << index;
+        return -1;
+      }
+      if (!ok) {
+        LOG(ERROR) << "GetParameter RPC did not complete for request " << index
+                   << ": " << get_param_status_[index].error_code() << " "
+                   << get_param_status_[index].error_message();
+        transport_ok = false;
+      }
     }
-    const auto index = reinterpret_cast<intptr_t>(got_tag);
-    if (index < 0 || index >= request_num) {
-      LOG(ERROR) << "GetParameter unexpected completion tag " << index;
-      return -1;
+    if (!transport_ok) {
+      if (attempt + 1 >= max_attempts) {
+        return -1;
+      }
+      ++get_param_retries_;
+      LOG(WARNING) << "GetParameter retrying after an incomplete RPC "
+                   << "(attempt " << attempt + 2 << "/" << max_attempts << ")";
+      continue;
     }
-    if (!ok) {
-      LOG(ERROR) << "GetParameter RPC did not complete for request " << index
-                 << ": " << get_param_status_[index].error_code() << " "
-                 << get_param_status_[index].error_message();
-      transport_ok = false;
+
+    int failed_index = -1;
+    bool retryable   = false;
+    for (int i = 0; i < request_num; ++i) {
+      if (get_param_status_[i].ok()) {
+        continue;
+      }
+      failed_index = i;
+      retryable    = IsRetryableGetStatus(get_param_status_[i]);
+      LOG(WARNING) << "GetParameter RPC failed for request " << i << ": "
+                   << get_param_status_[i].error_code() << " "
+                   << get_param_status_[i].error_message()
+                   << (retryable ? " (retryable)" : " (not retryable)");
+      break;
     }
+    if (failed_index >= 0) {
+      if (!retryable || attempt + 1 >= max_attempts) {
+        return -1;
+      }
+      ++get_param_retries_;
+      LOG(WARNING) << "GetParameter retrying (attempt " << attempt + 2 << "/"
+                   << max_attempts << ")";
+      continue;
+    }
+    rpc_ok = true;
   }
-  if (!transport_ok) {
+  if (!rpc_ok) {
+    LOG(ERROR) << "GetParameter failed after " << max_attempts << " attempt(s)";
     return -1;
-  }
-  for (int i = 0; i < request_num; ++i) {
-    if (!get_param_status_[i].ok()) {
-      LOG(ERROR) << "GetParameter RPC failed for request " << i << ": "
-                 << get_param_status_[i].error_code() << " "
-                 << get_param_status_[i].error_message();
-      return -1;
-    }
   }
 
 #ifdef ENABLE_PERF_REPORT
@@ -356,6 +425,14 @@ int GRPCParameterClient::GetParameterImpl(
          "grpc_client::GetParameter",
          "request_size",
          static_cast<double>(keys.Size()));
+
+  if (const int64_t retries = get_param_retries_ - retries_before;
+      retries > 0) {
+    report("embread_stages",
+           "grpc_client::GetParameter",
+           "retry_count",
+           static_cast<double>(retries));
+  }
 
   FlameGraphData grpc_client_data = {
       "grpc_ps_client::GetParameter",

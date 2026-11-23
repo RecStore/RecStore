@@ -199,6 +199,9 @@ class RunConfig:
     save_checkpoint: bool = False
     checkpoint_path: str = ""
     checkpoint_all_ranks: bool = False
+    sparse_checkpoint_dir: str = ""
+    sparse_checkpoint_every_steps: int = 0
+    sparse_checkpoint_keep: int = 2
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -599,6 +602,24 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Save per-rank checkpoint files (rank0.pt, rank1.pt, ...) in distributed mode.",
     )
+    parser.add_argument(
+        "--sparse-checkpoint-every-steps",
+        type=int,
+        default=0,
+        help="Rank 0 saves a committed PS (sparse) checkpoint every N steps; requires a multi-node GRPC/BRPC run, 0 disables it.",
+    )
+    parser.add_argument(
+        "--sparse-checkpoint-dir",
+        type=str,
+        default="",
+        help="PS checkpoint root. Defaults to <output_root>/outputs/<run_id>/sparse_checkpoints.",
+    )
+    parser.add_argument(
+        "--sparse-checkpoint-keep",
+        type=int,
+        default=2,
+        help="Committed PS checkpoint versions to keep (default 2).",
+    )
     return parser
 
 
@@ -756,6 +777,22 @@ def validate_recstore_config(cfg: RunConfig) -> None:
         raise RuntimeError("--ps-pipeline-dependency-split requires RecStore ps_pipeline, world=2, and positive steps")
     if cfg.backend != "recstore":
         return
+    if cfg.sparse_checkpoint_every_steps < 0:
+        raise RuntimeError("--sparse-checkpoint-every-steps must be non-negative.")
+    if cfg.sparse_checkpoint_keep < 1:
+        raise RuntimeError("--sparse-checkpoint-keep must be at least 1.")
+    if cfg.sparse_checkpoint_every_steps > 0:
+        if cfg.nnodes == 1:
+            raise RuntimeError(
+                "--sparse-checkpoint-every-steps requires a real PS: the "
+                "single-node path runs local_shm or hierkv, neither of which "
+                "has a checkpoint command"
+            )
+        if cfg.ps_type.upper() not in {"GRPC", "BRPC"}:
+            raise RuntimeError(
+                "--sparse-checkpoint-every-steps requires --ps-type GRPC or BRPC; "
+                "the RDMA data plane has no checkpoint command"
+            )
     validate_dense_cuda_graph(cfg)
     resolve_num_embeddings_per_feature(cfg.num_embeddings, cfg.num_embeddings_per_feature)
 
@@ -891,6 +928,8 @@ def populate_default_paths(cfg: RunConfig) -> None:
         cfg.hps_torch_main_agg_csv = str(outputs_base / "hps_torch_main_agg.csv")
     if not cfg.checkpoint_path:
         cfg.checkpoint_path = str(outputs_base / "checkpoint.pt")
+    if not cfg.sparse_checkpoint_dir:
+        cfg.sparse_checkpoint_dir = str(outputs_base / "sparse_checkpoints")
 
     cfg.recstore_main_csv = str(Path(cfg.recstore_main_csv).resolve())
     cfg.recstore_main_agg_csv = str(Path(cfg.recstore_main_agg_csv).resolve())

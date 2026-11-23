@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <folly/executors/CPUThreadPoolExecutor.h>
 #include <folly/init/Init.h>
 #include <future>
@@ -235,8 +236,8 @@ void TestLargeBatch() {
   }
 }
 
-void TestCheckpointUnsupported() {
-  std::cout << "=== Testing bRPC Checkpoint Unsupported ===" << std::endl;
+void TestCheckpointRoundTrip() {
+  std::cout << "=== Testing bRPC Checkpoint Round Trip ===" << std::endl;
 
   json config = {
       {"distributed_client",
@@ -247,10 +248,37 @@ void TestCheckpointUnsupported() {
         {"hash_method", "city_hash"}}}};
 
   DistributedBRPCParameterClient client(config);
-  CHECK(!client.SaveCheckpoint("/tmp/recstore-brpc-checkpoint", "{}"));
-  CHECK(!client.LoadCheckpoint("/tmp/recstore-brpc-checkpoint", "{}"));
 
-  std::cout << "Checkpoint unsupported path reported as expected." << std::endl;
+  std::vector<uint64_t> keys = {41, 42, 43, 44, 45, 46};
+  std::vector<float> flat;
+  flat.reserve(keys.size() * 2);
+  for (int i = 0; i < static_cast<int>(keys.size()); ++i) {
+    flat.push_back(static_cast<float>(i) + 0.5f);
+    flat.push_back(-static_cast<float>(i) - 0.25f);
+  }
+  auto values = OwnedEmbedding(keys.size(), 2, flat);
+  auto retrieved =
+      OwnedEmbedding(keys.size(), 2, std::vector<float>(12, -1.0f));
+  base::ConstArray<uint64_t> keys_array(keys);
+
+  client.ClearPS();
+  CHECK(client.PutParameter(keys_array, values) == 0);
+
+  // FanOutCheckpoint treats the path as a directory and derives one file per
+  // shard, so the directory has to exist before the first save.
+  const std::string path = "/tmp/recstore-brpc-dist-checkpoint";
+  std::filesystem::create_directories(path);
+  const std::string metadata =
+      R"({"checkpoint_id":"brpc-dist-roundtrip-v1",)"
+      R"("identity":{"test":"brpc-dist-checkpoint"}})";
+  CHECK(client.SaveCheckpoint(path, metadata));
+
+  client.ClearPS();
+  CHECK(client.LoadCheckpoint(path, metadata));
+  CHECK(client.GetParameter(keys_array, retrieved) == 0);
+  CHECK(TensorEq(retrieved, flat));
+
+  std::cout << "Checkpoint round trip passed." << std::endl;
 }
 
 int main(int argc, char** argv) {
@@ -267,6 +295,6 @@ int main(int argc, char** argv) {
   TestFactoryClient();
   TestDirectClient();
   TestLargeBatch();
-  TestCheckpointUnsupported();
+  TestCheckpointRoundTrip();
   return 0;
 }
