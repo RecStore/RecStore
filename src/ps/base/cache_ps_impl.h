@@ -139,6 +139,33 @@ public:
     return true;
   }
 
+  // Validate client-supplied checkpoint metadata and bind it to this shard.
+  // Transports share this so the accepted payload and the injected shard_id
+  // cannot drift apart.
+  static bool PrepareCheckpointMetadata(
+      const std::string& metadata,
+      int shard_id,
+      std::string* bound_metadata,
+      std::string* error) {
+    try {
+      json parsed = json::parse(metadata);
+      if (!parsed.is_object() || !parsed.contains("identity") ||
+          !parsed["identity"].is_object() ||
+          !parsed.contains("checkpoint_id") ||
+          !parsed["checkpoint_id"].is_string() ||
+          parsed["checkpoint_id"].get<std::string>().empty()) {
+        *error = "invalid checkpoint metadata";
+        return false;
+      }
+      parsed["shard_id"] = shard_id;
+      *bound_metadata    = parsed.dump();
+      return true;
+    } catch (const json::exception& e) {
+      *error = e.what();
+      return false;
+    }
+  }
+
   bool LoadCheckpoint(const std::string& path,
                       const std::string& expected_metadata) {
     const std::string identity = CheckpointIdentity(expected_metadata);

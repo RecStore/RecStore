@@ -248,6 +248,27 @@ def _maybe_warmup_gpu_local_shm_fast_path(
     return bool(client.warmup_local_lookup_flat_cuda_region())
 
 
+def _sparse_checkpoint_identity(cfg: RunConfig, eb_configs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Stable identity for a PS checkpoint; it must not depend on run_id.
+
+    The PS compares the identity bytes on save and load, so a restart that
+    reuses the same checkpoint directory must produce the same value here.
+    """
+    return {
+        "schema_version": 1,
+        "ps_type": cfg.ps_type.upper(),
+        "recstore_enable_fusion": bool(cfg.recstore_enable_fusion),
+        "tables": [
+            {
+                "name": str(item["name"]),
+                "num_embeddings": int(item["num_embeddings"]),
+                "embedding_dim": int(item["embedding_dim"]),
+            }
+            for item in sorted(eb_configs, key=lambda item: item["name"])
+        ],
+    }
+
+
 class RecStoreRunner(BenchmarkRunner):
     """Train a DLRM-style model with embeddings served by the RecStore PS.
 
@@ -571,6 +592,25 @@ class RecStoreRunner(BenchmarkRunner):
 
             if continuous_mode and not getattr(read_path, "owner_merged_grad", False):
                 raise ValueError("Continuous PS requires the merged GPU owner pipeline")
+            sparse_checkpointer = None
+            sparse_checkpoint_dir = ""
+            if cfg.sparse_checkpoint_every_steps > 0:
+                if continuous_mode:
+                    raise ValueError(
+                        "--sparse-checkpoint-every-steps requires the synchronous loop; "
+                        "continuous mode defers sparse updates past the step boundary"
+                    )
+                if rank == 0:
+                    from recstore.checkpoint import PeriodicSparseCheckpoint
+                    sparse_checkpoint_dir = cfg.sparse_checkpoint_dir or str(
+                        Path(cfg.output_root) / "outputs" / cfg.run_id / "sparse_checkpoints")
+                    sparse_checkpointer = PeriodicSparseCheckpoint(
+                        client,
+                        sparse_checkpoint_dir,
+                        _sparse_checkpoint_identity(cfg, eb_configs),
+                        every_n_steps=cfg.sparse_checkpoint_every_steps,
+                        keep=cfg.sparse_checkpoint_keep,
+                    )
             _barrier_for_step_alignment(
                 dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
             )
@@ -1039,6 +1079,8 @@ class RecStoreRunner(BenchmarkRunner):
                 else:
                     continuous.finish_row(row, step_wall_start, backpressure_ms)
                 rows.append(finalize_recstore_row(row))
+                rows[-1].setdefault("sparse_checkpoint_ms", 0.0)
+                rows[-1].setdefault("sparse_checkpoint_step", 0)
                 if cfg.report_metrics and rank == 0:
                     _emit_step_metrics(rows[-1], cfg.run_id, step)
                 events.emit("barrier_start", step=step)
@@ -1047,6 +1089,15 @@ class RecStoreRunner(BenchmarkRunner):
                         dist=dist, device=device, local_rank=local_rank, use_dist=use_dist
                     )
                 events.emit("barrier_end", step=step)
+                if sparse_checkpointer is not None:
+                    checkpoint_start = time.perf_counter()
+                    saved_checkpoint = sparse_checkpointer.maybe_save(step + 1)
+                    if saved_checkpoint is not None:
+                        rows[-1]["sparse_checkpoint_ms"] = (
+                            time.perf_counter() - checkpoint_start) * 1e3
+                        rows[-1]["sparse_checkpoint_step"] = saved_checkpoint.step
+                        print(f"[rs_demo] sparse checkpoint {saved_checkpoint.checkpoint_id} "
+                              f"-> {saved_checkpoint.directory}")
 
                 if (step + 1) % 10 == 0:
                     timing_label = "host_enqueue" if continuous is not None else "step"
@@ -1083,6 +1134,13 @@ class RecStoreRunner(BenchmarkRunner):
                 loop_path.write_text(json.dumps(loop_summary, indent=2) + "\n")
             if metadata_depth:
                 lifecycle["metadata_training_loop_ms"] = (time.perf_counter()-metadata_loop_start)*1e3
+            if sparse_checkpointer is not None:
+                lifecycle["sparse_checkpoint"] = {
+                    "directory": sparse_checkpoint_dir,
+                    "every_n_steps": sparse_checkpointer.every_n_steps,
+                    "keep": sparse_checkpointer.keep,
+                    "saved": [saved.checkpoint_id for saved in sparse_checkpointer.saved],
+                }
             print("[rs_demo] workload finished")
 
             if device.type == "cuda":

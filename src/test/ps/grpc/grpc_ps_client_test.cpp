@@ -223,6 +223,39 @@ void TestMultiBatchGet(int grpc_port) {
   CHECK(client.ClearPS());
 }
 
+void TestCheckpointRoundTrip(int grpc_port) {
+  std::cout << "\n=== Testing gRPC Checkpoint Round Trip ===" << std::endl;
+
+  GRPCParameterClient client("127.0.0.1", grpc_port, 0);
+  CHECK(client.ClearPS());
+
+  std::vector<uint64_t> keys      = {21, 22, 23};
+  std::vector<float> written_flat = {
+      0.5f, 1.5f, 2.5f, 3.5f, 4.5f, 5.5f, 6.5f, 7.5f, 8.5f};
+  auto written   = OwnedEmbedding(3, 3, written_flat);
+  auto retrieved = OwnedEmbedding(3, 3, std::vector<float>(9, -1.0f));
+  base::ConstArray<uint64_t> keys_array(keys);
+  CHECK(client.PutParameter(keys, written));
+
+  const std::string metadata =
+      R"({"checkpoint_id":"grpc-roundtrip-v1",)"
+      R"("identity":{"test":"grpc-checkpoint"}})";
+  const std::string path = "/tmp/recstore-grpc-checkpoint-roundtrip.bin";
+  CHECK(client.SaveCheckpoint(path, metadata));
+
+  // Clearing empties the shard and drops the active identity, so the load
+  // below restores rows instead of taking the idempotent fast path.
+  CHECK(client.ClearPS());
+  CHECK(client.LoadCheckpoint(path, metadata));
+  CHECK(client.GetParameter(keys_array, retrieved) == 0);
+  CHECK(TensorEq(retrieved, written_flat));
+
+  CHECK(!client.LoadCheckpoint(
+      path, R"({"checkpoint_id":"other","identity":{"test":"other"}})"));
+
+  std::cout << "Checkpoint round trip passed." << std::endl;
+}
+
 // A dead peer must surface as an error instead of zero-filled embeddings.
 void TestRpcFailureReporting() {
   std::cout << "\n=== Testing gRPC Failure Reporting ===" << std::endl;
@@ -266,6 +299,7 @@ int main(int argc, char** argv) {
   TestFactoryClient(kGrpcTestPort0);
   TestAsyncReadWriteConcurrency(kGrpcTestPort0);
   TestMultiBatchGet(kGrpcTestPort0);
+  TestCheckpointRoundTrip(kGrpcTestPort0);
   TestRpcFailureReporting();
   TestLearningRateGuard(kGrpcTestPort0);
   return 0;

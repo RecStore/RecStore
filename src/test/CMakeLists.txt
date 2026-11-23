@@ -287,6 +287,36 @@ target_link_libraries(test_kvengine_checkpoint PUBLIC
 )
 add_test(NAME test_kvengine_checkpoint COMMAND test_kvengine_checkpoint)
 
+add_executable(test_checkpoint_restore test_checkpoint_restore.cpp)
+target_link_libraries(test_checkpoint_restore PUBLIC
+    base
+    gtest
+    gtest_main
+)
+add_test(NAME test_checkpoint_restore COMMAND test_checkpoint_restore)
+set_tests_properties(test_checkpoint_restore PROPERTIES LABELS "ps_unit")
+
+# End-to-end crash recovery: save a checkpoint, SIGKILL the PS, start it again
+# from the same config, and verify the rows plus one more SGD step. The driver
+# starts the built gRPC server itself and rewrites the value path so it does not
+# share /dev/shm state with other runs.
+add_test(
+    NAME recstore_checkpoint_restart_smoke
+    COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/src/test/scripts/recstore_checkpoint_restart_smoke.py
+        --base-config ${PROJECT_SOURCE_DIR}/recstore_config.json
+        --run-dir ${CMAKE_CURRENT_BINARY_DIR}/checkpoint_restart_smoke
+        --ps-binary $<TARGET_FILE:grpc_ps_server>
+)
+set_tests_properties(
+    recstore_checkpoint_restart_smoke
+    PROPERTIES
+    LABELS "ps_integration;checkpoint"
+    TIMEOUT 180
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/src/python/pytorch;PYTHONDONTWRITEBYTECODE=1"
+)
+
 add_executable(test_petkv_unsupported test_petkv_unsupported.cpp)
 target_link_libraries(test_petkv_unsupported PUBLIC
     kv_engine
@@ -822,6 +852,7 @@ set_tests_properties(
 add_recstore_unittest(
     test_recstore_client_py
     recstore.unittest.test_bagpipe_cache
+    recstore.unittest.test_checkpoint_manifest
     recstore.unittest.test_dist_emb
     recstore.unittest.test_embedding_collection
     recstore.unittest.test_embedding_read_path

@@ -21,6 +21,7 @@
 #include "ps.pb.h"
 #include "ps/base/base_ps_server.h"
 #include "ps/base/cache_ps_impl.h"
+#include "ps/base/checkpoint_restore_startup.h"
 #include "ps/base/parameters.h"
 #include "ps/base/shard_endpoint.h"
 #include "src/base/config.h"
@@ -302,17 +303,13 @@ private:
         return Status(grpc::StatusCode::INVALID_ARGUMENT,
                       "checkpoint command requires path and metadata");
       }
+      std::string shard_metadata;
+      std::string metadata_error;
+      if (!CachePS::PrepareCheckpointMetadata(
+              request->arg2(0), shard_id_, &shard_metadata, &metadata_error)) {
+        return Status(grpc::StatusCode::INVALID_ARGUMENT, metadata_error);
+      }
       try {
-        nlohmann::json metadata = nlohmann::json::parse(request->arg2(0));
-        if (!metadata.is_object() || !metadata.contains("identity") ||
-            !metadata["identity"].is_object() ||
-            !metadata.contains("checkpoint_id") ||
-            !metadata["checkpoint_id"].is_string()) {
-          return Status(grpc::StatusCode::INVALID_ARGUMENT,
-                        "invalid checkpoint metadata");
-        }
-        metadata["shard_id"]             = shard_id_;
-        const std::string shard_metadata = metadata.dump();
         const bool save = request->command() == PSCommand::SAVE_CHECKPOINT;
         const bool ok =
             save ? cache_ps_->SaveCheckpoint(request->arg1(0), shard_metadata)
@@ -323,8 +320,6 @@ private:
               save ? "checkpoint save failed" : "checkpoint load failed");
         }
         reply->set_reply("ok");
-      } catch (const nlohmann::json::exception& e) {
-        return Status(grpc::StatusCode::INVALID_ARGUMENT, e.what());
       } catch (const std::exception& e) {
         return Status(grpc::StatusCode::FAILED_PRECONDITION, e.what());
       }
@@ -680,6 +675,8 @@ public:
             }
 
             auto cache_ps = std::make_unique<CachePS>(shard_config);
+            recstore::RestoreCheckpointFromServerConfig(
+                cache_ps.get(), shard, config_["cache_ps"]);
             ParameterServiceImpl service(cache_ps.get(), shard);
 
             grpc::EnableDefaultHealthCheckService(true);
@@ -747,6 +744,8 @@ public:
         return;
       }
       auto cache_ps = std::make_unique<CachePS>(config_["cache_ps"]);
+      recstore::RestoreCheckpointFromServerConfig(
+          cache_ps.get(), service_shard_id, config_["cache_ps"]);
       ParameterServiceImpl service(cache_ps.get(), service_shard_id);
 
       std::atomic<bool> metrics_running{true};

@@ -643,18 +643,44 @@ bool BRPCParameterClient::LoadCkpt(
 
 bool BRPCParameterClient::SaveCheckpoint(const std::string& path,
                                          const std::string& metadata) {
-  (void)metadata;
-  LOG(ERROR) << "bRPC backend does not support checkpoint save: path=\"" << path
-             << "\"";
-  return false;
+  return Checkpoint(path, metadata, true);
 }
 
 bool BRPCParameterClient::LoadCheckpoint(const std::string& path,
                                          const std::string& metadata) {
-  (void)metadata;
-  LOG(ERROR) << "bRPC backend does not support checkpoint load: path=\"" << path
-             << "\"";
-  return false;
+  return Checkpoint(path, metadata, false);
+}
+
+bool BRPCParameterClient::Checkpoint(
+    const std::string& path, const std::string& metadata, bool save) {
+  if (path.empty() || metadata.empty()) {
+    LOG(ERROR) << "Checkpoint path and metadata must be non-empty";
+    return false;
+  }
+  CommandRequest request;
+  CommandResponse response;
+  request.set_command(
+      save ? PSCommand::SAVE_CHECKPOINT : PSCommand::LOAD_CHECKPOINT);
+  request.add_arg1(path);
+  request.add_arg2(metadata);
+
+  brpc::Controller cntl;
+  // A full dump of a large table takes far longer than the default 5s RPC
+  // budget; mirror the gRPC client's 600s checkpoint deadline.
+  cntl.set_timeout_ms(600000);
+  recstoreps_brpc::ParameterService_Stub stub(channel_.get());
+  stub.Command(&cntl, &request, &response, nullptr);
+
+  if (cntl.Failed()) {
+    LOG(ERROR) << "bRPC checkpoint " << (save ? "save" : "load")
+               << " failed: " << cntl.ErrorText();
+    return false;
+  }
+  if (response.reply() != "ok") {
+    LOG(ERROR) << "bRPC checkpoint unexpected reply: " << response.reply();
+    return false;
+  }
+  return true;
 }
 
 bool BRPCParameterClient::PutParameter(const std::vector<uint64_t>& keys,

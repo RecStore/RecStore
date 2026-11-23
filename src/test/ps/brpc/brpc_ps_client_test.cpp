@@ -230,14 +230,38 @@ void TestLearningRateGuard() {
   CHECK(client.UpdateParameter("lr_guard", keys_array, grads) == 0);
 }
 
-void TestCheckpointUnsupported() {
-  std::cout << "\n=== Testing bRPC Checkpoint Unsupported ===" << std::endl;
+void TestCheckpointRoundTrip() {
+  std::cout << "\n=== Testing bRPC Checkpoint Round Trip ===" << std::endl;
 
   BRPCParameterClient client("127.0.0.1", kBrpcTestPort0, 1);
-  CHECK(!client.SaveCheckpoint("/tmp/recstore-brpc-checkpoint", "{}"));
-  CHECK(!client.LoadCheckpoint("/tmp/recstore-brpc-checkpoint", "{}"));
+  client.ClearPS();
 
-  std::cout << "Checkpoint unsupported path reported as expected." << std::endl;
+  std::vector<uint64_t> keys      = {7, 8, 9};
+  std::vector<float> written_flat = {
+      1.5f, -2.0f, 3.25f, 4.0f, 5.5f, -6.0f, -7.25f, 8.0f, 9.5f};
+  auto written   = OwnedEmbedding(3, 3, written_flat);
+  auto retrieved = OwnedEmbedding(3, 3, std::vector<float>(9, -1.0f));
+  base::ConstArray<uint64_t> keys_array(keys);
+  CHECK(client.PutParameter(keys, written));
+
+  const std::string metadata =
+      R"({"checkpoint_id":"brpc-roundtrip-v1",)"
+      R"("identity":{"test":"brpc-checkpoint"}})";
+  const std::string path = "/tmp/recstore-brpc-checkpoint-roundtrip.bin";
+  CHECK(client.SaveCheckpoint(path, metadata));
+
+  // Clear() empties the shard and drops the active identity, so the following
+  // load runs the real restore path instead of the idempotent no-op.
+  CHECK(client.ClearPS());
+  CHECK(client.LoadCheckpoint(path, metadata));
+  CHECK(client.GetParameter(keys_array, retrieved) == 0);
+  CHECK(TensorEq(retrieved, written_flat));
+
+  // A different identity must be rejected once this shard has loaded one.
+  CHECK(!client.LoadCheckpoint(
+      path, R"({"checkpoint_id":"other","identity":{"test":"other"}})"));
+
+  std::cout << "Checkpoint round trip passed." << std::endl;
 }
 
 int main(int argc, char** argv) {
@@ -258,7 +282,7 @@ int main(int argc, char** argv) {
     TestDirectClient();
     TestPrefetch();
     TestAsyncReadWriteConcurrency();
-    TestCheckpointUnsupported();
+    TestCheckpointRoundTrip();
     TestLearningRateGuard();
 
     std::cout << "\nAll bRPC tests passed." << std::endl;
