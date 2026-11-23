@@ -339,10 +339,34 @@ public:
     }
     if (!complete)
       return state.committed;
-    std::vector<uint64_t> keys;
-    std::vector<float> grads;
-    std::unordered_map<uint64_t, size_t> positions;
-    // Fixed rank/chunk order makes network arrival order irrelevant.
+    // Capacity is only a hint; rows still follow the fixed rank/chunk order
+    // below.
+    size_t input_rows = 0;
+    for (const auto& rank : state.ranks)
+      for (const auto& chunk : rank)
+        input_rows += StoredHeader(chunk).rows;
+    // Merge scratch is reused across steps: allocating and zero-initializing
+    // the ~18 MB value buffer per step dominated the world=2 commit wait
+    // (6.7 ms of 10.7 ms at 33K unique rows). Every row is fully overwritten by
+    // a whole-row copy, so only grown capacity needs zero initialization.
+    std::vector<uint64_t>& keys = state.merge_keys;
+    std::vector<float>& grads   = state.merge_values;
+    auto& repeats               = state.merge_repeats;
+    auto& positions             = state.merge_positions;
+    keys.clear();
+    repeats.clear();
+    positions.clear();
+    grads.resize(input_rows * h.dim);
+    keys.reserve(input_rows);
+    repeats.reserve(input_rows / 8 + 1);
+    if (positions.bucket_count() < input_rows * 2)
+      positions.reserve(input_rows * 2);
+    const auto merge_alloc = profile ? SparseCommitProfileNowNs() : 0;
+    // Fixed rank/chunk order makes network arrival order irrelevant. The first
+    // occurrence of a key has no accumulated value yet, so its payload can be
+    // copied whole instead of added element by element; repeats keep arrival
+    // order in `repeats` and are added afterwards.
+    size_t unique_rows = 0;
     for (const auto& rank : state.ranks) {
       for (const auto& chunk : rank) {
         const auto ch         = DecodeSparseGradientCommit(chunk);
@@ -351,23 +375,43 @@ public:
         for (size_t row = 0; row < ch.rows; ++row) {
           uint64_t key;
           std::memcpy(&key, key_data + row * 8, 8);
-          auto entry = positions.emplace(key, keys.size());
+          auto entry      = positions.emplace(key, unique_rows);
+          const char* src = grad_data + row * h.dim * 4;
           if (entry.second) {
             keys.push_back(key);
-            grads.resize(keys.size() * h.dim, 0.0f);
-          }
-          float* dst = grads.data() + entry.first->second * h.dim;
-          for (size_t col = 0; col < h.dim; ++col) {
-            float value;
-            std::memcpy(&value, grad_data + (row * h.dim + col) * 4, 4);
-            dst[col] += value;
+            std::memcpy(
+                grads.data() + unique_rows * h.dim, src, size_t(h.dim) * 4);
+            ++unique_rows;
+          } else {
+            repeats.emplace_back(entry.first->second, src);
           }
         }
       }
     }
-    if (h.divisor != 1)
-      for (auto& value : grads)
-        value /= h.divisor;
+    const auto merge_build = profile ? SparseCommitProfileNowNs() : 0;
+    for (const auto& repeat : repeats) {
+      float* dst      = grads.data() + repeat.first * h.dim;
+      const char* src = repeat.second;
+      for (size_t col = 0; col < h.dim; ++col) {
+        float value;
+        std::memcpy(&value, src + col * 4, 4);
+        dst[col] += value;
+      }
+    }
+    grads.resize(unique_rows * h.dim);
+    const auto merge_repeat = profile ? SparseCommitProfileNowNs() : 0;
+    if (h.divisor != 1) {
+      // Scaling by an exactly representable reciprocal of a power-of-two
+      // divisor rounds to the same value as division.
+      if ((h.divisor & (h.divisor - 1)) == 0) {
+        const float inverse = 1.0f / static_cast<float>(h.divisor);
+        for (auto& value : grads)
+          value *= inverse;
+      } else {
+        for (auto& value : grads)
+          value /= h.divisor;
+      }
+    }
     const auto aggregated = profile ? SparseCommitProfileNowNs() : 0;
     try {
       if (!keys.empty())
@@ -381,6 +425,11 @@ public:
       state.profile_aggregate_ns += aggregated - collected;
       state.profile_apply_ns += applied - aggregated;
       state.profile_unique_rows += keys.size();
+      state.profile_merge_alloc_ns += merge_alloc - collected;
+      state.profile_merge_build_ns += merge_build - merge_alloc;
+      state.profile_merge_repeat_ns += merge_repeat - merge_build;
+      state.profile_merge_scale_ns += aggregated - merge_repeat;
+      state.profile_repeat_rows += repeats.size();
     }
     FinishStep(state, h, profile, request_start, collected, applied);
     return state.committed;
@@ -394,6 +443,11 @@ private:
     std::vector<std::vector<std::string>> ranks;
     // V4 retains only the last completed step for bit-identical ACK retries.
     std::vector<std::vector<std::string>> last_exact_packets;
+    // Merge scratch reused by the v1 reduction path.
+    std::vector<uint64_t> merge_keys;
+    std::vector<float> merge_values;
+    std::vector<std::pair<size_t, const char*>> merge_repeats;
+    std::unordered_map<uint64_t, size_t> merge_positions;
     int exact_owner_rank = -1;
     size_t exact_rows    = 0;
     std::vector<bool> closed;
@@ -404,6 +458,9 @@ private:
     uint64_t profile_rows          = 0;
     uint64_t profile_chunks        = 0;
     uint64_t profile_aggregate_ns = 0, profile_apply_ns = 0;
+    uint64_t profile_merge_alloc_ns = 0, profile_merge_build_ns = 0;
+    uint64_t profile_merge_repeat_ns = 0, profile_merge_scale_ns = 0;
+    size_t profile_repeat_rows = 0;
     size_t profile_unique_rows = 0;
   };
 
@@ -524,6 +581,8 @@ private:
           "world=%u dim=%u chunks=%llu input_rows=%llu unique_rows=%zu "
           "payload_bytes=%llu arrival_span_ms=%.6f lock_wait_ms=%.6f "
           "collect_cpu_ms=%.6f aggregate_ms=%.6f apply_ms=%.6f "
+          "merge_alloc_ms=%.6f merge_build_ms=%.6f merge_repeat_ms=%.6f "
+          "merge_scale_ms=%.6f repeat_rows=%zu "
           "release_chunks_ms=%.6f last_request_ms=%.6f version=%u\n",
           static_cast<unsigned long long>(h.session),
           static_cast<long long>(h.step),
@@ -538,6 +597,11 @@ private:
           state.profile_collect_ns / 1e6,
           state.profile_aggregate_ns / 1e6,
           state.profile_apply_ns / 1e6,
+          state.profile_merge_alloc_ns / 1e6,
+          state.profile_merge_build_ns / 1e6,
+          state.profile_merge_repeat_ns / 1e6,
+          state.profile_merge_scale_ns / 1e6,
+          state.profile_repeat_rows,
           (released - applied) / 1e6,
           (released - request_start) / 1e6,
           h.version);
@@ -548,7 +612,10 @@ private:
       state.profile_rows          = 0;
       state.profile_chunks        = 0;
       state.profile_aggregate_ns = state.profile_apply_ns = 0;
-      state.profile_unique_rows                           = 0;
+      state.profile_merge_alloc_ns = state.profile_merge_build_ns = 0;
+      state.profile_merge_repeat_ns = state.profile_merge_scale_ns = 0;
+      state.profile_repeat_rows                                    = 0;
+      state.profile_unique_rows                                    = 0;
     }
   }
   std::mutex mu_;
