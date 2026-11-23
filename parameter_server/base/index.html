@@ -2756,6 +2756,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#checkpoint-restore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        存档与恢复
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3029,6 +3040,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#checkpoint-restore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        存档与恢复
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3240,8 +3262,69 @@
 <td>LOAD_FAKE_DATA</td>
 <td>加载测试数据</td>
 </tr>
+<tr>
+<td>DUMP_FAKE_DATA</td>
+<td>读出指定字节数的测试数据</td>
+</tr>
+<tr>
+<td>SAVE_CHECKPOINT</td>
+<td>全量存档一个分片（gRPC / bRPC）</td>
+</tr>
+<tr>
+<td>LOAD_CHECKPOINT</td>
+<td>从存档恢复一个分片（gRPC / bRPC）</td>
+</tr>
 </tbody>
 </table>
+<h2 id="checkpoint-restore">存档与恢复<a class="headerlink" href="#checkpoint-restore" title="Permanent link">&para;</a></h2>
+<p><code>SAVE_CHECKPOINT</code> / <code>LOAD_CHECKPOINT</code> 的 payload 是 <code>arg1[0]</code> 路径加 <code>arg2[0]</code> metadata JSON；metadata 必须含非空的 <code>checkpoint_id</code> 和对象型 <code>identity</code>，服务端补上 <code>shard_id</code> 后再交给引擎。加载只在全新分片上成立：不能有未存档的更新、不能已绑定过另一个 identity、引擎必须为空。metadata 逐字节比较，所以存档和加载要用同一份 identity。</p>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>现状</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>gRPC / bRPC</td>
+<td><code>KVClient.save_checkpoint()</code> / <code>load_checkpoint()</code> 逐分片 fan-out</td>
+</tr>
+<tr>
+<td>RDMA</td>
+<td>数据面没有 checkpoint 命令；<code>Command</code> 会报错，不会假装成功</td>
+</tr>
+<tr>
+<td><code>KVEnginePetKV</code></td>
+<td>明确不支持（共享内存不持久）</td>
+</tr>
+<tr>
+<td>其他引擎</td>
+<td>全量快照：持引擎写锁 dump 所有 key，参数与 optimizer slot 一起落盘</td>
+</tr>
+</tbody>
+</table>
+<p>自动化的最小闭环由 <code>recstore.checkpoint</code> 提供：<code>save_sparse_checkpoint()</code> 把分片写进 <code>root/&lt;checkpoint_id&gt;/</code> 的临时目录，落完后写 <code>manifest.json</code>（checkpoint_id / step / identity / 分片文件名与大小），最后整目录改名为正式版本；读端只认带 manifest 的目录，因此半截存档不会被当成可用版本。<code>PeriodicSparseCheckpoint.maybe_save(step)</code> 在步边界按间隔存档并保留最近 N 份。</p>
+<p>服务端启动恢复读取 <code>cache_ps.checkpoint</code>：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>restore_dir</code></td>
+<td>存档根目录（取 step 最大的已提交版本）或单个版本目录；空表示不恢复</td>
+</tr>
+<tr>
+<td><code>on_missing</code></td>
+<td><code>fail</code>（默认）没有 manifest 即启动失败；<code>start_empty</code> 空分片启动</td>
+</tr>
+</tbody>
+</table>
+<p>恢复在 RPC 服务开始监听前完成，失败即启动失败。多机部署时 <code>restore_dir</code> 必须是所有分片都能读到的共享目录。跨分片快照不是同一个逻辑步：每个分片各自持写锁 dump，加载只保证每片内部一致。</p>
 <h2 id="_4">文件组织<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

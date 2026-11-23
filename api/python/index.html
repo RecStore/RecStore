@@ -2841,6 +2841,14 @@
 <td>发送 sparse gradients。</td>
 </tr>
 <tr>
+<td><code>save_checkpoint(path, metadata)</code></td>
+<td>先把排队中的异步更新 flush 掉，再逐分片存档；<code>path</code> 是目录。metadata 必须含非空 <code>checkpoint_id</code> 和对象型 <code>identity</code>，恢复时要用同一份。</td>
+</tr>
+<tr>
+<td><code>load_checkpoint(path, metadata)</code></td>
+<td>从存档恢复，只能在新建且未写入的 PS 上调用；有未完成的异步更新或 identity 不一致会报错。</td>
+</tr>
+<tr>
 <td><code>set_ps_config(host, port)</code></td>
 <td>重建底层 PS client。</td>
 </tr>
@@ -2861,6 +2869,15 @@
 <li><code>init_missing</code> 只写 <code>found == False</code> 的行，但它是普通覆盖写，不是原子 insert-if-absent：查找与写入之间由其他写入者创建的行会被覆盖。</li>
 <li>通道只回传每 key 一字节的掩码，不回传紧凑位置。引擎侧的 <code>BatchGetFlatRangeWithMissing</code> 会给出缺失行的位置，但那只对 C++ 调用方有意义：掩码是 1 字节/key，位置是 8 字节/缺失行，走 RPC 反而更大。</li>
 </ul>
+<p>定期存档与启动恢复：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">recstore.checkpoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">PeriodicSparseCheckpoint</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">saver</span> <span class="o">=</span> <span class="n">PeriodicSparseCheckpoint</span><span class="p">(</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">client</span><span class="p">,</span> <span class="s2">"outputs/run/sparse_checkpoints"</span><span class="p">,</span> <span class="n">identity</span><span class="p">,</span> <span class="n">every_n_steps</span><span class="o">=</span><span class="mi">100</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">)</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">saver</span><span class="o">.</span><span class="n">maybe_save</span><span class="p">(</span><span class="n">step</span><span class="p">)</span>  <span class="c1"># 只在 step % every_n_steps == 0 时写一版</span>
+</code></pre></div>
+<p><code>save_sparse_checkpoint()</code> 写 <code>&lt;root&gt;/&lt;checkpoint_id&gt;/</code> 和 <code>manifest.json</code>，先落分片再发布 manifest；读端忽略没有 manifest 的目录，写失败不会破坏上一版。要恢复时把 <code>cache_ps.checkpoint.restore_dir</code> 指向同一个 root（或在训练侧读取 manifest 后调 <code>load_checkpoint</code>），语义见 <a href="../../parameter_server/base/#checkpoint-restore">PS 存档与恢复</a>。</p>
 
 
 
