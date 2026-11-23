@@ -614,13 +614,17 @@ int AdamW::Init(const std::vector<std::string> table_name,
                 const EmbeddingTableConfig& config,
                 BaseKV* base_kv) {
   // #400: every tensor below is tagged with its role only, so the tag is the
-  // upper key byte and all tables share one key space. Reject multi-table
-  // setups until the tags carry table_id (needs a TAG_TYPE width decision).
-  if (config.table_id != 0) {
-    throw std::runtime_error(
-        "AdamW does not namespace optimizer state by table: table_id=" +
-        std::to_string(config.table_id) +
-        " would share keys with table 0 (RecStore issue #400)");
+  // upper key byte and all tables share one key space. Reject a second
+  // distinct table until the tags carry table_id (needs a TAG_TYPE width
+  // decision). Re-registering the same table stays allowed, and a single
+  // table keeps working whatever its table_id is.
+  for (const auto& name : table_name) {
+    if (!owner_table_.empty() && name != owner_table_) {
+      throw std::runtime_error(
+          "AdamW supports one table per parameter server: '" + owner_table_ +
+          "' is already registered, so '" + name +
+          "' would share its parameter/moment/step keys (RecStore issue #400)");
+    }
   }
   for (const auto& name : table_name) {
     const std::vector<uint64_t> shape = {
@@ -653,6 +657,9 @@ int AdamW::Init(const std::vector<std::string> table_name,
     step_tensor->init(
         mutable_step_name, MOMENT_1, MOMENT_1, step_shape, base_kv);
     tensor_map_[step_name] = step_tensor;
+  }
+  if (owner_table_.empty() && !table_name.empty()) {
+    owner_table_ = table_name.front();
   }
   return static_cast<int>(PARAMETER);
 }
