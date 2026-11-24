@@ -918,6 +918,11 @@ int RcShardServerTransport::SlotIndex(
   return GlobalSlotIndex(config_, client_id, qp_index, slot_in_qp);
 }
 
+int RcShardServerTransport::SlotIndexUnchecked(
+    int client_id, int qp_index, int slot_in_qp) const {
+  return GlobalSlotIndex(config_, client_id, qp_index, slot_in_qp);
+}
+
 void RcShardServerTransport::DecodeSlotIndex(
     int slot_index, int* client_id, int* qp_index, int* slot_in_qp) const {
   if (slot_index < 0 || slot_index >= TotalSlots()) {
@@ -947,6 +952,13 @@ char* RcShardServerTransport::RequestPayloadAt(int slot_index) const {
 CommitWord* RcShardServerTransport::RequestCommitAt(int slot_index) const {
   return reinterpret_cast<CommitWord*>(
       static_cast<char*>(RequestSlot(slot_index)) +
+      RequestCommitOffset(config_));
+}
+
+CommitWord*
+RcShardServerTransport::RequestCommitAtUnchecked(int slot_index) const {
+  return reinterpret_cast<CommitWord*>(
+      static_cast<char*>(request_slots_[static_cast<std::size_t>(slot_index)]) +
       RequestCommitOffset(config_));
 }
 
