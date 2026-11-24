@@ -115,7 +115,9 @@ TEST(AdamWTest, MatchesTwoStepBiasCorrectedFormulaAndPersistsState) {
     EXPECT_NEAR(actual[i], expected[i], 1e-6);
   }
   EXPECT_FLOAT_EQ(
-      kv.ReadFloats(TaggedKey(step_key, static_cast<TAG_TYPE>(MOMENT_1)))[0],
+      kv.ReadFloats(TaggedKey(
+          step_key,
+          MakeTensorTag(0, AdamW::kTensorStep, AdamW::kTensorsPerTable)))[0],
       1.0f);
 
   // Recreating the optimizer models a PS restart after its KV checkpoint is
@@ -139,18 +141,111 @@ TEST(AdamWTest, MatchesTwoStepBiasCorrectedFormulaAndPersistsState) {
     EXPECT_NEAR(actual[i], expected[i], 1e-6);
   }
   EXPECT_FLOAT_EQ(
-      kv.ReadFloats(TaggedKey(step_key, static_cast<TAG_TYPE>(MOMENT_1)))[0],
+      kv.ReadFloats(TaggedKey(
+          step_key,
+          MakeTensorTag(0, AdamW::kTensorStep, AdamW::kTensorsPerTable)))[0],
       2.0f);
 }
 
-TEST(AdamWTest, RejectsSecondDistinctTableUntilKeysAreNamespaced) {
+TEST(AdamWTest, KeepsTablesWithDistinctIdsInSeparateKeySpaces) {
+  constexpr int64_t embedding_dim = 2;
+  constexpr uint64_t key          = 7;
+  constexpr uint64_t step_key     = (std::numeric_limits<uint64_t>::max() >> 8);
+
+  InMemoryKV kv;
+  AdamW optimizer(0.001f, 0.9f, 0.98f, 1e-8f, 0.1f);
+  EmbeddingTableConfig first{16, embedding_dim};
+  EmbeddingTableConfig second{16, embedding_dim};
+  second.table_id      = 1;
+  const auto first_tag = MakeTensorTag(
+      first.table_id, AdamW::kTensorParameter, AdamW::kTensorsPerTable);
+  const auto second_tag = MakeTensorTag(
+      second.table_id, AdamW::kTensorParameter, AdamW::kTensorsPerTable);
+  ASSERT_EQ(optimizer.Init({"first"}, first, &kv), static_cast<int>(first_tag));
+  ASSERT_EQ(optimizer.Init({"second"}, second, &kv),
+            static_cast<int>(second_tag));
+
+  const std::vector<uint64_t> first_keys{TaggedKey(key, first_tag)};
+  const std::vector<float> first_grad{1.0f, 1.0f};
+  optimizer.UpdateFlat(
+      "first", first_keys, first_grad.data(), 1, embedding_dim, 0);
+  const std::vector<uint64_t> second_keys{TaggedKey(key, second_tag)};
+  const std::vector<float> second_grad{-2.0f, -2.0f};
+  optimizer.UpdateFlat(
+      "second", second_keys, second_grad.data(), 1, embedding_dim, 0);
+
+  // Same row id and same step: each table owns its own parameter, moments and
+  // step counter.
+  const auto first_param  = kv.ReadFloats(TaggedKey(key, first_tag));
+  const auto second_param = kv.ReadFloats(TaggedKey(key, second_tag));
+  ASSERT_EQ(first_param.size(), embedding_dim);
+  ASSERT_EQ(second_param.size(), embedding_dim);
+  EXPECT_NE(first_param[0], second_param[0]);
+  EXPECT_NE(first_param[1], second_param[1]);
+  // Moments live in their own per-table tags as well.
+  const auto first_moment  = kv.ReadFloats(TaggedKey(
+      key,
+      MakeTensorTag(0, AdamW::kTensorFirstMoment, AdamW::kTensorsPerTable)));
+  const auto second_moment = kv.ReadFloats(TaggedKey(
+      key,
+      MakeTensorTag(1, AdamW::kTensorFirstMoment, AdamW::kTensorsPerTable)));
+  ASSERT_EQ(first_moment.size(), embedding_dim);
+  ASSERT_EQ(second_moment.size(), embedding_dim);
+  EXPECT_NEAR(first_moment[0], 0.1f, 1e-6);
+  EXPECT_NEAR(second_moment[0], -0.2f, 1e-6);
+  EXPECT_FLOAT_EQ(
+      kv.ReadFloats(TaggedKey(
+          step_key,
+          MakeTensorTag(0, AdamW::kTensorStep, AdamW::kTensorsPerTable)))[0],
+      1.0f);
+  EXPECT_FLOAT_EQ(
+      kv.ReadFloats(TaggedKey(
+          step_key,
+          MakeTensorTag(1, AdamW::kTensorStep, AdamW::kTensorsPerTable)))[0],
+      1.0f);
+}
+
+TEST(AdamWTest, RejectsSecondNameSharingOneTableId) {
   InMemoryKV kv;
   AdamW optimizer(0.001f, 0.9f, 0.98f, 1e-8f, 0.1f);
   optimizer.Init({"table_a"}, EmbeddingTableConfig{16, 2}, &kv);
-  // The tag carries no table_id, so the second table would map its parameter,
-  // moments and step onto the same keys as the first.
+  // Two names under one table_id would still map onto the same tags.
   EXPECT_THROW(optimizer.Init({"table_b"}, EmbeddingTableConfig{16, 2}, &kv),
                std::runtime_error);
+}
+
+TEST(AdamWTest, RejectsTableIdThatOverflowsTheEightBitTag) {
+  InMemoryKV kv;
+  AdamW optimizer(0.001f, 0.9f, 0.98f, 1e-8f, 0.1f);
+  EmbeddingTableConfig last{16, 2};
+  last.table_id = 63;
+  // 63 * 4 + 3 == 255, the last tag the 8-bit key layout can address.
+  EXPECT_EQ(optimizer.Init({"last"}, last, &kv),
+            static_cast<int>(MakeTensorTag(63, 0, 4)));
+
+  EmbeddingTableConfig overflow{16, 2};
+  overflow.table_id = 64;
+  // The tag must fail loudly instead of wrapping around to table 0.
+  EXPECT_THROW(optimizer.Init({"overflow"}, overflow, &kv), std::runtime_error);
+}
+
+TEST(AdamWTest, RejectsClientKeysTaggedForAnotherTable) {
+  InMemoryKV kv;
+  AdamW optimizer(0.001f, 0.9f, 0.98f, 1e-8f, 0.1f);
+  EmbeddingTableConfig config{16, 2};
+  config.table_id = 1;
+  const auto table_tag =
+      MakeTensorTag(1, AdamW::kTensorParameter, AdamW::kTensorsPerTable);
+  const auto foreign_tag =
+      MakeTensorTag(2, AdamW::kTensorParameter, AdamW::kTensorsPerTable);
+  const std::vector<float> grad{1.0f, 1.0f};
+  optimizer.Init({"table"}, config, &kv);
+  const std::vector<uint64_t> keys{TaggedKey(7, foreign_tag)};
+  EXPECT_THROW(optimizer.UpdateFlat("table", keys, grad.data(), 1, 2, 0),
+               std::runtime_error);
+  const std::vector<uint64_t> own_keys{TaggedKey(7, table_tag)};
+  EXPECT_NO_THROW(
+      optimizer.UpdateFlat("table", own_keys, grad.data(), 1, 2, 0));
 }
 
 TEST(AdamWTest, AllowsSingleTableWithNonZeroTableId) {
@@ -158,9 +253,11 @@ TEST(AdamWTest, AllowsSingleTableWithNonZeroTableId) {
   AdamW optimizer(0.001f, 0.9f, 0.98f, 1e-8f, 0.1f);
   EmbeddingTableConfig config{16, 2};
   config.table_id = 5;
-  // A single fused table may be registered under any backend table id; only a
-  // second table would collide.
-  EXPECT_NO_THROW(optimizer.Init({"fused"}, config, &kv));
+  // A fused table may be registered under any backend table id; the returned
+  // parameter tag carries it.
+  EXPECT_EQ(optimizer.Init({"fused"}, config, &kv),
+            static_cast<int>(MakeTensorTag(
+                5, AdamW::kTensorParameter, AdamW::kTensorsPerTable)));
 }
 
 TEST(AdamWTest, AllowsReRegisteringTheSameTable) {
