@@ -200,13 +200,16 @@ ResolveEmbeddedRdmaClientIdentity(int num_shards, int configured_num_clients) {
 }
 
 std::vector<RDMAPSClientAdapter::ShardChunk> RDMAPSClientAdapter::BuildChunks(
-    base::ConstArray<uint64_t> keys, std::size_t max_keys_per_rpc) const {
+    base::ConstArray<uint64_t> keys,
+    std::size_t max_keys_per_rpc,
+    bool interleave) const {
   return shard_routing::BuildChunks(
       keys,
       deployment_.num_shards,
       deployment_.hash_method,
       deployment_.shard_to_endpoint_index,
-      max_keys_per_rpc);
+      max_keys_per_rpc,
+      interleave);
 }
 
 void InitializeRdmaProcessRuntime() {
@@ -452,7 +455,9 @@ int RDMAPSClientAdapter::SubmitGetParameter(
   const int value_size =
       static_cast<int>(static_cast<std::size_t>(embedding_dim) * sizeof(float));
   return executor_->SubmitGetParameter(
-      BuildChunks(keys, MaxGetKeysPerRpc(embedding_dim)),
+      BuildChunks(keys,
+                  MaxGetKeysPerRpc(embedding_dim),
+                  /*interleave=*/true),
       keys.Size(),
       value_size,
       values,
@@ -513,7 +518,9 @@ bool RDMAPSClientAdapter::GetParameterFlatWithFound(
   // The per-shard chunks ask for masks; the executor scatters each chunk's
   // mask back into `found` at the caller's original key positions.
   const int rpc_id = executor_->SubmitGetParameter(
-      BuildChunks(keys, MaxGetKeysPerRpc(embedding_dim, /*with_found=*/true)),
+      BuildChunks(keys,
+                  MaxGetKeysPerRpc(embedding_dim, /*with_found=*/true),
+                  /*interleave=*/true),
       keys.Size(),
       value_size,
       values,
@@ -773,7 +780,10 @@ RDMAPSClientAdapter::PrefetchParameter(const base::ConstArray<uint64_t>& keys) {
   const int64_t embedding_dim = EmbeddingDimForKeys(keys);
   const int value_size =
       static_cast<int>(static_cast<std::size_t>(embedding_dim) * sizeof(float));
-  const auto chunks = BuildChunks(keys, MaxGetKeysPerRpc(embedding_dim));
+  const auto chunks = BuildChunks(
+      keys,
+      MaxGetKeysPerRpc(embedding_dim),
+      /*interleave=*/true);
   const std::size_t max_in_flight = MaxInFlightGetRpcs();
   if (!executor_->HasGetSlotCapacity(chunks, max_in_flight)) {
     executor_->DrainBatchSlots();

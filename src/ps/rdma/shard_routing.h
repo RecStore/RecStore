@@ -80,12 +80,13 @@ PartitionKey(uint64_t key, int num_shards, const std::string& hash_method) {
 }
 
 // Splits keys into per-shard chunks, each no larger than max_keys_per_rpc.
-inline std::vector<ShardChunk>
-BuildChunks(base::ConstArray<uint64_t> keys,
-            int num_shards,
-            const std::string& hash_method,
-            const std::unordered_map<int, int>& shard_to_client_index,
-            std::size_t max_keys_per_rpc) {
+inline std::vector<ShardChunk> BuildChunks(
+    base::ConstArray<uint64_t> keys,
+    int num_shards,
+    const std::string& hash_method,
+    const std::unordered_map<int, int>& shard_to_client_index,
+    std::size_t max_keys_per_rpc,
+    bool interleave = false) {
   if (max_keys_per_rpc == 0) {
     throw std::invalid_argument("max_keys_per_rpc must be positive");
   }
@@ -102,25 +103,53 @@ BuildChunks(base::ConstArray<uint64_t> keys,
     shard_positions[static_cast<std::size_t>(shard)].push_back(i);
   }
 
-  std::vector<ShardChunk> chunks;
+  std::vector<std::vector<ShardChunk>> chunks_by_shard(num_shards);
+  std::size_t total_chunks = 0;
+  std::size_t max_chunks   = 0;
   for (int shard = 0; shard < num_shards; ++shard) {
-    const int client_index = shard_to_client_index.at(shard);
-    for (std::size_t offset = 0;
-         offset < shard_keys[static_cast<std::size_t>(shard)].size();
+    const int client_index     = shard_to_client_index.at(shard);
+    const auto& keys_for_shard = shard_keys[static_cast<std::size_t>(shard)];
+    const auto& positions_for_shard =
+        shard_positions[static_cast<std::size_t>(shard)];
+    auto& shard_chunks = chunks_by_shard[static_cast<std::size_t>(shard)];
+    shard_chunks.reserve(
+        (keys_for_shard.size() + max_keys_per_rpc - 1) / max_keys_per_rpc);
+    for (std::size_t offset = 0; offset < keys_for_shard.size();
          offset += max_keys_per_rpc) {
       const std::size_t end =
-          std::min(offset + max_keys_per_rpc,
-                   shard_keys[static_cast<std::size_t>(shard)].size());
+          std::min(offset + max_keys_per_rpc, keys_for_shard.size());
       ShardChunk chunk;
       chunk.shard_id     = shard;
       chunk.client_index = client_index;
       chunk.keys.assign(
-          shard_keys[static_cast<std::size_t>(shard)].begin() + offset,
-          shard_keys[static_cast<std::size_t>(shard)].begin() + end);
-      chunk.positions.assign(
-          shard_positions[static_cast<std::size_t>(shard)].begin() + offset,
-          shard_positions[static_cast<std::size_t>(shard)].begin() + end);
-      chunks.push_back(std::move(chunk));
+          keys_for_shard.begin() + offset, keys_for_shard.begin() + end);
+      chunk.positions.assign(positions_for_shard.begin() + offset,
+                             positions_for_shard.begin() + end);
+      shard_chunks.push_back(std::move(chunk));
+    }
+    total_chunks += shard_chunks.size();
+    max_chunks = std::max(max_chunks, shard_chunks.size());
+  }
+
+  std::vector<ShardChunk> chunks;
+  chunks.reserve(total_chunks);
+  if (!interleave) {
+    for (auto& shard_chunks : chunks_by_shard) {
+      for (auto& chunk : shard_chunks) {
+        chunks.push_back(std::move(chunk));
+      }
+    }
+    return chunks;
+  }
+
+  // Keep one request per shard in the submission window instead of filling it
+  // with the first shard's chunks. The executor can then overlap shards even
+  // when a single shard has more chunks than the window capacity.
+  for (std::size_t round = 0; round < max_chunks; ++round) {
+    for (auto& shard_chunks : chunks_by_shard) {
+      if (round < shard_chunks.size()) {
+        chunks.push_back(std::move(shard_chunks[round]));
+      }
     }
   }
   return chunks;

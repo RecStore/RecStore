@@ -91,8 +91,10 @@ private:
   MaxGetKeysPerRpc(int64_t embedding_dim, bool with_found = false) const;
   std::size_t MaxPutKeysPerRpc(int64_t embedding_dim) const;
   std::size_t MaxInFlightGetRpcs() const;
-  std::vector<ShardChunk> BuildChunks(base::ConstArray<uint64_t> keys,
-                                      std::size_t max_keys_per_rpc) const;
+  std::vector<ShardChunk>
+  BuildChunks(base::ConstArray<uint64_t> keys,
+              std::size_t max_keys_per_rpc,
+              bool interleave = false) const;
   int SubmitGetParameter(
       base::ConstArray<uint64_t> keys,
       float* values,
