@@ -29,6 +29,7 @@
 #include "storage/index/dram/unordered_map_index.h"
 #include "storage/index/utils/hash.h"
 #include "storage/kv_engine/base_kv.h"
+#include "storage/kv_engine/checkpoint_format.h"
 #include "storage/value_store/dram_value_store.h"
 #include "storage/value_store/hybrid_value_store.h"
 #include "storage/value_store/ssd_value_store.h"
@@ -2193,11 +2194,12 @@ private:
     }
   }
 
-  inline static constexpr std::array<char, 8> kCheckpointMagic = {
-      'R', 'S', 'K', 'V', 'C', 'P', '0', '1'};
-  inline static constexpr uint32_t kCheckpointVersion = 3;
+  inline static constexpr std::array<char, 8> kCheckpointMagic =
+      recstore::checkpoint_format::kMagic;
+  inline static constexpr uint32_t kCheckpointVersion =
+      recstore::checkpoint_format::kVersion;
   inline static constexpr uint64_t kCheckpointChecksumSeed =
-      0x9e3779b97f4a7c15ULL;
+      recstore::checkpoint_format::kChecksumSeed;
 
   BaseKVConfig config_;
   std::unique_ptr<Index> index_;

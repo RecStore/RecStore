@@ -602,15 +602,6 @@ void RowWiseAdaGrad::UpdateFlat(
   }
 }
 
-namespace {
-
-// The step is stored as a tagged scalar in its own table. The id only has to
-// stay away from normal embedding ids (the top 8 bits are the tag); the table
-// tag keeps it apart from the parameter and moment rows.
-constexpr uint64_t kAdamWStepKey = (std::numeric_limits<uint64_t>::max() >> 8);
-
-} // namespace
-
 int AdamW::Init(const std::vector<std::string> table_name,
                 const EmbeddingTableConfig& config,
                 BaseKV* base_kv) {
@@ -734,7 +725,7 @@ void AdamW::UpdateRows(
   }
 
   std::string step_value;
-  step_it->second->Get(kAdamWStepKey, step_value, tid);
+  step_it->second->Get(AdamW::kStepKey, step_value, tid);
   float step =
       step_value.empty() ? 0.0f : base::ConstArray<float>(step_value).Data()[0];
   step += 1.0f;
@@ -814,5 +805,5 @@ void AdamW::UpdateRows(
   }
   const std::string next_step(
       reinterpret_cast<const char*>(&step), sizeof(float));
-  step_it->second->Put(kAdamWStepKey, next_step, tid);
+  step_it->second->Put(AdamW::kStepKey, next_step, tid);
 }

@@ -12,6 +12,7 @@ endif()
 
 
 add_subdirectory(base)
+add_subdirectory(checkpoint)
 add_subdirectory(proto)
 add_subdirectory(grpc)
 add_subdirectory(brpc)
