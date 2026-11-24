@@ -61,6 +61,9 @@ TENSORS_PER_TABLE = 4
 PORT_MAP = {15000: 15200, 15001: 15201}
 
 TABLES = {
+    # table_id 0 keeps tag 0, so its keys stay byte-identical to the old
+    # untagged layout: deployments that never saw a tag keep working.
+    "t_adamw_zero": {"table_id": 0, "initial": 0.5, "grad_scale": 0.75},
     "t_adamw_a": {"table_id": 1, "initial": 1.0, "grad_scale": 1.0},
     "t_adamw_b": {"table_id": 2, "initial": -1.0, "grad_scale": -0.5},
 }
@@ -176,7 +179,8 @@ def save_phase(run_dir: Path) -> None:
         assert error < 1e-5, f"{name}: after 3 updates max_abs={error}"
         print(f"AFTER_3_UPDATES={name} max_abs={error:.3e}")
 
-    first, second = list(TABLES)
+    names = list(TABLES)
+    first, second = names[0], names[1]
     overlap = _max_abs(
         client.pull(first, KEYS), client.pull(second, KEYS)
     )
