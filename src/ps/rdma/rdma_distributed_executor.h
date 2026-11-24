@@ -109,9 +109,9 @@ private:
   PendingPrefetch GetPrefetch(std::uint64_t prefetch_id) const;
   void ErasePrefetch(std::uint64_t prefetch_id);
   int WaitUpdateRpcs(std::vector<std::pair<int, int>>* shard_rpcs) const;
-  // Chunk response buffers are handed out per shard RPC and are always fully
-  // written by the server (payload for hits, registered zero rows for misses)
-  // before status reports kOk, so a pooled buffer needs no zero-fill.
+  // Async chunk response buffers are handed out per shard RPC and are always
+  // fully written by the server (payload for hits, registered zero rows for
+  // misses) before status reports kOk, so a pooled buffer needs no zero-fill.
   std::vector<char> AcquireReceiveBuffer(std::size_t bytes) const;
   void RecycleReceiveBuffers(std::vector<std::vector<char>>* buffers) const;
 

@@ -167,24 +167,37 @@ DecodeBatchStatus(const BatchRequest& batch, int value_size) {
   return static_cast<std::int32_t>(petps::RpcStatus::kOk);
 }
 
-inline void MergeBatchRows(BatchRequest* batch, int value_size) {
+inline void MergePendingRows(
+    const PendingShardRpc& pending,
+    const float* shard_values,
+    float* user_buffer,
+    std::uint8_t* user_found,
+    int value_size) {
   const int embedding_dim = value_size / sizeof(float);
-  for (const auto& pending : batch->shard_rpcs) {
-    const float* shard_values = static_cast<const float*>(pending.recv_buffer);
-    const std::uint8_t* shard_found =
-        pending.with_found
-            ? petps::FixedSlotFoundMask(
-                  pending.recv_buffer, pending.key_count, value_size)
-            : nullptr;
-    for (std::size_t i = 0; i < pending.original_positions.size(); ++i) {
-      const std::size_t position = pending.original_positions[i];
-      std::memcpy(batch->user_buffer + position * embedding_dim,
-                  shard_values + i * embedding_dim,
-                  value_size);
-      if (batch->with_found) {
-        batch->user_found[position] = shard_found[i];
-      }
+  const std::uint8_t* shard_found =
+      pending.with_found
+          ? petps::FixedSlotFoundMask(
+                shard_values, pending.key_count, value_size)
+          : nullptr;
+  for (std::size_t i = 0; i < pending.original_positions.size(); ++i) {
+    const std::size_t position = pending.original_positions[i];
+    std::memcpy(user_buffer + position * embedding_dim,
+                shard_values + i * embedding_dim,
+                value_size);
+    if (user_found != nullptr) {
+      user_found[position] = shard_found[i];
     }
+  }
+}
+
+inline void MergeBatchRows(BatchRequest* batch, int value_size) {
+  for (const auto& pending : batch->shard_rpcs) {
+    MergePendingRows(
+        pending,
+        static_cast<const float*>(pending.recv_buffer),
+        batch->user_buffer,
+        batch->user_found,
+        value_size);
   }
 }
 
