@@ -1088,7 +1088,10 @@ public:
       return false;
     }
     if (metadata != expected_metadata) {
-      LOG(ERROR) << "Checkpoint metadata mismatch: " << file;
+      // Print both sides: after an optimizer key-layout change the stored
+      // metadata lacks the new marker, and a bare "mismatch" hides why.
+      LOG(ERROR) << "Checkpoint metadata mismatch: " << file << " (stored="
+                 << metadata << " expected=" << expected_metadata << ")";
       return false;
     }
     const ValueStore::LayoutId layout_id = value_store_->GetLayoutId();

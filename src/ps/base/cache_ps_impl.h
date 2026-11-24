@@ -24,6 +24,7 @@
 #include "storage/kv_engine/engine_selector.h"
 #include "optimizer/optimizer.h"
 #include "ps/local_shm/local_shm_stage_report.h"
+#include "ps/base/checkpoint_restore.h"
 #include "ps/base/sparse_gradient_commit.h"
 
 #ifdef ENABLE_PERF_REPORT
@@ -140,27 +141,17 @@ public:
   }
 
   // Validate client-supplied checkpoint metadata and bind it to this shard.
-  // Transports share this so the accepted payload and the injected shard_id
-  // cannot drift apart.
+  // Transports share this so the accepted payload, the key-layout marker, and
+  // the injected shard_id cannot drift apart.
   static bool PrepareCheckpointMetadata(
       const std::string& metadata,
       int shard_id,
       std::string* bound_metadata,
       std::string* error) {
     try {
-      json parsed = json::parse(metadata);
-      if (!parsed.is_object() || !parsed.contains("identity") ||
-          !parsed["identity"].is_object() ||
-          !parsed.contains("checkpoint_id") ||
-          !parsed["checkpoint_id"].is_string() ||
-          parsed["checkpoint_id"].get<std::string>().empty()) {
-        *error = "invalid checkpoint metadata";
-        return false;
-      }
-      parsed["shard_id"] = shard_id;
-      *bound_metadata    = parsed.dump();
+      *bound_metadata = recstore::BindCheckpointMetadata(metadata, shard_id);
       return true;
-    } catch (const json::exception& e) {
+    } catch (const std::exception& e) {
       *error = e.what();
       return false;
     }

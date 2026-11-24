@@ -129,9 +129,10 @@ private:
   float beta2_;
   float epsilon_;
   float weight_decay_;
-  // #400: AdamW tags its tensors with the role only, so only one table may
-  // own the key space until the tag carries table_id.
-  std::string owner_table_;
+  // #400: each tensor tag encodes table_id, so tables only share keys when they
+  // were registered under the same backend table_id. Rejecting that keeps a
+  // misconfiguration from silently merging two tables' optimizer state.
+  std::unordered_map<uint64_t, std::string> table_id_owners_;
 
   void UpdateRows(const std::string& table,
                   const uint64_t* keys,
@@ -141,6 +142,18 @@ private:
                   unsigned tid);
 
 public:
+  // Roles index into MakeTensorTag(table_id, role, kTensorsPerTable). The
+  // values are part of the checkpoint key layout: changing them requires
+  // bumping kCheckpointOptimizerLayout.
+  enum TensorRole : int {
+    kTensorParameter    = 0,
+    kTensorFirstMoment  = 1,
+    kTensorSecondMoment = 2,
+    kTensorStep         = 3,
+  };
+  static constexpr int kTensorsPerTable = 4;
+  static_assert(kTensorStep + 1 == kTensorsPerTable,
+                "AdamW roles must cover every tensor of the table");
   explicit AdamW(float lr           = 0.001,
                  float beta1        = 0.9,
                  float beta2        = 0.98,
@@ -156,7 +169,7 @@ public:
   int Init(const std::vector<std::string> table_name,
            const EmbeddingTableConfig& config,
            BaseKV* base_kv) override;
-  int TensorsPerTable() const override { return 4; }
+  int TensorsPerTable() const override { return kTensorsPerTable; }
   void Update(std::string table,
               const ParameterCompressReader* reader,
               unsigned tid) override;

@@ -56,5 +56,40 @@ TEST(CheckpointRestoreConfigTest, RejectsNonObjectBlock) {
   EXPECT_THROW(ParseCheckpointRestoreConfig(cache_ps), std::invalid_argument);
 }
 
+TEST(CheckpointMetadataTest, BindsShardIdAndOptimizerLayout) {
+  const std::string metadata =
+      R"({"checkpoint_id":"step-00000007","identity":{"table":{"name":"t_a"}}})";
+
+  const auto bound = nlohmann::json::parse(BindCheckpointMetadata(metadata, 3));
+
+  EXPECT_EQ(bound["shard_id"], 3);
+  EXPECT_EQ(bound["optimizer_layout"], kCheckpointOptimizerLayout);
+  EXPECT_EQ(bound["checkpoint_id"], "step-00000007");
+}
+
+TEST(CheckpointMetadataTest, OverridesClientClaimedOptimizerLayout) {
+  const std::string metadata =
+      R"({"checkpoint_id":"step-00000007","identity":{"table":"t_a"},)"
+      R"("optimizer_layout":99})";
+
+  const auto bound = nlohmann::json::parse(BindCheckpointMetadata(metadata, 0));
+
+  EXPECT_EQ(bound["optimizer_layout"], kCheckpointOptimizerLayout);
+}
+
+TEST(CheckpointMetadataTest, RejectsMissingIdentityOrCheckpointId) {
+  EXPECT_THROW(BindCheckpointMetadata(R"({"identity":{"table":"t_a"}})", 0),
+               std::invalid_argument);
+  EXPECT_THROW(
+      BindCheckpointMetadata(R"({"checkpoint_id":"x","identity":1})", 0),
+      std::invalid_argument);
+  EXPECT_THROW(
+      BindCheckpointMetadata(R"({"checkpoint_id":"","identity":{}})", 0),
+      std::invalid_argument);
+  EXPECT_THROW(
+      BindCheckpointMetadata(R"({"checkpoint_id":"x","identity":{}})", -1),
+      std::invalid_argument);
+}
+
 } // namespace
 } // namespace recstore

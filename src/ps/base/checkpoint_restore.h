@@ -10,6 +10,33 @@
 
 namespace recstore {
 
+// Key layout the optimizer writes into the KV engine. Bump it whenever a tensor
+// tag or key encoding changes: a shard written under another layout is refused
+// at load time, because its optimizer slots would otherwise be read as missing
+// rows and re-initialised from zero.
+inline constexpr int kCheckpointOptimizerLayout = 1;
+
+// Validate client-supplied checkpoint metadata and bind it to this shard. The
+// layout marker is server-authoritative: a client cannot claim a layout, and a
+// shard without the marker predates the current key layout.
+inline std::string
+BindCheckpointMetadata(const std::string& metadata, int shard_id) {
+  nlohmann::json parsed = nlohmann::json::parse(metadata);
+  if (!parsed.is_object() || !parsed.contains("identity") ||
+      !parsed["identity"].is_object() || !parsed.contains("checkpoint_id") ||
+      !parsed["checkpoint_id"].is_string() ||
+      parsed["checkpoint_id"].get<std::string>().empty()) {
+    throw std::invalid_argument(
+        "checkpoint metadata requires identity and non-empty checkpoint_id");
+  }
+  if (shard_id < 0) {
+    throw std::invalid_argument("checkpoint shard_id must be non-negative");
+  }
+  parsed["optimizer_layout"] = kCheckpointOptimizerLayout;
+  parsed["shard_id"]         = shard_id;
+  return parsed.dump();
+}
+
 struct CheckpointRestoreConfig {
   // Directory holding a committed manifest.json plus one file per shard.
   // Empty disables startup restore.
