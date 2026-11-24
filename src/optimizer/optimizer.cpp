@@ -604,8 +604,9 @@ void RowWiseAdaGrad::UpdateFlat(
 
 namespace {
 
-// The step is stored as a tagged scalar in its own table.  Keep its key away
-// from normal embedding ids (the top 8 bits are reserved for TensorType).
+// The step is stored as a tagged scalar in its own table. The id only has to
+// stay away from normal embedding ids (the top 8 bits are the tag); the table
+// tag keeps it apart from the parameter and moment rows.
 constexpr uint64_t kAdamWStepKey = (std::numeric_limits<uint64_t>::max() >> 8);
 
 } // namespace
@@ -613,55 +614,59 @@ constexpr uint64_t kAdamWStepKey = (std::numeric_limits<uint64_t>::max() >> 8);
 int AdamW::Init(const std::vector<std::string> table_name,
                 const EmbeddingTableConfig& config,
                 BaseKV* base_kv) {
-  // #400: every tensor below is tagged with its role only, so the tag is the
-  // upper key byte and all tables share one key space. Reject a second
-  // distinct table until the tags carry table_id (needs a TAG_TYPE width
-  // decision). Re-registering the same table stays allowed, and a single
-  // table keeps working whatever its table_id is.
+  // Compute the tags first so an overflowing table_id fails before it claims
+  // anything.
+  const TAG_TYPE param_tag = MakeTensorTag(
+      config.table_id, AdamW::kTensorParameter, AdamW::kTensorsPerTable);
+  const TAG_TYPE first_moment_tag = MakeTensorTag(
+      config.table_id, AdamW::kTensorFirstMoment, AdamW::kTensorsPerTable);
+  const TAG_TYPE second_moment_tag = MakeTensorTag(
+      config.table_id, AdamW::kTensorSecondMoment, AdamW::kTensorsPerTable);
+  const TAG_TYPE step_tag = MakeTensorTag(
+      config.table_id, AdamW::kTensorStep, AdamW::kTensorsPerTable);
+
+  // #400: the tags carry table_id, so two tables only collide when they are
+  // registered under the same backend table_id. Reject that instead of letting
+  // one table overwrite the other's parameter, moments and step.
   for (const auto& name : table_name) {
-    if (!owner_table_.empty() && name != owner_table_) {
+    const auto owner = table_id_owners_.find(config.table_id);
+    if (owner == table_id_owners_.end()) {
+      table_id_owners_.emplace(config.table_id, name);
+    } else if (owner->second != name) {
       throw std::runtime_error(
-          "AdamW supports one table per parameter server: '" + owner_table_ +
-          "' is already registered, so '" + name +
+          "AdamW table_id " + std::to_string(config.table_id) +
+          " is already registered as '" + owner->second + "', so '" + name +
           "' would share its parameter/moment/step keys (RecStore issue #400)");
     }
   }
+
   for (const auto& name : table_name) {
-    const std::vector<uint64_t> shape = {
-        config.num_embeddings, config.embedding_dim};
-    auto* param_tensor = new SparseTensor();
-    auto mutable_name  = name;
-    auto mutable_shape = shape;
-    param_tensor->init(
-        mutable_name, PARAMETER, PARAMETER, mutable_shape, base_kv);
-    tensor_map_[name] = param_tensor;
-
-    auto* first_moment           = new SparseTensor();
-    const std::string first_name = name + "_adamw_m";
-    auto mutable_first_name      = first_name;
-    first_moment->init(
-        mutable_first_name, MOMENT_1, MOMENT_1, mutable_shape, base_kv);
-    tensor_map_[first_name] = first_moment;
-
-    auto* second_moment           = new SparseTensor();
-    const std::string second_name = name + "_adamw_v";
-    auto mutable_second_name      = second_name;
-    second_moment->init(
-        mutable_second_name, MOMENT_2, MOMENT_2, mutable_shape, base_kv);
-    tensor_map_[second_name] = second_moment;
-
-    auto* step_tensor                = new SparseTensor();
-    const std::string step_name      = name + "_adamw_step";
-    auto mutable_step_name           = step_name;
+    std::vector<uint64_t> shape = {config.num_embeddings, config.embedding_dim};
+    InitOrReuseTensor(&tensor_map_, name, PARAMETER, param_tag, shape, base_kv);
+    InitOrReuseTensor(
+        &tensor_map_,
+        name + "_adamw_m",
+        MOMENT_1,
+        first_moment_tag,
+        shape,
+        base_kv);
+    InitOrReuseTensor(
+        &tensor_map_,
+        name + "_adamw_v",
+        MOMENT_2,
+        second_moment_tag,
+        shape,
+        base_kv);
     std::vector<uint64_t> step_shape = {1, 1};
-    step_tensor->init(
-        mutable_step_name, MOMENT_1, MOMENT_1, step_shape, base_kv);
-    tensor_map_[step_name] = step_tensor;
+    InitOrReuseTensor(
+        &tensor_map_,
+        name + "_adamw_step",
+        MOMENT_1,
+        step_tag,
+        step_shape,
+        base_kv);
   }
-  if (owner_table_.empty() && !table_name.empty()) {
-    owner_table_ = table_name.front();
-  }
-  return static_cast<int>(PARAMETER);
+  return static_cast<int>(param_tag);
 }
 
 void AdamW::Update(
@@ -721,6 +726,11 @@ void AdamW::UpdateRows(
   if (param_it == tensor_map_.end() || first_it == tensor_map_.end() ||
       second_it == tensor_map_.end() || step_it == tensor_map_.end()) {
     throw std::runtime_error("AdamW state table not found for table " + table);
+  }
+  // Client keys must already name this table; otherwise a mis-tagged update
+  // would write another table's rows into this one's key space.
+  if (num_rows > 0) {
+    CheckUpdateKeyTag(keys[0], param_it->second->Tag(), table);
   }
 
   std::string step_value;

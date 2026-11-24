@@ -140,10 +140,15 @@ inline bool RestoreCheckpointOnStartup(
       return false;
     }
 
-    json metadata = {{"checkpoint_id", manifest["checkpoint_id"]},
-                     {"identity", manifest["identity"]},
-                     {"shard_id", shard_id}};
-    if (!cache_ps->LoadCheckpoint(file_path.string(), metadata.dump())) {
+    // Same binding as the SAVE/LOAD RPC path, so a shard written under a
+    // different optimizer key layout fails here instead of restoring with its
+    // optimizer slots treated as missing rows.
+    const std::string metadata = BindCheckpointMetadata(
+        json{{"checkpoint_id", manifest["checkpoint_id"]},
+             {"identity", manifest["identity"]}}
+            .dump(),
+        shard_id);
+    if (!cache_ps->LoadCheckpoint(file_path.string(), metadata)) {
       *error = "checkpoint load failed: " + file_path.string();
       return false;
     }

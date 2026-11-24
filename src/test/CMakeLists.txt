@@ -317,6 +317,27 @@ set_tests_properties(
     ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/src/python/pytorch;PYTHONDONTWRITEBYTECODE=1"
 )
 
+# #400 regression: two AdamW tables with distinct table_id must keep separate
+# parameter/moment/step rows, and a checkpoint restart must bring back each
+# table's state and step counter (bias correction at step 4, not step 1).
+add_test(
+    NAME recstore_adamw_multi_table_restart_smoke
+    COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/src/test/scripts/adamw_multi_table_restart_smoke.py
+        --base-config ${PROJECT_SOURCE_DIR}/recstore_config.json
+        --run-dir ${CMAKE_CURRENT_BINARY_DIR}/adamw_multi_table_restart_smoke
+        --ps-binary $<TARGET_FILE:grpc_ps_server>
+)
+set_tests_properties(
+    recstore_adamw_multi_table_restart_smoke
+    PROPERTIES
+    LABELS "ps_integration;checkpoint;adamw"
+    TIMEOUT 180
+    RUN_SERIAL TRUE
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/src/python/pytorch;PYTHONDONTWRITEBYTECODE=1"
+)
+
 add_executable(test_petkv_unsupported test_petkv_unsupported.cpp)
 target_link_libraries(test_petkv_unsupported PUBLIC
     kv_engine
