@@ -86,21 +86,21 @@
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L157">AdamW::AdamW(float, float, float, float, float) (src/optimizer/optimizer.h:157)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L161">AdamW::AdamW(float, float, float, float, float) (src/optimizer/optimizer.h:161)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="18">called 18 times</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">100.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L167">AdamW::LearningRate() const (src/optimizer/optimizer.h:167)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L171">AdamW::LearningRate() const (src/optimizer/optimizer.h:171)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L172">AdamW::TensorsPerTable() const (src/optimizer/optimizer.h:172)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L176">AdamW::TensorsPerTable() const (src/optimizer/optimizer.h:176)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
@@ -1286,213 +1286,241 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">static_assert</span><span class="p">(</span><span class="n">kTensorStep</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">kTensorsPerTable</span><span class="p">,</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Key id of the persisted step scalar; its tag is kTensorStep. The offline</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L156" href="#L156">156</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                </span><span class="s">"AdamW roles must cover every tensor of the table"</span><span class="p">);</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// checkpoint migrator asserts its own copy of this value.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L157" href="#L157">157</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">18</td>
-        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">explicit</span><span class="w"> </span><span class="nf">AdamW</span><span class="p">(</span><span class="kt">float</span><span class="w"> </span><span class="n">lr</span><span class="w">           </span><span class="o">=</span><span class="w"> </span><span class="mf">0.001</span><span class="p">,</span></td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">kStepKey</span><span class="w"> </span><span class="o">=</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L158" href="#L158">158</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                 </span><span class="kt">float</span><span class="w"> </span><span class="n">beta1</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="mf">0.9</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">numeric_limits</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;::</span><span class="n">max</span><span class="p">()</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="mi">8</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L159" href="#L159">159</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                 </span><span class="kt">float</span><span class="w"> </span><span class="n">beta2</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="mf">0.98</span><span class="p">,</span></td>
+        <td class="src"><span class="w">  </span><span class="k">static_assert</span><span class="p">(</span><span class="n">kTensorStep</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">kTensorsPerTable</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L160" href="#L160">160</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                 </span><span class="kt">float</span><span class="w"> </span><span class="n">epsilon</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="mf">1e-8</span><span class="p">,</span></td>
+        <td class="src"><span class="w">                </span><span class="s">"AdamW roles must cover every tensor of the table"</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L161" href="#L161">161</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">18</td>
+        <td class="src coveredLine show_coveredLine"><span class="w">  </span><span class="n">explicit</span><span class="w"> </span><span class="nf">AdamW</span><span class="p">(</span><span class="kt">float</span><span class="w"> </span><span class="n">lr</span><span class="w">           </span><span class="o">=</span><span class="w"> </span><span class="mf">0.001</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L162" href="#L162">162</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">                 </span><span class="kt">float</span><span class="w"> </span><span class="n">beta1</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="mf">0.9</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L163" href="#L163">163</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">                 </span><span class="kt">float</span><span class="w"> </span><span class="n">beta2</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="mf">0.98</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L164" href="#L164">164</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">                 </span><span class="kt">float</span><span class="w"> </span><span class="n">epsilon</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="mf">1e-8</span><span class="p">,</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L165" href="#L165">165</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"><span class="w">                 </span><span class="kt">float</span><span class="w"> </span><span class="n">weight_decay</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0</span><span class="p">)</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L162" href="#L162">162</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L166" href="#L166">166</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">36</td>
         <td class="src coveredLine show_coveredLine"><span class="w">      </span><span class="o">:</span><span class="w"> </span><span class="n">learning_rate_</span><span class="p">(</span><span class="n">lr</span><span class="p">),</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L163" href="#L163">163</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L167" href="#L167">167</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">18</td>
         <td class="src coveredLine show_coveredLine"><span class="w">        </span><span class="n">beta1_</span><span class="p">(</span><span class="n">beta1</span><span class="p">),</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L164" href="#L164">164</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L168" href="#L168">168</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">18</td>
         <td class="src coveredLine show_coveredLine"><span class="w">        </span><span class="n">beta2_</span><span class="p">(</span><span class="n">beta2</span><span class="p">),</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L165" href="#L165">165</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L169" href="#L169">169</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">18</td>
         <td class="src coveredLine show_coveredLine"><span class="w">        </span><span class="n">epsilon_</span><span class="p">(</span><span class="n">epsilon</span><span class="p">),</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L166" href="#L166">166</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L170" href="#L170">170</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount coveredLine show_coveredLine pr-2 pl-2 color-fg-muted text-right">18</td>
         <td class="src coveredLine show_coveredLine"><span class="w">        </span><span class="n">weight_decay_</span><span class="p">(</span><span class="n">weight_decay</span><span class="p">)</span><span class="w"> </span><span class="p">{}</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L167" href="#L167">167</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L171" href="#L171">171</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
         <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="kt">float</span><span class="w"> </span><span class="nf">LearningRate</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">learning_rate_</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
-        <td class="text-right src linenos"><a class="normal" id="L168" href="#L168">168</a></td>
+        <td class="text-right src linenos"><a class="normal" id="L172" href="#L172">172</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
         <td class="src"></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L169" href="#L169">169</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">Init</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L170" href="#L170">170</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">           </span><span class="k">const</span><span class="w"> </span><span class="n">EmbeddingTableConfig</span><span class="o">&amp;</span><span class="w"> </span><span class="n">config</span><span class="p">,</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L171" href="#L171">171</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">           </span><span class="n">BaseKV</span><span class="o">*</span><span class="w"> </span><span class="n">base_kv</span><span class="p">)</span><span class="w"> </span><span class="n">override</span><span class="p">;</span></td>
-      </tr>
-      <tr>
-        <td class="text-right src linenos"><a class="normal" id="L172" href="#L172">172</a></td>
-        <td class="text-right src linenos ws-unset">
-        </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">TensorsPerTable</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">kTensorsPerTable</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L173" href="#L173">173</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">Update</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">table</span><span class="p">,</span></td>
+        <td class="src"><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">Init</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="w"> </span><span class="n">table_name</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L174" href="#L174">174</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">              </span><span class="k">const</span><span class="w"> </span><span class="n">ParameterCompressReader</span><span class="o">*</span><span class="w"> </span><span class="n">reader</span><span class="p">,</span></td>
+        <td class="src"><span class="w">           </span><span class="k">const</span><span class="w"> </span><span class="n">EmbeddingTableConfig</span><span class="o">&amp;</span><span class="w"> </span><span class="n">config</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L175" href="#L175">175</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">              </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="n">override</span><span class="p">;</span></td>
+        <td class="src"><span class="w">           </span><span class="n">BaseKV</span><span class="o">*</span><span class="w"> </span><span class="n">base_kv</span><span class="p">)</span><span class="w"> </span><span class="n">override</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L176" href="#L176">176</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">UpdateFlat</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">table</span><span class="p">,</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">TensorsPerTable</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">kTensorsPerTable</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L177" href="#L177">177</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                  </span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
+        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">Update</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">table</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L178" href="#L178">178</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                  </span><span class="k">const</span><span class="w"> </span><span class="kt">float</span><span class="o">*</span><span class="w"> </span><span class="n">grads</span><span class="p">,</span></td>
+        <td class="src"><span class="w">              </span><span class="k">const</span><span class="w"> </span><span class="n">ParameterCompressReader</span><span class="o">*</span><span class="w"> </span><span class="n">reader</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L179" href="#L179">179</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                  </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">num_rows</span><span class="p">,</span></td>
+        <td class="src"><span class="w">              </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="n">override</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L180" href="#L180">180</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                  </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">embedding_dim</span><span class="p">,</span></td>
+        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">UpdateFlat</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">table</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L181" href="#L181">181</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                  </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="n">override</span><span class="p">;</span></td>
+        <td class="src"><span class="w">                  </span><span class="k">const</span><span class="w"> </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L182" href="#L182">182</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">};</span></td>
+        <td class="src"><span class="w">                  </span><span class="k">const</span><span class="w"> </span><span class="kt">float</span><span class="o">*</span><span class="w"> </span><span class="n">grads</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L183" href="#L183">183</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="w">                  </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">num_rows</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L184" href="#L184">184</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">Optimizer</span><span class="o">&gt;</span><span class="w"> </span><span class="n">CreateOptimizer</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">json</span><span class="o">&amp;</span><span class="w"> </span><span class="n">config</span><span class="p">);</span></td>
+        <td class="src"><span class="w">                  </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">embedding_dim</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L185" href="#L185">185</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">                  </span><span class="kt">unsigned</span><span class="w"> </span><span class="n">tid</span><span class="p">)</span><span class="w"> </span><span class="n">override</span><span class="p">;</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L186" href="#L186">186</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L187" href="#L187">187</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L188" href="#L188">188</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">Optimizer</span><span class="o">&gt;</span><span class="w"> </span><span class="n">CreateOptimizer</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">json</span><span class="o">&amp;</span><span class="w"> </span><span class="n">config</span><span class="p">);</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L189" href="#L189">189</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
@@ -1505,7 +1533,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
-          at 2026-11-24 02:21:01+00:00
+          at 2026-11-24 08:21:59+00:00
         </footer>
       </div>
     </div>
