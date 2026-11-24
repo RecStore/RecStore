@@ -214,6 +214,21 @@ TEST(AdamWTest, RejectsSecondNameSharingOneTableId) {
                std::runtime_error);
 }
 
+TEST(AdamWTest, RejectsTableIdThatOverflowsTheEightBitTag) {
+  InMemoryKV kv;
+  AdamW optimizer(0.001f, 0.9f, 0.98f, 1e-8f, 0.1f);
+  EmbeddingTableConfig last{16, 2};
+  last.table_id = 63;
+  // 63 * 4 + 3 == 255, the last tag the 8-bit key layout can address.
+  EXPECT_EQ(optimizer.Init({"last"}, last, &kv),
+            static_cast<int>(MakeTensorTag(63, 0, 4)));
+
+  EmbeddingTableConfig overflow{16, 2};
+  overflow.table_id = 64;
+  // The tag must fail loudly instead of wrapping around to table 0.
+  EXPECT_THROW(optimizer.Init({"overflow"}, overflow, &kv), std::runtime_error);
+}
+
 TEST(AdamWTest, RejectsClientKeysTaggedForAnotherTable) {
   InMemoryKV kv;
   AdamW optimizer(0.001f, 0.9f, 0.98f, 1e-8f, 0.1f);
