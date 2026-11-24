@@ -3108,7 +3108,7 @@
 <p><code>SparseSGD</code> 会合并重复 id，读取 <code>mod.weight[unique_ids]</code>，在 Python 侧执行 <code>current - lr * grad</code>，再写回 <code>DistTensor</code>。这条路径没有使用后端 optimizer 状态。</p>
 <details class="note">
 <summary>后端 optimizer</summary>
-<p>后端实现位于 <code>src/optimizer/optimizer.cpp</code>。SGD 无额外状态；AdaGrad 和 RowWiseAdaGrad 的累积状态都在后端维护。EBC 的远端更新应保持这个边界。AdamW 持久化参数、两个 moment 与 step，但 tensor tag 不带 <code>table_id</code>，因此<strong>每台 PS 只支持一张 AdamW 表</strong>：注册第二张不同表名时 <code>AdamW::Init</code> 报错，避免静默共享键空间（<a href="https://github.com/RecStore/RecStore/issues/400">#400</a>）。</p>
+<p>后端实现位于 <code>src/optimizer/optimizer.cpp</code>。SGD 无额外状态；AdaGrad 和 RowWiseAdaGrad 的累积状态都在后端维护。EBC 的远端更新应保持这个边界。AdamW 持久化参数、两个 moment 与 step；四者的 tensor tag 都由 <code>MakeTensorTag(table_id, role, 4)</code> 生成，键空间按 <code>table_id</code> 分开，因此同一台 PS 可以注册多张 AdamW 表（<a href="https://github.com/RecStore/RecStore/issues/400">#400</a>）。两个限制：tag 仍是 8 位，<code>table_id * 4 + 3 &gt; 255</code> 时 <code>MakeTensorTag</code> 直接报错（每台 PS 最多 63 张）；两个不同表名共用一个 <code>table_id</code> 会在 <code>AdamW::Init</code> 报错，因为那等于共享同一套键。客户端提交的 key 必须带上该表的 tag，服务端会校验。</p>
 </details>
 <h2 id="_2">修改检查<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>改 trace 结构：同步更新 <code>SparseOptimizer</code> 和相关单测。</p>

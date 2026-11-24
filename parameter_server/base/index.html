@@ -3277,7 +3277,7 @@
 </tbody>
 </table>
 <h2 id="checkpoint-restore">存档与恢复<a class="headerlink" href="#checkpoint-restore" title="Permanent link">&para;</a></h2>
-<p><code>SAVE_CHECKPOINT</code> / <code>LOAD_CHECKPOINT</code> 的 payload 是 <code>arg1[0]</code> 路径加 <code>arg2[0]</code> metadata JSON；metadata 必须含非空的 <code>checkpoint_id</code> 和对象型 <code>identity</code>，服务端补上 <code>shard_id</code> 后再交给引擎。加载只在全新分片上成立：不能有未存档的更新、不能已绑定过另一个 identity、引擎必须为空。metadata 逐字节比较，所以存档和加载要用同一份 identity。</p>
+<p><code>SAVE_CHECKPOINT</code> / <code>LOAD_CHECKPOINT</code> 的 payload 是 <code>arg1[0]</code> 路径加 <code>arg2[0]</code> metadata JSON；metadata 必须含非空的 <code>checkpoint_id</code> 和对象型 <code>identity</code>，服务端再补上 <code>optimizer_layout</code> 与 <code>shard_id</code> 后交给引擎。<code>optimizer_layout</code> 是当前的键布局版本（<code>kCheckpointOptimizerLayout</code>）：优化器 tag 或键编码一改就递增，旧版本写的分片在加载时被拒绝，不会把 optimizer slot 当成缺失行重新初始化。加载只在全新分片上成立：不能有未存档的更新、不能已绑定过另一个 identity、引擎必须为空。metadata 逐字节比较，所以存档和加载要用同一份 identity；跨 <code>optimizer_layout</code> 的存档需要先在新二进制上重新存档，或者从头训练。</p>
 <table>
 <thead>
 <tr>
