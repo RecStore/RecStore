@@ -12,15 +12,21 @@
 
 #include "base/log.h"
 #include "ps/base/cache_ps_impl.h"
+#include "storage/kv_engine/checkpoint_format.h"
 #include "ps/base/checkpoint_restore.h"
 
 namespace recstore {
 namespace detail {
 
-constexpr int kCheckpointManifestSchemaVersion = 1;
+constexpr int kCheckpointManifestSchemaVersion =
+    checkpoint_format::kManifestSchemaVersion;
 
 inline std::string CheckpointShardFileName(int shard_id) {
   return "recstore-shard-" + std::to_string(shard_id) + ".bin";
+}
+
+inline std::filesystem::path ManifestPath(const std::filesystem::path& dir) {
+  return dir / checkpoint_format::kManifestName;
 }
 
 } // namespace detail
@@ -42,7 +48,7 @@ inline bool RestoreCheckpointOnStartup(
   // restore_dir may name the checkpoint root (newest committed version wins)
   // or a single version directory.
   std::filesystem::path directory     = root;
-  std::filesystem::path manifest_path = root / "manifest.json";
+  std::filesystem::path manifest_path = detail::ManifestPath(root);
   std::error_code exists_error;
   if (!std::filesystem::exists(manifest_path, exists_error)) {
     std::optional<std::filesystem::path> newest;
@@ -58,7 +64,7 @@ inline bool RestoreCheckpointOnStartup(
       if (name.empty() || name.front() == '.') {
         continue;
       }
-      const auto candidate = entry.path() / "manifest.json";
+      const auto candidate = detail::ManifestPath(entry.path());
       if (!std::filesystem::exists(candidate, exists_error)) {
         continue;
       }
@@ -91,7 +97,7 @@ inline bool RestoreCheckpointOnStartup(
       return false;
     }
     directory     = *newest;
-    manifest_path = directory / "manifest.json";
+    manifest_path = detail::ManifestPath(directory);
   }
 
   std::ifstream input(manifest_path);

@@ -93,6 +93,22 @@
 
 恢复在 RPC 服务开始监听前完成，失败即启动失败。多机部署时 `restore_dir` 必须是所有分片都能读到的共享目录。跨分片快照不是同一个逻辑步：每个分片各自持写锁 dump，加载只保证每片内部一致。
 
+### 迁移旧存档 {#checkpoint-migrate}
+
+带 `optimizer_layout` 之前的存档加载会被拒绝。`checkpoint_migrate`（源码 `src/ps/checkpoint/`）把旧版本目录重写成当前布局，输出到新目录，原件不动：
+
+```bash
+checkpoint_migrate --input <存档根目录或版本目录> --output <新目录> \
+  --optimizer AdamW --table-id 7 [--shards N] [--hash city_hash]
+```
+
+- **重新分片**：客户端按参数键的 hash 选分片，AdamW 的 tag 变了行就换分片，所以工具重排记录而不是逐文件拷贝。`--hash` 必须与该次训练 `distributed_client.hash_method` 一致；`--shards` 只在存档缺分片或换分片数时需要。
+- **AdamW 的 tag**：从 role 改成 `table_id * 4 + role`，`--table-id` 必填——旧 tag 没记录表号。step 是服务端本地键，工具给每个新分片各写一份，并要求旧分片之间的 step 值一致，不一致直接拒绝。
+- **只适用于单张 AdamW 表的存档**（#411 之后的保证）。更早的多表存档当时就已经互相覆盖，工具无法从文件里识别。
+- 输出目录必须不存在；manifest 最后写，中断的目录读端会忽略。`--no-verify` 跳过回读校验。
+
+SGD / RowWiseAdagrad 的键不变，迁移等价于补 metadata 标记；AdamW 涉及键搬迁，迁移后先用新二进制实际加载一次再清理原存档。
+
 ## 文件组织
 
 | 文件 | 说明 |

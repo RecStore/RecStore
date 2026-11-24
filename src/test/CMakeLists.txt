@@ -287,6 +287,23 @@ target_link_libraries(test_kvengine_checkpoint PUBLIC
 )
 add_test(NAME test_kvengine_checkpoint COMMAND test_kvengine_checkpoint)
 
+add_executable(test_checkpoint_migrate
+    test_checkpoint_migrate.cpp
+    ${PROJECT_SOURCE_DIR}/src/ps/checkpoint/checkpoint_migrate.cc
+)
+target_link_libraries(test_checkpoint_migrate PUBLIC
+    base
+    base_memory
+    ps_common
+    kv_engine
+    gtest
+    gtest_main
+    pthread
+    TBB::tbb
+)
+add_test(NAME test_checkpoint_migrate COMMAND test_checkpoint_migrate)
+set_tests_properties(test_checkpoint_migrate PROPERTIES LABELS "ps_unit" TIMEOUT 120)
+
 add_executable(test_checkpoint_restore test_checkpoint_restore.cpp)
 target_link_libraries(test_checkpoint_restore PUBLIC
     base

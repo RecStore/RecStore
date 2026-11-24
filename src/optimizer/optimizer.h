@@ -152,6 +152,10 @@ public:
     kTensorStep         = 3,
   };
   static constexpr int kTensorsPerTable = 4;
+  // Key id of the persisted step scalar; its tag is kTensorStep. The offline
+  // checkpoint migrator asserts its own copy of this value.
+  static constexpr uint64_t kStepKey =
+      (std::numeric_limits<uint64_t>::max() >> 8);
   static_assert(kTensorStep + 1 == kTensorsPerTable,
                 "AdamW roles must cover every tensor of the table");
   explicit AdamW(float lr           = 0.001,
