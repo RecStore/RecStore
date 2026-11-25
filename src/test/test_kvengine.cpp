@@ -805,6 +805,40 @@ TEST_P(KVEngineCartesianTest, ApplySgdUpdateFlatUpdatesAndInitializesRows) {
   }
 }
 
+TEST_P(KVEngineCartesianTest,
+       ApplySgdUpdateFlatAccumulatesRepeatedMissingKeys) {
+  if (value_type_ != "DRAM_VALUE_STORE") {
+    GTEST_SKIP() << "Direct flat SGD update requires DRAM_VALUE_STORE";
+  }
+
+  constexpr int64_t kDim     = 32;
+  const uint64_t missing_key = 303;
+  // One unseen key twice in one batch: both gradients must land on the row
+  // created by the first occurrence, in input order.
+  const std::vector<uint64_t> keys = {missing_key, missing_key};
+  std::vector<float> grads(2 * kDim, 0.0f);
+  for (int64_t col = 0; col < kDim; ++col) {
+    grads[col]        = 10.0f;
+    grads[kDim + col] = 4.0f;
+  }
+  ASSERT_TRUE(kv_engine_->ApplySgdUpdateFlat(
+      base::ConstArray<uint64_t>(keys),
+      grads.data(),
+      keys.size(),
+      kDim,
+      0.5f,
+      0,
+      0));
+
+  std::string value;
+  kv_engine_->Get(missing_key, value, 0);
+  ASSERT_EQ(value.size(), sizeof(float) * kDim);
+  const auto* floats = reinterpret_cast<const float*>(value.data());
+  for (int64_t col = 0; col < kDim; ++col) {
+    EXPECT_FLOAT_EQ(floats[col], -7.0f);
+  }
+}
+
 TEST_P(KVEngineCartesianTest, BatchPutMixedOverwriteAndRealloc) {
   const std::vector<uint64_t> keys = {7001, 7002, 7003, 7004};
   std::vector<std::vector<float>> initial_values(

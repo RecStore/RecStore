@@ -737,32 +737,30 @@ public:
       }
       return true;
     }
-    std::vector<float> missing_row(static_cast<size_t>(embedding_dim));
+    // Missing rows are buffered and published after the loop: a key that
+    // repeats in one batch must accumulate its gradients, otherwise each
+    // occurrence overwrites the previous one. Hits still update in place.
+    thread_local std::vector<uint64_t> missing_keys;
+    thread_local std::vector<float> missing_values;
+    thread_local std::unordered_map<uint64_t, size_t> missing_positions;
+    missing_keys.clear();
+    missing_values.clear();
+    missing_positions.clear();
+    const size_t row_dim = static_cast<size_t>(embedding_dim);
     for (int64_t r = 0; r < num_rows; ++r) {
       const auto& row   = rows[static_cast<size_t>(r)];
       const float* grad = grads + r * embedding_dim;
       if (row.missing) {
+        const auto inserted = missing_positions.emplace(
+            tagged_keys[static_cast<size_t>(r)], missing_keys.size());
+        if (inserted.second) {
+          missing_keys.push_back(tagged_keys[static_cast<size_t>(r)]);
+          missing_values.resize(missing_values.size() + row_dim, 0.0f);
+        }
+        float* value = missing_values.data() + inserted.first->second * row_dim;
 #pragma omp simd
         for (int64_t c = 0; c < embedding_dim; ++c)
-          missing_row[static_cast<size_t>(c)] = -learning_rate * grad[c];
-        const auto miss_start =
-            stats != nullptr ? clock::now() : clock::time_point{};
-        PutInternalStats miss_stats;
-        PutInternal(tagged_keys[static_cast<size_t>(r)],
-                    missing_row.data(),
-                    row_bytes,
-                    tid,
-                    false,
-                    stats != nullptr ? &miss_stats : nullptr);
-        if (stats != nullptr) {
-          stats->missing_write_ns += static_cast<std::uint64_t>(
-              std::chrono::duration_cast<std::chrono::nanoseconds>(
-                  clock::now() - miss_start)
-                  .count());
-          stats->missing_alloc_ns += miss_stats.alloc_ns;
-          stats->missing_index_ns += miss_stats.index_ns;
-          stats->missing_track_ns += miss_stats.track_ns;
-        }
+          value[c] -= learning_rate * grad[c];
         continue;
       }
 
@@ -772,16 +770,31 @@ public:
         value[c] -= learning_rate * grad[c];
     }
     if (stats != nullptr) {
-      const auto loop_ns = static_cast<std::uint64_t>(
+      // Miss inserts are timed in the publication loop below.
+      stats->writeback_ns = static_cast<std::uint64_t>(
           std::chrono::duration_cast<std::chrono::nanoseconds>(
               clock::now() - loop_start)
               .count());
-      // The miss path is timed separately; subtract it so the hit write-back
-      // bucket does not double count the inserts.
-      stats->writeback_ns =
-          loop_ns > stats->missing_write_ns
-              ? loop_ns - stats->missing_write_ns
-              : 0;
+    }
+    for (size_t i = 0; i < missing_keys.size(); ++i) {
+      const auto miss_start =
+          stats != nullptr ? clock::now() : clock::time_point{};
+      PutInternalStats miss_stats;
+      PutInternal(missing_keys[i],
+                  missing_values.data() + i * row_dim,
+                  row_bytes,
+                  tid,
+                  false,
+                  stats != nullptr ? &miss_stats : nullptr);
+      if (stats != nullptr) {
+        stats->missing_write_ns += static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                clock::now() - miss_start)
+                .count());
+        stats->missing_alloc_ns += miss_stats.alloc_ns;
+        stats->missing_index_ns += miss_stats.index_ns;
+        stats->missing_track_ns += miss_stats.track_ns;
+      }
     }
     return true;
   }
