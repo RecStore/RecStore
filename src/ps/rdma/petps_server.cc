@@ -1292,16 +1292,10 @@ private:
     }
   }
 
-  bool ProcessSlot(int slot, int thread_id, bool profile_enabled) {
-    auto* commit = transport_->RequestCommitAt(slot);
-    if (commit->state.load(std::memory_order_acquire) != petps::kRcSlotReady) {
-      if (profile_enabled) {
-        profile_.not_ready_slots.fetch_add(1, std::memory_order_relaxed);
-        poller_profiles_.at(static_cast<std::size_t>(thread_id))
-            ->not_ready_slots.fetch_add(1, std::memory_order_relaxed);
-      }
-      return false;
-    }
+  bool ProcessSlot(int slot,
+                   petps::CommitWord* commit,
+                   int thread_id,
+                   bool profile_enabled) {
     const std::uint64_t seq = commit->seq.load(std::memory_order_acquire);
     if (seq == 0) {
       if (profile_enabled) {
@@ -1609,6 +1603,7 @@ private:
     const int slots_per_qp = transport_->config().slots_per_qp;
     const int num_clients  = transport_->config().num_clients;
     const int lane_slots   = num_clients * slots_per_qp;
+    std::uint64_t not_ready_slots = 0;
     for (int qp_index = thread_id; qp_index < qp_count;
          qp_index += thread_count_) {
       for (int lane_slot = worker_id; lane_slot < lane_slots;
@@ -1616,12 +1611,25 @@ private:
         const int client_id  = lane_slot / slots_per_qp;
         const int slot_in_qp = lane_slot % slots_per_qp;
         const int slot_index =
-            transport_->SlotIndex(client_id, qp_index, slot_in_qp);
+            transport_->SlotIndexUnchecked(client_id, qp_index, slot_in_qp);
+        auto* commit = transport_->RequestCommitAtUnchecked(slot_index);
         ++(*scanned_slots);
-        if (ProcessSlot(slot_index, thread_id, profile_enabled)) {
+        if (commit->state.load(std::memory_order_acquire) !=
+            petps::kRcSlotReady) {
+          ++not_ready_slots;
+          continue;
+        }
+        if (ProcessSlot(slot_index, commit, thread_id, profile_enabled)) {
           ++(*ready_slots);
         }
       }
+    }
+    if (profile_enabled && not_ready_slots != 0) {
+      profile_.not_ready_slots.fetch_add(
+          not_ready_slots, std::memory_order_relaxed);
+      poller_profiles_.at(static_cast<std::size_t>(thread_id))
+          ->not_ready_slots.fetch_add(
+              not_ready_slots, std::memory_order_relaxed);
     }
   }
 

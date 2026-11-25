@@ -144,12 +144,15 @@ public:
   int TotalSlots() const;
   void RegisterLocalMemoryRegion(void* base, std::size_t bytes);
   int SlotIndex(int client_id, int qp_index, int slot_in_qp) const;
+  // Unchecked variants for callers that enumerate the configured slot space.
+  int SlotIndexUnchecked(int client_id, int qp_index, int slot_in_qp) const;
   void DecodeSlotIndex(
       int slot_index, int* client_id, int* qp_index, int* slot_in_qp) const;
   void* RequestSlot(int slot_index) const;
   RequestDescriptor* RequestDescriptorAt(int slot_index) const;
   char* RequestPayloadAt(int slot_index) const;
   CommitWord* RequestCommitAt(int slot_index) const;
+  CommitWord* RequestCommitAtUnchecked(int slot_index) const;
 
   struct ResponseView {
     void* slot         = nullptr; // Base address of the client response slot.
