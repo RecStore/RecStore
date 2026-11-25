@@ -392,7 +392,7 @@ BaseKVConfig BuildConfig() {
   if (FLAGS_value_store_type == "DRAM_VALUE_STORE" ||
       FLAGS_value_store_type == "TIERED_VALUE_STORE") {
     try {
-      (void)ImplFromAllocatorType(FLAGS_dram_allocator);
+      (void)base::allocators::ImplFromAllocatorType(FLAGS_dram_allocator);
     } catch (const std::invalid_argument&) {
       throw std::invalid_argument(
           "unknown --dram_allocator '" + FLAGS_dram_allocator +
