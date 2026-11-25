@@ -129,7 +129,7 @@ public:
     recycler_->Recycle(allocator_->GetMallocData(DecodeOffset(handle)));
   }
 
-  // Values are written once at allocation; only Retire() reuses the slot.
+  // Slots are allocated per value and only reused after Retire().
   bool RetainsValueBytesUntilRetire() const override { return true; }
 
   const char* DirectPtr(uint64_t handle) const override {

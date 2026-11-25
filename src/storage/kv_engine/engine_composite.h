@@ -51,11 +51,13 @@ public:
                     std::unique_ptr<ValueStore> value_store,
                     int num_threads             = 0,
                     bool read_epochs            = false,
-                    uint64_t retired_rows_limit = 65536)
+                    uint64_t retired_rows_limit = 65536,
+                    size_t value_size_hint      = 0)
       : BaseKV(BaseKVConfig{}),
         index_(std::move(index)),
         value_store_(std::move(value_store)),
         num_threads_(std::max(num_threads, 1)),
+        default_value_size_hint_(value_size_hint),
         checkpoint_keys_by_thread_(static_cast<size_t>(num_threads_)) {
     read_epochs_ = read_epochs;
     if (retired_rows_limit == 0)
@@ -667,6 +669,7 @@ public:
     }
 
     thread_local std::vector<DirectFixedRow> rows;
+    thread_local std::vector<float> cow_row;
     base::ConstArray<uint64_t> tagged(tagged_keys);
     BatchGetFlatStats get_stats;
     const auto batch_get_start = clock::now();
@@ -744,6 +747,23 @@ public:
         continue;
       }
 
+      if (checkpoint_retention_active_.load(std::memory_order_relaxed)) {
+        // A dump still holds this row's snapshotted handle. Publish a fresh
+        // allocation so retiring the old handle can wait for the dump.
+        cow_row.resize(static_cast<size_t>(embedding_dim));
+        std::memcpy(cow_row.data(), row.data, row_bytes);
+        float* value = cow_row.data();
+#pragma omp simd
+        for (int64_t c = 0; c < embedding_dim; ++c)
+          value[c] -= learning_rate * grad[c];
+        PutInternal(tagged_keys[static_cast<size_t>(r)],
+                    cow_row.data(),
+                    row_bytes,
+                    tid,
+                    false);
+        continue;
+      }
+
       float* value = reinterpret_cast<float*>(const_cast<char*>(row.data));
 #pragma omp simd
       for (int64_t c = 0; c < embedding_dim; ++c)
@@ -791,6 +811,7 @@ public:
 
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     thread_local std::vector<DirectFixedRow> rows;
+    thread_local std::vector<float> cow_row;
     if (!BatchGetDirectFixedRows(keys, num_rows, row_dim, tid, &rows)) {
       return false;
     }
@@ -799,6 +820,20 @@ public:
       if (direct_row.missing || direct_row.data == nullptr ||
           direct_row.size != row_bytes) {
         return false;
+      }
+      if (checkpoint_retention_active_.load(std::memory_order_relaxed)) {
+        // See ApplySgdUpdateFlat: a dump may still read the snapshotted handle.
+        cow_row.resize(static_cast<size_t>(row_dim));
+        std::memcpy(cow_row.data(), direct_row.data, row_bytes);
+        float* value      = cow_row.data() + update_offset;
+        const float* grad = grads + row * update_dim;
+#pragma omp simd
+        for (int64_t column = 0; column < update_dim; ++column) {
+          value[column] -= learning_rate * grad[column];
+        }
+        PutInternal(
+            keys[static_cast<int>(row)], cow_row.data(), row_bytes, tid, false);
+        continue;
       }
       float* value =
           reinterpret_cast<float*>(const_cast<char*>(direct_row.data)) +

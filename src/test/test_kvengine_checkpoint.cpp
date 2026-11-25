@@ -307,7 +307,12 @@ TEST_F(KVEngineCheckpointTest, DumpKeepsCommitsOffTheLockAndStaysPointInTime) {
   auto store = std::make_unique<BlockingDramValueStore>(config);
   BlockingDramValueStore* store_ptr = store.get();
   auto source                       = std::make_unique<KVEngineComposite>(
-      std::make_unique<DramUnorderedMapIndex>(config), std::move(store), 2);
+      std::make_unique<DramUnorderedMapIndex>(config),
+      std::move(store),
+      2,
+      /*read_epochs=*/false,
+      /*retired_rows_limit=*/65536,
+      /*value_size_hint=*/4 * sizeof(float));
 
   const std::string initial = FloatBytes(std::array<float, 4>{1, 1, 1, 1});
   const std::string updated = FloatBytes(std::array<float, 4>{2, 2, 2, 2});
@@ -325,11 +330,32 @@ TEST_F(KVEngineCheckpointTest, DumpKeepsCommitsOffTheLockAndStaysPointInTime) {
   // key 0 must still be written with the value from the snapshot instant.
   source->Put(0, updated, 0);
   source->Put(100, updated, 0);
+  // The SGD fast path rewrites rows in place; during a dump it must publish a
+  // new row instead so the snapshot handle keeps the old bytes.
+  const uint64_t sgd_key           = 1;
+  const std::array<float, 4> grads = {10, 10, 10, 10};
+  ASSERT_TRUE(source->ApplySgdUpdateFlat(
+      base::ConstArray<uint64_t>(&sgd_key, 1), grads.data(), 1, 4, 0.5f, 0, 0));
+  const uint64_t range_key = 2;
+  ASSERT_TRUE(source->ApplySgdUpdateFlatRange(
+      base::ConstArray<uint64_t>(&range_key, 1),
+      grads.data(),
+      1,
+      4,
+      0,
+      4,
+      0.5f,
+      0));
   store_ptr->NotifyPutDone();
   dump.join();
 
   ASSERT_TRUE(saved.load());
   EXPECT_TRUE(store_ptr->PutLandedDuringRead());
+  std::string live;
+  source->Get(1, live, 0);
+  EXPECT_NE(live, initial);
+  source->Get(2, live, 0);
+  EXPECT_NE(live, initial);
   source.reset();
 
   auto restored = MakeEngine("deferred-restored");
@@ -337,6 +363,10 @@ TEST_F(KVEngineCheckpointTest, DumpKeepsCommitsOffTheLockAndStaysPointInTime) {
   EXPECT_EQ(restored->CheckpointRecordCount(), 8);
   std::string actual;
   restored->Get(0, actual, 0);
+  EXPECT_EQ(actual, initial);
+  restored->Get(1, actual, 0);
+  EXPECT_EQ(actual, initial);
+  restored->Get(2, actual, 0);
   EXPECT_EQ(actual, initial);
   restored->Get(100, actual, 0);
   EXPECT_TRUE(actual.empty());
