@@ -1,11 +1,14 @@
 #include <array>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -17,6 +20,50 @@
 #include "storage/kv_engine/engine_composite.h"
 
 namespace {
+
+// Holds the first value read of a checkpoint until a concurrent Put lands, so
+// the test can tell whether commits wait for the whole dump.
+class BlockingDramValueStore : public DramValueStore {
+public:
+  using DramValueStore::DramValueStore;
+
+  void ReadValue(uint64_t handle, std::string& value) override {
+    if (block_next_.exchange(false)) {
+      read_entered_.store(true);
+      std::unique_lock<std::mutex> lock(wait_mu_);
+      cv_.wait_for(lock, std::chrono::seconds(2), [this] {
+        return put_done_.load();
+      });
+      put_landed_during_read_.store(put_done_.load());
+    }
+    DramValueStore::ReadValue(handle, value);
+  }
+
+  void BlockNextRead() { block_next_.store(true); }
+
+  void WaitForRead() {
+    while (!read_entered_.load())
+      std::this_thread::yield();
+  }
+
+  void NotifyPutDone() {
+    {
+      std::lock_guard<std::mutex> lock(wait_mu_);
+      put_done_.store(true);
+    }
+    cv_.notify_all();
+  }
+
+  bool PutLandedDuringRead() const { return put_landed_during_read_.load(); }
+
+private:
+  std::atomic<bool> block_next_{false};
+  std::atomic<bool> read_entered_{false};
+  std::atomic<bool> put_done_{false};
+  std::atomic<bool> put_landed_during_read_{false};
+  std::mutex wait_mu_;
+  std::condition_variable cv_;
+};
 
 class KVEngineCheckpointTest : public ::testing::Test {
 protected:
@@ -239,6 +286,60 @@ TEST_F(KVEngineCheckpointTest, SnapshotsConcurrentPetHashWriters) {
                   value == updates[1]);
     }
   }
+}
+
+TEST_F(KVEngineCheckpointTest, DumpKeepsCommitsOffTheLockAndStaysPointInTime) {
+  const std::filesystem::path value_path = root_ / "deferred" / "value";
+  std::filesystem::create_directories(value_path.parent_path());
+  BaseKVConfig config;
+  config.num_threads_ = 2;
+  config.json_config_ = {
+      {"engine_type", "KVEngineComposite"},
+      {"capacity", 1024},
+      {"index", {{"type", "DRAM_UNORDERED_MAP"}}},
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", value_path.string()},
+        {"default_value_size_hint", 4 * sizeof(float)},
+        {"dram_allocator",
+         {{"type", "PERSIST_LOOP_SLAB"}, {"capacity_bytes", 1024 * 1024}}}}}};
+
+  auto store = std::make_unique<BlockingDramValueStore>(config);
+  BlockingDramValueStore* store_ptr = store.get();
+  auto source                       = std::make_unique<KVEngineComposite>(
+      std::make_unique<DramUnorderedMapIndex>(config), std::move(store), 2);
+
+  const std::string initial = FloatBytes(std::array<float, 4>{1, 1, 1, 1});
+  const std::string updated = FloatBytes(std::array<float, 4>{2, 2, 2, 2});
+  for (uint64_t key = 0; key < 8; ++key)
+    source->Put(key, initial, 0);
+
+  const std::filesystem::path checkpoint = root_ / "deferred.ckpt";
+  store_ptr->BlockNextRead();
+  std::atomic<bool> saved{false};
+  std::thread dump([&] {
+    saved.store(source->SaveCheckpoint(checkpoint.string(), "deferred"));
+  });
+  store_ptr->WaitForRead();
+  // Both land after the key snapshot: the dump must not wait for them, and
+  // key 0 must still be written with the value from the snapshot instant.
+  source->Put(0, updated, 0);
+  source->Put(100, updated, 0);
+  store_ptr->NotifyPutDone();
+  dump.join();
+
+  ASSERT_TRUE(saved.load());
+  EXPECT_TRUE(store_ptr->PutLandedDuringRead());
+  source.reset();
+
+  auto restored = MakeEngine("deferred-restored");
+  ASSERT_TRUE(restored->LoadCheckpoint(checkpoint.string(), "deferred"));
+  EXPECT_EQ(restored->CheckpointRecordCount(), 8);
+  std::string actual;
+  restored->Get(0, actual, 0);
+  EXPECT_EQ(actual, initial);
+  restored->Get(100, actual, 0);
+  EXPECT_TRUE(actual.empty());
 }
 
 TEST_F(KVEngineCheckpointTest, RejectsMetadataMismatchAndMalformedFiles) {

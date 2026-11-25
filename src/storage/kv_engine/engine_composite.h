@@ -12,6 +12,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
 #include <string>
@@ -952,84 +953,47 @@ public:
   bool SaveCheckpoint(const std::string& file,
                       const std::string& metadata) override {
     DrainBackgroundWork();
+    // A dump no longer holds checkpoint_mu_ for its whole run, so concurrent
+    // saves are serialized here instead of by that lock.
+    std::lock_guard<std::mutex> save_guard(checkpoint_save_mu_);
     auto online_lock = LockOnlineWrite();
-    std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     if (file.empty()) {
       LOG(ERROR) << "KVEngine checkpoint path is empty";
       return false;
     }
 
+    std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     std::vector<uint64_t> keys = CollectCheckpointKeys();
-
-    const std::filesystem::path checkpoint_path(file);
-    std::filesystem::path temp_path(file);
-    temp_path += ".tmp";
-    std::error_code error;
-    std::filesystem::remove(temp_path, error);
-
-    std::ofstream output(temp_path, std::ios::binary | std::ios::trunc);
-    if (!output) {
-      LOG(ERROR) << "Failed to open checkpoint temp file: " << temp_path;
-      return false;
-    }
-
-    const uint64_t metadata_size = static_cast<uint64_t>(metadata.size());
-    const uint64_t record_count  = static_cast<uint64_t>(keys.size());
-    uint64_t checksum            = kCheckpointChecksumSeed;
-    UpdateChecksum(&checksum, kCheckpointMagic.data(), kCheckpointMagic.size());
-    UpdateChecksumPod(&checksum, kCheckpointVersion);
-    UpdateChecksumPod(&checksum, metadata_size);
-    UpdateChecksumPod(&checksum, record_count);
-    const ValueStore::LayoutId layout_id = value_store_->GetLayoutId();
-    UpdateChecksumPod(&checksum, layout_id.strategy);
-    UpdateChecksumPod(&checksum, layout_id.checksum);
-    UpdateChecksum(&checksum, metadata.data(), metadata.size());
-    bool write_ok =
-        WriteBytes(output, kCheckpointMagic.data(), kCheckpointMagic.size()) &&
-        WritePod(output, kCheckpointVersion) &&
-        WritePod(output, metadata_size) && WritePod(output, record_count) &&
-        WritePod(output, layout_id.strategy) &&
-        WritePod(output, layout_id.checksum) &&
-        WriteBytes(output, metadata.data(), metadata.size());
-    for (const uint64_t key : keys) {
-      std::string value;
-      ReadValue(key, value);
-      if (!Exists(key, 0)) {
-        LOG(ERROR) << "KVEngine checkpoint tracked key is missing: " << key;
-        write_ok = false;
-        break;
+    // Alloc-on-write stores keep a published handle's bytes until Retire(), so
+    // the dump can run on a handle snapshot without blocking commits. The
+    // deferral below keeps replaced handles readable for the whole dump.
+    const bool deferred = value_store_->RetainsValueBytesUntilRetire();
+    std::vector<Value_t> handles;
+    bool missing_key = false;
+    if (deferred) {
+      BeginCheckpointRetention();
+      handles.resize(keys.size(), kValueHandleNone);
+      for (size_t i = 0; i < keys.size(); ++i) {
+        index_->Get(keys[i], handles[i]);
+        missing_key = missing_key || handles[i] == kValueHandleNone;
       }
-      const uint64_t value_size = static_cast<uint64_t>(value.size());
-      UpdateChecksumPod(&checksum, key);
-      UpdateChecksumPod(&checksum, value_size);
-      UpdateChecksum(&checksum, value.data(), value.size());
-      write_ok =
-          write_ok && WritePod(output, key) && WritePod(output, value_size) &&
-          WriteBytes(output, value.data(), value.size());
-      if (!write_ok) {
-        break;
+      checkpoint_lock.unlock();
+    }
+    // Ends deferred retirement on every exit, write failures included.
+    struct RetentionScope {
+      explicit RetentionScope(KVEngineComposite* owner) : engine(owner) {}
+      ~RetentionScope() {
+        if (engine != nullptr)
+          engine->EndCheckpointRetirement();
       }
-    }
-    write_ok = write_ok && WritePod(output, checksum);
-    output.flush();
-    write_ok = write_ok && output.good();
-    output.close();
-    write_ok = write_ok && !output.fail();
-    if (!write_ok) {
-      LOG(ERROR) << "Failed to write checkpoint temp file: " << temp_path;
-      std::filesystem::remove(temp_path, error);
+      KVEngineComposite* engine;
+    } retention_scope(deferred ? this : nullptr);
+    if (missing_key) {
+      LOG(ERROR) << "KVEngine checkpoint tracked a key with no value handle";
       return false;
     }
-
-    error.clear();
-    std::filesystem::rename(temp_path, checkpoint_path, error);
-    if (error) {
-      LOG(ERROR) << "Failed to publish checkpoint " << checkpoint_path << ": "
-                 << error.message();
-      std::filesystem::remove(temp_path, error);
-      return false;
-    }
-    return true;
+    return WriteCheckpointFile(
+        file, metadata, keys, deferred ? &handles : nullptr);
   }
 
   bool LoadCheckpoint(const std::string& file,
@@ -1307,10 +1271,39 @@ private:
       std::rethrow_exception(background_error_);
   }
 
+  bool DeferCheckpointRetirement(std::vector<uint64_t>& handles) {
+    std::lock_guard<std::mutex> lock(checkpoint_retire_mu_);
+    if (!checkpoint_retention_active_.load(std::memory_order_relaxed))
+      return false;
+    checkpoint_deferred_retire_.insert(
+        checkpoint_deferred_retire_.end(), handles.begin(), handles.end());
+    return true;
+  }
+
+  // A checkpoint that dumps snapshotted handles drops the write lock, so a
+  // mutation may replace a handle it still has to read. Deferring retirement
+  // keeps those slots alive until the dump finishes; the store must promise
+  // bytes stay put until Retire() for this to be used.
+  void BeginCheckpointRetention() {
+    std::lock_guard<std::mutex> lock(checkpoint_retire_mu_);
+    checkpoint_retention_active_.store(true, std::memory_order_relaxed);
+  }
+
+  void EndCheckpointRetirement() {
+    std::vector<uint64_t> deferred;
+    {
+      std::lock_guard<std::mutex> lock(checkpoint_retire_mu_);
+      checkpoint_retention_active_.store(false, std::memory_order_relaxed);
+      deferred.swap(checkpoint_deferred_retire_);
+    }
+    RetireHandles(std::move(deferred));
+  }
+
   void RetireHandle(uint64_t handle) {
     if (handle == kValueHandleNone)
       return;
-    if (!read_epochs_) {
+    if (!read_epochs_ &&
+        !checkpoint_retention_active_.load(std::memory_order_relaxed)) {
       value_store_->Retire(handle);
       return;
     }
@@ -1322,6 +1315,10 @@ private:
                   handles.end());
     if (handles.empty())
       return;
+    if (checkpoint_retention_active_.load(std::memory_order_relaxed) &&
+        DeferCheckpointRetirement(handles)) {
+      return;
+    }
     if (!read_epochs_) {
       for (uint64_t handle : handles)
         value_store_->Retire(handle);
@@ -1821,6 +1818,11 @@ private:
     index_->Get(key, handle);
     if (out_handle != nullptr)
       *out_handle = handle;
+    ReadValueByHandle(handle, value, cold);
+  }
+
+  void
+  ReadValueByHandle(Value_t handle, std::string& value, bool* cold = nullptr) {
     if (handle == kValueHandleNone) {
       value.clear();
       return;
@@ -1840,6 +1842,88 @@ private:
       *cold = true;
     value.resize(value_store_->SlotCapacity(handle));
     value.resize(value_store_->Read(handle, value.data(), value.size()));
+  }
+
+  // Runs under the checkpoint write lock when handles is null (the store
+  // rewrites values in place, so the dump has to stay serialized).
+  bool WriteCheckpointFile(const std::string& file,
+                           const std::string& metadata,
+                           const std::vector<uint64_t>& keys,
+                           const std::vector<Value_t>* handles) {
+    const std::filesystem::path checkpoint_path(file);
+    std::filesystem::path temp_path(file);
+    temp_path += ".tmp";
+    std::error_code error;
+    std::filesystem::remove(temp_path, error);
+
+    std::ofstream output(temp_path, std::ios::binary | std::ios::trunc);
+    if (!output) {
+      LOG(ERROR) << "Failed to open checkpoint temp file: " << temp_path;
+      return false;
+    }
+
+    const uint64_t metadata_size = static_cast<uint64_t>(metadata.size());
+    const uint64_t record_count  = static_cast<uint64_t>(keys.size());
+    uint64_t checksum            = kCheckpointChecksumSeed;
+    UpdateChecksum(&checksum, kCheckpointMagic.data(), kCheckpointMagic.size());
+    UpdateChecksumPod(&checksum, kCheckpointVersion);
+    UpdateChecksumPod(&checksum, metadata_size);
+    UpdateChecksumPod(&checksum, record_count);
+    const ValueStore::LayoutId layout_id = value_store_->GetLayoutId();
+    UpdateChecksumPod(&checksum, layout_id.strategy);
+    UpdateChecksumPod(&checksum, layout_id.checksum);
+    UpdateChecksum(&checksum, metadata.data(), metadata.size());
+    bool write_ok =
+        WriteBytes(output, kCheckpointMagic.data(), kCheckpointMagic.size()) &&
+        WritePod(output, kCheckpointVersion) &&
+        WritePod(output, metadata_size) && WritePod(output, record_count) &&
+        WritePod(output, layout_id.strategy) &&
+        WritePod(output, layout_id.checksum) &&
+        WriteBytes(output, metadata.data(), metadata.size());
+    for (size_t i = 0; i < keys.size(); ++i) {
+      const uint64_t key = keys[i];
+      std::string value;
+      if (handles != nullptr) {
+        ReadValueByHandle((*handles)[i], value);
+      } else {
+        ReadValue(key, value);
+        if (!Exists(key, 0)) {
+          LOG(ERROR) << "KVEngine checkpoint tracked key is missing: " << key;
+          write_ok = false;
+          break;
+        }
+      }
+      const uint64_t value_size = static_cast<uint64_t>(value.size());
+      UpdateChecksumPod(&checksum, key);
+      UpdateChecksumPod(&checksum, value_size);
+      UpdateChecksum(&checksum, value.data(), value.size());
+      write_ok =
+          write_ok && WritePod(output, key) && WritePod(output, value_size) &&
+          WriteBytes(output, value.data(), value.size());
+      if (!write_ok) {
+        break;
+      }
+    }
+    write_ok = write_ok && WritePod(output, checksum);
+    output.flush();
+    write_ok = write_ok && output.good();
+    output.close();
+    write_ok = write_ok && !output.fail();
+    if (!write_ok) {
+      LOG(ERROR) << "Failed to write checkpoint temp file: " << temp_path;
+      std::filesystem::remove(temp_path, error);
+      return false;
+    }
+
+    error.clear();
+    std::filesystem::rename(temp_path, checkpoint_path, error);
+    if (error) {
+      LOG(ERROR) << "Failed to publish checkpoint " << checkpoint_path << ": "
+                 << error.message();
+      std::filesystem::remove(temp_path, error);
+      return false;
+    }
+    return true;
   }
 
   void MaybeAdmit(const std::vector<uint64_t>& cold_keys,
@@ -2243,6 +2327,12 @@ private:
   TieringTime migration_read_time_, migration_prepare_time_,
       migration_publish_time_;
   mutable std::shared_mutex checkpoint_mu_;
+  // Serializes dumps because checkpoint_mu_ is held only for the snapshot.
+  mutable std::mutex checkpoint_save_mu_;
+  // Retirement deferred while a checkpoint dumps snapshotted handles.
+  mutable std::mutex checkpoint_retire_mu_;
+  std::atomic<bool> checkpoint_retention_active_{false};
+  std::vector<uint64_t> checkpoint_deferred_retire_;
   std::vector<std::vector<uint64_t>> checkpoint_keys_by_thread_;
 };
 

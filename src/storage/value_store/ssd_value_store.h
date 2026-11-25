@@ -98,6 +98,9 @@ public:
     }
   }
 
+  // Slots are allocated per value and only returned by Free/Retire.
+  bool RetainsValueBytesUntilRetire() const override { return true; }
+
   size_t SlotCapacity(uint64_t handle) const override {
     return allocator_->SlotCapacity(handle);
   }
