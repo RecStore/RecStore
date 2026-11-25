@@ -669,7 +669,6 @@ public:
     }
 
     thread_local std::vector<DirectFixedRow> rows;
-    thread_local std::vector<float> cow_row;
     base::ConstArray<uint64_t> tagged(tagged_keys);
     BatchGetFlatStats get_stats;
     const auto batch_get_start = clock::now();
@@ -718,6 +717,26 @@ public:
     }
 
     const auto loop_start = clock::now();
+    if (checkpoint_retention_active_.load(std::memory_order_relaxed)) {
+      // A dump still holds the handles snapshotted before it released
+      // checkpoint_mu_, so nothing may be rewritten in place.
+      ApplySgdUpdateFlatRetained(
+          tagged_keys,
+          grads,
+          rows,
+          num_rows,
+          embedding_dim,
+          learning_rate,
+          row_bytes,
+          tid);
+      if (stats != nullptr) {
+        stats->writeback_ns = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                clock::now() - loop_start)
+                .count());
+      }
+      return true;
+    }
     std::vector<float> missing_row(static_cast<size_t>(embedding_dim));
     for (int64_t r = 0; r < num_rows; ++r) {
       const auto& row   = rows[static_cast<size_t>(r)];
@@ -744,23 +763,6 @@ public:
           stats->missing_index_ns += miss_stats.index_ns;
           stats->missing_track_ns += miss_stats.track_ns;
         }
-        continue;
-      }
-
-      if (checkpoint_retention_active_.load(std::memory_order_relaxed)) {
-        // A dump still holds this row's snapshotted handle. Publish a fresh
-        // allocation so retiring the old handle can wait for the dump.
-        cow_row.resize(static_cast<size_t>(embedding_dim));
-        std::memcpy(cow_row.data(), row.data, row_bytes);
-        float* value = cow_row.data();
-#pragma omp simd
-        for (int64_t c = 0; c < embedding_dim; ++c)
-          value[c] -= learning_rate * grad[c];
-        PutInternal(tagged_keys[static_cast<size_t>(r)],
-                    cow_row.data(),
-                    row_bytes,
-                    tid,
-                    false);
         continue;
       }
 
@@ -811,7 +813,6 @@ public:
 
     std::shared_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     thread_local std::vector<DirectFixedRow> rows;
-    thread_local std::vector<float> cow_row;
     if (!BatchGetDirectFixedRows(keys, num_rows, row_dim, tid, &rows)) {
       return false;
     }
@@ -821,22 +822,26 @@ public:
           direct_row.size != row_bytes) {
         return false;
       }
-      if (checkpoint_retention_active_.load(std::memory_order_relaxed)) {
-        // See ApplySgdUpdateFlat: a dump may still read the snapshotted handle.
-        cow_row.resize(static_cast<size_t>(row_dim));
-        std::memcpy(cow_row.data(), direct_row.data, row_bytes);
-        float* value      = cow_row.data() + update_offset;
-        const float* grad = grads + row * update_dim;
-#pragma omp simd
-        for (int64_t column = 0; column < update_dim; ++column) {
-          value[column] -= learning_rate * grad[column];
-        }
-        PutInternal(
-            keys[static_cast<int>(row)], cow_row.data(), row_bytes, tid, false);
-        continue;
-      }
+    }
+    if (checkpoint_retention_active_.load(std::memory_order_relaxed)) {
+      // See ApplySgdUpdateFlat: a dump may still read the snapshotted handle.
+      ApplySgdUpdateFlatRangeRetained(
+          keys,
+          grads,
+          rows,
+          num_rows,
+          row_dim,
+          update_offset,
+          update_dim,
+          learning_rate,
+          row_bytes,
+          tid);
+      return true;
+    }
+    for (int64_t row = 0; row < num_rows; ++row) {
       float* value =
-          reinterpret_cast<float*>(const_cast<char*>(direct_row.data)) +
+          reinterpret_cast<float*>(
+              const_cast<char*>(rows[static_cast<size_t>(row)].data)) +
           update_offset;
       const float* grad = grads + row * update_dim;
 #pragma omp simd
@@ -1527,6 +1532,111 @@ private:
     }
   };
 
+  // A dump may still read handles snapshotted before it released
+  // checkpoint_mu_, so every rewritten row is published as a new allocation.
+  // Repeated keys accumulate in one copy and publish once; copying per
+  // occurrence would let the last gradient overwrite the earlier ones.
+  void ApplySgdUpdateFlatRetained(
+      const std::vector<uint64_t>& keys,
+      const float* grads,
+      const std::vector<DirectFixedRow>& rows,
+      int64_t num_rows,
+      int64_t dim,
+      float learning_rate,
+      size_t row_bytes,
+      unsigned tid) {
+    thread_local std::vector<size_t> group_of;
+    thread_local std::vector<uint64_t> group_keys;
+    thread_local std::vector<float> group_values;
+    thread_local std::unordered_map<uint64_t, size_t> group_index;
+    const size_t row_dim = static_cast<size_t>(dim);
+    group_of.resize(static_cast<size_t>(num_rows));
+    group_keys.clear();
+    group_values.clear();
+    group_index.clear();
+    group_index.reserve(static_cast<size_t>(num_rows));
+    for (int64_t r = 0; r < num_rows; ++r) {
+      const size_t row    = static_cast<size_t>(r);
+      const auto inserted = group_index.emplace(keys[row], group_keys.size());
+      if (inserted.second) {
+        group_keys.push_back(keys[row]);
+        const size_t base = group_values.size();
+        group_values.resize(base + row_dim, 0.0f);
+        if (!rows[row].missing) {
+          std::memcpy(group_values.data() + base, rows[row].data, row_bytes);
+        }
+      }
+      group_of[row] = inserted.first->second;
+    }
+    for (int64_t r = 0; r < num_rows; ++r) {
+      const size_t row  = static_cast<size_t>(r);
+      float* value      = group_values.data() + group_of[row] * row_dim;
+      const float* grad = grads + r * dim;
+#pragma omp simd
+      for (int64_t c = 0; c < dim; ++c)
+        value[c] -= learning_rate * grad[c];
+    }
+    for (size_t group = 0; group < group_keys.size(); ++group) {
+      PutInternal(group_keys[group],
+                  group_values.data() + group * row_dim,
+                  row_bytes,
+                  tid,
+                  false);
+    }
+  }
+
+  void ApplySgdUpdateFlatRangeRetained(
+      base::ConstArray<uint64_t> keys,
+      const float* grads,
+      const std::vector<DirectFixedRow>& rows,
+      int64_t num_rows,
+      int64_t row_dim,
+      int64_t update_offset,
+      int64_t update_dim,
+      float learning_rate,
+      size_t row_bytes,
+      unsigned tid) {
+    thread_local std::vector<size_t> group_of;
+    thread_local std::vector<uint64_t> group_keys;
+    thread_local std::vector<float> group_values;
+    thread_local std::unordered_map<uint64_t, size_t> group_index;
+    const size_t dim = static_cast<size_t>(row_dim);
+    group_of.resize(static_cast<size_t>(num_rows));
+    group_keys.clear();
+    group_values.clear();
+    group_index.clear();
+    group_index.reserve(static_cast<size_t>(num_rows));
+    for (int64_t r = 0; r < num_rows; ++r) {
+      const size_t row    = static_cast<size_t>(r);
+      const uint64_t key  = keys[r];
+      const auto inserted = group_index.emplace(key, group_keys.size());
+      if (inserted.second) {
+        group_keys.push_back(key);
+        const size_t base = group_values.size();
+        group_values.resize(base + dim, 0.0f);
+        std::memcpy(group_values.data() + base, rows[row].data, row_bytes);
+      }
+      group_of[row] = inserted.first->second;
+    }
+    for (int64_t r = 0; r < num_rows; ++r) {
+      const size_t row = static_cast<size_t>(r);
+      float* value     = group_values.data() + group_of[row] * dim +
+                     static_cast<size_t>(update_offset);
+      const float* grad = grads + r * update_dim;
+#pragma omp simd
+      for (int64_t column = 0; column < update_dim; ++column) {
+        value[column] -= learning_rate * grad[column];
+      }
+    }
+    for (size_t group = 0; group < group_keys.size(); ++group) {
+      PutInternal(group_keys[group],
+                  group_values.data() + group * dim,
+                  row_bytes,
+                  tid,
+                  false);
+    }
+  }
+
   void ApplySgdMixedRows(
       const std::vector<uint64_t>& keys,
       const float* grads,
@@ -1551,8 +1661,14 @@ private:
     std::vector<Value_t> handles(unique_keys.size(), kValueHandleNone);
     index_->BatchGet(
         base::ConstArray<uint64_t>(unique_keys), handles.data(), tid);
+    const bool retained =
+        checkpoint_retention_active_.load(std::memory_order_relaxed);
     std::vector<float*> pointers(unique_keys.size());
     std::vector<std::vector<float>> missing(unique_keys.size());
+    // A dump keeps the snapshotted handles readable, so DRAM rows are updated
+    // in copies and published as new allocations while it runs.
+    std::vector<std::vector<float>> dram_copies(
+        retained ? unique_keys.size() : 0);
     std::vector<uint64_t> ssd_handles;
     std::vector<size_t> ssd_rows;
     for (size_t i = 0; i < unique_keys.size(); ++i) {
@@ -1563,7 +1679,13 @@ private:
         if (value_store_->SlotCapacity(handles[i]) < row_bytes) {
           throw std::runtime_error("SGD row dimension exceeds DRAM value size");
         }
-        pointers[i] = reinterpret_cast<float*>(const_cast<char*>(ptr));
+        if (retained) {
+          dram_copies[i].resize(static_cast<size_t>(dim));
+          std::memcpy(dram_copies[i].data(), ptr, row_bytes);
+          pointers[i] = dram_copies[i].data();
+        } else {
+          pointers[i] = reinterpret_cast<float*>(const_cast<char*>(ptr));
+        }
       } else {
         ssd_handles.push_back(handles[i]);
         ssd_rows.push_back(i);
@@ -1598,9 +1720,29 @@ private:
     std::vector<ValueStore::WriteSpec> updates;
     for (const auto& value : ssd_floats)
       updates.push_back({value.data(), row_bytes});
-    // BatchGet's SSD results are copies, so every modified cold row needs
-    // explicit writeback before a subsequent read or promotion can see it.
-    if (!ssd_handles.empty()) {
+    if (retained) {
+      // Publishing a fresh handle keeps the dump's snapshot bytes intact; the
+      // old slots stay readable until the retention window closes.
+      for (size_t i = 0; i < unique_keys.size(); ++i) {
+        if (!dram_copies[i].empty()) {
+          PutInternal(
+              unique_keys[i], dram_copies[i].data(), row_bytes, tid, false);
+        }
+      }
+      if (!ssd_handles.empty()) {
+        const auto begin = std::chrono::steady_clock::now();
+        for (size_t i = 0; i < ssd_rows.size(); ++i) {
+          PutInternal(unique_keys[ssd_rows[i]],
+                      ssd_floats[i].data(),
+                      row_bytes,
+                      tid,
+                      false);
+        }
+        sgd_write_time_.Record(begin);
+      }
+    } else if (!ssd_handles.empty()) {
+      // BatchGet's SSD results are copies, so every modified cold row needs
+      // explicit writeback before a subsequent read or promotion can see it.
       const auto begin = std::chrono::steady_clock::now();
       value_store_->BatchWrite(ssd_handles, updates);
       sgd_write_time_.Record(begin);

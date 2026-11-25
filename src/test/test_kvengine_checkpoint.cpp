@@ -372,6 +372,151 @@ TEST_F(KVEngineCheckpointTest, DumpKeepsCommitsOffTheLockAndStaysPointInTime) {
   EXPECT_TRUE(actual.empty());
 }
 
+TEST_F(KVEngineCheckpointTest, DumpAccumulatesRepeatedSgdKeysInOneBatch) {
+  const std::filesystem::path value_path = root_ / "repeated" / "value";
+  std::filesystem::create_directories(value_path.parent_path());
+  BaseKVConfig config;
+  config.num_threads_ = 2;
+  config.json_config_ = {
+      {"engine_type", "KVEngineComposite"},
+      {"capacity", 1024},
+      {"index", {{"type", "DRAM_UNORDERED_MAP"}}},
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", value_path.string()},
+        {"default_value_size_hint", 4 * sizeof(float)},
+        {"dram_allocator",
+         {{"type", "PERSIST_LOOP_SLAB"}, {"capacity_bytes", 1024 * 1024}}}}}};
+
+  auto store = std::make_unique<BlockingDramValueStore>(config);
+  BlockingDramValueStore* store_ptr = store.get();
+  auto source                       = std::make_unique<KVEngineComposite>(
+      std::make_unique<DramUnorderedMapIndex>(config),
+      std::move(store),
+      2,
+      /*read_epochs=*/false,
+      /*retired_rows_limit=*/65536,
+      /*value_size_hint=*/4 * sizeof(float));
+
+  const std::string initial = FloatBytes(std::array<float, 4>{1, 1, 1, 1});
+  for (uint64_t key = 0; key < 8; ++key)
+    source->Put(key, initial, 0);
+
+  const std::filesystem::path checkpoint = root_ / "repeated.ckpt";
+  store_ptr->BlockNextRead();
+  std::atomic<bool> saved{false};
+  std::thread dump([&] {
+    saved.store(source->SaveCheckpoint(checkpoint.string(), "repeated"));
+  });
+  store_ptr->WaitForRead();
+  // The same key twice in one batch must apply both gradients to one copy and
+  // publish it once, instead of republishing from the snapshot row.
+  const std::array<uint64_t, 2> flat_keys = {3, 3};
+  const std::array<float, 8> flat_grads   = {10, 10, 10, 10, 4, 4, 4, 4};
+  ASSERT_TRUE(source->ApplySgdUpdateFlat(
+      base::ConstArray<uint64_t>(flat_keys.data(), flat_keys.size()),
+      flat_grads.data(),
+      2,
+      4,
+      0.5f,
+      0,
+      0));
+  const std::array<uint64_t, 2> range_keys = {4, 4};
+  ASSERT_TRUE(source->ApplySgdUpdateFlatRange(
+      base::ConstArray<uint64_t>(range_keys.data(), range_keys.size()),
+      flat_grads.data(),
+      2,
+      4,
+      0,
+      4,
+      0.5f,
+      0));
+  store_ptr->NotifyPutDone();
+  dump.join();
+
+  ASSERT_TRUE(saved.load());
+  const std::string accumulated =
+      FloatBytes(std::array<float, 4>{-6, -6, -6, -6});
+  std::string live;
+  source->Get(3, live, 0);
+  EXPECT_EQ(live, accumulated);
+  source->Get(4, live, 0);
+  EXPECT_EQ(live, accumulated);
+  source.reset();
+
+  auto restored = MakeEngine("repeated-restored");
+  ASSERT_TRUE(restored->LoadCheckpoint(checkpoint.string(), "repeated"));
+  std::string actual;
+  restored->Get(3, actual, 0);
+  EXPECT_EQ(actual, initial);
+  restored->Get(4, actual, 0);
+  EXPECT_EQ(actual, initial);
+}
+
+TEST_F(KVEngineCheckpointTest, DumpPublishesMixedRowSgdUpdatesCopyOnWrite) {
+  const std::filesystem::path value_path = root_ / "mixed" / "value";
+  std::filesystem::create_directories(value_path.parent_path());
+  BaseKVConfig config;
+  config.num_threads_ = 2;
+  config.json_config_ = {
+      {"engine_type", "KVEngineComposite"},
+      {"capacity", 1024},
+      {"index", {{"type", "DRAM_UNORDERED_MAP"}}},
+      {"value",
+       {{"type", "DRAM_VALUE_STORE"},
+        {"path", value_path.string()},
+        {"default_value_size_hint", 4 * sizeof(float)},
+        {"dram_allocator",
+         {{"type", "PERSIST_LOOP_SLAB"}, {"capacity_bytes", 1024 * 1024}}}}}};
+
+  auto store = std::make_unique<BlockingDramValueStore>(config);
+  BlockingDramValueStore* store_ptr = store.get();
+  // A zero hint routes ApplySgdUpdateFlat through ApplySgdMixedRows, whose
+  // direct-row path used to rewrite the snapshotted DRAM row in place.
+  auto source = std::make_unique<KVEngineComposite>(
+      std::make_unique<DramUnorderedMapIndex>(config),
+      std::move(store),
+      2,
+      /*read_epochs=*/false,
+      /*retired_rows_limit=*/65536,
+      /*value_size_hint=*/0);
+
+  const std::string initial = FloatBytes(std::array<float, 4>{1, 1, 1, 1});
+  source->Put(5, initial, 0);
+
+  const std::filesystem::path checkpoint = root_ / "mixed.ckpt";
+  store_ptr->BlockNextRead();
+  std::atomic<bool> saved{false};
+  std::thread dump([&] {
+    saved.store(source->SaveCheckpoint(checkpoint.string(), "mixed"));
+  });
+  store_ptr->WaitForRead();
+  const std::array<uint64_t, 2> keys = {5, 5};
+  const std::array<float, 8> grads   = {10, 10, 10, 10, 4, 4, 4, 4};
+  ASSERT_TRUE(source->ApplySgdUpdateFlat(
+      base::ConstArray<uint64_t>(keys.data(), keys.size()),
+      grads.data(),
+      2,
+      4,
+      0.5f,
+      0,
+      0));
+  store_ptr->NotifyPutDone();
+  dump.join();
+
+  ASSERT_TRUE(saved.load());
+  std::string live;
+  source->Get(5, live, 0);
+  EXPECT_EQ(live, FloatBytes(std::array<float, 4>{-6, -6, -6, -6}));
+  source.reset();
+
+  auto restored = MakeEngine("mixed-restored");
+  ASSERT_TRUE(restored->LoadCheckpoint(checkpoint.string(), "mixed"));
+  std::string actual;
+  restored->Get(5, actual, 0);
+  EXPECT_EQ(actual, initial);
+}
+
 TEST_F(KVEngineCheckpointTest, RejectsMetadataMismatchAndMalformedFiles) {
   const std::string metadata =
       R"({"run_id":"hstu-test","step":10,"shard_id":0})";
