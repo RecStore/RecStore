@@ -22,6 +22,7 @@
 #include "base/factory.h"
 #include "base/init.h"
 #include "base/log.h"
+#include "memory/allocators/allocator_factory.h"
 #include "memory/shm_file.h"
 #include "storage/io_backend/force_link.h"
 #include "storage/kv_engine/base_kv.h"
@@ -385,6 +386,20 @@ T TieringFlag(const char* name,
 }
 
 BaseKVConfig BuildConfig() {
+  // Validate the allocator name before capacity scaling or JSON build. An
+  // unknown value used to reach Factory::NewInstance mid-run and exit(-1),
+  // after the harness had already rewritten the requested capacity.
+  if (FLAGS_value_store_type == "DRAM_VALUE_STORE" ||
+      FLAGS_value_store_type == "TIERED_VALUE_STORE") {
+    try {
+      (void)ImplFromAllocatorType(FLAGS_dram_allocator);
+    } catch (const std::invalid_argument&) {
+      throw std::invalid_argument(
+          "unknown --dram_allocator '" + FLAGS_dram_allocator +
+          "'; expected R2_SLAB, R2_SHM_MALLOC, PERSIST_LOOP_SLAB, or "
+          "CONCURRENT_SLAB_MEMORY_POOL");
+    }
+  }
   BaseKVConfig config;
   const uint64_t capacity = static_cast<uint64_t>(FLAGS_record_count);
   const uint64_t value_slot_bytes =
@@ -486,10 +501,6 @@ BaseKVConfig BuildConfig() {
     if (!FLAGS_dram_path.empty()) {
       config.json_config_["value"]["path"] = FLAGS_dram_path + "/value";
     }
-    // R2_ALLOC rounds every row up to a power-of-two slot, so the usable
-    // capacity needs headroom; scale before the value is serialized.
-    if (FLAGS_dram_allocator == "R2_ALLOC")
-      dram_capacity *= 10;
     config.json_config_["value"]["dram_allocator"] = {
         {"type", FLAGS_dram_allocator}, {"capacity_bytes", dram_capacity}};
   } else if (FLAGS_value_store_type == "SSD_VALUE_STORE") {

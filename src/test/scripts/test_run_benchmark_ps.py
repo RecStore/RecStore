@@ -358,7 +358,7 @@ class TestRunBenchmarkPS(unittest.TestCase):
             recommended_dram_capacity_bytes(
                 capacity=100,
                 value_size=64,
-                dram_allocator="R2_ALLOC",
+                dram_allocator="CONCURRENT_SLAB_MEMORY_POOL",
             ),
             6400,
         )
