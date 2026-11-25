@@ -79,14 +79,14 @@
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L178">petps::RcShardServerTransport::ResponseRejectedEpochCount() const (src/ps/rdma/rc_transport.h:178)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L181">petps::RcShardServerTransport::ResponseRejectedEpochCount() const (src/ps/rdma/rc_transport.h:181)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
   </div>
   <div class="Box-row Box-row--focus-gray py-2 d-flex">
-    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L207">petps::RcShardServerTransport::config() const (src/ps/rdma/rc_transport.h:207)</a>    </div>
+    <div role="gridcell" class="color-fg-muted flex-auto min-width-0 col-md-2"><a href="#L210">petps::RcShardServerTransport::config() const (src/ps/rdma/rc_transport.h:210)</a>    </div>
     <div role="gridcell" class="color-fg-muted flex-auto min-width-0 d-flex flex-justify-end flex-wrap flex-items-baseline" data-sort="0">not called</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">0.0%</div>
     <div role="gridcell" class="color-fg-muted d-flex flex-justify-end flex-wrap col-2">-%</div>
@@ -1151,682 +1151,703 @@
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">DecodeSlotIndex</span><span class="p">(</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Unchecked variants for callers that enumerate the configured slot space.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L148" href="#L148">148</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">slot_index</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="o">*</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="o">*</span><span class="w"> </span><span class="n">qp_index</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="o">*</span><span class="w"> </span><span class="n">slot_in_qp</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src"><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">SlotIndexUnchecked</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">slot_in_qp</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L149" href="#L149">149</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="nf">RequestSlot</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">slot_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">DecodeSlotIndex</span><span class="p">(</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L150" href="#L150">150</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">RequestDescriptor</span><span class="o">*</span><span class="w"> </span><span class="nf">RequestDescriptorAt</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">slot_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">slot_index</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="o">*</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="o">*</span><span class="w"> </span><span class="n">qp_index</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="o">*</span><span class="w"> </span><span class="n">slot_in_qp</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L151" href="#L151">151</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="nf">RequestPayloadAt</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">slot_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="nf">RequestSlot</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">slot_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L152" href="#L152">152</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">CommitWord</span><span class="o">*</span><span class="w"> </span><span class="nf">RequestCommitAt</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">slot_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src"><span class="w">  </span><span class="n">RequestDescriptor</span><span class="o">*</span><span class="w"> </span><span class="nf">RequestDescriptorAt</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">slot_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L153" href="#L153">153</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="w">  </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="nf">RequestPayloadAt</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">slot_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L154" href="#L154">154</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">struct</span><span class="w"> </span><span class="nc">ResponseView</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="src"><span class="w">  </span><span class="n">CommitWord</span><span class="o">*</span><span class="w"> </span><span class="nf">RequestCommitAt</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">slot_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L155" href="#L155">155</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">slot</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">;</span><span class="w"> </span><span class="c1">// Base address of the client response slot.</span></td>
+        <td class="src"><span class="w">  </span><span class="n">CommitWord</span><span class="o">*</span><span class="w"> </span><span class="nf">RequestCommitAtUnchecked</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">slot_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L156" href="#L156">156</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">payload</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">;</span><span class="w"> </span><span class="c1">// Response payload region.</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L157" href="#L157">157</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">StatusWord</span><span class="o">*</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">;</span><span class="w"> </span><span class="c1">// Final completion word for this response.</span></td>
+        <td class="src"><span class="w">  </span><span class="k">struct</span><span class="w"> </span><span class="nc">ResponseView</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L158" href="#L158">158</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">};</span></td>
+        <td class="src"><span class="w">    </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">slot</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">;</span><span class="w"> </span><span class="c1">// Base address of the client response slot.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L159" href="#L159">159</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="w">    </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">payload</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">;</span><span class="w"> </span><span class="c1">// Response payload region.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L160" href="#L160">160</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">ResponseView</span><span class="w"> </span><span class="nf">OpenClientResponse</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">slot_in_qp</span><span class="p">);</span></td>
+        <td class="src"><span class="w">    </span><span class="n">StatusWord</span><span class="o">*</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">;</span><span class="w"> </span><span class="c1">// Final completion word for this response.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L161" href="#L161">161</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">CompleteResponse</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span></td>
+        <td class="src"><span class="w">  </span><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L162" href="#L162">162</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                        </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">,</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L163" href="#L163">163</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                        </span><span class="kt">int</span><span class="w"> </span><span class="n">slot_in_qp</span><span class="p">,</span></td>
+        <td class="src"><span class="w">  </span><span class="n">ResponseView</span><span class="w"> </span><span class="nf">OpenClientResponse</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">slot_in_qp</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L164" href="#L164">164</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                        </span><span class="k">const</span><span class="w"> </span><span class="n">ResponseView</span><span class="o">&amp;</span><span class="w"> </span><span class="n">response</span><span class="p">,</span></td>
+        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">CompleteResponse</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L165" href="#L165">165</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                        </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">seq</span><span class="p">);</span></td>
+        <td class="src"><span class="w">                        </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L166" href="#L166">166</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// Current response epoch of a lane. It changes on every server-side lane</span></td>
+        <td class="src"><span class="w">                        </span><span class="kt">int</span><span class="w"> </span><span class="n">slot_in_qp</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L167" href="#L167">167</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// rebuild, so a caller that captured it before posting can tell whether the</span></td>
+        <td class="src"><span class="w">                        </span><span class="k">const</span><span class="w"> </span><span class="n">ResponseView</span><span class="o">&amp;</span><span class="w"> </span><span class="n">response</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L168" href="#L168">168</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// slot it is about to write still belongs to the same client generation.</span></td>
+        <td class="src"><span class="w">                        </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">seq</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L169" href="#L169">169</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="nf">ResponseEpoch</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Current response epoch of a lane. It changes on every server-side lane</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L170" href="#L170">170</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// Largest SGE count a response payload WR toward (client_id, qp_index) may</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// rebuild, so a caller that captured it before posting can tell whether the</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L171" href="#L171">171</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// carry. The device can grant fewer SGEs per WR than the requested cap, and a</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// slot it is about to write still belongs to the same client generation.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L172" href="#L172">172</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// WR above the granted value is rejected by ibv_post_send() with EINVAL.</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="nf">ResponseEpoch</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L173" href="#L173">173</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="nf">MaxResponseSgesPerWr</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Largest SGE count a response payload WR toward (client_id, qp_index) may</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L174" href="#L174">174</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// Number of response payload posts refused because the lane was rebuilt after</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// carry. The device can grant fewer SGEs per WR than the requested cap, and a</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L175" href="#L175">175</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// the request was accepted (RcLaneRebuiltDuringResponse). A non-zero value is</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// WR above the granted value is rejected by ibv_post_send() with EINVAL.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L176" href="#L176">176</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// direct evidence that the rebuild fence fired instead of merely that no bad</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="nf">MaxResponseSgesPerWr</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L177" href="#L177">177</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// response reached the client.</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Number of response payload posts refused because the lane was rebuilt after</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L178" href="#L178">178</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="nf">ResponseRejectedEpochCount</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="c1">// the request was accepted (RcLaneRebuiltDuringResponse). A non-zero value is</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L179" href="#L179">179</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">response_rejected_epoch_count_</span><span class="p">.</span><span class="n">load</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">memory_order_relaxed</span><span class="p">);</span></td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="c1">// direct evidence that the rebuild fence fired instead of merely that no bad</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L180" href="#L180">180</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">}</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// response reached the client.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L181" href="#L181">181</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// Posts response payload rows from `sges`. Throws RcLaneRebuiltDuringResponse</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="nf">ResponseRejectedEpochCount</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L182" href="#L182">182</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// when the lane was rebuilt after `expected_epoch` was captured: the payload</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">response_rejected_epoch_count_</span><span class="p">.</span><span class="n">load</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">memory_order_relaxed</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L183" href="#L183">183</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// would land in a slot the client already released (and whose pool may have</span></td>
+        <td class="src"><span class="w">  </span><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L184" href="#L184">184</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// handed it to a new request). Get-payload workers pass the epoch they</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Posts response payload rows from `sges`. Throws RcLaneRebuiltDuringResponse</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L185" href="#L185">185</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// captured when the request was accepted.</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// when the lane was rebuilt after `expected_epoch` was captured: the payload</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L186" href="#L186">186</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">WriteResponsePayloadSg</span><span class="p">(</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// would land in a slot the client already released (and whose pool may have</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L187" href="#L187">187</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// handed it to a new request). Get-payload workers pass the epoch they</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L188" href="#L188">188</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">,</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// captured when the request was accepted.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L189" href="#L189">189</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">slot_in_qp</span><span class="p">,</span></td>
+        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">WriteResponsePayloadSg</span><span class="p">(</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L190" href="#L190">190</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">expected_epoch</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L191" href="#L191">191</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="n">RawVerbsSge</span><span class="o">&gt;</span><span class="w"> </span><span class="n">sges</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L192" href="#L192">192</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">response_offset</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">slot_in_qp</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L193" href="#L193">193</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">bytes</span><span class="p">);</span></td>
+        <td class="src"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">expected_epoch</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L194" href="#L194">194</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">CompleteResponseStatusOnly</span><span class="p">(</span></td>
+        <td class="src"><span class="w">      </span><span class="n">base</span><span class="o">::</span><span class="n">ConstArray</span><span class="o">&lt;</span><span class="n">RawVerbsSge</span><span class="o">&gt;</span><span class="w"> </span><span class="n">sges</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L195" href="#L195">195</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">response_offset</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L196" href="#L196">196</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">bytes</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L197" href="#L197">197</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">slot_in_qp</span><span class="p">,</span></td>
+        <td class="src"><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">CompleteResponseStatusOnly</span><span class="p">(</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L198" href="#L198">198</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="n">ResponseView</span><span class="o">&amp;</span><span class="w"> </span><span class="n">response</span><span class="p">,</span></td>
+        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L199" href="#L199">199</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">seq</span><span class="p">);</span></td>
+        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L200" href="#L200">200</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// For each client served by `qp_index`, rebuild the server-side QP when the</span></td>
+        <td class="src"><span class="w">      </span><span class="kt">int</span><span class="w"> </span><span class="n">slot_in_qp</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L201" href="#L201">201</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// client published a new lane generation (i.e. the client rebuilt its side).</span></td>
+        <td class="src"><span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="n">ResponseView</span><span class="o">&amp;</span><span class="w"> </span><span class="n">response</span><span class="p">,</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L202" href="#L202">202</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// Must be called from a thread that owns those lanes (the polling thread that</span></td>
+        <td class="src"><span class="w">      </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">seq</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L203" href="#L203">203</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// scans `qp_index`). Rebuilding requires the lane CQ to carry a single client</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// For each client served by `qp_index`, rebuild the server-side QP when the</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L204" href="#L204">204</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// QP (num_os_clients == 1); otherwise it is skipped, because a shared CQ</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// client published a new lane generation (i.e. the client rebuilt its side).</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L205" href="#L205">205</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// cannot be drained safely. Returns the number of lanes rebuilt.</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Must be called from a thread that owns those lanes (the polling thread that</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L206" href="#L206">206</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">PollClientRebuildRequests</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">);</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// scans `qp_index`). Rebuilding requires the lane CQ to carry a single client</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L207" href="#L207">207</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
-        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">RcTransportConfig</span><span class="o">&amp;</span><span class="w"> </span><span class="nf">config</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">config_</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="w">  </span><span class="c1">// QP (num_os_clients == 1); otherwise it is skipped, because a shared CQ</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L208" href="#L208">208</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="w">  </span><span class="c1">// cannot be drained safely. Returns the number of lanes rebuilt.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L209" href="#L209">209</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="n">private</span><span class="o">:</span></td>
+        <td class="src"><span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="nf">PollClientRebuildRequests</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L210" href="#L210">210</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
-        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">struct</span><span class="w"> </span><span class="nc">Lane</span><span class="w"> </span><span class="p">{</span></td>
+        <td class="linecount uncoveredLine show_uncoveredLine pr-2 pl-2 color-fg-muted text-right">&cross;</td>
+        <td class="src uncoveredLine show_uncoveredLine"><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">RcTransportConfig</span><span class="o">&amp;</span><span class="w"> </span><span class="nf">config</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">config_</span><span class="p">;</span><span class="w"> </span><span class="p">}</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L211" href="#L211">211</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">RawVerbsTransport</span><span class="o">&gt;</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L212" href="#L212">212</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">        </span><span class="n">verbs</span><span class="p">;</span><span class="w">                     </span><span class="c1">// RC QP and registered memory for this lane.</span></td>
+        <td class="src"><span class="n">private</span><span class="o">:</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L213" href="#L213">213</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">request_slots</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">;</span><span class="w"> </span><span class="c1">// Local registered slots for all clients.</span></td>
+        <td class="src"><span class="w">  </span><span class="k">struct</span><span class="w"> </span><span class="nc">Lane</span><span class="w"> </span><span class="p">{</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L214" href="#L214">214</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">*&gt;</span><span class="w"> </span><span class="n">response_staging</span><span class="p">;</span><span class="w"> </span><span class="c1">// Per-client-per-slot registered</span></td>
+        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">RawVerbsTransport</span><span class="o">&gt;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L215" href="#L215">215</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">                                         </span><span class="c1">// response staging slots.</span></td>
+        <td class="src"><span class="w">        </span><span class="n">verbs</span><span class="p">;</span><span class="w">                     </span><span class="c1">// RC QP and registered memory for this lane.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L216" href="#L216">216</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">uint8_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">response_completion_pending</span><span class="p">;</span></td>
+        <td class="src"><span class="w">    </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">request_slots</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">;</span><span class="w"> </span><span class="c1">// Local registered slots for all clients.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L217" href="#L217">217</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">uint8_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">response_completion_ready</span><span class="p">;</span></td>
+        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">*&gt;</span><span class="w"> </span><span class="n">response_staging</span><span class="p">;</span><span class="w"> </span><span class="c1">// Per-client-per-slot registered</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L218" href="#L218">218</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="c1">// Last client lane generation observed per logical client id. A change</span></td>
+        <td class="src"><span class="w">                                         </span><span class="c1">// response staging slots.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L219" href="#L219">219</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="c1">// means the client rebuilt its side, so this side must rebuild too.</span></td>
+        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">uint8_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">response_completion_pending</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L220" href="#L220">220</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">observed_client_generation</span><span class="p">;</span></td>
+        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">uint8_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">response_completion_ready</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L221" href="#L221">221</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="c1">// Serializes QP reset/rebuild against payload posts from the get-payload</span></td>
+        <td class="src"><span class="w">    </span><span class="c1">// Last client lane generation observed per logical client id. A change</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L222" href="#L222">222</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="c1">// workers. A post either completes before the rebuild (its WR is flushed by</span></td>
+        <td class="src"><span class="w">    </span><span class="c1">// means the client rebuilt its side, so this side must rebuild too.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L223" href="#L223">223</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="c1">// the reset) or observes the bumped epoch afterwards and refuses.</span></td>
+        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">observed_client_generation</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L224" href="#L224">224</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">mutex</span><span class="w"> </span><span class="n">rebuild_mu</span><span class="p">;</span></td>
+        <td class="src"><span class="w">    </span><span class="c1">// Serializes QP reset/rebuild against payload posts from the get-payload</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L225" href="#L225">225</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="c1">// Bumped on every server-side rebuild. Payload posts carry the value they</span></td>
+        <td class="src"><span class="w">    </span><span class="c1">// workers. A post either completes before the rebuild (its WR is flushed by</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L226" href="#L226">226</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="c1">// captured when the request was accepted.</span></td>
+        <td class="src"><span class="w">    </span><span class="c1">// the reset) or observes the bumped epoch afterwards and refuses.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L227" href="#L227">227</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">response_epoch</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
+        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">mutex</span><span class="w"> </span><span class="n">rebuild_mu</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L228" href="#L228">228</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="p">};</span></td>
+        <td class="src"><span class="w">    </span><span class="c1">// Bumped on every server-side rebuild. Payload posts carry the value they</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L229" href="#L229">229</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="w">    </span><span class="c1">// captured when the request was accepted.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L230" href="#L230">230</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">Lane</span><span class="o">&amp;</span><span class="w"> </span><span class="nf">LaneAt</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">);</span></td>
+        <td class="src"><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">response_epoch</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L231" href="#L231">231</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">Lane</span><span class="o">&amp;</span><span class="w"> </span><span class="nf">LaneAt</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
+        <td class="src"><span class="w">  </span><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L232" href="#L232">232</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="nf">RebuildClientLaneIfStale</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">);</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L233" href="#L233">233</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="w">  </span><span class="n">Lane</span><span class="o">&amp;</span><span class="w"> </span><span class="nf">LaneAt</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L234" href="#L234">234</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">RcTransportConfig</span><span class="w"> </span><span class="n">config_</span><span class="p">;</span><span class="w"> </span><span class="c1">// Transport sizing and namespace config.</span></td>
+        <td class="src"><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">Lane</span><span class="o">&amp;</span><span class="w"> </span><span class="nf">LaneAt</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L235" href="#L235">235</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Lane</span><span class="o">&gt;</span><span class="w"> </span><span class="n">lanes_</span><span class="p">;</span><span class="w">  </span><span class="c1">// One verbs RC lane per qp_index.</span></td>
+        <td class="src"><span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="nf">RebuildClientLaneIfStale</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_id</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">qp_index</span><span class="p">);</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L236" href="#L236">236</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// Local MR addresses survive QP rebuilds and are fixed until destruction.</span></td>
+        <td class="src"></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L237" href="#L237">237</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">*&gt;</span><span class="w"> </span><span class="n">request_slots_</span><span class="p">;</span></td>
+        <td class="src"><span class="w">  </span><span class="n">RcTransportConfig</span><span class="w"> </span><span class="n">config_</span><span class="p">;</span><span class="w"> </span><span class="c1">// Transport sizing and namespace config.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L238" href="#L238">238</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// Fence observability: incremented by WriteResponsePayloadSg() when it</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Lane</span><span class="o">&gt;</span><span class="w"> </span><span class="n">lanes_</span><span class="p">;</span><span class="w">  </span><span class="c1">// One verbs RC lane per qp_index.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L239" href="#L239">239</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="c1">// refuses to post into a rebuilt lane.</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Local MR addresses survive QP rebuilds and are fixed until destruction.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L240" href="#L240">240</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">response_rejected_epoch_count_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">*&gt;</span><span class="w"> </span><span class="n">request_slots_</span><span class="p">;</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L241" href="#L241">241</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">};</span></td>
+        <td class="src"><span class="w">  </span><span class="c1">// Fence observability: incremented by WriteResponsePayloadSg() when it</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L242" href="#L242">242</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"></td>
+        <td class="src"><span class="w">  </span><span class="c1">// refuses to post into a rebuilt lane.</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L243" href="#L243">243</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
-        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace petps</span></td>
+        <td class="src"><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">response_rejected_epoch_count_</span><span class="p">{</span><span class="mi">0</span><span class="p">};</span></td>
       </tr>
       <tr>
         <td class="text-right src linenos"><a class="normal" id="L244" href="#L244">244</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">};</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L245" href="#L245">245</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L246" href="#L246">246</a></td>
+        <td class="text-right src linenos ws-unset">
+        </td>
+        <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
+        <td class="src"><span class="p">}</span><span class="w"> </span><span class="c1">// namespace petps</span></td>
+      </tr>
+      <tr>
+        <td class="text-right src linenos"><a class="normal" id="L247" href="#L247">247</a></td>
         <td class="text-right src linenos ws-unset">
         </td>
         <td class="linecount pr-2 pl-2 color-fg-muted text-right"></td>
@@ -1839,7 +1860,7 @@
         <hr class="block-separator"/>
         <footer class="text-center">
           Created using <a href="http://gcovr.com/en/8.8">GCOVR (Version 8.8)</a>
-          at 2026-11-24 08:21:59+00:00
+          at 2026-11-25 12:07:18+00:00
         </footer>
       </div>
     </div>
