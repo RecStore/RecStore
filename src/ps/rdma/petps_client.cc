@@ -144,11 +144,14 @@ void PetPSClient::InitializeTransport() {
   config_.fabric_digest        = deployment.fabric_digest;
   config_.fabric               = fabric;
 
-  transport_ = std::make_unique<RcShardClientTransport>(config_);
+  // Build into locals and publish the members only after the whole sequence
+  // succeeds. A failed WaitServer or OpenSlot must leave the client retryable,
+  // not half-initialized with a transport but no slot view.
+  auto transport = std::make_unique<RcShardClientTransport>(config_);
   // One control-plane client per shard client: the WaitServer handshake and
   // every slow-path health probe share one channel/stub instead of connecting
   // per probe.
-  control_plane_ =
+  auto control_plane =
       std::make_unique<RdmaControlPlaneClient>(RdmaControlPlaneEndpoint{
           config_.control_plane_host,
           config_.control_plane_port,
@@ -160,20 +163,23 @@ void PetPSClient::InitializeTransport() {
           config_.fabric_digest,
           config_.num_servers,
       });
-  control_plane_->WaitServer(shard_, config_.control_plane_timeout_ms);
+  control_plane->WaitServer(shard_, config_.control_plane_timeout_ms);
   // Built in place: QpContext holds atomics and is therefore neither copyable
   // nor movable, so a growing vector operation on it would not compile.
-  qps_ = std::vector<QpContext>(
+  std::vector<QpContext> qps(
       static_cast<std::size_t>(config_.qps_per_client_per_shard));
   for (int qp = 0; qp < config_.qps_per_client_per_shard; ++qp) {
-    QpContext& context = qps_[static_cast<std::size_t>(qp)];
+    QpContext& context = qps[static_cast<std::size_t>(qp)];
     context.qp_index   = qp;
     context.slots.reserve(static_cast<std::size_t>(config_.slots_per_qp));
     for (int slot_in_qp = 0; slot_in_qp < config_.slots_per_qp; ++slot_in_qp) {
       context.slots.push_back(
-          SlotContext{transport_->OpenSlot(qp, slot_in_qp), 1, false});
+          SlotContext{transport->OpenSlot(qp, slot_in_qp), 1, false});
     }
   }
+  transport_     = std::move(transport);
+  control_plane_ = std::move(control_plane);
+  qps_           = std::move(qps);
 }
 
 void PetPSClient::InitThread() {
