@@ -386,13 +386,15 @@ T TieringFlag(const char* name,
 }
 
 BaseKVConfig BuildConfig() {
-  // Validate the allocator name before capacity scaling or JSON build. An
-  // unknown value used to reach Factory::NewInstance mid-run and exit(-1),
-  // after the harness had already rewritten the requested capacity.
+  // Validate the allocator name before capacity scaling or JSON build, and keep
+  // the canonical name: the allocator factory only knows the registration keys
+  // (R2_SLAB, PERSIST_LOOP_SLAB, ...), not the aliases the check accepts.
+  std::string dram_allocator = FLAGS_dram_allocator;
   if (FLAGS_value_store_type == "DRAM_VALUE_STORE" ||
       FLAGS_value_store_type == "TIERED_VALUE_STORE") {
     try {
-      (void)base::allocators::ImplFromAllocatorType(FLAGS_dram_allocator);
+      dram_allocator =
+          base::allocators::ImplFromAllocatorType(FLAGS_dram_allocator);
     } catch (const std::invalid_argument&) {
       throw std::invalid_argument(
           "unknown --dram_allocator '" + FLAGS_dram_allocator +
@@ -502,7 +504,7 @@ BaseKVConfig BuildConfig() {
       config.json_config_["value"]["path"] = FLAGS_dram_path + "/value";
     }
     config.json_config_["value"]["dram_allocator"] = {
-        {"type", FLAGS_dram_allocator}, {"capacity_bytes", dram_capacity}};
+        {"type", dram_allocator}, {"capacity_bytes", dram_capacity}};
   } else if (FLAGS_value_store_type == "SSD_VALUE_STORE") {
     config.json_config_["value"]["path"] = FLAGS_ssd_path + "/value.db";
     config.json_config_["value"]["ssd_allocator"] = {
@@ -522,7 +524,7 @@ BaseKVConfig BuildConfig() {
     }
 
     config.json_config_["value"]["dram_allocator"] = {
-        {"type", FLAGS_dram_allocator},
+        {"type", dram_allocator},
         {"capacity_bytes", dram_capacity},
         {"path", FLAGS_dram_path + "/dram"}};
     config.json_config_["value"]["ssd_allocator"] = {
