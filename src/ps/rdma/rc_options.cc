@@ -64,6 +64,17 @@ DEFINE_int32(
     "Minimum interval between rebuild attempts on the same lane, so a "
     "sustained outage does not burn the rebuild budget on every acquire in "
     "milliseconds");
+DEFINE_int32(
+    rdma_op_retry_max_attempts,
+    2,
+    "Retries for idempotent synchronous GET/PUT after a shard-unreachable "
+    "error. Each retry acquires a new lane/slot; UPDATE never retries. "
+    "0 disables retries");
+DEFINE_int32(
+    rdma_op_retry_backoff_ms,
+    800,
+    "Base backoff between idempotent GET/PUT retries; doubles per retry up "
+    "to 2000 ms so a lane rebuild has time to finish");
 DEFINE_int32(rdma_rc_profile_interval_ms,
              0,
              "RC write profiling summary interval in milliseconds; 0 disables "

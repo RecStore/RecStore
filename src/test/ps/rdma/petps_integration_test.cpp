@@ -226,6 +226,20 @@ TEST(PetPSIntegrationTest, InitRetriesAfterReadyTimeoutSingleShard) {
   ExpectFlatSlots(output.data(), values, embedding_dim);
 }
 
+namespace recstore {
+
+// Test-only access to the adapter's per-shard clients. Used to force one lane
+// failure and prove that an idempotent GET is retried instead of surfacing
+// ShardUnreachableError to the caller.
+struct AdapterTestAccess {
+  static petps::PetPSClient&
+  ShardClient(RDMAPSClientAdapter& adapter, std::size_t index) {
+    return *adapter.shard_clients_.at(index);
+  }
+};
+
+} // namespace recstore
+
 TEST(PetPSIntegrationTest, PutGetRoundTripSingleShard) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);
   auto& client            = SingleShardClient();
@@ -1495,6 +1509,54 @@ TEST(PetPSIntegrationTest, AsyncRebuildDoesNotBlockHealthyLanes) {
   // wait is ~2 s. A synchronous rebuild would hold mu_ for that whole budget.
   EXPECT_LT(elapsed_ms, 1500)
       << "GET blocked on the lane rebuild instead of using a healthy lane";
+}
+
+// The adapter owns the per-op retry policy: a single-lane GET that hits a
+// retired lane must wait out one rebuild and succeed on the retry, instead of
+// surfacing ShardUnreachableError to the training step.
+TEST(PetPSIntegrationTest, AdapterRetriesGetAfterSingleLaneFailure) {
+  if (!FLAGS_rdma_lane_rebuild_enabled) {
+    GTEST_SKIP() << "requires --rdma_lane_rebuild_enabled on server and client";
+  }
+  if (FLAGS_rdma_rc_qps_per_client_per_shard != 1) {
+    GTEST_SKIP() << "requires exactly one lane";
+  }
+  json config = ParseFile2Json(std::getenv("RECSTORE_CONFIG"));
+  recstore::RDMAPSClientAdapter adapter(config);
+  constexpr int dim = 4;
+  ASSERT_EQ(adapter.InitEmbeddingTable("retry_get", {1024, dim}), 0);
+  const std::vector<std::uint64_t> keys{9100001, 9100002, 9100003};
+  const auto values = MakeValues(keys, dim);
+  ASSERT_EQ(adapter.PutParameter(keys, values), 0);
+
+  auto& shard = recstore::AdapterTestAccess::ShardClient(adapter, 0);
+  petps::PetPSClientTestAccess::MarkLaneRebuildable(shard, 0);
+
+  std::vector<float> output(keys.size() * static_cast<std::size_t>(dim), 0.0f);
+  base::RecTensor output_tensor(
+      output.data(), {static_cast<int64_t>(keys.size()), dim});
+  ASSERT_EQ(adapter.GetParameter(
+                base::ConstArray<std::uint64_t>(keys), output_tensor),
+            0);
+  ExpectFlatSlots(output.data(), values, dim);
+
+  // UPDATE is not idempotent, so the same failure must surface immediately:
+  // no retry sleep and no silent replay of the gradients.
+  petps::PetPSClientTestAccess::MarkLaneRebuildable(shard, 0);
+  std::vector<float> grads(keys.size() * static_cast<std::size_t>(dim), 0.5f);
+  base::RecTensor grad_tensor(
+      grads.data(), {static_cast<int64_t>(keys.size()), dim});
+  const auto update_start = std::chrono::steady_clock::now();
+  EXPECT_THROW(
+      adapter.UpdateParameter(
+          "retry_get", base::ConstArray<std::uint64_t>(keys), grad_tensor),
+      std::exception);
+  const auto update_elapsed_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - update_start)
+          .count();
+  EXPECT_LT(update_elapsed_ms, 500)
+      << "UPDATE must not take the idempotent retry backoff";
 }
 
 // Regression test for the review finding: an async RPC in flight when its lane

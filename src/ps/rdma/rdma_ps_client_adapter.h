@@ -35,6 +35,9 @@ class RDMAPSClientAdapter : public BasePSClient {
   // revoke) to the low-level RDMA benchmarks without widening the production
   // BasePSClient surface.
   friend class RdmaRawAccess;
+  // Test-only access to the per-shard clients, used to force a lane failure
+  // and prove the idempotent GET retry contract.
+  friend struct AdapterTestAccess;
 
 public:
   explicit RDMAPSClientAdapter(json config);
