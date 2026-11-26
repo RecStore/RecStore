@@ -199,6 +199,27 @@ set_tests_properties(
         LABELS "rdma_integration"
 )
 
+add_test(
+    NAME petps_async_lane_rebuild_test
+    COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/src/test/scripts/run_petps_integration.py
+            --server-count 1
+            --config-path ${PROJECT_SOURCE_DIR}/src/test/configs/recstore_config.rdma_test.json
+            --test-binary $<TARGET_FILE:petps_integration_test>
+            --gtest-filter=PetPSIntegrationTest.AsyncRebuildDoesNotBlockHealthyLanes
+            --rdma-lane-rebuild
+            --rdma-lane-rebuild-poll-ms 3000
+            --client-timeout 60
+            --cluster-timeout 60
+)
+set_tests_properties(
+    petps_async_lane_rebuild_test
+    PROPERTIES
+        SKIP_RETURN_CODE 77
+        TIMEOUT 120
+        LABELS "rdma_integration"
+)
+
 # The merged-gradient (v4 owner) path needs two shards and city_hash, and every
 # case must run in its own process: the QP rendezvous protocol carries no
 # instance identifier, so a process may only host one adapter.

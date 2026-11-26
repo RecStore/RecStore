@@ -82,7 +82,19 @@ PetPSClient::PetPSClient(
   (void)port;
 }
 
-PetPSClient::~PetPSClient() = default;
+PetPSClient::~PetPSClient() {
+  // Stop and join the rebuild worker before transport_ is destroyed. A worker
+  // blocked inside RebuildLane() must finish first; every other thread has
+  // already stopped using this client by the time the destructor runs.
+  {
+    std::lock_guard<std::mutex> lock(rebuild_mu_);
+    rebuild_stop_ = true;
+  }
+  rebuild_cv_.notify_all();
+  if (rebuild_worker_.joinable()) {
+    rebuild_worker_.join();
+  }
+}
 
 void PetPSClient::Barrier(const std::string&, int) {}
 
@@ -185,6 +197,11 @@ void PetPSClient::InitializeTransport() {
     }
   }
   qps_ = std::move(qps);
+  // Idempotent: InitializeTransport() is retried after a WaitServer timeout,
+  // and the worker must survive later attempts.
+  if (FLAGS_rdma_lane_rebuild_enabled) {
+    StartRebuildWorkerLocked();
+  }
 }
 
 void PetPSClient::InitThread() {
@@ -329,17 +346,19 @@ PetPSClient::SlotHandle PetPSClient::AcquireIdleSlot() {
       continue;
     }
     if (qp.dirty.load(std::memory_order_relaxed)) {
-      // A degraded lane is rebuilt lazily here, under mu_, if a QP rebuild can
-      // cure the cause. The cooldown keeps a sustained outage from burning the
-      // rebuild budget on every acquire; a non-rebuildable lane stays retired.
+      // A degraded lane is rebuilt lazily, but the rebuild itself runs on the
+      // worker thread so this acquire never holds mu_ across the bilateral
+      // handshake. The cooldown keeps a sustained outage from burning the
+      // budget on every acquire; a non-rebuildable lane stays retired.
       const auto now = std::chrono::steady_clock::now();
-      if (!FLAGS_rdma_lane_rebuild_enabled ||
-          !qp.rebuildable.load(std::memory_order_relaxed) ||
-          now < qp.next_rebuild_at ||
-          !TryRebuildLaneLocked(static_cast<int>(qp_index))) {
-        ++degraded_lanes;
-        continue;
+      if (FLAGS_rdma_lane_rebuild_enabled &&
+          qp.rebuildable.load(std::memory_order_relaxed) &&
+          now >= qp.next_rebuild_at) {
+        BeginLaneRebuildLocked(static_cast<int>(qp_index),
+                               /*schedule_async=*/true);
       }
+      ++degraded_lanes;
+      continue;
     }
     ++usable_lanes;
     for (std::size_t slot_in_qp = 0; slot_in_qp < qp.slots.size();
@@ -395,39 +414,69 @@ void PetPSClient::MarkLaneDirty(
                << " waited_ms=" << waited_ms;
 }
 
-bool PetPSClient::TryRebuildLaneLocked(int qp_index) {
-  // Runs under mu_, which is what keeps submits/polls off the lane while its QP
-  // is reset. The bilateral handshake can block for up to
-  // --rdma-lane-rebuild-wait-ms, but only for lanes of this shard, which is the
-  // shard that just failed.
+bool PetPSClient::BeginLaneRebuildLocked(int qp_index, bool schedule_async) {
   auto& lane = qps_[static_cast<std::size_t>(qp_index)];
   if (lane.dead.load(std::memory_order_relaxed)) {
     return false;
   }
-  lane.next_rebuild_at =
-      std::chrono::steady_clock::now() +
-      std::chrono::milliseconds(
-          static_cast<std::int64_t>(FLAGS_rdma_lane_rebuild_cooldown_ms));
+  bool expected = false;
+  if (!lane.rebuilding.compare_exchange_strong(expected, true)) {
+    return false;
+  }
   if (lane.rebuild_attempts >= FLAGS_rdma_lane_rebuild_max_attempts) {
     lane.dead.store(true, std::memory_order_relaxed);
+    lane.rebuilding.store(false, std::memory_order_relaxed);
     LOG(WARNING) << "component=rdma_rc_client event=lane_rebuild_exhausted"
                  << " shard=" << shard_ << " client_id=" << client_id_
                  << " lane=" << qp_index
                  << " attempts=" << lane.rebuild_attempts;
     return false;
   }
+  if (schedule_async) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now < lane.next_rebuild_at) {
+      lane.rebuilding.store(false, std::memory_order_relaxed);
+      return false;
+    }
+    lane.next_rebuild_at =
+        now + std::chrono::milliseconds(static_cast<std::int64_t>(
+                  FLAGS_rdma_lane_rebuild_cooldown_ms));
+  }
   ++lane.rebuild_attempts;
-  bool rebuilt = false;
-  try {
-    rebuilt = transport_->RebuildLane(qp_index);
-  } catch (const std::exception& error) {
+  if (schedule_async) {
+    StartRebuildWorkerLocked();
+    {
+      std::lock_guard<std::mutex> lock(rebuild_mu_);
+      if (rebuild_stop_.load(std::memory_order_relaxed)) {
+        lane.rebuilding.store(false, std::memory_order_relaxed);
+        return false;
+      }
+      rebuild_queue_.push_back(qp_index);
+    }
+    rebuild_cv_.notify_one();
+    VLOG(1) << "component=rdma_rc_client event=lane_rebuild_scheduled"
+            << " shard=" << shard_ << " client_id=" << client_id_
+            << " lane=" << qp_index << " attempt=" << lane.rebuild_attempts;
+  }
+  return true;
+}
+
+void PetPSClient::FinishLaneRebuildLocked(
+    int qp_index, bool rebuilt, const std::string& error) {
+  auto& lane = qps_[static_cast<std::size_t>(qp_index)];
+  lane.rebuilding.store(false, std::memory_order_relaxed);
+  if (!error.empty()) {
     LOG(WARNING) << "component=rdma_rc_client event=lane_rebuild_failed"
                  << " shard=" << shard_ << " client_id=" << client_id_
-                 << " lane=" << qp_index << " error=\"" << error.what() << "\"";
-    return false;
+                 << " lane=" << qp_index << " error=\"" << error << "\"";
+    return;
   }
   if (!rebuilt) {
-    return false;
+    LOG(WARNING) << "component=rdma_rc_client event=lane_rebuild_timeout"
+                 << " shard=" << shard_ << " client_id=" << client_id_
+                 << " lane=" << qp_index
+                 << " attempts=" << lane.rebuild_attempts;
+    return;
   }
   // The QP was reset, so every slot of this lane is free again and any RPC
   // still pending on it lost its response. Mark those entries failed instead of
@@ -457,7 +506,63 @@ bool PetPSClient::TryRebuildLaneLocked(int qp_index) {
                << " shard=" << shard_ << " client_id=" << client_id_
                << " lane=" << qp_index << " generation=" << lane.generation
                << " attempts=" << lane.rebuild_attempts;
-  return true;
+}
+
+void PetPSClient::RebuildWorkerLoop() {
+  for (;;) {
+    int qp_index = -1;
+    {
+      std::unique_lock<std::mutex> lock(rebuild_mu_);
+      rebuild_cv_.wait(lock, [this] {
+        return rebuild_stop_.load(std::memory_order_relaxed) ||
+               !rebuild_queue_.empty();
+      });
+      if (rebuild_stop_.load(std::memory_order_relaxed)) {
+        return;
+      }
+      qp_index = rebuild_queue_.front();
+      rebuild_queue_.erase(rebuild_queue_.begin());
+    }
+    bool rebuilt = false;
+    std::string error;
+    try {
+      rebuilt = transport_->RebuildLane(qp_index);
+    } catch (const std::exception& failure) {
+      error = failure.what();
+    } catch (...) {
+      error = "unknown rebuild failure";
+    }
+    std::lock_guard<std::mutex> guard(mu_);
+    FinishLaneRebuildLocked(qp_index, rebuilt, error);
+  }
+}
+
+void PetPSClient::StartRebuildWorkerLocked() {
+  if (rebuild_worker_started_) {
+    return;
+  }
+  rebuild_stop_.store(false, std::memory_order_relaxed);
+  rebuild_worker_         = std::thread([this] { RebuildWorkerLoop(); });
+  rebuild_worker_started_ = true;
+}
+
+bool PetPSClient::TryRebuildLaneLocked(int qp_index) {
+  // Inline path kept for tests that force a rebuild of healthy lanes. It
+  // holds mu_ across the handshake, exactly like the pre-worker behaviour.
+  if (!BeginLaneRebuildLocked(qp_index, /*schedule_async=*/false)) {
+    return false;
+  }
+  bool rebuilt = false;
+  std::string error;
+  try {
+    rebuilt = transport_->RebuildLane(qp_index);
+  } catch (const std::exception& failure) {
+    error = failure.what();
+  } catch (...) {
+    error = "unknown rebuild failure";
+  }
+  FinishLaneRebuildLocked(qp_index, rebuilt, error);
+  return rebuilt;
 }
 
 void PetPSClient::MaybeProbeShardHealth(int qp_index, std::int64_t waited_ms) {

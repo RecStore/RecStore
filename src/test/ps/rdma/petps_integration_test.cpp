@@ -172,6 +172,14 @@ struct PetPSClientTestAccess {
     }
     return recovered;
   }
+
+  // Marks a healthy lane rebuildable, exactly like a peer-side CQ failure
+  // would, so AcquireIdleSlot has to schedule the async worker.
+  static void MarkLaneRebuildable(PetPSClient& client, int qp_index) {
+    std::lock_guard<std::mutex> guard(client.mu_);
+    client.MarkLaneDirty(
+        qp_index, "test_forced", nullptr, 0, /*rebuildable=*/true);
+  }
 };
 
 } // namespace petps
@@ -1447,6 +1455,46 @@ TEST(PetPSIntegrationTest, LaneRebuildResumesServiceSingleShard) {
   // A second round proves the generations keep advancing in lockstep.
   ASSERT_EQ(petps::PetPSClientTestAccess::RebuildAllLanes(client), lanes);
   expect_get_ok();
+}
+
+// A rebuild must not hold the client mutex across the bilateral handshake:
+// while lane 0 waits for the (deliberately slow) server ack, a GET must be
+// served by lane 1 instead of blocking for the whole rebuild budget.
+TEST(PetPSIntegrationTest, AsyncRebuildDoesNotBlockHealthyLanes) {
+  if (!FLAGS_rdma_lane_rebuild_enabled) {
+    GTEST_SKIP() << "requires --rdma_lane_rebuild_enabled on server and client";
+  }
+  if (FLAGS_rdma_rc_qps_per_client_per_shard < 2) {
+    GTEST_SKIP() << "requires at least two lanes";
+  }
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  auto& client            = SingleShardClient();
+  const std::vector<std::uint64_t> keys{7700001, 7700002, 7700003};
+  const auto values = MakeValues(keys, embedding_dim);
+  ASSERT_EQ(client.PutParameter(keys, values), 0);
+
+  petps::PetPSClientTestAccess::MarkLaneRebuildable(client, 0);
+
+  void* recv_buffer =
+      client.GetReceiveBuffer(client.ResponseBufferBytes(keys.size()));
+  const auto start = std::chrono::steady_clock::now();
+  const int rpc_id = client.GetParameter(
+      base::ConstArray<std::uint64_t>(keys),
+      static_cast<float*>(recv_buffer),
+      /*isAsync=*/false);
+  client.WaitRPCFinish(rpc_id);
+  const auto elapsed_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - start)
+          .count();
+  ExpectFlatSlots(static_cast<float*>(recv_buffer), values, embedding_dim);
+  client.RevokeRPCResource(rpc_id);
+  client.ReturnGetReceiveBuffer(static_cast<float*>(recv_buffer));
+
+  // The server is told to poll lane generations slowly, so the rebuild's ack
+  // wait is ~2 s. A synchronous rebuild would hold mu_ for that whole budget.
+  EXPECT_LT(elapsed_ms, 1500)
+      << "GET blocked on the lane rebuild instead of using a healthy lane";
 }
 
 // Regression test for the review finding: an async RPC in flight when its lane

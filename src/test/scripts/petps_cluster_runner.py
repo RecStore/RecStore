@@ -78,6 +78,7 @@ class PetPSClusterRunner:
         rdma_slots_per_qp=None,
         rdma_wait_timeout_ms=None,
         rdma_lane_rebuild_enabled=None,
+        rdma_lane_rebuild_poll_ms=None,
         rdma_control_plane_timeout_ms=None,
         rdma_client_control_plane_timeout_ms=None,
         rdma_server_ready_delay_ms=None,
@@ -146,6 +147,7 @@ class PetPSClusterRunner:
         )
         self.rdma_wait_timeout_ms = rdma_wait_timeout_ms
         self.rdma_lane_rebuild_enabled = rdma_lane_rebuild_enabled
+        self.rdma_lane_rebuild_poll_ms = rdma_lane_rebuild_poll_ms
         self.rdma_control_plane_timeout_ms = rdma_control_plane_timeout_ms
         self.rdma_client_control_plane_timeout_ms = (
             rdma_client_control_plane_timeout_ms
@@ -384,6 +386,11 @@ class PetPSClusterRunner:
             cmd.append(f"--rdma_wait_timeout_ms={self.rdma_wait_timeout_ms}")
         if self.rdma_lane_rebuild_enabled:
             cmd.append("--rdma_lane_rebuild_enabled=true")
+            if self.rdma_lane_rebuild_poll_ms is not None:
+                cmd.append(
+                    "--rdma_lane_rebuild_poll_ms="
+                    f"{self.rdma_lane_rebuild_poll_ms}"
+                )
             if self.rdma_rc_server_fence_stats_interval_ms is not None:
                 # Opt-in: production leaves the fence report off (default 0),
                 # so the periodic stderr line only appears in test runs.
