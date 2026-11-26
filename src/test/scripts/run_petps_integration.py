@@ -109,6 +109,17 @@ def main():
     parser.add_argument("--rdma-namespace", default="auto")
     parser.add_argument("--rdma-control-plane-host", default="127.0.0.1")
     parser.add_argument("--rdma-control-plane-port", type=int)
+    parser.add_argument("--rdma-control-plane-timeout-ms", type=int)
+    parser.add_argument(
+        "--rdma-client-control-plane-timeout-ms",
+        type=int,
+        help="client-only override for the control-plane RPC timeout",
+    )
+    parser.add_argument(
+        "--rdma-server-ready-delay-ms",
+        type=int,
+        help="test-only: delay the server's READY publication",
+    )
     parser.add_argument("--rdma-per-thread-response-limit-bytes", type=int)
     parser.add_argument("--rdma-client-receive-arena-bytes", type=int)
     parser.add_argument("--rdma-rc-server-coroutines-per-thread", type=int)
@@ -230,6 +241,11 @@ def main():
             rdma_namespace=args.rdma_namespace,
             rdma_control_plane_host=args.rdma_control_plane_host,
             rdma_control_plane_port=args.rdma_control_plane_port,
+            rdma_control_plane_timeout_ms=args.rdma_control_plane_timeout_ms,
+            rdma_client_control_plane_timeout_ms=(
+                args.rdma_client_control_plane_timeout_ms
+            ),
+            rdma_server_ready_delay_ms=args.rdma_server_ready_delay_ms,
             rdma_per_thread_response_limit_bytes=args.rdma_per_thread_response_limit_bytes,
             rdma_client_receive_arena_bytes=args.rdma_client_receive_arena_bytes,
             rdma_rc_server_coroutines_per_thread=(

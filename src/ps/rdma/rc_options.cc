@@ -88,6 +88,13 @@ DEFINE_int32(
     "Interval between rebuild-fence counter reports on the server stderr "
     "(`event=rebuild_fence_stats`). 0 disables the reports, which is the "
     "production default; test drivers enable them to assert the fence fired");
+DEFINE_int32(
+    rdma_rc_server_ready_delay_ms,
+    0,
+    "Test-only: delay the server's READY publication by this many "
+    "milliseconds after the polling threads start. Lets a client reach "
+    "WaitServer with the peer QPs already connected, then time out and retry. "
+    "0 keeps the production behavior of publishing immediately");
 DEFINE_int32(rdma_rc_client_id_base,
              -1,
              "Logical RC write client id base for this OS process. A negative "

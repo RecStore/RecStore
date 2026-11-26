@@ -22,6 +22,7 @@ DECLARE_int32(rdma_rc_server_coroutines_per_thread);
 DECLARE_int32(rdma_rc_server_get_workers);
 DECLARE_int32(rdma_rc_server_get_worker_hold_us);
 DECLARE_int32(rdma_rc_server_fence_stats_interval_ms);
+DECLARE_int32(rdma_rc_server_ready_delay_ms);
 DECLARE_int32(rdma_rc_client_id_base);
 DECLARE_int32(rdma_rc_num_logical_clients);
 DECLARE_int32(rdma_rc_wait_spin_iterations);

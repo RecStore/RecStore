@@ -36,6 +36,7 @@ DECLARE_int32(rdma_rc_client_id_base);
 DECLARE_int32(rdma_rc_qps_per_client_per_shard);
 DECLARE_int32(rdma_rc_server_get_workers);
 DECLARE_int32(rdma_rc_server_get_worker_hold_us);
+DECLARE_int32(rdma_rc_server_ready_delay_ms);
 DECLARE_int32(rdma_lane_rebuild_max_attempts);
 DECLARE_int32(rdma_lane_rebuild_cooldown_ms);
 DECLARE_int32(rdma_lane_rebuild_wait_ms);
@@ -174,6 +175,48 @@ struct PetPSClientTestAccess {
 };
 
 } // namespace petps
+
+// Regression for the retry contract: the server connects to the client QPs
+// before it publishes READY, so a WaitServer timeout leaves a live peer QP
+// behind. Retrying InitThread must keep that transport instead of publishing a
+// fresh QP under the same lane generation, which the server's stale-lane check
+// would ignore.
+TEST(PetPSIntegrationTest, InitRetriesAfterReadyTimeoutSingleShard) {
+  if (FLAGS_rdma_rc_server_ready_delay_ms <= 0) {
+    GTEST_SKIP() << "requires a delayed server READY "
+                    "(--rdma_rc_server_ready_delay_ms)";
+  }
+  const int embedding_dim = FLAGS_value_size / sizeof(float);
+  petps::PetPSClient client("127.0.0.1", 1234, 0, ActiveLogicalClientId());
+
+  bool first_init_failed = false;
+  try {
+    client.InitThread();
+  } catch (const std::exception& error) {
+    first_init_failed = true;
+    std::printf("[init-retry] first init failed as expected: %s\n",
+                error.what());
+    std::fflush(stdout);
+  }
+  ASSERT_TRUE(first_init_failed)
+      << "first InitThread succeeded; READY was not delayed long enough";
+
+  std::this_thread::sleep_for(
+      std::chrono::milliseconds(FLAGS_rdma_rc_server_ready_delay_ms + 500));
+  ASSERT_NO_THROW(client.InitThread());
+
+  const std::vector<std::uint64_t> keys{7000000ULL, 7000001ULL};
+  const auto values = MakeValues(keys, embedding_dim);
+  ASSERT_EQ(client.PutParameter(keys, values), 0);
+  std::vector<float> output(
+      keys.size() * static_cast<std::size_t>(embedding_dim), 0.0f);
+  base::RecTensor output_tensor(
+      output.data(), {static_cast<int64_t>(keys.size()), embedding_dim});
+  ASSERT_EQ(
+      client.GetParameter(base::ConstArray<std::uint64_t>(keys), output_tensor),
+      0);
+  ExpectFlatSlots(output.data(), values, embedding_dim);
+}
 
 TEST(PetPSIntegrationTest, PutGetRoundTripSingleShard) {
   const int embedding_dim = FLAGS_value_size / sizeof(float);

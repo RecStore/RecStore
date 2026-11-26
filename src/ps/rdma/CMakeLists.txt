@@ -94,6 +94,29 @@ set_tests_properties(
 )
 
 add_test(
+    NAME petps_init_retry_test
+    COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/src/test/scripts/run_petps_integration.py
+            --server-count 1
+            --config-path ${PROJECT_SOURCE_DIR}/src/test/configs/recstore_config.rdma_test.json
+            --test-binary $<TARGET_FILE:petps_integration_test>
+            --gtest-filter=PetPSIntegrationTest.InitRetriesAfterReadyTimeoutSingleShard
+            --value-size 16
+            --max-kv-num-per-request 64
+            --rdma-client-control-plane-timeout-ms 400
+            --rdma-server-ready-delay-ms 1500
+            --client-timeout 45
+            --cluster-timeout 45
+)
+set_tests_properties(
+    petps_init_retry_test
+    PROPERTIES
+        SKIP_RETURN_CODE 77
+        TIMEOUT 120
+        LABELS "rdma_integration"
+)
+
+add_test(
     NAME petps_direct_sg_multi_wr_test
     COMMAND ${Python3_EXECUTABLE}
             ${PROJECT_SOURCE_DIR}/src/test/scripts/run_petps_integration.py
