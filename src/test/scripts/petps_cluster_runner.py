@@ -79,6 +79,8 @@ class PetPSClusterRunner:
         rdma_wait_timeout_ms=None,
         rdma_lane_rebuild_enabled=None,
         rdma_control_plane_timeout_ms=None,
+        rdma_client_control_plane_timeout_ms=None,
+        rdma_server_ready_delay_ms=None,
         rdma_profile_interval_ms=None,
         rdma_server_coroutines_per_thread=None,
         rdma_server_get_workers=None,
@@ -145,6 +147,10 @@ class PetPSClusterRunner:
         self.rdma_wait_timeout_ms = rdma_wait_timeout_ms
         self.rdma_lane_rebuild_enabled = rdma_lane_rebuild_enabled
         self.rdma_control_plane_timeout_ms = rdma_control_plane_timeout_ms
+        self.rdma_client_control_plane_timeout_ms = (
+            rdma_client_control_plane_timeout_ms
+        )
+        self.rdma_server_ready_delay_ms = rdma_server_ready_delay_ms
         self.rdma_slots_per_qp = self._coalesce_optional_values(
             "rdma_slots_per_qp",
             rdma_slots_per_qp,
@@ -390,6 +396,11 @@ class PetPSClusterRunner:
                 "--rdma_control_plane_timeout_ms="
                 f"{self.rdma_control_plane_timeout_ms}"
             )
+        if self.rdma_server_ready_delay_ms is not None:
+            cmd.append(
+                "--rdma_rc_server_ready_delay_ms="
+                f"{self.rdma_server_ready_delay_ms}"
+            )
         if self.rdma_inline_bytes is not None:
             cmd.append(f"--rdma_rc_inline_bytes={self.rdma_inline_bytes}")
         if self.rdma_server_numa_id is not None:
@@ -463,10 +474,20 @@ class PetPSClusterRunner:
             cmd.append(f"--rdma_wait_timeout_ms={self.rdma_wait_timeout_ms}")
         if self.rdma_lane_rebuild_enabled:
             cmd.append("--rdma_lane_rebuild_enabled=true")
-        if self.rdma_control_plane_timeout_ms is not None:
+        client_control_plane_timeout_ms = self.rdma_control_plane_timeout_ms
+        if self.rdma_client_control_plane_timeout_ms is not None:
+            client_control_plane_timeout_ms = (
+                self.rdma_client_control_plane_timeout_ms
+            )
+        if client_control_plane_timeout_ms is not None:
             cmd.append(
                 "--rdma_control_plane_timeout_ms="
-                f"{self.rdma_control_plane_timeout_ms}"
+                f"{client_control_plane_timeout_ms}"
+            )
+        if self.rdma_server_ready_delay_ms is not None:
+            cmd.append(
+                "--rdma_rc_server_ready_delay_ms="
+                f"{self.rdma_server_ready_delay_ms}"
             )
         if self.rdma_profile_interval_ms is not None:
             cmd.append(

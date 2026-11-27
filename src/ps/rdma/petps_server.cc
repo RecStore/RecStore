@@ -1232,6 +1232,13 @@ private:
         ready_published_.exchange(true, std::memory_order_acq_rel)) {
       return;
     }
+    if (FLAGS_rdma_rc_server_ready_delay_ms > 0) {
+      LOG(INFO) << "component=rdma_control_plane event=server_ready_delayed"
+                << " server_id=" << FLAGS_global_id
+                << " delay_ms=" << FLAGS_rdma_rc_server_ready_delay_ms;
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(FLAGS_rdma_rc_server_ready_delay_ms));
+    }
     control_plane_client_.PublishServerReady(FLAGS_global_id);
     LOG(INFO) << "component=rdma_control_plane event=server_ready_published"
               << " server_id=" << FLAGS_global_id

@@ -87,7 +87,7 @@ PetPSClient::~PetPSClient() = default;
 void PetPSClient::Barrier(const std::string&, int) {}
 
 void PetPSClient::InitializeTransport() {
-  if (transport_ != nullptr) {
+  if (thread_initialized_) {
     return;
   }
   client_id_ =
@@ -144,29 +144,39 @@ void PetPSClient::InitializeTransport() {
   config_.fabric_digest        = deployment.fabric_digest;
   config_.fabric               = fabric;
 
-  transport_ = std::make_unique<RcShardClientTransport>(config_);
+  // The transport publishes and connects its QPs before WaitServer, and the
+  // shard may have connected back to them by the time a retry happens. Keep
+  // the transport alive across attempts: a fresh one would publish a different
+  // QP number with the same generation, and the server's stale-lane check
+  // reads an unchanged generation as "nothing to rebuild", leaving its QP
+  // pointed at the closed peer. Only the local slot view is rebuilt on retry.
+  if (transport_ == nullptr) {
+    transport_ = std::make_unique<RcShardClientTransport>(config_);
+  }
   // One control-plane client per shard client: the WaitServer handshake and
   // every slow-path health probe share one channel/stub instead of connecting
   // per probe.
-  control_plane_ =
-      std::make_unique<RdmaControlPlaneClient>(RdmaControlPlaneEndpoint{
-          config_.control_plane_host,
-          config_.control_plane_port,
-          config_.control_plane_timeout_ms,
-          config_.deployment_id,
-          config_.deployment_epoch,
-          config_.protocol_version,
-          config_.configuration_digest,
-          config_.fabric_digest,
-          config_.num_servers,
-      });
+  if (control_plane_ == nullptr) {
+    control_plane_ =
+        std::make_unique<RdmaControlPlaneClient>(RdmaControlPlaneEndpoint{
+            config_.control_plane_host,
+            config_.control_plane_port,
+            config_.control_plane_timeout_ms,
+            config_.deployment_id,
+            config_.deployment_epoch,
+            config_.protocol_version,
+            config_.configuration_digest,
+            config_.fabric_digest,
+            config_.num_servers,
+        });
+  }
   control_plane_->WaitServer(shard_, config_.control_plane_timeout_ms);
-  // Built in place: QpContext holds atomics and is therefore neither copyable
-  // nor movable, so a growing vector operation on it would not compile.
-  qps_ = std::vector<QpContext>(
+  // Slot views are local pointers into the transport's lane region, so they
+  // are cheap to rebuild and do not disturb the peer.
+  std::vector<QpContext> qps(
       static_cast<std::size_t>(config_.qps_per_client_per_shard));
   for (int qp = 0; qp < config_.qps_per_client_per_shard; ++qp) {
-    QpContext& context = qps_[static_cast<std::size_t>(qp)];
+    QpContext& context = qps[static_cast<std::size_t>(qp)];
     context.qp_index   = qp;
     context.slots.reserve(static_cast<std::size_t>(config_.slots_per_qp));
     for (int slot_in_qp = 0; slot_in_qp < config_.slots_per_qp; ++slot_in_qp) {
@@ -174,6 +184,7 @@ void PetPSClient::InitializeTransport() {
           SlotContext{transport_->OpenSlot(qp, slot_in_qp), 1, false});
     }
   }
+  qps_ = std::move(qps);
 }
 
 void PetPSClient::InitThread() {
