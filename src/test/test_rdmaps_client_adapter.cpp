@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -12,6 +13,7 @@
 #include "ps/client_factory.h"
 #include "ps/rdma/rdma_deployment.h"
 #include "ps/rdma/rdma_ps_client_adapter.h"
+#include "ps/rdma/shard_routing.h"
 
 DECLARE_string(rdma_get_response_mode);
 
@@ -436,6 +438,89 @@ TEST(ResolvedRdmaDeploymentTest, RejectsMalformedFabricNodeList) {
   config["rdma_deployment"]["nodes"] = json::array();
   EXPECT_THROW(ParseResolvedRdmaDeploymentConfig(config),
                std::invalid_argument);
+}
+
+TEST(ShardRoutingTest, InterleavesChunksAcrossShards) {
+  std::vector<uint64_t> keys;
+  for (uint64_t key = 0; key < 12; ++key) {
+    keys.push_back(key);
+  }
+  const std::unordered_map<int, int> shard_to_client{{0, 0}, {1, 1}};
+  const auto key_array = base::ConstArray<uint64_t>(keys);
+
+  const auto interleaved = shard_routing::BuildChunks(
+      key_array,
+      2,
+      "simple_mod",
+      shard_to_client,
+      /*max_keys_per_rpc=*/2,
+      /*interleave=*/true);
+  ASSERT_EQ(interleaved.size(), 6);
+  for (std::size_t i = 0; i < interleaved.size(); ++i) {
+    EXPECT_EQ(interleaved[i].shard_id, static_cast<int>(i % 2));
+  }
+
+  const auto sequential = shard_routing::BuildChunks(
+      key_array, 2, "simple_mod", shard_to_client, /*max_keys_per_rpc=*/2);
+  ASSERT_EQ(sequential.size(), 6);
+  EXPECT_EQ(sequential[0].shard_id, 0);
+  EXPECT_EQ(sequential[1].shard_id, 0);
+  EXPECT_EQ(sequential[2].shard_id, 0);
+  EXPECT_EQ(sequential[3].shard_id, 1);
+  EXPECT_EQ(sequential[4].shard_id, 1);
+  EXPECT_EQ(sequential[5].shard_id, 1);
+}
+
+TEST(ShardRoutingTest, MergePendingRowsScattersValuesAndFoundMask) {
+  constexpr int kValueSize    = 2 * static_cast<int>(sizeof(float));
+  constexpr std::size_t kRows = 3;
+  // Slot payload layout: rows, then the hit mask, then the status word.
+  std::vector<float> rows(kRows * 2);
+  for (std::size_t i = 0; i < rows.size(); ++i) {
+    rows[i] = static_cast<float>(i);
+  }
+  std::vector<char> slot(rows.size() * sizeof(float) + kRows, 0);
+  std::memcpy(slot.data(), rows.data(), rows.size() * sizeof(float));
+  const std::uint8_t mask[kRows] = {1, 0, 1};
+  std::memcpy(slot.data() + rows.size() * sizeof(float), mask, kRows);
+
+  shard_routing::PendingShardRpc pending;
+  pending.key_count          = kRows;
+  pending.with_found         = true;
+  pending.original_positions = {2, 0, 1};
+
+  std::vector<float> values(4 * 2, -1.0f);
+  std::vector<std::uint8_t> found(4, 7);
+  shard_routing::MergePendingRows(
+      pending,
+      reinterpret_cast<const float*>(slot.data()),
+      values.data(),
+      found.data(),
+      kValueSize);
+
+  EXPECT_FLOAT_EQ(values[2 * 2 + 0], 0.0f);
+  EXPECT_FLOAT_EQ(values[2 * 2 + 1], 1.0f);
+  EXPECT_FLOAT_EQ(values[0 * 2 + 0], 2.0f);
+  EXPECT_FLOAT_EQ(values[1 * 2 + 0], 4.0f);
+  EXPECT_FLOAT_EQ(values[1 * 2 + 1], 5.0f);
+  EXPECT_EQ(found[2], 1);
+  EXPECT_EQ(found[0], 0);
+  EXPECT_EQ(found[1], 1);
+  EXPECT_EQ(found[3], 7);
+
+  // Without a requested mask the same rows are scattered and `found` is left
+  // alone.
+  pending.with_found = false;
+  std::fill(values.begin(), values.end(), -1.0f);
+  shard_routing::MergePendingRows(
+      pending,
+      reinterpret_cast<const float*>(slot.data()),
+      values.data(),
+      nullptr,
+      kValueSize);
+  EXPECT_FLOAT_EQ(values[2 * 2 + 0], 0.0f);
+  EXPECT_FLOAT_EQ(values[0 * 2 + 1], 3.0f);
+  EXPECT_EQ(found[0], 0);
 }
 
 } // namespace recstore

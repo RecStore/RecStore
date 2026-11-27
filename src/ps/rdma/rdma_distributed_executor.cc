@@ -150,13 +150,78 @@ int RdmaDistributedExecutor::SubmitGetParameter(
   std::vector<shard_routing::PendingShardRpc> window;
   window.reserve(std::min(max_in_flight, chunks.size()));
 
-  auto drain_window = [this, &batch, &window]() {
-    WaitShardRpcs(window);
-    ReleaseShardRpcs(&window);
-    for (auto& pending : window) {
-      batch.shard_rpcs.push_back(std::move(pending));
+  auto drain_window = [this, &batch, &window, is_async]() {
+    if (is_async) {
+      WaitShardRpcs(window);
+      ReleaseShardRpcs(&window);
+      for (auto& pending : window) {
+        batch.shard_rpcs.push_back(std::move(pending));
+      }
+      window.clear();
+      return;
+    }
+
+    // Sync GETs have no usable public handle until every window finishes, so
+    // merge each completed window before returning its slots. Borrowing the
+    // slot payload avoids the extra copy into a per-chunk staging buffer.
+    // ponytail: sync-only; async/prefetch keep their staging path until
+    // measured.
+    std::vector<const float*> payloads(window.size(), nullptr);
+    std::int32_t window_status =
+        static_cast<std::int32_t>(petps::RpcStatus::kOk);
+    std::exception_ptr first_error;
+    for (std::size_t i = 0; i < window.size(); ++i) {
+      auto& pending = window[i];
+      try {
+        std::int32_t status = static_cast<std::int32_t>(petps::RpcStatus::kOk);
+        const float* payload =
+            ClientAt(pending.client_index)
+                ->BorrowGetResultPayload(
+                    pending.rpc_id, nullptr, nullptr, &status);
+        if (payload == nullptr) {
+          throw std::runtime_error("RDMA GET result is no longer available");
+        }
+        payloads[i] = payload;
+        if (status != static_cast<std::int32_t>(petps::RpcStatus::kOk) &&
+            window_status == static_cast<std::int32_t>(petps::RpcStatus::kOk)) {
+          window_status = status;
+        }
+      } catch (...) {
+        if (first_error == nullptr) {
+          first_error = std::current_exception();
+        }
+      }
+    }
+
+    const bool batch_ok =
+        batch.status_code ==
+            static_cast<std::int32_t>(petps::RpcStatus::kPending) ||
+        batch.status_code == static_cast<std::int32_t>(petps::RpcStatus::kOk);
+    if (first_error == nullptr && batch_ok &&
+        window_status == static_cast<std::int32_t>(petps::RpcStatus::kOk)) {
+      for (std::size_t i = 0; i < window.size(); ++i) {
+        shard_routing::MergePendingRows(
+            window[i],
+            payloads[i],
+            batch.user_buffer,
+            batch.user_found,
+            batch.value_size);
+      }
+    } else if (first_error == nullptr && batch_ok) {
+      batch.status_code = window_status;
+    }
+
+    try {
+      ReleaseShardRpcs(&window);
+    } catch (...) {
+      if (first_error == nullptr) {
+        first_error = std::current_exception();
+      }
     }
     window.clear();
+    if (first_error != nullptr) {
+      std::rethrow_exception(first_error);
+    }
   };
 
   try {
@@ -173,10 +238,13 @@ int RdmaDistributedExecutor::SubmitGetParameter(
         }
       }
       auto* client = ClientAt(chunk.client_index);
-      batch.receive_buffers.push_back(AcquireReceiveBuffer(
-          chunk.keys.size() * static_cast<std::size_t>(value_size) +
-          (batch.with_found ? chunk.keys.size() : 0) + sizeof(std::int32_t)));
-      void* recv = batch.receive_buffers.back().data();
+      void* recv   = nullptr;
+      if (is_async) {
+        batch.receive_buffers.push_back(AcquireReceiveBuffer(
+            chunk.keys.size() * static_cast<std::size_t>(value_size) +
+            (batch.with_found ? chunk.keys.size() : 0) + sizeof(std::int32_t)));
+        recv = batch.receive_buffers.back().data();
+      }
       shard_routing::PendingShardRpc pending{
           chunk.shard_id,
           chunk.client_index,
@@ -205,7 +273,15 @@ int RdmaDistributedExecutor::SubmitGetParameter(
     const auto error = std::current_exception();
     // Accepted RPCs must finish or retire their lanes before slots are reused.
     try {
-      WaitShardRpcs(window);
+      if (is_async) {
+        WaitShardRpcs(window);
+      } else {
+        for (const auto& pending : window) {
+          (void)ClientAt(pending.client_index)
+              ->BorrowGetResultPayload(
+                  pending.rpc_id, nullptr, nullptr, nullptr);
+        }
+      }
     } catch (...) {
     }
     try {
@@ -222,8 +298,20 @@ int RdmaDistributedExecutor::SubmitGetParameter(
     }
     std::rethrow_exception(error);
   }
-  for (auto& pending : window) {
-    batch.shard_rpcs.push_back(std::move(pending));
+  if (is_async) {
+    for (auto& pending : window) {
+      batch.shard_rpcs.push_back(std::move(pending));
+    }
+  } else {
+    drain_window();
+    if (batch.status_code ==
+        static_cast<std::int32_t>(petps::RpcStatus::kPending)) {
+      batch.status_code = static_cast<std::int32_t>(petps::RpcStatus::kOk);
+    }
+    batch.assembled = true;
+    if (batch.write_status_word) {
+      shard_routing::WriteBatchStatus(&batch, value_size);
+    }
   }
 
   const int batch_id = RegisterBatch(std::move(batch));
