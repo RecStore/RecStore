@@ -353,12 +353,12 @@ class TestRunBenchmarkPS(unittest.TestCase):
             256 * 1024 * 1024,
         )
 
-    def test_recommended_dram_capacity_bytes_keeps_non_slab_exact(self):
+    def test_recommended_dram_capacity_bytes_keeps_other_allocators_exact(self):
         self.assertEqual(
             recommended_dram_capacity_bytes(
                 capacity=100,
                 value_size=64,
-                dram_allocator="R2_ALLOC",
+                dram_allocator="R2_SHM_MALLOC",
             ),
             6400,
         )
