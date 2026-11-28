@@ -1,7 +1,6 @@
 Compute/OP:
 - changed-files:
   - any-glob-to-any-file:
-    - 'src/ps/python_client/**'
     - 'src/framework/ps_client_factory.h'
     - 'src/framework/op.cc'
     - 'src/framework/op.h'
