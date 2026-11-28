@@ -80,7 +80,7 @@
 | gRPC / bRPC | `KVClient.save_checkpoint()` / `load_checkpoint()` 逐分片 fan-out |
 | RDMA | 数据面没有 checkpoint 命令；`Command` 会报错，不会假装成功 |
 | `KVEnginePetKV` | 明确不支持（共享内存不持久） |
-| 其他引擎 | 全量快照：持引擎写锁 dump 所有 key，参数与 optimizer slot 一起落盘 |
+| 其他引擎 | 全量快照，参数与 optimizer slot 一起落盘。`DRAM` / `SSD` value store 只在键与 handle 快照期间持写锁，dump 期间被替换的行延迟回收；`tiered` / 静态布局这类原地改写的 store 仍在整段 dump 期间持写锁 |
 
 自动化的最小闭环由 `recstore.checkpoint` 提供：`save_sparse_checkpoint()` 把分片写进 `root/<checkpoint_id>/` 的临时目录，落完后写 `manifest.json`（checkpoint_id / step / identity / 分片文件名与大小），最后整目录改名为正式版本；读端只认带 manifest 的目录，因此半截存档不会被当成可用版本。`PeriodicSparseCheckpoint.maybe_save(step)` 在步边界按间隔存档并保留最近 N 份。
 
@@ -91,7 +91,7 @@
 | `restore_dir` | 存档根目录（取 step 最大的已提交版本）或单个版本目录；空表示不恢复 |
 | `on_missing` | `fail`（默认）没有 manifest 即启动失败；`start_empty` 空分片启动 |
 
-恢复在 RPC 服务开始监听前完成，失败即启动失败。多机部署时 `restore_dir` 必须是所有分片都能读到的共享目录。跨分片快照不是同一个逻辑步：每个分片各自持写锁 dump，加载只保证每片内部一致。
+恢复在 RPC 服务开始监听前完成，失败即启动失败。多机部署时 `restore_dir` 必须是所有分片都能读到的共享目录。跨分片快照不是同一个逻辑步：每个分片各自取快照，加载只保证每片内部一致。
 
 ### 迁移旧存档 {#checkpoint-migrate}
 

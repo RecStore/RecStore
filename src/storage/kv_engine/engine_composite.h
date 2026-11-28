@@ -12,6 +12,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
 #include <string>
@@ -50,11 +51,13 @@ public:
                     std::unique_ptr<ValueStore> value_store,
                     int num_threads             = 0,
                     bool read_epochs            = false,
-                    uint64_t retired_rows_limit = 65536)
+                    uint64_t retired_rows_limit = 65536,
+                    size_t value_size_hint      = 0)
       : BaseKV(BaseKVConfig{}),
         index_(std::move(index)),
         value_store_(std::move(value_store)),
         num_threads_(std::max(num_threads, 1)),
+        default_value_size_hint_(value_size_hint),
         checkpoint_keys_by_thread_(static_cast<size_t>(num_threads_)) {
     read_epochs_ = read_epochs;
     if (retired_rows_limit == 0)
@@ -714,32 +717,50 @@ public:
     }
 
     const auto loop_start = clock::now();
-    std::vector<float> missing_row(static_cast<size_t>(embedding_dim));
+    if (checkpoint_retention_active_.load(std::memory_order_relaxed)) {
+      // A dump still holds the handles snapshotted before it released
+      // checkpoint_mu_, so nothing may be rewritten in place.
+      ApplySgdUpdateFlatRetained(
+          tagged_keys,
+          grads,
+          rows,
+          num_rows,
+          embedding_dim,
+          learning_rate,
+          row_bytes,
+          tid);
+      if (stats != nullptr) {
+        stats->writeback_ns = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                clock::now() - loop_start)
+                .count());
+      }
+      return true;
+    }
+    // Missing rows are buffered and published after the loop: a key that
+    // repeats in one batch must accumulate its gradients, otherwise each
+    // occurrence overwrites the previous one. Hits still update in place.
+    thread_local std::vector<uint64_t> missing_keys;
+    thread_local std::vector<float> missing_values;
+    thread_local std::unordered_map<uint64_t, size_t> missing_positions;
+    missing_keys.clear();
+    missing_values.clear();
+    missing_positions.clear();
+    const size_t row_dim = static_cast<size_t>(embedding_dim);
     for (int64_t r = 0; r < num_rows; ++r) {
       const auto& row   = rows[static_cast<size_t>(r)];
       const float* grad = grads + r * embedding_dim;
       if (row.missing) {
+        const auto inserted = missing_positions.emplace(
+            tagged_keys[static_cast<size_t>(r)], missing_keys.size());
+        if (inserted.second) {
+          missing_keys.push_back(tagged_keys[static_cast<size_t>(r)]);
+          missing_values.resize(missing_values.size() + row_dim, 0.0f);
+        }
+        float* value = missing_values.data() + inserted.first->second * row_dim;
 #pragma omp simd
         for (int64_t c = 0; c < embedding_dim; ++c)
-          missing_row[static_cast<size_t>(c)] = -learning_rate * grad[c];
-        const auto miss_start =
-            stats != nullptr ? clock::now() : clock::time_point{};
-        PutInternalStats miss_stats;
-        PutInternal(tagged_keys[static_cast<size_t>(r)],
-                    missing_row.data(),
-                    row_bytes,
-                    tid,
-                    false,
-                    stats != nullptr ? &miss_stats : nullptr);
-        if (stats != nullptr) {
-          stats->missing_write_ns += static_cast<std::uint64_t>(
-              std::chrono::duration_cast<std::chrono::nanoseconds>(
-                  clock::now() - miss_start)
-                  .count());
-          stats->missing_alloc_ns += miss_stats.alloc_ns;
-          stats->missing_index_ns += miss_stats.index_ns;
-          stats->missing_track_ns += miss_stats.track_ns;
-        }
+          value[c] -= learning_rate * grad[c];
         continue;
       }
 
@@ -749,16 +770,31 @@ public:
         value[c] -= learning_rate * grad[c];
     }
     if (stats != nullptr) {
-      const auto loop_ns = static_cast<std::uint64_t>(
+      // Miss inserts are timed in the publication loop below.
+      stats->writeback_ns = static_cast<std::uint64_t>(
           std::chrono::duration_cast<std::chrono::nanoseconds>(
               clock::now() - loop_start)
               .count());
-      // The miss path is timed separately; subtract it so the hit write-back
-      // bucket does not double count the inserts.
-      stats->writeback_ns =
-          loop_ns > stats->missing_write_ns
-              ? loop_ns - stats->missing_write_ns
-              : 0;
+    }
+    for (size_t i = 0; i < missing_keys.size(); ++i) {
+      const auto miss_start =
+          stats != nullptr ? clock::now() : clock::time_point{};
+      PutInternalStats miss_stats;
+      PutInternal(missing_keys[i],
+                  missing_values.data() + i * row_dim,
+                  row_bytes,
+                  tid,
+                  false,
+                  stats != nullptr ? &miss_stats : nullptr);
+      if (stats != nullptr) {
+        stats->missing_write_ns += static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                clock::now() - miss_start)
+                .count());
+        stats->missing_alloc_ns += miss_stats.alloc_ns;
+        stats->missing_index_ns += miss_stats.index_ns;
+        stats->missing_track_ns += miss_stats.track_ns;
+      }
     }
     return true;
   }
@@ -799,8 +835,26 @@ public:
           direct_row.size != row_bytes) {
         return false;
       }
+    }
+    if (checkpoint_retention_active_.load(std::memory_order_relaxed)) {
+      // See ApplySgdUpdateFlat: a dump may still read the snapshotted handle.
+      ApplySgdUpdateFlatRangeRetained(
+          keys,
+          grads,
+          rows,
+          num_rows,
+          row_dim,
+          update_offset,
+          update_dim,
+          learning_rate,
+          row_bytes,
+          tid);
+      return true;
+    }
+    for (int64_t row = 0; row < num_rows; ++row) {
       float* value =
-          reinterpret_cast<float*>(const_cast<char*>(direct_row.data)) +
+          reinterpret_cast<float*>(
+              const_cast<char*>(rows[static_cast<size_t>(row)].data)) +
           update_offset;
       const float* grad = grads + row * update_dim;
 #pragma omp simd
@@ -952,84 +1006,47 @@ public:
   bool SaveCheckpoint(const std::string& file,
                       const std::string& metadata) override {
     DrainBackgroundWork();
+    // A dump no longer holds checkpoint_mu_ for its whole run, so concurrent
+    // saves are serialized here instead of by that lock.
+    std::lock_guard<std::mutex> save_guard(checkpoint_save_mu_);
     auto online_lock = LockOnlineWrite();
-    std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     if (file.empty()) {
       LOG(ERROR) << "KVEngine checkpoint path is empty";
       return false;
     }
 
+    std::unique_lock<std::shared_mutex> checkpoint_lock(checkpoint_mu_);
     std::vector<uint64_t> keys = CollectCheckpointKeys();
-
-    const std::filesystem::path checkpoint_path(file);
-    std::filesystem::path temp_path(file);
-    temp_path += ".tmp";
-    std::error_code error;
-    std::filesystem::remove(temp_path, error);
-
-    std::ofstream output(temp_path, std::ios::binary | std::ios::trunc);
-    if (!output) {
-      LOG(ERROR) << "Failed to open checkpoint temp file: " << temp_path;
-      return false;
-    }
-
-    const uint64_t metadata_size = static_cast<uint64_t>(metadata.size());
-    const uint64_t record_count  = static_cast<uint64_t>(keys.size());
-    uint64_t checksum            = kCheckpointChecksumSeed;
-    UpdateChecksum(&checksum, kCheckpointMagic.data(), kCheckpointMagic.size());
-    UpdateChecksumPod(&checksum, kCheckpointVersion);
-    UpdateChecksumPod(&checksum, metadata_size);
-    UpdateChecksumPod(&checksum, record_count);
-    const ValueStore::LayoutId layout_id = value_store_->GetLayoutId();
-    UpdateChecksumPod(&checksum, layout_id.strategy);
-    UpdateChecksumPod(&checksum, layout_id.checksum);
-    UpdateChecksum(&checksum, metadata.data(), metadata.size());
-    bool write_ok =
-        WriteBytes(output, kCheckpointMagic.data(), kCheckpointMagic.size()) &&
-        WritePod(output, kCheckpointVersion) &&
-        WritePod(output, metadata_size) && WritePod(output, record_count) &&
-        WritePod(output, layout_id.strategy) &&
-        WritePod(output, layout_id.checksum) &&
-        WriteBytes(output, metadata.data(), metadata.size());
-    for (const uint64_t key : keys) {
-      std::string value;
-      ReadValue(key, value);
-      if (!Exists(key, 0)) {
-        LOG(ERROR) << "KVEngine checkpoint tracked key is missing: " << key;
-        write_ok = false;
-        break;
+    // Alloc-on-write stores keep a published handle's bytes until Retire(), so
+    // the dump can run on a handle snapshot without blocking commits. The
+    // deferral below keeps replaced handles readable for the whole dump.
+    const bool deferred = value_store_->RetainsValueBytesUntilRetire();
+    std::vector<Value_t> handles;
+    bool missing_key = false;
+    if (deferred) {
+      BeginCheckpointRetention();
+      handles.resize(keys.size(), kValueHandleNone);
+      for (size_t i = 0; i < keys.size(); ++i) {
+        index_->Get(keys[i], handles[i]);
+        missing_key = missing_key || handles[i] == kValueHandleNone;
       }
-      const uint64_t value_size = static_cast<uint64_t>(value.size());
-      UpdateChecksumPod(&checksum, key);
-      UpdateChecksumPod(&checksum, value_size);
-      UpdateChecksum(&checksum, value.data(), value.size());
-      write_ok =
-          write_ok && WritePod(output, key) && WritePod(output, value_size) &&
-          WriteBytes(output, value.data(), value.size());
-      if (!write_ok) {
-        break;
+      checkpoint_lock.unlock();
+    }
+    // Ends deferred retirement on every exit, write failures included.
+    struct RetentionScope {
+      explicit RetentionScope(KVEngineComposite* owner) : engine(owner) {}
+      ~RetentionScope() {
+        if (engine != nullptr)
+          engine->EndCheckpointRetirement();
       }
-    }
-    write_ok = write_ok && WritePod(output, checksum);
-    output.flush();
-    write_ok = write_ok && output.good();
-    output.close();
-    write_ok = write_ok && !output.fail();
-    if (!write_ok) {
-      LOG(ERROR) << "Failed to write checkpoint temp file: " << temp_path;
-      std::filesystem::remove(temp_path, error);
+      KVEngineComposite* engine;
+    } retention_scope(deferred ? this : nullptr);
+    if (missing_key) {
+      LOG(ERROR) << "KVEngine checkpoint tracked a key with no value handle";
       return false;
     }
-
-    error.clear();
-    std::filesystem::rename(temp_path, checkpoint_path, error);
-    if (error) {
-      LOG(ERROR) << "Failed to publish checkpoint " << checkpoint_path << ": "
-                 << error.message();
-      std::filesystem::remove(temp_path, error);
-      return false;
-    }
-    return true;
+    return WriteCheckpointFile(
+        file, metadata, keys, deferred ? &handles : nullptr);
   }
 
   bool LoadCheckpoint(const std::string& file,
@@ -1307,10 +1324,39 @@ private:
       std::rethrow_exception(background_error_);
   }
 
+  bool DeferCheckpointRetirement(std::vector<uint64_t>& handles) {
+    std::lock_guard<std::mutex> lock(checkpoint_retire_mu_);
+    if (!checkpoint_retention_active_.load(std::memory_order_relaxed))
+      return false;
+    checkpoint_deferred_retire_.insert(
+        checkpoint_deferred_retire_.end(), handles.begin(), handles.end());
+    return true;
+  }
+
+  // A checkpoint that dumps snapshotted handles drops the write lock, so a
+  // mutation may replace a handle it still has to read. Deferring retirement
+  // keeps those slots alive until the dump finishes; the store must promise
+  // bytes stay put until Retire() for this to be used.
+  void BeginCheckpointRetention() {
+    std::lock_guard<std::mutex> lock(checkpoint_retire_mu_);
+    checkpoint_retention_active_.store(true, std::memory_order_relaxed);
+  }
+
+  void EndCheckpointRetirement() {
+    std::vector<uint64_t> deferred;
+    {
+      std::lock_guard<std::mutex> lock(checkpoint_retire_mu_);
+      checkpoint_retention_active_.store(false, std::memory_order_relaxed);
+      deferred.swap(checkpoint_deferred_retire_);
+    }
+    RetireHandles(std::move(deferred));
+  }
+
   void RetireHandle(uint64_t handle) {
     if (handle == kValueHandleNone)
       return;
-    if (!read_epochs_) {
+    if (!read_epochs_ &&
+        !checkpoint_retention_active_.load(std::memory_order_relaxed)) {
       value_store_->Retire(handle);
       return;
     }
@@ -1322,6 +1368,10 @@ private:
                   handles.end());
     if (handles.empty())
       return;
+    if (checkpoint_retention_active_.load(std::memory_order_relaxed) &&
+        DeferCheckpointRetirement(handles)) {
+      return;
+    }
     if (!read_epochs_) {
       for (uint64_t handle : handles)
         value_store_->Retire(handle);
@@ -1495,6 +1545,111 @@ private:
     }
   };
 
+  // A dump may still read handles snapshotted before it released
+  // checkpoint_mu_, so every rewritten row is published as a new allocation.
+  // Repeated keys accumulate in one copy and publish once; copying per
+  // occurrence would let the last gradient overwrite the earlier ones.
+  void ApplySgdUpdateFlatRetained(
+      const std::vector<uint64_t>& keys,
+      const float* grads,
+      const std::vector<DirectFixedRow>& rows,
+      int64_t num_rows,
+      int64_t dim,
+      float learning_rate,
+      size_t row_bytes,
+      unsigned tid) {
+    thread_local std::vector<size_t> group_of;
+    thread_local std::vector<uint64_t> group_keys;
+    thread_local std::vector<float> group_values;
+    thread_local std::unordered_map<uint64_t, size_t> group_index;
+    const size_t row_dim = static_cast<size_t>(dim);
+    group_of.resize(static_cast<size_t>(num_rows));
+    group_keys.clear();
+    group_values.clear();
+    group_index.clear();
+    group_index.reserve(static_cast<size_t>(num_rows));
+    for (int64_t r = 0; r < num_rows; ++r) {
+      const size_t row    = static_cast<size_t>(r);
+      const auto inserted = group_index.emplace(keys[row], group_keys.size());
+      if (inserted.second) {
+        group_keys.push_back(keys[row]);
+        const size_t base = group_values.size();
+        group_values.resize(base + row_dim, 0.0f);
+        if (!rows[row].missing) {
+          std::memcpy(group_values.data() + base, rows[row].data, row_bytes);
+        }
+      }
+      group_of[row] = inserted.first->second;
+    }
+    for (int64_t r = 0; r < num_rows; ++r) {
+      const size_t row  = static_cast<size_t>(r);
+      float* value      = group_values.data() + group_of[row] * row_dim;
+      const float* grad = grads + r * dim;
+#pragma omp simd
+      for (int64_t c = 0; c < dim; ++c)
+        value[c] -= learning_rate * grad[c];
+    }
+    for (size_t group = 0; group < group_keys.size(); ++group) {
+      PutInternal(group_keys[group],
+                  group_values.data() + group * row_dim,
+                  row_bytes,
+                  tid,
+                  false);
+    }
+  }
+
+  void ApplySgdUpdateFlatRangeRetained(
+      base::ConstArray<uint64_t> keys,
+      const float* grads,
+      const std::vector<DirectFixedRow>& rows,
+      int64_t num_rows,
+      int64_t row_dim,
+      int64_t update_offset,
+      int64_t update_dim,
+      float learning_rate,
+      size_t row_bytes,
+      unsigned tid) {
+    thread_local std::vector<size_t> group_of;
+    thread_local std::vector<uint64_t> group_keys;
+    thread_local std::vector<float> group_values;
+    thread_local std::unordered_map<uint64_t, size_t> group_index;
+    const size_t dim = static_cast<size_t>(row_dim);
+    group_of.resize(static_cast<size_t>(num_rows));
+    group_keys.clear();
+    group_values.clear();
+    group_index.clear();
+    group_index.reserve(static_cast<size_t>(num_rows));
+    for (int64_t r = 0; r < num_rows; ++r) {
+      const size_t row    = static_cast<size_t>(r);
+      const uint64_t key  = keys[r];
+      const auto inserted = group_index.emplace(key, group_keys.size());
+      if (inserted.second) {
+        group_keys.push_back(key);
+        const size_t base = group_values.size();
+        group_values.resize(base + dim, 0.0f);
+        std::memcpy(group_values.data() + base, rows[row].data, row_bytes);
+      }
+      group_of[row] = inserted.first->second;
+    }
+    for (int64_t r = 0; r < num_rows; ++r) {
+      const size_t row = static_cast<size_t>(r);
+      float* value     = group_values.data() + group_of[row] * dim +
+                     static_cast<size_t>(update_offset);
+      const float* grad = grads + r * update_dim;
+#pragma omp simd
+      for (int64_t column = 0; column < update_dim; ++column) {
+        value[column] -= learning_rate * grad[column];
+      }
+    }
+    for (size_t group = 0; group < group_keys.size(); ++group) {
+      PutInternal(group_keys[group],
+                  group_values.data() + group * dim,
+                  row_bytes,
+                  tid,
+                  false);
+    }
+  }
+
   void ApplySgdMixedRows(
       const std::vector<uint64_t>& keys,
       const float* grads,
@@ -1519,8 +1674,14 @@ private:
     std::vector<Value_t> handles(unique_keys.size(), kValueHandleNone);
     index_->BatchGet(
         base::ConstArray<uint64_t>(unique_keys), handles.data(), tid);
+    const bool retained =
+        checkpoint_retention_active_.load(std::memory_order_relaxed);
     std::vector<float*> pointers(unique_keys.size());
     std::vector<std::vector<float>> missing(unique_keys.size());
+    // A dump keeps the snapshotted handles readable, so DRAM rows are updated
+    // in copies and published as new allocations while it runs.
+    std::vector<std::vector<float>> dram_copies(
+        retained ? unique_keys.size() : 0);
     std::vector<uint64_t> ssd_handles;
     std::vector<size_t> ssd_rows;
     for (size_t i = 0; i < unique_keys.size(); ++i) {
@@ -1531,7 +1692,13 @@ private:
         if (value_store_->SlotCapacity(handles[i]) < row_bytes) {
           throw std::runtime_error("SGD row dimension exceeds DRAM value size");
         }
-        pointers[i] = reinterpret_cast<float*>(const_cast<char*>(ptr));
+        if (retained) {
+          dram_copies[i].resize(static_cast<size_t>(dim));
+          std::memcpy(dram_copies[i].data(), ptr, row_bytes);
+          pointers[i] = dram_copies[i].data();
+        } else {
+          pointers[i] = reinterpret_cast<float*>(const_cast<char*>(ptr));
+        }
       } else {
         ssd_handles.push_back(handles[i]);
         ssd_rows.push_back(i);
@@ -1566,9 +1733,29 @@ private:
     std::vector<ValueStore::WriteSpec> updates;
     for (const auto& value : ssd_floats)
       updates.push_back({value.data(), row_bytes});
-    // BatchGet's SSD results are copies, so every modified cold row needs
-    // explicit writeback before a subsequent read or promotion can see it.
-    if (!ssd_handles.empty()) {
+    if (retained) {
+      // Publishing a fresh handle keeps the dump's snapshot bytes intact; the
+      // old slots stay readable until the retention window closes.
+      for (size_t i = 0; i < unique_keys.size(); ++i) {
+        if (!dram_copies[i].empty()) {
+          PutInternal(
+              unique_keys[i], dram_copies[i].data(), row_bytes, tid, false);
+        }
+      }
+      if (!ssd_handles.empty()) {
+        const auto begin = std::chrono::steady_clock::now();
+        for (size_t i = 0; i < ssd_rows.size(); ++i) {
+          PutInternal(unique_keys[ssd_rows[i]],
+                      ssd_floats[i].data(),
+                      row_bytes,
+                      tid,
+                      false);
+        }
+        sgd_write_time_.Record(begin);
+      }
+    } else if (!ssd_handles.empty()) {
+      // BatchGet's SSD results are copies, so every modified cold row needs
+      // explicit writeback before a subsequent read or promotion can see it.
       const auto begin = std::chrono::steady_clock::now();
       value_store_->BatchWrite(ssd_handles, updates);
       sgd_write_time_.Record(begin);
@@ -1821,6 +2008,11 @@ private:
     index_->Get(key, handle);
     if (out_handle != nullptr)
       *out_handle = handle;
+    ReadValueByHandle(handle, value, cold);
+  }
+
+  void
+  ReadValueByHandle(Value_t handle, std::string& value, bool* cold = nullptr) {
     if (handle == kValueHandleNone) {
       value.clear();
       return;
@@ -1840,6 +2032,88 @@ private:
       *cold = true;
     value.resize(value_store_->SlotCapacity(handle));
     value.resize(value_store_->Read(handle, value.data(), value.size()));
+  }
+
+  // Runs under the checkpoint write lock when handles is null (the store
+  // rewrites values in place, so the dump has to stay serialized).
+  bool WriteCheckpointFile(const std::string& file,
+                           const std::string& metadata,
+                           const std::vector<uint64_t>& keys,
+                           const std::vector<Value_t>* handles) {
+    const std::filesystem::path checkpoint_path(file);
+    std::filesystem::path temp_path(file);
+    temp_path += ".tmp";
+    std::error_code error;
+    std::filesystem::remove(temp_path, error);
+
+    std::ofstream output(temp_path, std::ios::binary | std::ios::trunc);
+    if (!output) {
+      LOG(ERROR) << "Failed to open checkpoint temp file: " << temp_path;
+      return false;
+    }
+
+    const uint64_t metadata_size = static_cast<uint64_t>(metadata.size());
+    const uint64_t record_count  = static_cast<uint64_t>(keys.size());
+    uint64_t checksum            = kCheckpointChecksumSeed;
+    UpdateChecksum(&checksum, kCheckpointMagic.data(), kCheckpointMagic.size());
+    UpdateChecksumPod(&checksum, kCheckpointVersion);
+    UpdateChecksumPod(&checksum, metadata_size);
+    UpdateChecksumPod(&checksum, record_count);
+    const ValueStore::LayoutId layout_id = value_store_->GetLayoutId();
+    UpdateChecksumPod(&checksum, layout_id.strategy);
+    UpdateChecksumPod(&checksum, layout_id.checksum);
+    UpdateChecksum(&checksum, metadata.data(), metadata.size());
+    bool write_ok =
+        WriteBytes(output, kCheckpointMagic.data(), kCheckpointMagic.size()) &&
+        WritePod(output, kCheckpointVersion) &&
+        WritePod(output, metadata_size) && WritePod(output, record_count) &&
+        WritePod(output, layout_id.strategy) &&
+        WritePod(output, layout_id.checksum) &&
+        WriteBytes(output, metadata.data(), metadata.size());
+    for (size_t i = 0; i < keys.size(); ++i) {
+      const uint64_t key = keys[i];
+      std::string value;
+      if (handles != nullptr) {
+        ReadValueByHandle((*handles)[i], value);
+      } else {
+        ReadValue(key, value);
+        if (!Exists(key, 0)) {
+          LOG(ERROR) << "KVEngine checkpoint tracked key is missing: " << key;
+          write_ok = false;
+          break;
+        }
+      }
+      const uint64_t value_size = static_cast<uint64_t>(value.size());
+      UpdateChecksumPod(&checksum, key);
+      UpdateChecksumPod(&checksum, value_size);
+      UpdateChecksum(&checksum, value.data(), value.size());
+      write_ok =
+          write_ok && WritePod(output, key) && WritePod(output, value_size) &&
+          WriteBytes(output, value.data(), value.size());
+      if (!write_ok) {
+        break;
+      }
+    }
+    write_ok = write_ok && WritePod(output, checksum);
+    output.flush();
+    write_ok = write_ok && output.good();
+    output.close();
+    write_ok = write_ok && !output.fail();
+    if (!write_ok) {
+      LOG(ERROR) << "Failed to write checkpoint temp file: " << temp_path;
+      std::filesystem::remove(temp_path, error);
+      return false;
+    }
+
+    error.clear();
+    std::filesystem::rename(temp_path, checkpoint_path, error);
+    if (error) {
+      LOG(ERROR) << "Failed to publish checkpoint " << checkpoint_path << ": "
+                 << error.message();
+      std::filesystem::remove(temp_path, error);
+      return false;
+    }
+    return true;
   }
 
   void MaybeAdmit(const std::vector<uint64_t>& cold_keys,
@@ -2243,6 +2517,12 @@ private:
   TieringTime migration_read_time_, migration_prepare_time_,
       migration_publish_time_;
   mutable std::shared_mutex checkpoint_mu_;
+  // Serializes dumps because checkpoint_mu_ is held only for the snapshot.
+  mutable std::mutex checkpoint_save_mu_;
+  // Retirement deferred while a checkpoint dumps snapshotted handles.
+  mutable std::mutex checkpoint_retire_mu_;
+  std::atomic<bool> checkpoint_retention_active_{false};
+  std::vector<uint64_t> checkpoint_deferred_retire_;
   std::vector<std::vector<uint64_t>> checkpoint_keys_by_thread_;
 };
 

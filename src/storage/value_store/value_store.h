@@ -46,6 +46,11 @@ public:
   }
   virtual void Free(uint64_t handle) = 0;
   virtual void Retire(uint64_t handle) { Free(handle); }
+  // True when a handle keeps its bytes until Retire() releases them, that is,
+  // updates allocate a new handle instead of rewriting the old one in place.
+  // Checkpoints snapshot handles and read them after dropping the write lock
+  // only for such stores, and keep the lock across the dump for others.
+  virtual bool RetainsValueBytesUntilRetire() const { return false; }
   virtual const char* DirectPtr(uint64_t handle) const { return nullptr; }
   virtual char* RDMABackingData() const { return nullptr; }
   virtual size_t RDMABackingSize() const { return 0; }
