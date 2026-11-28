@@ -217,16 +217,17 @@ jobs:
       - name: Resolve ctest exclusions
         run: |
           set -euo pipefail
-          # Docker default seccomp in GitHub Actions blocks io_uring syscalls,
-          # so io_uring-dependent tests are always excluded. RDMA integration
-          # tests additionally need memcached; without it they are excluded too
-          # (the ones with SKIP_RETURN_CODE would self-skip regardless).
+          # The test container runs with seccomp=unconfined (see the docker run
+          # above), so io_uring is available and test_io_backend runs; it skips
+          # itself when io_uring is unavailable. RDMA integration tests need
+          # memcached; without it they are excluded (the ones with
+          # SKIP_RETURN_CODE would self-skip regardless).
           CTEST_EXCLUDE_REGEX=$(docker exec "${TEST_CONTAINER}" bash -lc '
             if command -v memcached >/dev/null 2>&1; then
-              echo "test_io_backend"
+              echo ""
             else
               echo "memcached not found; skipping RDMA integration tests." >&2
-              echo "test_io_backend|pytorch_client_test_rdma_basic|pytorch_client_test_rdma|pytorch_client_test_rdma_auto"
+              echo "pytorch_client_test_rdma_basic|pytorch_client_test_rdma|pytorch_client_test_rdma_auto"
             fi
           ')
           echo "ctest exclude regex: ${CTEST_EXCLUDE_REGEX}"
