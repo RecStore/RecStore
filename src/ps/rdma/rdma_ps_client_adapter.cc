@@ -70,6 +70,27 @@ bool AdapterProfileEnabled() {
   return value != nullptr && std::string(value) != "0";
 }
 
+// Only a shard/lane failure may be retried: server-side status errors and
+// argument validation failures are deterministic and would fail again.
+bool IsRetryableTransportError(const std::exception& error) {
+  return dynamic_cast<const petps::ShardUnreachableError*>(&error) != nullptr;
+}
+
+std::int64_t RetryBackoffMs(int retry_index) {
+  std::int64_t delay = std::max(0, FLAGS_rdma_op_retry_backoff_ms);
+  for (int i = 0; i < retry_index; ++i) {
+    delay = std::min<std::int64_t>(delay * 2, 2000);
+  }
+  return delay;
+}
+
+void SleepBeforeRetry(const char* op, int retry_index) {
+  const std::int64_t backoff_ms = RetryBackoffMs(retry_index);
+  LOG(WARNING) << "component=rdma_adapter event=op_retry op=" << op << " retry="
+               << (retry_index + 1) << " backoff_ms=" << backoff_ms;
+  std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+}
+
 void SetIntFlagFromEnv(const char* env_name, int32_t* flag_value) {
   int parsed = 0;
   if (detail::TryParseIntEnv(env_name, &parsed)) {
@@ -465,8 +486,6 @@ int RDMAPSClientAdapter::SubmitGetParameter(
 int RDMAPSClientAdapter::GetParameter(const base::ConstArray<uint64_t>& keys,
                                       base::RecTensor& values) {
   EnsureThreadInitialized();
-  std::lock_guard<std::mutex> io_guard(io_mu_);
-  executor_->DrainBatchSlots();
   if (!IsFloatEmbeddingValues(values, static_cast<int64_t>(keys.Size()))) {
     return -1;
   }
@@ -474,23 +493,47 @@ int RDMAPSClientAdapter::GetParameter(const base::ConstArray<uint64_t>& keys,
     return 0;
   }
   const int64_t embedding_dim = values.shape(1);
-  const int value_size =
-      static_cast<int>(static_cast<std::size_t>(embedding_dim) * sizeof(float));
 
-  // The shard merge writes every requested row, so submit the caller's tensor
-  // as the batch destination instead of round-tripping through a scratch
-  // buffer. `values` has no room for the trailing status word, so read the
-  // batch verdict from WaitBatch.
-  const int rpc_id = SubmitGetParameter(
-      keys,
-      values.data_as<float>(),
-      /*isAsync=*/false,
-      /*async_req_id=*/0,
-      embedding_dim,
-      /*write_status_word=*/false);
-  const bool ok = executor_->WaitBatch(rpc_id);
-  RevokeRPCResource(rpc_id);
-  return ok ? 0 : -1;
+  // GET is idempotent, so a shard-unreachable failure may retry on another
+  // lane/slot. The lock is released between attempts: a retry may sleep while
+  // a lane rebuild finishes, and other training threads must keep working.
+  for (int retry = 0;; ++retry) {
+    try {
+      bool ok = false;
+      {
+        std::lock_guard<std::mutex> io_guard(io_mu_);
+        executor_->DrainBatchSlots();
+        // The shard merge writes every requested row, so submit the caller's
+        // tensor as the batch destination instead of round-tripping through a
+        // scratch buffer. `values` has no room for the trailing status word,
+        // so read the batch verdict from WaitBatch.
+        const int rpc_id = SubmitGetParameter(
+            keys,
+            values.data_as<float>(),
+            /*isAsync=*/false,
+            /*async_req_id=*/0,
+            embedding_dim,
+            /*write_status_word=*/false);
+        try {
+          ok = executor_->WaitBatch(rpc_id);
+        } catch (...) {
+          try {
+            RevokeRPCResource(rpc_id);
+          } catch (...) {
+          }
+          throw;
+        }
+        RevokeRPCResource(rpc_id);
+      }
+      return ok ? 0 : -1;
+    } catch (const std::exception& error) {
+      if (!IsRetryableTransportError(error) ||
+          retry >= FLAGS_rdma_op_retry_max_attempts) {
+        throw;
+      }
+    }
+    SleepBeforeRetry("get", retry);
+  }
 }
 
 bool RDMAPSClientAdapter::GetParameterFlatWithFound(
@@ -507,24 +550,49 @@ bool RDMAPSClientAdapter::GetParameterFlatWithFound(
     return true;
   }
   EnsureThreadInitialized();
-  std::lock_guard<std::mutex> io_guard(io_mu_);
-  executor_->DrainBatchSlots();
   const int value_size = static_cast<int>(embedding_dim * sizeof(float));
-  // The per-shard chunks ask for masks; the executor scatters each chunk's
-  // mask back into `found` at the caller's original key positions.
-  const int rpc_id = executor_->SubmitGetParameter(
-      BuildChunks(keys, MaxGetKeysPerRpc(embedding_dim, /*with_found=*/true)),
-      keys.Size(),
-      value_size,
-      values,
-      /*is_async=*/false,
-      /*async_req_id=*/0,
-      MaxInFlightGetRpcs(),
-      /*write_status_word=*/false,
-      found);
-  const bool ok = executor_->WaitBatch(rpc_id);
-  RevokeRPCResource(rpc_id);
-  return ok;
+  // Same idempotent-GET retry contract as GetParameter(): reacquire a lane/slot
+  // and keep the original `found` scatter target.
+  for (int retry = 0;; ++retry) {
+    try {
+      bool ok = false;
+      {
+        std::lock_guard<std::mutex> io_guard(io_mu_);
+        executor_->DrainBatchSlots();
+        // The per-shard chunks ask for masks; the executor scatters each
+        // chunk's mask back into `found` at the caller's original key
+        // positions.
+        const int rpc_id = executor_->SubmitGetParameter(
+            BuildChunks(keys,
+                        MaxGetKeysPerRpc(embedding_dim, /*with_found=*/true)),
+            keys.Size(),
+            value_size,
+            values,
+            /*is_async=*/false,
+            /*async_req_id=*/0,
+            MaxInFlightGetRpcs(),
+            /*write_status_word=*/false,
+            found);
+        try {
+          ok = executor_->WaitBatch(rpc_id);
+        } catch (...) {
+          try {
+            RevokeRPCResource(rpc_id);
+          } catch (...) {
+          }
+          throw;
+        }
+        RevokeRPCResource(rpc_id);
+      }
+      return ok;
+    } catch (const std::exception& error) {
+      if (!IsRetryableTransportError(error) ||
+          retry >= FLAGS_rdma_op_retry_max_attempts) {
+        throw;
+      }
+    }
+    SleepBeforeRetry("get_found", retry);
+  }
 }
 
 int RDMAPSClientAdapter::PutParameter(const base::ConstArray<uint64_t>& keys,
@@ -536,10 +604,24 @@ int RDMAPSClientAdapter::PutParameter(const base::ConstArray<uint64_t>& keys,
     return 0;
   }
   EnsureThreadInitialized();
-  std::lock_guard<std::mutex> io_guard(io_mu_);
-  executor_->DrainBatchSlots();
-  return executor_->PutParameter(
-      BuildChunks(keys, MaxPutKeysPerRpc(values.shape(1))), values);
+  const std::vector<ShardChunk> chunks =
+      BuildChunks(keys, MaxPutKeysPerRpc(values.shape(1)));
+  // PUT overwrites whole rows with the same payload, so replay converges. The
+  // executor is called again from scratch on retry; no UPDATE path takes this
+  // branch because its gradients are not idempotent.
+  for (int retry = 0;; ++retry) {
+    try {
+      std::lock_guard<std::mutex> io_guard(io_mu_);
+      executor_->DrainBatchSlots();
+      return executor_->PutParameter(chunks, values);
+    } catch (const std::exception& error) {
+      if (!IsRetryableTransportError(error) ||
+          retry >= FLAGS_rdma_op_retry_max_attempts) {
+        throw;
+      }
+    }
+    SleepBeforeRetry("put", retry);
+  }
 }
 
 int64_t RDMAPSClientAdapter::SparseGradientCommit(

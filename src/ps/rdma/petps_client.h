@@ -2,10 +2,12 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -142,6 +144,10 @@ private:
     std::atomic<bool> dirty{false};
     std::atomic<bool> dead{false};
     std::atomic<bool> rebuildable{false};
+    // True while the background worker owns the lane's QP. Submits, CQ
+    // harvest and revoke skip the lane until the worker clears it, so the
+    // rebuild may run without mu_ blocking every other lane.
+    std::atomic<bool> rebuilding{false};
     int rebuild_attempts     = 0; // Guarded by mu_.
     std::uint64_t generation = 0; // Guarded by mu_.
     // Bumped on every successful rebuild. A waiter snapshots it at submit time
@@ -223,10 +229,21 @@ private:
                      const RdmaServerHealthSnapshot* snapshot,
                      std::int64_t waited_ms,
                      bool rebuildable = false);
-  // Rebuilds a degraded lane's QP and, on success, returns it to service (frees
-  // its slots and marks its pending RPCs failed). Returns false when the
-  // rebuild failed or the budget is exhausted (which marks the lane Dead).
-  // Requires mu_.
+  // Reserves a rebuild attempt for a degraded lane and marks it rebuilding.
+  // Returns false when the lane is dead, already being rebuilt, not
+  // rebuildable, cooling down, or out of budget. Requires mu_.
+  bool BeginLaneRebuildLocked(int qp_index, bool schedule_async);
+  // Applies the outcome of a rebuild attempt. `error` is empty on success.
+  // Requires mu_ and a matching BeginLaneRebuildLocked().
+  void
+  FinishLaneRebuildLocked(int qp_index, bool rebuilt, const std::string& error);
+  // Rebuild worker: drains the queue and runs RebuildLane() outside mu_ so
+  // submits on healthy lanes keep moving.
+  void RebuildWorkerLoop();
+  void StartRebuildWorkerLocked();
+  // Rebuilds one degraded lane inline. Used by tests to force a rebuild of
+  // healthy lanes; production schedules through the worker instead. Requires
+  // mu_.
   bool TryRebuildLaneLocked(int qp_index);
   // Retires the lane on a CQ completion error and throws: peer-side failures
   // (retry exhaustion, flushes) surface as ShardUnreachableError, local or
@@ -319,6 +336,14 @@ private:
                              // to return a buffer to the pool at revoke time.
   std::unordered_map<int, PendingRpc> pending_rpcs_; // In-flight RPC table.
   mutable std::mutex mu_; // Guards transport setup and pending RPC state.
+  // Lane rebuild queue. Kept separate from mu_ so enqueueing cannot be
+  // delayed by an in-progress submit, and the worker can wait without mu_.
+  std::mutex rebuild_mu_;
+  std::condition_variable rebuild_cv_;
+  std::vector<int> rebuild_queue_;
+  std::atomic<bool> rebuild_stop_{false};
+  bool rebuild_worker_started_ = false;
+  std::thread rebuild_worker_;
   std::atomic<int> next_rpc_id_{1}; // Monotonic RPC handle generator.
   std::mutex prefetch_mu_;          // Guards the prefetch handle table.
   std::unordered_map<uint64_t, PrefetchState> prefetches_;

@@ -78,9 +78,11 @@ class PetPSClusterRunner:
         rdma_slots_per_qp=None,
         rdma_wait_timeout_ms=None,
         rdma_lane_rebuild_enabled=None,
+        rdma_lane_rebuild_poll_ms=None,
         rdma_control_plane_timeout_ms=None,
         rdma_client_control_plane_timeout_ms=None,
         rdma_server_ready_delay_ms=None,
+        rdma_op_retry_max_attempts=None,
         rdma_profile_interval_ms=None,
         rdma_server_coroutines_per_thread=None,
         rdma_server_get_workers=None,
@@ -146,11 +148,13 @@ class PetPSClusterRunner:
         )
         self.rdma_wait_timeout_ms = rdma_wait_timeout_ms
         self.rdma_lane_rebuild_enabled = rdma_lane_rebuild_enabled
+        self.rdma_lane_rebuild_poll_ms = rdma_lane_rebuild_poll_ms
         self.rdma_control_plane_timeout_ms = rdma_control_plane_timeout_ms
         self.rdma_client_control_plane_timeout_ms = (
             rdma_client_control_plane_timeout_ms
         )
         self.rdma_server_ready_delay_ms = rdma_server_ready_delay_ms
+        self.rdma_op_retry_max_attempts = rdma_op_retry_max_attempts
         self.rdma_slots_per_qp = self._coalesce_optional_values(
             "rdma_slots_per_qp",
             rdma_slots_per_qp,
@@ -384,6 +388,11 @@ class PetPSClusterRunner:
             cmd.append(f"--rdma_wait_timeout_ms={self.rdma_wait_timeout_ms}")
         if self.rdma_lane_rebuild_enabled:
             cmd.append("--rdma_lane_rebuild_enabled=true")
+            if self.rdma_lane_rebuild_poll_ms is not None:
+                cmd.append(
+                    "--rdma_lane_rebuild_poll_ms="
+                    f"{self.rdma_lane_rebuild_poll_ms}"
+                )
             if self.rdma_rc_server_fence_stats_interval_ms is not None:
                 # Opt-in: production leaves the fence report off (default 0),
                 # so the periodic stderr line only appears in test runs.
@@ -488,6 +497,11 @@ class PetPSClusterRunner:
             cmd.append(
                 "--rdma_rc_server_ready_delay_ms="
                 f"{self.rdma_server_ready_delay_ms}"
+            )
+        if self.rdma_op_retry_max_attempts is not None:
+            cmd.append(
+                "--rdma_op_retry_max_attempts="
+                f"{self.rdma_op_retry_max_attempts}"
             )
         if self.rdma_profile_interval_ms is not None:
             cmd.append(

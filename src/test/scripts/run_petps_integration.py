@@ -145,6 +145,16 @@ def main():
         action="store_true",
         help="enable lane/QP rebuild on both server and client",
     )
+    parser.add_argument(
+        "--rdma-lane-rebuild-poll-ms",
+        type=int,
+        help="test-only: server interval between lane-generation checks",
+    )
+    parser.add_argument(
+        "--rdma-op-retry-max-attempts",
+        type=int,
+        help="retries for idempotent synchronous GET/PUT",
+    )
     parser.add_argument("--validate-routing", action="store_true")
     parser.add_argument(
         "--client-ssh",
@@ -256,6 +266,8 @@ def main():
                 args.rdma_rc_server_get_worker_hold_us
             ),
             rdma_lane_rebuild_enabled=args.rdma_lane_rebuild or None,
+            rdma_lane_rebuild_poll_ms=args.rdma_lane_rebuild_poll_ms,
+            rdma_op_retry_max_attempts=args.rdma_op_retry_max_attempts,
             rdma_rc_fake_get_mode=args.rdma_fake_get_mode,
             rdma_rc_server_fence_stats_interval_ms=(
                 args.fence_stats_interval_ms if args.rdma_lane_rebuild else None
